@@ -1,0 +1,24 @@
+packages:
+  "framer-motion": "Animations and smooth transitions for premium SaaS feel"
+  "recharts": "Data visualization for admin dashboard"
+  "date-fns": "Date formatting and manipulation"
+  "qrcode.react": "QR code rendering for check-in features"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility function to efficiently merge Tailwind CSS classes"
+  "lucide-react": "Beautiful consistent icons"
+
+images:
+  - path: "artifacts/petdaycare/public/images/hero-bg.png"
+    description: "Abstract luxury dark glassmorphism background with soft deep purple and violet glowing orbs, 8k resolution, highly detailed, sleek modern UI backdrop"
+    aspect_ratio: "16:9"
+  - path: "artifacts/petdaycare/public/images/logo.png"
+    description: "Premium minimalist logo mark for a luxury pet daycare, geometric dog and cat silhouette, glowing gold and deep violet accents, sleek dark background"
+    aspect_ratio: "1:1"
+  - path: "artifacts/petdaycare/public/images/avatar-placeholder.png"
+    description: "A soft, elegant 3D stylized cute dog and cat smiling, purple studio lighting, dark theme, profile picture"
+    aspect_ratio: "1:1"
+
+notes:
+  - Expect API to be at /api
+  - Auth uses cookie-based sessions with /api/auth/me for current user
+  - Generated hooks are from @workspace/api-client-react

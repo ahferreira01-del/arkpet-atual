@@ -1,8 +1,8 @@
-# Workspace
+# LuxePets — Pet Daycare SaaS
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+A full-stack multi-tenant SaaS platform for managing pet daycare centers (creches). Built with React + Vite frontend and Express backend with PostgreSQL.
 
 ## Stack
 
@@ -10,87 +10,104 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
-- **API framework**: Express 5
+- **Frontend**: React + Vite (artifacts/petdaycare) — dark glassmorphism luxury UI
+- **API framework**: Express 5 (artifacts/api-server)
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Auth**: Custom JWT-like token in localStorage (Bearer header injection via custom-fetch.ts)
+- **UI libraries**: Tailwind CSS, lucide-react, framer-motion, recharts, qrcode.react
+
+## Architecture
+
+### Multi-Tenant Design
+- Every pet, booking, task, etc. has a `crecheId` field
+- Firewall enforced at API route level based on user's `crecheId`
+- 4 roles: `master_admin`, `creche_admin`, `staff`, `tutor`
+
+### RBAC
+- **Master Admin**: Access all creches, create/manage creches, see all users
+- **Creche Admin**: Manage their creche, staff, pets, bookings
+- **Staff**: View/complete tasks, log walks, post timeline events
+- **Tutor**: View their own pets' timeline, bookings, chat
 
 ## Structure
 
 ```text
 artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
+├── artifacts/
+│   ├── api-server/         # Express API server
+│   │   └── src/
+│   │       ├── lib/auth.ts              # Token generation/verification
+│   │       ├── middlewares/authenticate.ts  # Auth middleware + RBAC
+│   │       └── routes/                  # auth, creches, pets, bookings, tasks, chat, users
+│   └── petdaycare/         # React+Vite frontend (served at /)
+│       └── src/
+│           ├── hooks/use-auth.tsx       # Auth context (token in localStorage)
+│           ├── components/layout/       # Sidebar, Header, AppLayout
+│           ├── components/ui/           # Button, Card, Badge, Modal, Tabs
+│           └── pages/                   # login, dashboard, pets, bookings, staff, admin
+├── lib/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
+│   ├── api-client-react/   # Generated React Query hooks (+ Bearer token injection in custom-fetch.ts)
+│   ├── api-zod/            # Generated Zod schemas
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+│       └── src/schema/
+│           ├── users.ts, creches.ts, pets.ts
+│           ├── medical.ts (vaccines, medications)
+│           ├── bookings.ts, tasks.ts
+│           ├── timeline.ts, walks.ts, chat.ts
 ```
 
-## TypeScript & Composite Projects
+## Demo Accounts (all use password: `password`)
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+| Role | Email |
+|------|-------|
+| Master Admin | master@petdaycare.com |
+| Creche Admin | ana@petparadise.com.br |
+| Staff | bruno@petparadise.com.br |
+| Tutor | tutor@petparadise.com.br |
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## Key Features
 
-## Root Scripts
+- Pet profiles with vaccination records, medications, feeding schedules
+- Booking system for day use and lodging (with check-in/check-out)
+- Staff task dashboard with daily checklists by type (feeding/medication/walk/grooming)
+- Pet timeline with real-time activity feed
+- Walk tracking with start/end times
+- Internal chat between tutor and creche
+- Creche stats dashboard (occupancy, tasks, bookings)
+- Master admin panel for multi-creche management
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+## API Routes
 
-## Packages
+All routes prefixed with `/api`:
+- `POST /auth/login`, `POST /auth/register`, `GET /auth/me`, `POST /auth/logout`
+- `GET|POST /creches`, `GET|PUT /creches/:id`, `GET /creches/:id/stats`
+- `GET|POST /creches/:id/staff`
+- `GET|POST /creches/:id/pets`, `GET|PUT /creches/:id/pets/:petId`
+- `GET|POST /creches/:id/pets/:petId/vaccines`
+- `GET|POST /creches/:id/pets/:petId/medications`, `POST .../administer`
+- `GET|POST /creches/:id/pets/:petId/timeline`
+- `GET|POST /creches/:id/pets/:petId/walks`, `POST .../walks/:walkId/end`
+- `GET|POST /creches/:id/bookings`, `GET|PUT /creches/:id/bookings/:bookingId`
+- `POST /creches/:id/bookings/:bookingId/checkin`, `.../checkout`
+- `GET|POST /creches/:id/tasks`, `POST .../tasks/:taskId/complete`
+- `GET|POST /creches/:id/chat`
+- `GET /users`, `GET|PUT /users/:id`
 
-### `artifacts/api-server` (`@workspace/api-server`)
+## Development
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+```bash
+# API server
+pnpm --filter @workspace/api-server run dev
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+# Frontend
+pnpm --filter @workspace/petdaycare run dev
 
-### `lib/db` (`@workspace/db`)
+# Codegen (after OpenAPI changes)
+pnpm --filter @workspace/api-spec run codegen
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
-
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
-
-### `lib/api-spec` (`@workspace/api-spec`)
-
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+# DB push
+pnpm --filter @workspace/db run push
+```

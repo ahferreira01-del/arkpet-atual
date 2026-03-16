@@ -1,22 +1,40 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Pet Daycare SaaS API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: creches
+    description: Creche (pet daycare) management
+  - name: pets
+    description: Pet profile management
+  - name: bookings
+    description: Booking and reservations
+  - name: tasks
+    description: Staff task management
+  - name: timeline
+    description: Pet timeline and media
+  - name: chat
+    description: Internal messaging
+  - name: users
+    description: User management
+  - name: medical
+    description: Medical records
+  - name: walks
+    description: Walk tracking
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +42,1600 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Not authenticated
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current user
+      responses:
+        "200":
+          description: Logged out
+
+  /creches:
+    get:
+      operationId: listCreches
+      tags: [creches]
+      summary: List all creches (master admin only)
+      responses:
+        "200":
+          description: List of creches
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Creche"
+    post:
+      operationId: createCreche
+      tags: [creches]
+      summary: Create a new creche
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCrecheRequest"
+      responses:
+        "201":
+          description: Creche created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creche"
+
+  /creches/{crecheId}:
+    get:
+      operationId: getCreche
+      tags: [creches]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Get creche details
+      responses:
+        "200":
+          description: Creche details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creche"
+    put:
+      operationId: updateCreche
+      tags: [creches]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Update creche
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCrecheRequest"
+      responses:
+        "200":
+          description: Creche updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Creche"
+
+  /creches/{crecheId}/stats:
+    get:
+      operationId: getCrecheStats
+      tags: [creches]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Get creche operational stats
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrecheStats"
+
+  /creches/{crecheId}/staff:
+    get:
+      operationId: listCrecheStaff
+      tags: [creches]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: List staff members of a creche
+      responses:
+        "200":
+          description: Staff members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+    post:
+      operationId: addStaffMember
+      tags: [creches]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Add staff member to creche
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddStaffRequest"
+      responses:
+        "201":
+          description: Staff member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /creches/{crecheId}/pets:
+    get:
+      operationId: listPets
+      tags: [pets]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, checked_in, all]
+        - name: tutorId
+          in: query
+          schema:
+            type: string
+      summary: List pets for a creche
+      responses:
+        "200":
+          description: List of pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pet"
+    post:
+      operationId: createPet
+      tags: [pets]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Register a new pet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePetRequest"
+      responses:
+        "201":
+          description: Pet created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+
+  /creches/{crecheId}/pets/{petId}:
+    get:
+      operationId: getPet
+      tags: [pets]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Get pet profile
+      responses:
+        "200":
+          description: Pet profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+    put:
+      operationId: updatePet
+      tags: [pets]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Update pet profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePetRequest"
+      responses:
+        "200":
+          description: Updated pet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+
+  /creches/{crecheId}/pets/{petId}/vaccines:
+    get:
+      operationId: listVaccines
+      tags: [medical]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: List pet vaccines
+      responses:
+        "200":
+          description: Vaccines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vaccine"
+    post:
+      operationId: addVaccine
+      tags: [medical]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Add vaccine record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVaccineRequest"
+      responses:
+        "201":
+          description: Vaccine added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vaccine"
+
+  /creches/{crecheId}/pets/{petId}/medications:
+    get:
+      operationId: listMedications
+      tags: [medical]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: List pet medications
+      responses:
+        "200":
+          description: Medications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Medication"
+    post:
+      operationId: addMedication
+      tags: [medical]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Add medication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMedicationRequest"
+      responses:
+        "201":
+          description: Medication added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Medication"
+
+  /creches/{crecheId}/pets/{petId}/medications/{medicationId}/administer:
+    post:
+      operationId: administerMedication
+      tags: [medical]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+        - name: medicationId
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Confirm medication administered
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdministerMedicationRequest"
+      responses:
+        "200":
+          description: Medication administered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Medication"
+
+  /creches/{crecheId}/bookings:
+    get:
+      operationId: listBookings
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, active, completed, cancelled]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [day_use, lodging]
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      summary: List bookings
+      responses:
+        "200":
+          description: Bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Booking"
+    post:
+      operationId: createBooking
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Create booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingRequest"
+      responses:
+        "201":
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  /creches/{crecheId}/bookings/{bookingId}:
+    get:
+      operationId: getBooking
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/BookingId"
+      summary: Get booking details
+      responses:
+        "200":
+          description: Booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+    put:
+      operationId: updateBooking
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/BookingId"
+      summary: Update booking status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBookingRequest"
+      responses:
+        "200":
+          description: Booking updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  /creches/{crecheId}/bookings/{bookingId}/checkin:
+    post:
+      operationId: checkIn
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/BookingId"
+      summary: Check in a pet
+      responses:
+        "200":
+          description: Checked in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  /creches/{crecheId}/bookings/{bookingId}/checkout:
+    post:
+      operationId: checkOut
+      tags: [bookings]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/BookingId"
+      summary: Check out a pet
+      responses:
+        "200":
+          description: Checked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  /creches/{crecheId}/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, completed, skipped]
+      summary: List tasks
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskRequest"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /creches/{crecheId}/tasks/{taskId}/complete:
+    post:
+      operationId: completeTask
+      tags: [tasks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Mark task as complete
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompleteTaskRequest"
+      responses:
+        "200":
+          description: Task completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /creches/{crecheId}/pets/{petId}/timeline:
+    get:
+      operationId: listTimeline
+      tags: [timeline]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      summary: Get pet timeline
+      responses:
+        "200":
+          description: Timeline events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimelineEvent"
+    post:
+      operationId: addTimelineEvent
+      tags: [timeline]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Add timeline event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTimelineEventRequest"
+      responses:
+        "201":
+          description: Event added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimelineEvent"
+
+  /creches/{crecheId}/pets/{petId}/walks:
+    get:
+      operationId: listWalks
+      tags: [walks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      summary: List pet walks
+      responses:
+        "200":
+          description: Walks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Walk"
+    post:
+      operationId: startWalk
+      tags: [walks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+      summary: Start a walk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartWalkRequest"
+      responses:
+        "201":
+          description: Walk started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Walk"
+
+  /creches/{crecheId}/pets/{petId}/walks/{walkId}/end:
+    post:
+      operationId: endWalk
+      tags: [walks]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - $ref: "#/components/parameters/PetId"
+        - name: walkId
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: End a walk
+      responses:
+        "200":
+          description: Walk ended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Walk"
+
+  /creches/{crecheId}/chat:
+    get:
+      operationId: listMessages
+      tags: [chat]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+        - name: petId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      summary: List chat messages
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatMessage"
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      parameters:
+        - $ref: "#/components/parameters/CrecheId"
+      summary: Send chat message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageRequest"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMessage"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (master admin only)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UserProfile"
+
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [users]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Get user profile
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    put:
+      operationId: updateUser
+      tags: [users]
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      summary: Update user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
 components:
+  parameters:
+    CrecheId:
+      name: crecheId
+      in: path
+      required: true
+      schema:
+        type: integer
+    PetId:
+      name: petId
+      in: path
+      required: true
+      schema:
+        type: integer
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema:
+        type: integer
+
   schemas:
     HealthStatus:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required: [email, password]
+
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        role:
+          type: string
+          enum: [master_admin, creche_admin, staff, tutor]
+        crecheId:
+          type: integer
+          nullable: true
+      required: [name, email, password, role]
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserProfile"
+        token:
+          type: string
+      required: [user, token]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [master_admin, creche_admin, staff, tutor]
+        crecheId:
+          type: integer
+          nullable: true
+        avatarUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, role, createdAt]
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+
+    Creche:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        maxCapacity:
+          type: integer
+        currentOccupancy:
+          type: integer
+        logoUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        adminId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, address, phone, email, maxCapacity, currentOccupancy, status, createdAt]
+
+    CreateCrecheRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        maxCapacity:
+          type: integer
+        adminEmail:
+          type: string
+          nullable: true
+      required: [name, address, phone, email, maxCapacity]
+
+    UpdateCrecheRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        address:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+        maxCapacity:
+          type: integer
+        status:
+          type: string
+          enum: [active, inactive]
+        logoUrl:
+          type: string
+          nullable: true
+
+    CrecheStats:
+      type: object
+      properties:
+        crecheId:
+          type: integer
+        currentOccupancy:
+          type: integer
+        maxCapacity:
+          type: integer
+        todayCheckIns:
+          type: integer
+        todayCheckOuts:
+          type: integer
+        pendingBookings:
+          type: integer
+        activeBookings:
+          type: integer
+        pendingTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        petsCheckedIn:
+          type: integer
+        totalPets:
+          type: integer
+      required: [crecheId, currentOccupancy, maxCapacity, todayCheckIns, todayCheckOuts, pendingBookings, activeBookings, pendingTasks, completedTasks, petsCheckedIn, totalPets]
+
+    AddStaffRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [creche_admin, staff]
+        password:
+          type: string
+      required: [email, name, role, password]
+
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        tutorId:
+          type: integer
+        tutorName:
+          type: string
+          nullable: true
+        name:
+          type: string
+        species:
+          type: string
+          enum: [dog, cat, bird, rabbit, other]
+        breed:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        gender:
+          type: string
+          enum: [male, female, unknown]
+        weight:
+          type: number
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        temperament:
+          type: string
+          enum: [calm, playful, aggressive, shy, sociable]
+          nullable: true
+        allergies:
+          type: string
+          nullable: true
+        specialNeeds:
+          type: string
+          nullable: true
+        photoUrl:
+          type: string
+          nullable: true
+        isCheckedIn:
+          type: boolean
+        feedingSchedule:
+          $ref: "#/components/schemas/FeedingSchedule"
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, crecheId, tutorId, name, species, gender, isCheckedIn, status, createdAt]
+
+    FeedingSchedule:
+      type: object
+      properties:
+        breakfastTime:
+          type: string
+          nullable: true
+        lunchTime:
+          type: string
+          nullable: true
+        dinnerTime:
+          type: string
+          nullable: true
+        foodType:
+          type: string
+          nullable: true
+        portionSize:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    CreatePetRequest:
+      type: object
+      properties:
+        tutorId:
+          type: integer
+        name:
+          type: string
+        species:
+          type: string
+          enum: [dog, cat, bird, rabbit, other]
+        breed:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        gender:
+          type: string
+          enum: [male, female, unknown]
+        weight:
+          type: number
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        temperament:
+          type: string
+          enum: [calm, playful, aggressive, shy, sociable]
+          nullable: true
+        allergies:
+          type: string
+          nullable: true
+        specialNeeds:
+          type: string
+          nullable: true
+        photoUrl:
+          type: string
+          nullable: true
+        feedingSchedule:
+          $ref: "#/components/schemas/FeedingSchedule"
+          nullable: true
+      required: [tutorId, name, species, gender]
+
+    UpdatePetRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        breed:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        weight:
+          type: number
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        temperament:
+          type: string
+          enum: [calm, playful, aggressive, shy, sociable]
+          nullable: true
+        allergies:
+          type: string
+          nullable: true
+        specialNeeds:
+          type: string
+          nullable: true
+        photoUrl:
+          type: string
+          nullable: true
+        feedingSchedule:
+          $ref: "#/components/schemas/FeedingSchedule"
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+          nullable: true
+
+    Vaccine:
+      type: object
+      properties:
+        id:
+          type: integer
+        petId:
+          type: integer
+        crecheId:
+          type: integer
+        name:
+          type: string
+        appliedDate:
+          type: string
+          format: date
+        nextDueDate:
+          type: string
+          format: date
+          nullable: true
+        veterinarian:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, petId, crecheId, name, appliedDate, createdAt]
+
+    CreateVaccineRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        appliedDate:
+          type: string
+          format: date
+        nextDueDate:
+          type: string
+          format: date
+          nullable: true
+        veterinarian:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        receiptUrl:
+          type: string
+          nullable: true
+      required: [name, appliedDate]
+
+    Medication:
+      type: object
+      properties:
+        id:
+          type: integer
+        petId:
+          type: integer
+        crecheId:
+          type: integer
+        name:
+          type: string
+        dosage:
+          type: string
+        frequency:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        times:
+          type: array
+          items:
+            type: string
+        lastAdministered:
+          type: string
+          format: date-time
+          nullable: true
+        administeredBy:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, petId, crecheId, name, dosage, frequency, startDate, times, isActive, createdAt]
+
+    CreateMedicationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        dosage:
+          type: string
+        frequency:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        times:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+          nullable: true
+      required: [name, dosage, frequency, startDate, times]
+
+    AdministerMedicationRequest:
+      type: object
+      properties:
+        administeredBy:
+          type: string
+        notes:
+          type: string
+          nullable: true
+      required: [administeredBy]
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        petId:
+          type: integer
+        petName:
+          type: string
+          nullable: true
+        tutorId:
+          type: integer
+        tutorName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [day_use, lodging]
+        status:
+          type: string
+          enum: [pending, confirmed, active, completed, cancelled]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        checkInTime:
+          type: string
+          format: date-time
+          nullable: true
+        checkOutTime:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        isRecurring:
+          type: boolean
+        recurringDays:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, crecheId, petId, tutorId, type, status, startDate, isRecurring, createdAt]
+
+    CreateBookingRequest:
+      type: object
+      properties:
+        petId:
+          type: integer
+        type:
+          type: string
+          enum: [day_use, lodging]
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        isRecurring:
+          type: boolean
+        recurringDays:
+          type: array
+          items:
+            type: integer
+          nullable: true
+        price:
+          type: number
+          nullable: true
+      required: [petId, type, startDate, isRecurring]
+
+    UpdateBookingRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed, active, completed, cancelled]
+        notes:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        petId:
+          type: integer
+          nullable: true
+        petName:
+          type: string
+          nullable: true
+        assignedToId:
+          type: integer
+          nullable: true
+        assignedToName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [feeding, medication, walk, grooming, play, health_check, other]
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        scheduledFor:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedBy:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, completed, skipped]
+        notes:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [low, medium, high]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, crecheId, type, title, scheduledFor, status, priority, createdAt]
+
+    CreateTaskRequest:
+      type: object
+      properties:
+        petId:
+          type: integer
+          nullable: true
+        assignedToId:
+          type: integer
+          nullable: true
+        type:
+          type: string
+          enum: [feeding, medication, walk, grooming, play, health_check, other]
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        scheduledFor:
+          type: string
+          format: date-time
+        priority:
+          type: string
+          enum: [low, medium, high]
+      required: [type, title, scheduledFor, priority]
+
+    CompleteTaskRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+          nullable: true
+
+    TimelineEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        petId:
+          type: integer
+        authorId:
+          type: integer
+        authorName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [check_in, check_out, feeding, medication, walk, play, photo, video, note, health]
+        content:
+          type: string
+          nullable: true
+        mediaUrl:
+          type: string
+          nullable: true
+        mediaType:
+          type: string
+          enum: [photo, video]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, crecheId, petId, authorId, type, createdAt]
+
+    CreateTimelineEventRequest:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [check_in, check_out, feeding, medication, walk, play, photo, video, note, health]
+        content:
+          type: string
+          nullable: true
+        mediaUrl:
+          type: string
+          nullable: true
+        mediaType:
+          type: string
+          enum: [photo, video]
+          nullable: true
+      required: [type]
+
+    Walk:
+      type: object
+      properties:
+        id:
+          type: integer
+        petId:
+          type: integer
+        crecheId:
+          type: integer
+        staffId:
+          type: integer
+        staffName:
+          type: string
+          nullable: true
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+          nullable: true
+        durationMinutes:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [in_progress, completed]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, petId, crecheId, staffId, startTime, status, createdAt]
+
+    StartWalkRequest:
+      type: object
+      properties:
+        staffId:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+      required: [staffId]
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        petId:
+          type: integer
+          nullable: true
+        senderId:
+          type: integer
+        senderName:
+          type: string
+          nullable: true
+        senderRole:
+          type: string
+          nullable: true
+        content:
+          type: string
+        mediaUrl:
+          type: string
+          nullable: true
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, crecheId, senderId, content, createdAt]
+
+    SendMessageRequest:
+      type: object
+      properties:
+        petId:
+          type: integer
+          nullable: true
+        content:
+          type: string
+        mediaUrl:
+          type: string
+          nullable: true
+      required: [content]
