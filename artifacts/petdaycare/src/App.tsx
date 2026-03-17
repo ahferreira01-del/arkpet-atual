@@ -14,6 +14,11 @@ import PetDetail from "./pages/pets/detail";
 import Bookings from "./pages/bookings/index";
 import StaffDashboard from "./pages/staff/index";
 import AdminDashboard from "./pages/admin/index";
+import Chat from "./pages/chat/index";
+import Walks from "./pages/walks/index";
+import ManageStaff from "./pages/staff/manage";
+import Settings from "./pages/settings/index";
+import AdminUsers from "./pages/admin/users";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -33,31 +38,51 @@ function App() {
           <AuthProvider>
             <Switch>
               <Route path="/login"><Login /></Route>
-              
+
               <Route path="/">
                 <AppLayout><Dashboard /></AppLayout>
               </Route>
-              
+
               <Route path="/pets">
                 <AppLayout><PetsDirectory /></AppLayout>
               </Route>
-              
+
               <Route path="/pets/:id">
                 {params => <AppLayout><PetDetail id={Number(params.id)} /></AppLayout>}
               </Route>
-              
+
               <Route path="/bookings">
                 <AppLayout><Bookings /></AppLayout>
               </Route>
-              
+
               <Route path="/staff">
                 <AppLayout><StaffDashboard /></AppLayout>
               </Route>
-              
+
+              <Route path="/staff/manage">
+                <AppLayout><ManageStaff /></AppLayout>
+              </Route>
+
+              <Route path="/walks">
+                <AppLayout><Walks /></AppLayout>
+              </Route>
+
+              <Route path="/chat">
+                <AppLayout><Chat /></AppLayout>
+              </Route>
+
+              <Route path="/settings">
+                <AppLayout><Settings /></AppLayout>
+              </Route>
+
               <Route path="/admin">
                 <AppLayout><AdminDashboard /></AppLayout>
               </Route>
-              
+
+              <Route path="/admin/users">
+                <AppLayout><AdminUsers /></AppLayout>
+              </Route>
+
               <Route component={NotFound} />
             </Switch>
           </AuthProvider>

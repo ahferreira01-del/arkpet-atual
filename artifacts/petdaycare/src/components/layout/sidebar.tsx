@@ -36,22 +36,26 @@ export function Sidebar({ user }: SidebarProps) {
         return [
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
           { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Bookings", href: "/bookings", icon: CalendarDays },
-          { name: "Staff", href: "/staff/manage", icon: Users },
-          { name: "Settings", href: "/settings", icon: Settings },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays },
+          { name: "Tarefas", href: "/staff", icon: CheckSquare },
+          { name: "Mensagens", href: "/chat", icon: MessageSquare },
+          { name: "Equipe", href: "/staff/manage", icon: Users },
+          { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "staff":
         return [
-          { name: "My Tasks", href: "/", icon: CheckSquare },
-          { name: "Pets Directory", href: "/pets", icon: Dog },
-          { name: "Walks", href: "/walks", icon: Footprints },
+          { name: "Dashboard", href: "/", icon: LayoutDashboard },
+          { name: "Tarefas", href: "/staff", icon: CheckSquare },
+          { name: "Pets", href: "/pets", icon: Dog },
+          { name: "Passeios", href: "/walks", icon: Footprints },
+          { name: "Mensagens", href: "/chat", icon: MessageSquare },
         ];
       case "tutor":
         return [
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "My Pets", href: "/pets", icon: Dog },
-          { name: "Bookings", href: "/bookings", icon: CalendarDays },
-          { name: "Messages", href: "/chat", icon: MessageSquare },
+          { name: "Meus Pets", href: "/pets", icon: Dog },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays },
+          { name: "Mensagens", href: "/chat", icon: MessageSquare },
         ];
       default:
         return [];
