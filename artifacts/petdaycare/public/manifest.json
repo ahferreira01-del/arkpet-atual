@@ -1,0 +1,40 @@
+{
+  "name": "LuxePets — Pet Daycare",
+  "short_name": "LuxePets",
+  "description": "Plataforma de gestão para pet daycare — reservas, pets e equipe em um só lugar.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d0d1a",
+  "theme_color": "#8b5cf6",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Reservas",
+      "url": "./bookings",
+      "description": "Ver e criar reservas"
+    },
+    {
+      "name": "Pets",
+      "url": "./pets",
+      "description": "Diretório de pets"
+    }
+  ],
+  "screenshots": []
+}
