@@ -201,6 +201,32 @@ router.post("/:petId/timeline", async (req: AuthRequest, res) => {
   const [event] = await dbConn.insert(timelineEventsTable).values({
     crecheId, petId, authorId: req.user.id, type, content, mediaUrl, mediaType,
   }).returning();
+
+  const pet = await dbConn.select().from(petsTable).where(eq(petsTable.id, petId)).limit(1);
+  if (pet[0]?.tutorId) {
+    const { sendPushToUser } = await import("../lib/push.js");
+    const typeLabels: Record<string, string> = {
+      photo: "📸 Nova foto",
+      note: "📝 Nova nota",
+      play: "🎾 Momento de brincadeira",
+      walk: "🦮 Passeio",
+      feeding: "🍽️ Alimentação",
+      medication: "💊 Medicação",
+      health: "🏥 Saúde",
+      check_in: "✅ Check-in",
+      check_out: "🏠 Check-out",
+      video: "🎥 Novo vídeo",
+    };
+    const label = typeLabels[type] || "📌 Novo evento";
+    const petName = pet[0].name;
+    const caption = content ? ` "${content.slice(0, 60)}${content.length > 60 ? "…" : ""}"` : "";
+    await sendPushToUser(pet[0].tutorId, {
+      title: `${petName} na creche`,
+      body: `${label}${caption}`,
+      data: { type: "timeline", petId },
+    }).catch(() => {});
+  }
+
   res.status(201).json({ ...event, authorName: req.user.name });
 });
 

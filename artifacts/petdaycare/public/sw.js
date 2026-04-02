@@ -112,6 +112,7 @@ self.addEventListener("notificationclick", (event) => {
   else if (data.type === "task") targetUrl = "/staff";
   else if (data.type === "chat") targetUrl = "/chat";
   else if (data.type === "checkin" || data.type === "checkout") targetUrl = "/bookings";
+  else if (data.type === "timeline" && data.petId) targetUrl = `/pets/${data.petId}`;
 
   event.waitUntil(
     clients

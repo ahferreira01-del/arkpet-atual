@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   useGetPet,
   useListVaccines,
@@ -19,8 +19,9 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn } from "lucide-react";
-import { format } from "date-fns";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function PetDetail({ id }: { id: number }) {
@@ -473,13 +474,142 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
   );
 }
 
+const EVENT_META: Record<string, { emoji: string; label: string; color: string }> = {
+  photo:      { emoji: "📸", label: "Foto",         color: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
+  video:      { emoji: "🎥", label: "Vídeo",        color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
+  note:       { emoji: "📝", label: "Nota",         color: "bg-white/10 text-white/70 border-white/10" },
+  play:       { emoji: "🎾", label: "Brincadeira",  color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
+  walk:       { emoji: "🦮", label: "Passeio",      color: "bg-green-500/20 text-green-300 border-green-500/30" },
+  feeding:    { emoji: "🍽️", label: "Alimentação", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
+  medication: { emoji: "💊", label: "Medicação",    color: "bg-red-500/20 text-red-300 border-red-500/30" },
+  health:     { emoji: "🏥", label: "Saúde",        color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
+  check_in:   { emoji: "✅", label: "Check-in",     color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  check_out:  { emoji: "🏠", label: "Check-out",    color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+};
+
+function getInitials(name: string) {
+  return (name || "?").split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  "bg-violet-600","bg-blue-600","bg-emerald-600","bg-orange-600","bg-pink-600","bg-cyan-600",
+];
+function avatarColor(name: string) {
+  let h = 0;
+  for (const c of name || "") h = (h * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[h];
+}
+
+async function compressImage(file: File, maxWidth = 1080, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = ev.target!.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function FeedCard({ event }: { event: any }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = EVENT_META[event.type] || { emoji: "📌", label: event.type, color: "bg-white/10 text-white border-white/10" };
+  const date = new Date(event.createdAt);
+  const relTime = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+
+  return (
+    <div className="glass-panel rounded-2xl overflow-hidden border border-white/8 shadow-[0_4px_32px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-2 duration-400">
+      {/* Photo */}
+      {event.mediaUrl && (
+        <div className="w-full bg-black/40 max-h-[520px] overflow-hidden">
+          <img
+            src={event.mediaUrl}
+            alt="Foto do evento"
+            className="w-full object-cover max-h-[520px]"
+            loading="lazy"
+          />
+        </div>
+      )}
+
+      {/* Body */}
+      <div className="p-4 space-y-3">
+        {/* Author row */}
+        <div className="flex items-center gap-3">
+          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${avatarColor(event.authorName || "")}`}>
+            {getInitials(event.authorName || "?")}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white leading-tight truncate">{event.authorName || "Staff"}</p>
+            <p className="text-xs text-muted-foreground">{relTime}</p>
+          </div>
+          <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${meta.color} flex-shrink-0`}>
+            {meta.emoji} {meta.label}
+          </span>
+        </div>
+
+        {/* Caption */}
+        {event.content && (
+          <div className="text-sm text-gray-200 leading-relaxed">
+            {event.content.length > 180 && !expanded ? (
+              <>
+                {event.content.slice(0, 180)}…{" "}
+                <button onClick={() => setExpanded(true)} className="text-primary font-medium hover:underline">ver mais</button>
+              </>
+            ) : (
+              event.content
+            )}
+          </div>
+        )}
+
+        {/* Date */}
+        <p className="text-xs text-white/30 pt-1">{format(date, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p>
+      </div>
+    </div>
+  );
+}
+
 function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: timeline } = useListTimeline(crecheId, petId);
   const addEventMutation = useAddTimelineEvent();
-  const [eventOpen, setEventOpen] = useState(false);
+  const [postOpen, setPostOpen] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const [selectedType, setSelectedType] = useState("photo");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const mediaDataRef = useRef<string | null>(null);
 
-  const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
+  const canPost = user?.role !== "tutor";
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressing(true);
+    try {
+      const data = await compressImage(file);
+      mediaDataRef.current = data;
+      setPreview(data);
+    } catch {
+      mediaDataRef.current = null;
+      setPreview(null);
+    } finally {
+      setCompressing(false);
+    }
+  }, []);
+
+  const handlePost = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     addEventMutation.mutate(
@@ -487,98 +617,158 @@ function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
         crecheId,
         petId,
         data: {
-          type: fd.get("type") as any,
+          type: selectedType as any,
           content: (fd.get("content") as string) || null,
-          mediaUrl: (fd.get("mediaUrl") as string) || null,
+          mediaUrl: mediaDataRef.current || null,
+          mediaType: mediaDataRef.current ? "photo" : undefined,
         },
       },
       {
         onSuccess: () => {
-          setEventOpen(false);
+          setPostOpen(false);
+          setPreview(null);
+          mediaDataRef.current = null;
+          setSelectedType("photo");
           queryClient.invalidateQueries();
         },
       }
     );
   };
 
+  const closeModal = () => {
+    setPostOpen(false);
+    setPreview(null);
+    mediaDataRef.current = null;
+    setSelectedType("photo");
+  };
+
+  const eventTypes = [
+    { value: "photo", emoji: "📸", label: "Foto" },
+    { value: "note", emoji: "📝", label: "Nota" },
+    { value: "play", emoji: "🎾", label: "Brincadeira" },
+    { value: "walk", emoji: "🦮", label: "Passeio" },
+    { value: "feeding", emoji: "🍽️", label: "Alimentação" },
+    { value: "medication", emoji: "💊", label: "Medicação" },
+    { value: "health", emoji: "🏥", label: "Saúde" },
+  ];
+
   return (
-    <Card>
-      <CardContent className="p-6 max-w-3xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h3 className="text-xl font-display font-semibold">Linha do Tempo</h3>
-          <Button onClick={() => setEventOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" /> Adicionar Evento
-          </Button>
-        </div>
-
-        {timeline?.length ? (
-          <div className="relative pl-8 space-y-8 before:absolute before:inset-y-0 before:left-[15px] before:w-px before:bg-white/10">
-            {timeline.map((event) => (
-              <div key={event.id} className="relative">
-                <div className="absolute -left-10 mt-1.5 h-6 w-6 rounded-full bg-primary/20 border-2 border-background flex items-center justify-center shadow-[0_0_10px_rgba(139,92,246,0.3)]">
-                  <div className="h-2 w-2 rounded-full bg-primary" />
-                </div>
-                <div className="glass-panel p-4 rounded-xl">
-                  <div className="flex justify-between items-start mb-2">
-                    <p className="font-semibold text-white capitalize">{event.type.replace(/_/g, " ")}</p>
-                    <span className="text-xs text-muted-foreground">{format(new Date(event.createdAt), "HH:mm")}</span>
-                  </div>
-                  {event.content && <p className="text-sm text-gray-300">{event.content}</p>}
-                  {event.mediaUrl && (
-                    <div className="mt-3 rounded-lg overflow-hidden max-h-64 bg-black/50">
-                      <img src={event.mediaUrl} alt="Mídia do evento" className="w-full h-full object-contain" />
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-3 pt-3 border-t border-white/5">
-                    Registrado por {event.authorName}
-                  </p>
-                </div>
-              </div>
-            ))}
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Compose bar (staff/admin only) */}
+      {canPost && (
+        <button
+          onClick={() => setPostOpen(true)}
+          className="w-full glass-panel rounded-2xl p-4 flex items-center gap-4 border border-white/8 hover:border-primary/40 hover:bg-white/5 transition-all text-left group"
+        >
+          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/30 transition-colors">
+            <Camera className="h-5 w-5 text-primary" />
           </div>
-        ) : (
-          <EmptyState
-            icon={Clock}
-            title="Sem eventos"
-            description="Nenhuma atividade registrada para este pet."
-            action={{ label: "Adicionar Primeiro Evento", onClick: () => setEventOpen(true) }}
-          />
-        )}
+          <span className="text-muted-foreground text-sm flex-1">Publicar uma atualização sobre este pet...</span>
+          <div className="flex items-center gap-1 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            <Sparkles className="h-4 w-4" />
+          </div>
+        </button>
+      )}
 
-        <Modal isOpen={eventOpen} onClose={() => setEventOpen(false)} title="Adicionar Evento na Linha do Tempo">
-          <form onSubmit={handleAdd} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Tipo de Evento</label>
-              <select name="type" required className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
-                <option value="note">Nota</option>
-                <option value="feeding">Alimentação</option>
-                <option value="walk">Passeio</option>
-                <option value="play">Brincadeira</option>
-                <option value="health">Saúde</option>
-                <option value="photo">Foto</option>
-                <option value="medication">Medicamento</option>
-              </select>
+      {/* Feed */}
+      {timeline?.length ? (
+        <div className="space-y-5">
+          {timeline.map((event) => (
+            <FeedCard key={event.id} event={event} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={ImageIcon}
+          title="Nenhuma publicação ainda"
+          description={canPost ? "Publique a primeira foto ou atualização do pet." : "A equipe ainda não publicou nenhuma atualização."}
+          action={canPost ? { label: "Publicar Primeira Foto", onClick: () => setPostOpen(true) } : undefined}
+        />
+      )}
+
+      {/* Compose Modal */}
+      <Modal isOpen={postOpen} onClose={closeModal} title="Nova Publicação">
+        <form onSubmit={handlePost} className="space-y-5">
+          {/* Type chips */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Tipo de Evento</label>
+            <div className="flex flex-wrap gap-2">
+              {eventTypes.map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => setSelectedType(t.value)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    selectedType === t.value
+                      ? "bg-primary text-white border-primary shadow-[0_0_12px_rgba(139,92,246,0.5)]"
+                      : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"
+                  }`}
+                >
+                  {t.emoji} {t.label}
+                </button>
+              ))}
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Descrição</label>
-              <textarea
-                name="content"
-                rows={3}
-                placeholder="Descreva o evento..."
-                className="flex w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md resize-none placeholder:text-muted-foreground"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">URL da Mídia (opcional)</label>
-              <Input name="mediaUrl" placeholder="https://..." />
-            </div>
-            <div className="pt-4 flex justify-end gap-3">
-              <Button type="button" variant="ghost" onClick={() => setEventOpen(false)}>Cancelar</Button>
-              <Button type="submit" isLoading={addEventMutation.isPending}>Salvar Evento</Button>
-            </div>
-          </form>
-        </Modal>
-      </CardContent>
-    </Card>
+          </div>
+
+          {/* Photo upload */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Foto (opcional)</label>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            {preview ? (
+              <div className="relative rounded-xl overflow-hidden border border-white/10">
+                <img src={preview} alt="Preview" className="w-full max-h-64 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
+                  className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
+                >
+                  <X className="h-4 w-4 text-white" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={compressing}
+                className="w-full h-32 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+              >
+                {compressing ? (
+                  <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
+                ) : (
+                  <>
+                    <Camera className="h-7 w-7" />
+                    <span className="text-sm">Toque para adicionar uma foto</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Caption */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Legenda</label>
+            <textarea
+              name="content"
+              rows={4}
+              placeholder="Escreva uma legenda para este momento especial..."
+              className="flex w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md resize-none placeholder:text-muted-foreground"
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-1">
+            <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
+            <Button type="submit" isLoading={addEventMutation.isPending} className="shadow-[0_0_16px_rgba(139,92,246,0.4)]">
+              <Sparkles className="h-4 w-4 mr-2" /> Publicar
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
   );
 }
