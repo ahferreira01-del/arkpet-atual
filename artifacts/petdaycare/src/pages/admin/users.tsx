@@ -239,37 +239,46 @@ export default function AdminUsers() {
               <table className="w-full text-sm text-left">
                 <thead className="text-xs text-muted-foreground uppercase bg-white/5">
                   <tr>
-                    <th className="px-6 py-4 font-medium">Usuário</th>
-                    <th className="px-6 py-4 font-medium">Papel</th>
-                    {isMaster && <th className="px-6 py-4 font-medium">Creche</th>}
-                    <th className="px-6 py-4 font-medium">Status</th>
-                    <th className="px-6 py-4 font-medium">Cadastro</th>
-                    <th className="px-6 py-4 font-medium text-right">Ações</th>
+                    <th className="px-4 md:px-6 py-4 font-medium">Usuário</th>
+                    <th className="px-4 md:px-6 py-4 font-medium">Papel</th>
+                    {isMaster && <th className="hidden lg:table-cell px-6 py-4 font-medium">Creche</th>}
+                    <th className="hidden sm:table-cell px-4 md:px-6 py-4 font-medium">Status</th>
+                    <th className="hidden md:table-cell px-6 py-4 font-medium">Cadastro</th>
+                    <th className="px-4 md:px-6 py-4 font-medium text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {filtered.map((u) => (
                     <tr key={u.id} className={`hover:bg-white/5 transition-colors ${!u.isActive ? "opacity-50" : ""}`}>
-                      <td className="px-6 py-4">
+                      <td className="px-4 md:px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold flex-shrink-0">
+                          <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
                             {u.name.charAt(0).toUpperCase()}
                           </div>
-                          <div>
-                            <p className="font-medium text-white">{u.name}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              <Mail className="h-3 w-3" />{u.email}
+                          <div className="min-w-0">
+                            <p className="font-medium text-white truncate max-w-[120px] md:max-w-none">{u.name}</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-[120px] md:max-w-none hidden sm:flex items-center gap-1">
+                              <Mail className="h-3 w-3 flex-shrink-0" />{u.email}
                             </p>
+                            {/* Mobile: show role + status inline */}
+                            <div className="flex items-center gap-1.5 sm:hidden mt-0.5">
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${roleColors[u.role] || ""}`}>
+                                {ROLE_LABELS[u.role] || u.role}
+                              </span>
+                              <Badge variant={u.isActive ? "success" : "secondary"} className="text-[10px] py-0 px-1.5">
+                                {u.isActive ? "Ativo" : "Inativo"}
+                              </Badge>
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="hidden sm:table-cell px-4 md:px-6 py-4">
                         <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${roleColors[u.role] || ""}`}>
                           {ROLE_LABELS[u.role] || u.role}
                         </span>
                       </td>
                       {isMaster && (
-                        <td className="px-6 py-4 text-muted-foreground">
+                        <td className="hidden lg:table-cell px-6 py-4 text-muted-foreground">
                           {u.crecheId ? (
                             <span className="flex items-center gap-1.5 text-sm">
                               <Building2 className="h-3.5 w-3.5" />
@@ -280,33 +289,34 @@ export default function AdminUsers() {
                           )}
                         </td>
                       )}
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      <td className="hidden sm:table-cell px-4 md:px-6 py-4">
+                        <div className="flex flex-col gap-1">
                           <Badge variant={u.isActive ? "success" : "secondary"}>
                             {u.isActive ? "Ativo" : "Inativo"}
                           </Badge>
                           {(u as any).mustChangePassword && (
                             <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-xs">
-                              <AlertCircle className="h-3 w-3 mr-1" /> Senha provisória
+                              <AlertCircle className="h-3 w-3 mr-1" /> Provisória
                             </Badge>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground text-xs">
+                      <td className="hidden md:table-cell px-6 py-4 text-muted-foreground text-xs">
                         {format(new Date(u.createdAt), "dd/MM/yyyy")}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(u)}>
-                            <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                      <td className="px-4 md:px-6 py-4">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button size="sm" variant="ghost" className="px-2 md:px-3" onClick={() => handleOpenEdit(u)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            <span className="hidden md:inline ml-1">Editar</span>
                           </Button>
                           {currentUser?.id !== u.id && (
                             <Button
                               size="sm"
                               variant="outline"
                               className={u.isActive
-                                ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
-                                : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                ? "border-red-500/30 text-red-400 hover:bg-red-500/10 px-2 md:px-3"
+                                : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2 md:px-3"
                               }
                               onClick={() => handleToggleActive(u)}
                               isLoading={updateMutation.isPending}

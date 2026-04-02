@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dog, ShieldAlert, KeyRound, Users, UserCircle } from "lucide-react";
+import { Dog } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -16,14 +16,6 @@ export default function Login() {
     if (e) e.preventDefault();
     setIsSubmitting(true);
     login({ data: { email, password } });
-    setTimeout(() => setIsSubmitting(false), 1000);
-  };
-
-  const handleDemo = (roleEmail: string) => {
-    setEmail(roleEmail);
-    setPassword("password");
-    setIsSubmitting(true);
-    login({ data: { email: roleEmail, password: "password" } });
     setTimeout(() => setIsSubmitting(false), 1000);
   };
 
@@ -82,32 +74,6 @@ export default function Login() {
                 Entrar
               </Button>
             </form>
-
-            <div className="mt-8">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-transparent px-2 text-muted-foreground backdrop-blur-sm">Acesso Rápido (Demo)</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mt-6">
-                <Button variant="outline" onClick={() => handleDemo('master@petdaycare.com')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center">
-                  <ShieldAlert className="h-4 w-4 mb-1" /> Master Admin
-                </Button>
-                <Button variant="outline" onClick={() => handleDemo('ana@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center text-primary border-primary/30 bg-primary/5">
-                  <KeyRound className="h-4 w-4 mb-1" /> Admin de Creche
-                </Button>
-                <Button variant="outline" onClick={() => handleDemo('bruno@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center">
-                  <Users className="h-4 w-4 mb-1" /> Funcionário
-                </Button>
-                <Button variant="outline" onClick={() => handleDemo('tutor@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center">
-                  <UserCircle className="h-4 w-4 mb-1" /> Tutor
-                </Button>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>

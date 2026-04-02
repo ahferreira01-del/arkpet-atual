@@ -35,6 +35,7 @@ export default function PetDetail({ id }: { id: number }) {
   const updatePetMutation = useUpdatePet();
 
   const [editOpen, setEditOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
 
   const handleEditProfile = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -115,6 +116,9 @@ export default function PetDetail({ id }: { id: number }) {
         </div>
 
         <div className="flex gap-3 z-10 w-full md:w-auto flex-wrap justify-center md:justify-end">
+          <Button variant="glass" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2">
+            <QrCode className="h-4 w-4" /> QR Code
+          </Button>
           <Button variant="glass" onClick={() => setEditOpen(true)}>
             Editar Perfil
           </Button>
@@ -123,6 +127,11 @@ export default function PetDetail({ id }: { id: number }) {
           )}
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={`QR Code — ${pet.name}`}>
+        <QrTab pet={pet} />
+      </Modal>
 
       {/* Edit Modal */}
       <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title="Editar Perfil do Pet">
