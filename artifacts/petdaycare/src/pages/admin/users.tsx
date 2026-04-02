@@ -1,15 +1,25 @@
 import React, { useState } from "react";
-import { useListUsers, useUpdateUser } from "@workspace/api-client-react";
+import { useListUsers, useUpdateUser, useListCreches } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Users, Mail, Building2, Search, UserCheck, UserX, AlertCircle, Plus } from "lucide-react";
+import {
+  Users, Mail, Building2, Search, UserCheck, UserX,
+  AlertCircle, Plus, Eye, EyeOff, KeyRound, Pencil,
+} from "lucide-react";
 import { format } from "date-fns";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+
+const ROLE_LABELS: Record<string, string> = {
+  master_admin: "Master Admin",
+  creche_admin: "Admin de Creche",
+  staff: "Funcionário",
+  tutor: "Tutor",
+};
 
 const roleColors: Record<string, string> = {
   master_admin: "bg-violet-500/20 text-violet-300 border-violet-500/30",
@@ -35,6 +45,33 @@ function useByCrecheUsers(crecheId: number) {
   });
 }
 
+function useCreateUser() {
+  return useMutation({
+    mutationFn: async (data: {
+      name: string;
+      email: string;
+      password: string;
+      role: string;
+      crecheId?: number | null;
+    }) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch("/api/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || "Erro ao criar usuário");
+      }
+      return r.json();
+    },
+  });
+}
+
 export default function AdminUsers() {
   const { user: currentUser } = useAuth();
   const isMaster = currentUser?.role === "master_admin";
@@ -42,16 +79,32 @@ export default function AdminUsers() {
 
   const allUsersQuery = useListUsers();
   const crecheUsersQuery = useByCrecheUsers(crecheId);
+  const { data: creches } = useListCreches();
 
   const usersData = isMaster ? allUsersQuery.data : crecheUsersQuery.data;
   const isLoading = isMaster ? allUsersQuery.isLoading : crecheUsersQuery.isLoading;
   const queryClient = useQueryClient();
   const updateMutation = useUpdateUser();
+  const createMutation = useCreateUser();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [editUser, setEditUser] = useState<any | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Create form state
+  const [createForm, setCreateForm] = useState({
+    name: "", email: "", password: "", role: isMaster ? "creche_admin" : "tutor",
+    crecheId: isMaster ? "" : String(crecheId),
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editRole, setEditRole] = useState<UserRole>("tutor");
+  const [editPassword, setEditPassword] = useState("");
+  const [showEditPassword, setShowEditPassword] = useState(false);
 
   const filtered = usersData?.filter((u) => {
     const matchSearch =
@@ -68,32 +121,82 @@ export default function AdminUsers() {
     );
   };
 
-  const handleRoleChange = (u: any, role: UserRole) => {
+  const handleOpenEdit = (u: any) => {
+    setEditUser(u);
+    setEditName(u.name);
+    setEditRole(u.role);
+    setEditPassword("");
+    setShowEditPassword(false);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editUser) return;
+    const data: any = { name: editName, role: editRole };
+    if (editPassword.trim()) data.newPassword = editPassword;
     updateMutation.mutate(
-      { userId: u.id, data: { role } as any },
+      { userId: editUser.id, data },
       { onSuccess: () => { queryClient.invalidateQueries(); setEditUser(null); } }
     );
   };
 
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError("");
+    const payload: any = {
+      name: createForm.name,
+      email: createForm.email,
+      password: createForm.password,
+      role: createForm.role,
+    };
+    if (isMaster && createForm.crecheId) {
+      payload.crecheId = Number(createForm.crecheId);
+    } else if (!isMaster) {
+      payload.crecheId = crecheId;
+    }
+    createMutation.mutate(payload, {
+      onSuccess: () => {
+        queryClient.invalidateQueries();
+        setIsCreateOpen(false);
+        setCreateForm({ name: "", email: "", password: "", role: isMaster ? "creche_admin" : "tutor", crecheId: isMaster ? "" : String(crecheId) });
+        setCreateError("");
+      },
+      onError: (err: any) => setCreateError(err.message || "Erro ao criar usuário"),
+    });
+  };
+
   const roleCount = (role: string) => usersData?.filter((u) => u.role === role).length || 0;
+
+  const availableRoles: UserRole[] = isMaster
+    ? ["master_admin", "creche_admin", "staff", "tutor"]
+    : ["staff", "tutor"];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-display font-bold text-white">Usuários</h1>
-          <p className="text-muted-foreground mt-1">Todos os usuários registrados na plataforma.</p>
+          <p className="text-muted-foreground mt-1">
+            {isMaster ? "Todos os usuários registrados na plataforma." : "Usuários da sua creche."}
+          </p>
         </div>
+        <Button onClick={() => { setCreateError(""); setIsCreateOpen(true); }}>
+          <Plus className="mr-2 h-4 w-4" /> Novo Usuário
+        </Button>
       </div>
 
+      {/* Role summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { role: "master_admin", label: "Master Admin", color: "text-violet-300" },
           { role: "creche_admin", label: "Admin", color: "text-blue-300" },
-          { role: "staff", label: "Staff", color: "text-emerald-300" },
+          { role: "staff", label: "Funcionários", color: "text-emerald-300" },
           { role: "tutor", label: "Tutores", color: "text-amber-300" },
         ].map(({ role, label, color }) => (
-          <Card key={role} className="cursor-pointer hover:border-white/20 transition-all" onClick={() => setRoleFilter(roleFilter === role ? "all" : role)}>
+          <Card
+            key={role}
+            className="cursor-pointer hover:border-white/20 transition-all"
+            onClick={() => setRoleFilter(roleFilter === role ? "all" : role)}
+          >
             <CardContent className="p-5">
               <p className="text-sm text-muted-foreground mb-1">{label}</p>
               <p className={`text-3xl font-display font-bold ${color}`}>{roleCount(role)}</p>
@@ -121,11 +224,12 @@ export default function AdminUsers() {
           <option value="all">Todos os papéis</option>
           <option value="master_admin">Master Admin</option>
           <option value="creche_admin">Admin de Creche</option>
-          <option value="staff">Staff</option>
+          <option value="staff">Funcionário</option>
           <option value="tutor">Tutor</option>
         </select>
       </div>
 
+      {/* Users table */}
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -137,7 +241,7 @@ export default function AdminUsers() {
                   <tr>
                     <th className="px-6 py-4 font-medium">Usuário</th>
                     <th className="px-6 py-4 font-medium">Papel</th>
-                    <th className="px-6 py-4 font-medium">Creche</th>
+                    {isMaster && <th className="px-6 py-4 font-medium">Creche</th>}
                     <th className="px-6 py-4 font-medium">Status</th>
                     <th className="px-6 py-4 font-medium">Cadastro</th>
                     <th className="px-6 py-4 font-medium text-right">Ações</th>
@@ -160,19 +264,22 @@ export default function AdminUsers() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border capitalize ${roleColors[u.role] || ""}`}>
-                          {u.role.replace("_", " ")}
+                        <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${roleColors[u.role] || ""}`}>
+                          {ROLE_LABELS[u.role] || u.role}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {u.crecheId ? (
-                          <span className="flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5" /> #{u.crecheId}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/40">—</span>
-                        )}
-                      </td>
+                      {isMaster && (
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {u.crecheId ? (
+                            <span className="flex items-center gap-1.5 text-sm">
+                              <Building2 className="h-3.5 w-3.5" />
+                              {creches?.find((c) => c.id === u.crecheId)?.name || `#${u.crecheId}`}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <Badge variant={u.isActive ? "success" : "secondary"}>
@@ -190,8 +297,8 @@ export default function AdminUsers() {
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => setEditUser(u)}>
-                            Editar
+                          <Button size="sm" variant="ghost" onClick={() => handleOpenEdit(u)}>
+                            <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
                           </Button>
                           {currentUser?.id !== u.id && (
                             <Button
@@ -220,7 +327,104 @@ export default function AdminUsers() {
         </CardContent>
       </Card>
 
-      {/* Edit User Modal */}
+      {/* ── Create User Modal ── */}
+      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Novo Usuário">
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nome completo</label>
+              <Input
+                required
+                placeholder="Maria Silva"
+                value={createForm.name}
+                onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">E-mail</label>
+              <Input
+                required
+                type="email"
+                placeholder="maria@creche.com.br"
+                value={createForm.email}
+                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Senha provisória</label>
+            <div className="relative">
+              <Input
+                required
+                type={showPassword ? "text" : "password"}
+                placeholder="Mín. 6 caracteres"
+                value={createForm.password}
+                onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+                onClick={() => setShowPassword((v) => !v)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">O usuário deverá trocar a senha no primeiro acesso.</p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Perfil</label>
+            <div className="grid grid-cols-2 gap-2">
+              {availableRoles.map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => setCreateForm((f) => ({ ...f, role }))}
+                  className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                    createForm.role === role
+                      ? "bg-primary/20 border-primary/30 text-primary"
+                      : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  {ROLE_LABELS[role]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isMaster && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Creche <span className="text-muted-foreground">(opcional)</span></label>
+              <select
+                value={createForm.crecheId}
+                onChange={(e) => setCreateForm((f) => ({ ...f, crecheId: e.target.value }))}
+                className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+              >
+                <option value="">Sem creche vinculada</option>
+                {creches?.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {createError && (
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" /> {createError}
+            </div>
+          )}
+
+          <div className="pt-2 flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
+            <Button type="submit" isLoading={createMutation.isPending}>
+              <Plus className="mr-2 h-4 w-4" /> Criar Usuário
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ── Edit User Modal ── */}
       {editUser && (
         <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title="Editar Usuário">
           <div className="space-y-5">
@@ -235,21 +439,52 @@ export default function AdminUsers() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Papel / Função</label>
+              <label className="text-sm font-medium">Nome</label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Nome completo"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Perfil / Função</label>
               <div className="grid grid-cols-2 gap-2">
-                {(["creche_admin", "staff", "tutor"] as UserRole[]).map((role) => (
+                {availableRoles.map((role) => (
                   <button
                     key={role}
-                    onClick={() => handleRoleChange(editUser, role)}
-                    className={`px-3 py-2 rounded-xl text-sm font-medium capitalize border transition-all ${
-                      editUser.role === role
+                    type="button"
+                    onClick={() => setEditRole(role)}
+                    className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      editRole === role
                         ? "bg-primary/20 border-primary/30 text-primary"
                         : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-white"
                     }`}
                   >
-                    {role.replace("_", " ")}
+                    {ROLE_LABELS[role]}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium flex items-center gap-2">
+                <KeyRound className="h-4 w-4" /> Nova senha <span className="text-muted-foreground font-normal">(deixe em branco para não alterar)</span>
+              </label>
+              <div className="relative">
+                <Input
+                  type={showEditPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+                  onClick={() => setShowEditPassword((v) => !v)}
+                >
+                  {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -260,18 +495,27 @@ export default function AdminUsers() {
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-2">
-              <Button
-                variant="outline"
-                className={editUser.isActive
-                  ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
-                  : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                }
-                onClick={() => { handleToggleActive(editUser); setEditUser(null); }}
-              >
-                {editUser.isActive ? <><UserX className="mr-2 h-4 w-4" /> Desativar</> : <><UserCheck className="mr-2 h-4 w-4" /> Reativar</>}
-              </Button>
-              <Button variant="ghost" onClick={() => setEditUser(null)}>Fechar</Button>
+            <div className="flex justify-between items-center pt-2 border-t border-white/10">
+              {currentUser?.id !== editUser.id && (
+                <Button
+                  variant="outline"
+                  className={editUser.isActive
+                    ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
+                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                  }
+                  onClick={() => { handleToggleActive(editUser); setEditUser(null); }}
+                >
+                  {editUser.isActive
+                    ? <><UserX className="mr-2 h-4 w-4" /> Desativar</>
+                    : <><UserCheck className="mr-2 h-4 w-4" /> Reativar</>}
+                </Button>
+              )}
+              <div className="flex gap-3 ml-auto">
+                <Button variant="ghost" onClick={() => setEditUser(null)}>Cancelar</Button>
+                <Button onClick={handleSaveEdit} isLoading={updateMutation.isPending}>
+                  Salvar
+                </Button>
+              </div>
             </div>
           </div>
         </Modal>
