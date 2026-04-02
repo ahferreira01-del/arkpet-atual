@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Send, MessageSquare, Dog } from "lucide-react";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function Chat() {
@@ -42,21 +43,20 @@ export default function Chat() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 h-[calc(100vh-12rem)] flex flex-col">
       <div>
-        <h1 className="text-3xl font-display font-bold text-white">Messages</h1>
-        <p className="text-muted-foreground mt-1">Chat with the daycare team about your pets.</p>
+        <h1 className="text-3xl font-display font-bold text-white">Mensagens</h1>
+        <p className="text-muted-foreground mt-1">Converse com a equipe da creche sobre seus pets.</p>
       </div>
 
       <div className="flex gap-6 flex-1 min-h-0">
-        {/* Sidebar: pet filter */}
         <div className="w-56 flex-shrink-0 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-3">Filter by Pet</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-3">Filtrar por Pet</p>
           <button
             onClick={() => setSelectedPetId(undefined)}
             className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
               !selectedPetId ? "bg-primary/20 text-primary border border-primary/20" : "text-muted-foreground hover:bg-white/5 hover:text-white"
             }`}
           >
-            All Conversations
+            Todas as Conversas
           </button>
           {pets?.map((pet) => (
             <button
@@ -72,13 +72,11 @@ export default function Chat() {
           ))}
         </div>
 
-        {/* Chat area */}
         <Card className="flex-1 flex flex-col min-h-0">
           <CardContent className="p-0 flex flex-col h-full">
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4 min-h-0">
               {isLoading ? (
-                <div className="text-center py-8 text-muted-foreground">Loading messages...</div>
+                <div className="text-center py-8 text-muted-foreground">Carregando mensagens...</div>
               ) : messages?.length ? (
                 <>
                   {messages.map((msg) => {
@@ -98,7 +96,7 @@ export default function Chat() {
                           {msg.content}
                         </div>
                         <p className="text-xs text-muted-foreground/60 px-1">
-                          {format(new Date(msg.createdAt), "h:mm a")}
+                          {format(new Date(msg.createdAt), "HH:mm", { locale: ptBR })}
                         </p>
                       </div>
                     );
@@ -108,13 +106,12 @@ export default function Chat() {
               ) : (
                 <EmptyState
                   icon={MessageSquare}
-                  title="No messages yet"
-                  description="Start the conversation with the daycare team."
+                  title="Nenhuma mensagem ainda"
+                  description="Inicie a conversa com a equipe da creche."
                 />
               )}
             </div>
 
-            {/* Input */}
             <form onSubmit={handleSend} className="p-4 border-t border-white/10 flex gap-3">
               {pets && pets.length > 0 && (
                 <select
@@ -122,7 +119,7 @@ export default function Chat() {
                   onChange={(e) => setSelectedPetId(e.target.value ? Number(e.target.value) : undefined)}
                   className="h-12 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md flex-shrink-0 w-32"
                 >
-                  <option value="">General</option>
+                  <option value="">Geral</option>
                   {pets.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -131,7 +128,7 @@ export default function Chat() {
               <Input
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Type your message..."
+                placeholder="Digite sua mensagem..."
                 className="flex-1"
               />
               <Button type="submit" isLoading={sendMutation.isPending} className="px-5">

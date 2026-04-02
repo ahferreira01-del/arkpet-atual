@@ -80,9 +80,11 @@ export function Sidebar({ user }: SidebarProps) {
 
       <div className="px-4 py-2 mb-4">
         <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/5 backdrop-blur-md">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">Signed in as</p>
+          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">Conectado como</p>
           <p className="text-sm font-medium text-white truncate">{user.name}</p>
-          <p className="text-xs text-primary capitalize">{user.role.replace('_', ' ')}</p>
+          <p className="text-xs text-primary capitalize">
+            {{ master_admin: "Master Admin", creche_admin: "Admin de Creche", staff: "Funcionário", tutor: "Tutor" }[user.role] || user.role}
+          </p>
         </div>
       </div>
 
@@ -113,7 +115,7 @@ export function Sidebar({ user }: SidebarProps) {
           className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 w-full"
         >
           <LogOut className="h-5 w-5" />
-          <span className="font-medium text-sm">Sign Out</span>
+          <span className="font-medium text-sm">Sair</span>
         </button>
       </div>
     </div>

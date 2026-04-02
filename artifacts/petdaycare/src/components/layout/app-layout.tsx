@@ -21,7 +21,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center flex flex-col items-center">
           <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
-          <h2 className="text-xl font-display text-white">Loading LuxePets...</h2>
+          <h2 className="text-xl font-display text-white">Carregando LuxePets...</h2>
         </div>
       </div>
     );

@@ -286,7 +286,7 @@ function TutorDashboard({ user }: { user: any }) {
                         </p>
                       </div>
                       <Badge variant={b.status === "active" ? "success" : b.status === "pending" ? "warning" : "secondary"}>
-                        {b.status}
+                        {{ active: "Ativo", pending: "Pendente", cancelled: "Cancelado", completed: "Concluído" }[b.status] || b.status}
                       </Badge>
                     </div>
                   ))}

@@ -16,7 +16,7 @@ export default function Login() {
     if (e) e.preventDefault();
     setIsSubmitting(true);
     login({ data: { email, password } });
-    setTimeout(() => setIsSubmitting(false), 1000); // Reset after delay if error
+    setTimeout(() => setIsSubmitting(false), 1000);
   };
 
   const handleDemo = (roleEmail: string) => {
@@ -29,11 +29,10 @@ export default function Login() {
 
   return (
     <div className="min-h-screen w-full flex relative overflow-hidden bg-background">
-      {/* Background Image Layer */}
       <div className="absolute inset-0 z-0 opacity-40">
-        <img 
-          src={`${import.meta.env.BASE_URL}images/hero-bg.png`} 
-          alt="Luxury background" 
+        <img
+          src={`${import.meta.env.BASE_URL}images/hero-bg.png`}
+          alt="Fundo luxuoso"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
@@ -50,17 +49,17 @@ export default function Login() {
 
         <Card className="border-white/10 shadow-2xl shadow-black/50 backdrop-blur-2xl bg-black/40">
           <CardHeader>
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
-            <CardDescription className="text-gray-400">Sign in to your account to continue</CardDescription>
+            <CardTitle className="text-2xl">Bem-vindo de volta</CardTitle>
+            <CardDescription className="text-gray-400">Entre na sua conta para continuar</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-gray-300">Email Address</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="admin@creche.com" 
+                <Label htmlFor="email" className="text-gray-300">E-mail</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="admin@creche.com.br"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
@@ -68,19 +67,19 @@ export default function Login() {
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <Label htmlFor="password" className="text-gray-300">Password</Label>
-                  <a href="#" className="text-xs text-primary hover:underline">Forgot password?</a>
+                  <Label htmlFor="password" className="text-gray-300">Senha</Label>
+                  <a href="#" className="text-xs text-primary hover:underline">Esqueceu a senha?</a>
                 </div>
-                <Input 
-                  id="password" 
-                  type="password" 
+                <Input
+                  id="password"
+                  type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
                 />
               </div>
               <Button type="submit" className="w-full mt-4" size="lg" isLoading={isSubmitting}>
-                Sign In
+                Entrar
               </Button>
             </form>
 
@@ -90,7 +89,7 @@ export default function Login() {
                   <div className="w-full border-t border-white/10"></div>
                 </div>
                 <div className="relative flex justify-center text-xs">
-                  <span className="bg-transparent px-2 text-muted-foreground backdrop-blur-sm">Demo Quick Login</span>
+                  <span className="bg-transparent px-2 text-muted-foreground backdrop-blur-sm">Acesso Rápido (Demo)</span>
                 </div>
               </div>
 
@@ -99,10 +98,10 @@ export default function Login() {
                   <ShieldAlert className="h-4 w-4 mb-1" /> Master Admin
                 </Button>
                 <Button variant="outline" onClick={() => handleDemo('ana@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center text-primary border-primary/30 bg-primary/5">
-                  <KeyRound className="h-4 w-4 mb-1" /> Creche Admin
+                  <KeyRound className="h-4 w-4 mb-1" /> Admin de Creche
                 </Button>
                 <Button variant="outline" onClick={() => handleDemo('bruno@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center">
-                  <Users className="h-4 w-4 mb-1" /> Staff
+                  <Users className="h-4 w-4 mb-1" /> Funcionário
                 </Button>
                 <Button variant="outline" onClick={() => handleDemo('tutor@petparadise.com.br')} className="h-auto py-3 flex flex-col gap-1 items-center justify-center">
                   <UserCircle className="h-4 w-4 mb-1" /> Tutor

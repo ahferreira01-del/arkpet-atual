@@ -47,15 +47,21 @@ export default function ManageStaff() {
     tutor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
   };
 
+  const roleLabel: Record<string, string> = {
+    creche_admin: "Admin",
+    staff: "Funcionário",
+    tutor: "Tutor",
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">Staff Management</h1>
-          <p className="text-muted-foreground mt-1">Manage your creche team members.</p>
+          <h1 className="text-3xl font-display font-bold text-white">Gestão de Equipe</h1>
+          <p className="text-muted-foreground mt-1">Gerencie os membros da sua equipe.</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Add Staff
+          <Plus className="mr-2 h-4 w-4" /> Adicionar Membro
         </Button>
       </div>
 
@@ -66,7 +72,7 @@ export default function ManageStaff() {
               <Users className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Team</p>
+              <p className="text-sm text-muted-foreground">Total da Equipe</p>
               <p className="text-2xl font-display font-bold text-white">{staff?.length || 0}</p>
             </div>
           </CardContent>
@@ -77,7 +83,7 @@ export default function ManageStaff() {
               <Shield className="h-5 w-5 text-blue-400" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Staff Members</p>
+              <p className="text-sm text-muted-foreground">Funcionários</p>
               <p className="text-2xl font-display font-bold text-white">
                 {staff?.filter((s) => s.role === "staff").length || 0}
               </p>
@@ -90,7 +96,7 @@ export default function ManageStaff() {
               <Shield className="h-5 w-5 text-violet-400" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Admins</p>
+              <p className="text-sm text-muted-foreground">Administradores</p>
               <p className="text-2xl font-display font-bold text-white">
                 {staff?.filter((s) => s.role === "creche_admin").length || 0}
               </p>
@@ -102,7 +108,7 @@ export default function ManageStaff() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading staff...</div>
+            <div className="p-8 text-center text-muted-foreground">Carregando equipe...</div>
           ) : staff?.length ? (
             <div className="divide-y divide-white/5">
               {staff.map((member) => (
@@ -120,8 +126,8 @@ export default function ManageStaff() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border capitalize ${roleColors[member.role] || ""}`}>
-                      {member.role.replace("_", " ")}
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${roleColors[member.role] || ""}`}>
+                      {roleLabel[member.role] || member.role}
                     </span>
                   </div>
                 </div>
@@ -130,41 +136,41 @@ export default function ManageStaff() {
           ) : (
             <EmptyState
               icon={Users}
-              title="No staff members"
-              description="Add your first team member to get started."
-              action={{ label: "Add Staff Member", onClick: () => setIsModalOpen(true) }}
+              title="Nenhum membro na equipe"
+              description="Adicione o primeiro membro da equipe para começar."
+              action={{ label: "Adicionar Membro", onClick: () => setIsModalOpen(true) }}
             />
           )}
         </CardContent>
       </Card>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Add Staff Member">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Adicionar Membro à Equipe">
         <form onSubmit={handleAdd} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Full Name</label>
+            <label className="text-sm font-medium">Nome Completo</label>
             <Input name="name" required placeholder="Ana Costa" />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
+            <label className="text-sm font-medium">E-mail</label>
             <Input name="email" type="email" required placeholder="ana@petparadise.com.br" />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Temporary Password</label>
-            <Input name="password" type="password" required placeholder="Min. 6 characters" />
+            <label className="text-sm font-medium">Senha Provisória</label>
+            <Input name="password" type="password" required placeholder="Mín. 6 caracteres" />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Role</label>
+            <label className="text-sm font-medium">Função</label>
             <select
               name="role"
               className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
             >
-              <option value="staff">Staff</option>
-              <option value="creche_admin">Creche Admin</option>
+              <option value="staff">Funcionário</option>
+              <option value="creche_admin">Admin de Creche</option>
             </select>
           </div>
           <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button type="submit" isLoading={addStaffMutation.isPending}>Add Member</Button>
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" isLoading={addStaffMutation.isPending}>Adicionar</Button>
           </div>
         </form>
       </Modal>

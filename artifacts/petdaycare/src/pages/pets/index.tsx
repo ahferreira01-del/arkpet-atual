@@ -9,17 +9,28 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dog, Plus, Search, Filter } from "lucide-react";
 import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
+
+const genderLabel: Record<string, string> = {
+  male: "Macho",
+  female: "Fêmea",
+  unknown: "Desconhecido",
+};
 
 export default function PetsDirectory() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
+  const queryClient = useQueryClient();
   const { data: pets, isLoading } = useListPets(crecheId);
   const createPetMutation = useCreatePet();
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const filteredPets = pets?.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.breed?.toLowerCase().includes(search.toLowerCase()));
+  const filteredPets = pets?.filter(p =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.breed?.toLowerCase().includes(search.toLowerCase())
+  );
 
   const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -31,13 +42,12 @@ export default function PetsDirectory() {
         species: formData.get("species") as PetSpecies,
         gender: formData.get("gender") as PetGender,
         breed: formData.get("breed") as string,
-        tutorId: user?.role === 'tutor' ? user.id : 1, // Demo default
+        tutorId: user?.role === 'tutor' ? user.id : 1,
       }
     }, {
       onSuccess: () => {
         setIsModalOpen(false);
-        // cache invalidated via wrapper if we had one, but relying on window focus refetch for demo or manual refresh
-        window.location.reload(); 
+        queryClient.invalidateQueries();
       }
     });
   };
@@ -46,19 +56,19 @@ export default function PetsDirectory() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">Pets Directory</h1>
-          <p className="text-muted-foreground mt-1">Manage profiles, medical records, and tracking.</p>
+          <h1 className="text-3xl font-display font-bold text-white">Diretório de Pets</h1>
+          <p className="text-muted-foreground mt-1">Gerencie perfis, registros médicos e rastreamento.</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Register Pet
+          <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
         </Button>
       </div>
 
       <div className="flex items-center gap-3">
         <div className="w-full max-w-md">
-          <Input 
-            icon={<Search className="h-4 w-4" />} 
-            placeholder="Search pets by name or breed..." 
+          <Input
+            icon={<Search className="h-4 w-4" />}
+            placeholder="Buscar pets por nome ou raça..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -86,18 +96,20 @@ export default function PetsDirectory() {
                     )}
                     <div className="absolute top-3 right-3">
                       {pet.isCheckedIn ? (
-                        <Badge variant="success" className="shadow-lg shadow-black/50 backdrop-blur-md">Checked In</Badge>
+                        <Badge variant="success" className="shadow-lg shadow-black/50 backdrop-blur-md">Presente</Badge>
                       ) : (
-                        <Badge variant="secondary" className="shadow-lg shadow-black/50 backdrop-blur-md bg-black/60">Not Here</Badge>
+                        <Badge variant="secondary" className="shadow-lg shadow-black/50 backdrop-blur-md bg-black/60">Em casa</Badge>
                       )}
                     </div>
                   </div>
                   <div className="p-5 flex-1 flex flex-col">
                     <h3 className="text-lg font-display font-semibold text-white group-hover:text-primary transition-colors">{pet.name}</h3>
-                    <p className="text-sm text-muted-foreground capitalize mb-4">{pet.breed || pet.species} • {pet.gender}</p>
-                    
+                    <p className="text-sm text-muted-foreground capitalize mb-4">
+                      {pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}
+                    </p>
+
                     <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground truncate">{pet.tutorName || "No tutor linked"}</span>
+                      <span className="text-muted-foreground truncate">{pet.tutorName || "Sem tutor"}</span>
                       {pet.temperament && <Badge variant="outline" className="capitalize text-xs">{pet.temperament}</Badge>}
                     </div>
                   </div>
@@ -108,47 +120,47 @@ export default function PetsDirectory() {
         </div>
       ) : (
         <Card className="py-16">
-          <EmptyState 
-            icon={Dog} 
-            title="No pets found" 
-            description={search ? "Try adjusting your search criteria." : "There are no pets registered in this creche yet."}
-            action={!search ? { label: "Register First Pet", onClick: () => setIsModalOpen(true) } : undefined}
+          <EmptyState
+            icon={Dog}
+            title="Nenhum pet encontrado"
+            description={search ? "Tente ajustar os critérios de busca." : "Nenhum pet cadastrado nesta creche ainda."}
+            action={!search ? { label: "Cadastrar Primeiro Pet", onClick: () => setIsModalOpen(true) } : undefined}
           />
         </Card>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Register Pet">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cadastrar Pet">
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Pet Name</label>
+            <label className="text-sm font-medium">Nome do Pet</label>
             <Input name="name" required />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Species</label>
+              <label className="text-sm font-medium">Espécie</label>
               <select name="species" className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white">
-                <option value="dog">Dog</option>
-                <option value="cat">Cat</option>
-                <option value="bird">Bird</option>
-                <option value="other">Other</option>
+                <option value="dog">Cachorro</option>
+                <option value="cat">Gato</option>
+                <option value="bird">Pássaro</option>
+                <option value="other">Outro</option>
               </select>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Gender</label>
+              <label className="text-sm font-medium">Sexo</label>
               <select name="gender" className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white">
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-                <option value="unknown">Unknown</option>
+                <option value="male">Macho</option>
+                <option value="female">Fêmea</option>
+                <option value="unknown">Desconhecido</option>
               </select>
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Breed (Optional)</label>
+            <label className="text-sm font-medium">Raça (Opcional)</label>
             <Input name="breed" />
           </div>
           <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-            <Button type="submit" isLoading={createPetMutation.isPending}>Register Pet</Button>
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+            <Button type="submit" isLoading={createPetMutation.isPending}>Cadastrar Pet</Button>
           </div>
         </form>
       </Modal>

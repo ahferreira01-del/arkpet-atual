@@ -255,7 +255,9 @@ export default function Settings() {
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Perfil</p>
-              <p className="font-medium text-white capitalize">{user?.role?.replace("_", " ")}</p>
+              <p className="font-medium text-white capitalize">
+                {{ master_admin: "Master Admin", creche_admin: "Admin de Creche", staff: "Funcionário", tutor: "Tutor" }[user?.role || ""] || user?.role}
+              </p>
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Creche</p>
