@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Users, Mail, Building2, Search, UserCheck, UserX, AlertCircle, Plus } from "lucide-react";
 import { format } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 
 const roleColors: Record<string, string> = {
@@ -20,9 +20,31 @@ const roleColors: Record<string, string> = {
 
 type UserRole = "master_admin" | "creche_admin" | "staff" | "tutor";
 
+function useByCrecheUsers(crecheId: number) {
+  return useQuery<any[]>({
+    queryKey: ["users-by-creche", crecheId],
+    queryFn: async () => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/users/by-creche/${crecheId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Erro ao carregar usuários");
+      return r.json();
+    },
+    enabled: !!crecheId,
+  });
+}
+
 export default function AdminUsers() {
-  const { data: users, isLoading } = useListUsers();
   const { user: currentUser } = useAuth();
+  const isMaster = currentUser?.role === "master_admin";
+  const crecheId = currentUser?.crecheId || 0;
+
+  const allUsersQuery = useListUsers();
+  const crecheUsersQuery = useByCrecheUsers(crecheId);
+
+  const usersData = isMaster ? allUsersQuery.data : crecheUsersQuery.data;
+  const isLoading = isMaster ? allUsersQuery.isLoading : crecheUsersQuery.isLoading;
   const queryClient = useQueryClient();
   const updateMutation = useUpdateUser();
 
@@ -31,7 +53,7 @@ export default function AdminUsers() {
   const [editUser, setEditUser] = useState<any | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const filtered = users?.filter((u) => {
+  const filtered = usersData?.filter((u) => {
     const matchSearch =
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase());
@@ -53,7 +75,7 @@ export default function AdminUsers() {
     );
   };
 
-  const roleCount = (role: string) => users?.filter((u) => u.role === role).length || 0;
+  const roleCount = (role: string) => usersData?.filter((u) => u.role === role).length || 0;
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

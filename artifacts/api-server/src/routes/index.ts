@@ -8,6 +8,7 @@ import tasksRouter from "./tasks.js";
 import chatRouter from "./chat.js";
 import usersRouter from "./users.js";
 import pushRouter from "./push.js";
+import walksRouter from "./walks.js";
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.use("/creches/:crecheId/pets", petsRouter);
 router.use("/creches/:crecheId/bookings", bookingsRouter);
 router.use("/creches/:crecheId/tasks", tasksRouter);
 router.use("/creches/:crecheId/chat", chatRouter);
+router.use("/creches/:crecheId/walks", walksRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 

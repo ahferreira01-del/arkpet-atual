@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
-import { sendPushToUser } from "../lib/push.js";
+import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -75,12 +75,45 @@ router.post("/:taskId/complete", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
   const taskId = parseInt(req.params.taskId);
   const { notes } = req.body || {};
+
+  const [before] = await db.select({
+    title: tasksTable.title,
+    type: tasksTable.type,
+    petId: tasksTable.petId,
+    assignedToId: tasksTable.assignedToId,
+    assignedToName: usersTable.name,
+  }).from(tasksTable)
+    .leftJoin(usersTable, eq(tasksTable.assignedToId, usersTable.id))
+    .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
+    .limit(1);
+
   const [task] = await db.update(tasksTable).set({
     status: "completed",
     completedAt: new Date(),
     completedBy: req.user?.name,
     notes,
   }).where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId))).returning();
+
+  // Notify creche admins that task was completed
+  if (before) {
+    const typeLabels: Record<string, string> = {
+      feeding: "Alimentação", medication: "Medicação", grooming: "Banho/Tosa",
+      walk: "Passeio", checkup: "Avaliação", other: "Tarefa",
+    };
+    const label = typeLabels[before.type] ?? "Tarefa";
+    let petName = "";
+    if (before.petId) {
+      const [pet] = await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, before.petId)).limit(1);
+      petName = pet?.name ? ` (${pet.name})` : "";
+    }
+    sendPushToRole(crecheId, "creche_admin", {
+      title: `✅ Tarefa concluída: ${label}${petName}`,
+      body: `${before.assignedToName ?? "Staff"} concluiu "${before.title ?? label}".`,
+      tag: `task-done-${task.id}`,
+      data: { type: "task", taskId: task.id, crecheId },
+    }).catch(() => {});
+  }
+
   res.json({ ...task, petName: null, assignedToName: null });
 });
 

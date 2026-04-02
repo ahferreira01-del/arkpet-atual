@@ -12,6 +12,7 @@ import {
   MessageSquare,
   Settings,
   Footprints,
+  QrCode,
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -45,6 +46,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Passeios", href: "/walks", icon: Footprints },
+          { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
           { name: "Chat", href: "/chat", icon: MessageSquare },
           { name: "Config.", href: "/settings", icon: Settings },
         ];

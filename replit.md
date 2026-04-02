@@ -70,13 +70,17 @@ artifacts-monorepo/
 
 ## Key Features
 
-- Pet profiles with vaccination records, medications, feeding schedules
-- Booking system for day use and lodging (with check-in/check-out)
+- Pet digital profiles with vaccination records, medications, feeding + walk schedules
+- Booking system for day use and lodging (check-in/check-out, tutor "I'm on my way" button)
 - Staff task dashboard with daily checklists by type (feeding/medication/walk/grooming)
-- Pet timeline with real-time activity feed
-- Walk tracking with start/end times
+- Instagram-style pet timeline with photo upload (gallery + camera mode), emoji event badges
+- Walk tracking with start/end times (creche-level view for all pets)
 - Internal chat between tutor and creche
-- Creche stats dashboard (occupancy, tasks, bookings)
+- QR Code per pet — staff scanner page using camera, tutor can download QR for collar
+- Push notifications: task reminders (5 min before), "on the way" tutor alerts
+- Cron job for automated task push reminders (node-cron, runs every minute)
+- RBAC-aware UI: staff sees settings read-only, tutor can't edit booking status
+- Creche admin user management (scoped to their creche)
 - Master admin panel for multi-creche management
 
 ## API Routes
@@ -86,15 +90,16 @@ All routes prefixed with `/api`:
 - `GET|POST /creches`, `GET|PUT /creches/:id`, `GET /creches/:id/stats`
 - `GET|POST /creches/:id/staff`
 - `GET|POST /creches/:id/pets`, `GET|PUT /creches/:id/pets/:petId`
+- `GET /creches/:id/pets/by-qr/:token` — QR lookup for staff scanner
 - `GET|POST /creches/:id/pets/:petId/vaccines`
 - `GET|POST /creches/:id/pets/:petId/medications`, `POST .../administer`
 - `GET|POST /creches/:id/pets/:petId/timeline`
-- `GET|POST /creches/:id/pets/:petId/walks`, `POST .../walks/:walkId/end`
+- `GET /creches/:id/walks`, `POST /creches/:id/walks`, `PUT /creches/:id/walks/:walkId/end`
 - `GET|POST /creches/:id/bookings`, `GET|PUT /creches/:id/bookings/:bookingId`
-- `POST /creches/:id/bookings/:bookingId/checkin`, `.../checkout`
+- `POST /creches/:id/bookings/:bookingId/checkin`, `.../checkout`, `.../on-the-way`
 - `GET|POST /creches/:id/tasks`, `POST .../tasks/:taskId/complete`
 - `GET|POST /creches/:id/chat`
-- `GET /users`, `GET|PUT /users/:id`
+- `GET /users`, `GET|PUT /users/:id`, `GET /users/by-creche/:crecheId`
 
 ## Development
 

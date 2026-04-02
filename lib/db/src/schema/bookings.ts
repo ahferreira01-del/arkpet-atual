@@ -20,6 +20,9 @@ export const bookingsTable = pgTable("bookings", {
   isRecurring: boolean("is_recurring").notNull().default(false),
   recurringDays: jsonb("recurring_days").$type<number[]>(),
   price: real("price"),
+  onTheWayType: text("on_the_way_type"),
+  onTheWayEtaMinutes: integer("on_the_way_eta_minutes"),
+  onTheWayAt: timestamp("on_the_way_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

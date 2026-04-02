@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { useListWalks, useStartWalk, useEndWalk, useListPets } from "@workspace/api-client-react";
+import { useListPets } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,55 +9,85 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { Footprints, Play, Square, Dog, Clock } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
+import { ptBR } from "date-fns/locale";
+
+function useCreecheWalks(crecheId: number) {
+  return useQuery<any[]>({
+    queryKey: ["creche-walks", crecheId],
+    queryFn: async () => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/creches/${crecheId}/walks`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Erro ao carregar passeios");
+      return r.json();
+    },
+    enabled: !!crecheId,
+    refetchInterval: 30000,
+  });
+}
 
 export default function Walks() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
+  const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState<number>(0);
-  const queryClient = useQueryClient();
 
+  const { data: walks, isLoading } = useCreecheWalks(crecheId);
   const { data: pets } = useListPets(crecheId);
-  const { data: walks, isLoading } = useListWalks(crecheId);
-  const startMutation = useStartWalk();
-  const endMutation = useEndWalk();
 
-  const activeWalks = walks?.filter((w) => !w.endedAt) || [];
-  const completedWalks = walks?.filter((w) => w.endedAt) || [];
+  const startMutation = useMutation({
+    mutationFn: async (petId: number) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`${getBaseUrl()}/api/creches/${crecheId}/walks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ petId }),
+      });
+      if (!r.ok) throw new Error("Erro ao iniciar passeio");
+      return r.json();
+    },
+    onSuccess: () => {
+      setIsModalOpen(false);
+      setSelectedPetId(0);
+      queryClient.invalidateQueries({ queryKey: ["creche-walks"] });
+    },
+  });
+
+  const endMutation = useMutation({
+    mutationFn: async ({ walkId }: { walkId: number }) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`${getBaseUrl()}/api/creches/${crecheId}/walks/${walkId}/end`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) throw new Error("Erro ao finalizar passeio");
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["creche-walks"] }),
+  });
+
+  const activeWalks = walks?.filter((w) => w.status === "in_progress") || [];
+  const completedWalks = walks?.filter((w) => w.status === "completed") || [];
+  const checkedInPets = pets?.filter((p) => p.isCheckedIn) || [];
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPetId) return;
-    startMutation.mutate(
-      { crecheId, petId: selectedPetId, data: {} },
-      {
-        onSuccess: () => {
-          setIsModalOpen(false);
-          queryClient.invalidateQueries();
-        },
-      }
-    );
+    startMutation.mutate(selectedPetId);
   };
-
-  const handleEnd = (petId: number, walkId: number) => {
-    endMutation.mutate(
-      { crecheId, petId, walkId, data: {} },
-      { onSuccess: () => queryClient.invalidateQueries() }
-    );
-  };
-
-  const checkedInPets = pets?.filter((p) => p.isCheckedIn) || [];
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">Walks</h1>
-          <p className="text-muted-foreground mt-1">Track and log pet walks.</p>
+          <h1 className="text-3xl font-display font-bold text-white">Passeios</h1>
+          <p className="text-muted-foreground mt-1">Registre e acompanhe os passeios dos pets.</p>
         </div>
         <Button onClick={() => setIsModalOpen(true)}>
-          <Play className="mr-2 h-4 w-4" /> Start Walk
+          <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
         </Button>
       </div>
 
@@ -65,7 +96,7 @@ export default function Walks() {
         <div className="space-y-4">
           <h2 className="text-xl font-display font-semibold text-white flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            Active Walks ({activeWalks.length})
+            Em Andamento ({activeWalks.length})
           </h2>
           {activeWalks.map((walk) => (
             <Card key={walk.id} className="border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)]">
@@ -78,17 +109,20 @@ export default function Walks() {
                     <p className="font-semibold text-white text-lg">{walk.petName}</p>
                     <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
                       <Clock className="h-3.5 w-3.5" />
-                      Started {formatDistanceToNow(new Date(walk.startedAt), { addSuffix: true })}
+                      Iniciado {formatDistanceToNow(new Date(walk.startedAt), { addSuffix: true, locale: ptBR })}
                     </p>
+                    {walk.staffName && (
+                      <p className="text-xs text-muted-foreground mt-0.5">por {walk.staffName}</p>
+                    )}
                   </div>
                 </div>
                 <Button
-                  onClick={() => handleEnd(walk.petId, walk.id)}
+                  onClick={() => endMutation.mutate({ walkId: walk.id })}
                   isLoading={endMutation.isPending}
                   variant="outline"
                   className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                 >
-                  <Square className="mr-2 h-4 w-4" /> End Walk
+                  <Square className="mr-2 h-4 w-4" /> Finalizar
                 </Button>
               </CardContent>
             </Card>
@@ -96,13 +130,13 @@ export default function Walks() {
         </div>
       )}
 
-      {/* Completed walks */}
+      {/* History */}
       <div className="space-y-4">
-        <h2 className="text-xl font-display font-semibold text-white">Walk History</h2>
+        <h2 className="text-xl font-display font-semibold text-white">Histórico de Passeios</h2>
         <Card>
           <CardContent className="p-0">
             {isLoading ? (
-              <div className="p-8 text-center text-muted-foreground">Loading walks...</div>
+              <div className="p-8 text-center text-muted-foreground">Carregando passeios...</div>
             ) : completedWalks.length ? (
               <div className="divide-y divide-white/5">
                 {completedWalks.map((walk) => (
@@ -114,9 +148,12 @@ export default function Walks() {
                       <div>
                         <p className="font-medium text-white">{walk.petName}</p>
                         <p className="text-sm text-muted-foreground">
-                          {format(new Date(walk.startedAt), "MMM d, h:mm a")}
-                          {walk.endedAt && ` → ${format(new Date(walk.endedAt), "h:mm a")}`}
+                          {format(new Date(walk.startedAt), "dd/MM/yyyy HH:mm")}
+                          {walk.endedAt && ` → ${format(new Date(walk.endedAt), "HH:mm")}`}
                         </p>
+                        {walk.staffName && (
+                          <p className="text-xs text-muted-foreground">por {walk.staffName}</p>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -126,7 +163,7 @@ export default function Walks() {
                           {walk.durationMinutes} min
                         </Badge>
                       ) : (
-                        <Badge variant="secondary">In Progress</Badge>
+                        <Badge variant="secondary">Concluído</Badge>
                       )}
                     </div>
                   </div>
@@ -135,21 +172,21 @@ export default function Walks() {
             ) : activeWalks.length === 0 ? (
               <EmptyState
                 icon={Footprints}
-                title="No walks recorded"
-                description="Start a walk to begin tracking."
-                action={{ label: "Start First Walk", onClick: () => setIsModalOpen(true) }}
+                title="Nenhum passeio registrado"
+                description="Inicie um passeio para começar o rastreamento."
+                action={{ label: "Iniciar Primeiro Passeio", onClick: () => setIsModalOpen(true) }}
               />
             ) : (
-              <div className="p-6 text-center text-muted-foreground text-sm">No completed walks yet.</div>
+              <div className="p-6 text-center text-muted-foreground text-sm">Nenhum passeio concluído ainda.</div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Start a Walk">
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Iniciar Passeio">
         <form onSubmit={handleStart} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Select Pet</label>
+            <label className="text-sm font-medium">Selecione o Pet</label>
             {checkedInPets.length > 0 ? (
               <select
                 value={selectedPetId}
@@ -157,21 +194,21 @@ export default function Walks() {
                 required
                 className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
               >
-                <option value={0} disabled>Choose a pet...</option>
+                <option value={0} disabled>Escolha um pet com check-in...</option>
                 {checkedInPets.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({p.breed || p.species})</option>
                 ))}
               </select>
             ) : (
               <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
-                No pets are currently checked in. Check a pet in first to start a walk.
+                Nenhum pet fez check-in. Realize o check-in de um pet antes de iniciar o passeio.
               </div>
             )}
           </div>
           <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
             <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId}>
-              <Play className="mr-2 h-4 w-4" /> Start Walk
+              <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
             </Button>
           </div>
         </form>

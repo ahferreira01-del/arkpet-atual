@@ -8,6 +8,22 @@ import { hashPassword } from "../lib/auth.js";
 const router = Router();
 router.use(authenticate);
 
+// GET users by creche (creche_admin or master_admin)
+router.get("/by-creche/:crecheId", async (req: AuthRequest, res) => {
+  const crecheId = parseInt(req.params.crecheId);
+  if (req.user?.role === "master_admin" || (req.user?.role === "creche_admin" && req.user.crecheId === crecheId)) {
+    const users = await db.select({
+      id: usersTable.id, name: usersTable.name, email: usersTable.email,
+      role: usersTable.role, crecheId: usersTable.crecheId, avatarUrl: usersTable.avatarUrl,
+      isActive: usersTable.isActive, mustChangePassword: usersTable.mustChangePassword,
+      createdAt: usersTable.createdAt,
+    }).from(usersTable).where(eq(usersTable.crecheId, crecheId)).orderBy(usersTable.name);
+    res.json(users);
+  } else {
+    res.status(403).json({ error: "Sem permissão" });
+  }
+});
+
 // GET all users (master_admin only)
 router.get("/", requireRole("master_admin"), async (_req, res) => {
   const users = await db.select({

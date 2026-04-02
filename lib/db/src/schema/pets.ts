@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum, real, date, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, real, date, boolean, jsonb, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -24,6 +25,8 @@ export const petsTable = pgTable("pets", {
   photoUrl: text("photo_url"),
   isCheckedIn: boolean("is_checked_in").notNull().default(false),
   feedingSchedule: jsonb("feeding_schedule"),
+  walkSchedule: jsonb("walk_schedule"),
+  qrToken: text("qr_token").unique().default(sql`gen_random_uuid()`),
   status: petStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

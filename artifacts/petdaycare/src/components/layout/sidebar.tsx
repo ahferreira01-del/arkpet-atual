@@ -12,7 +12,8 @@ import {
   MessageSquare,
   Settings,
   LogOut,
-  Footprints
+  Footprints,
+  QrCode
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -40,6 +41,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Equipe", href: "/staff/manage", icon: Users },
+          { name: "Usuários", href: "/admin/users", icon: Users },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "staff":
@@ -48,6 +50,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Passeios", href: "/walks", icon: Footprints },
+          { name: "Leitor QR", href: "/staff/qr-scanner", icon: QrCode },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];

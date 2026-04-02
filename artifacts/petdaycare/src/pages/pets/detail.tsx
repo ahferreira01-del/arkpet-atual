@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   useGetPet,
   useListVaccines,
@@ -19,10 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
+import QRCode from "qrcode";
 
 export default function PetDetail({ id }: { id: number }) {
   const { user } = useAuth();
@@ -177,8 +178,10 @@ export default function PetDetail({ id }: { id: number }) {
         defaultTab="overview"
         tabs={[
           { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} /> },
-          { id: "medical", label: "Registros Médicos", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
+          { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
+          { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
           { id: "timeline", label: "Linha do Tempo", icon: <Clock className="h-4 w-4" />, content: <TimelineTab crecheId={crecheId} petId={id} /> },
+          { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
         ]}
       />
     </div>
@@ -202,6 +205,311 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
     >
       <LogIn className="mr-2 h-4 w-4" /> Check-in
     </Button>
+  );
+}
+
+function QrTab({ pet }: { pet: any }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!pet?.qrToken || !canvasRef.current) return;
+    QRCode.toCanvas(canvasRef.current, pet.qrToken, {
+      width: 280,
+      margin: 2,
+      color: { dark: "#ffffff", light: "#12091f" },
+    });
+    QRCode.toDataURL(pet.qrToken, {
+      width: 600,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+    }).then(setQrDataUrl);
+  }, [pet?.qrToken]);
+
+  if (!pet?.qrToken) {
+    return (
+      <div className="max-w-sm mx-auto text-center py-12 text-muted-foreground">
+        <QrCode className="h-12 w-12 mx-auto mb-4 opacity-30" />
+        <p>QR Code não disponível para este pet.</p>
+      </div>
+    );
+  }
+
+  const handleDownload = () => {
+    if (!qrDataUrl) return;
+    const a = document.createElement("a");
+    a.href = qrDataUrl;
+    a.download = `qr-${pet.name.toLowerCase().replace(/\s/g, "-")}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="max-w-sm mx-auto">
+      <Card>
+        <CardContent className="p-8 flex flex-col items-center gap-6">
+          <div>
+            <h3 className="text-xl font-display font-semibold text-white text-center">{pet.name}</h3>
+            <p className="text-sm text-muted-foreground text-center mt-1">QR Code de Identificação</p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-[#12091f] border border-primary/20 shadow-[0_0_30px_rgba(139,92,246,0.2)]">
+            <canvas ref={canvasRef} className="rounded-xl" />
+          </div>
+
+          <div className="w-full space-y-3">
+            <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-center">
+              <p className="text-xs text-muted-foreground mb-1">Token de Identificação</p>
+              <p className="text-xs font-mono text-primary break-all">{pet.qrToken}</p>
+            </div>
+            <Button className="w-full" variant="outline" onClick={handleDownload} disabled={!qrDataUrl}>
+              <Download className="mr-2 h-4 w-4" /> Baixar QR Code
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              Imprima e fixe na coleira do pet. A staff pode escanear para identificação rápida.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: number }) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const updatePetMutation = useUpdatePet();
+  const canEdit = user?.role !== "tutor";
+
+  const [saved, setSaved] = useState(false);
+
+  const defaultFeedingSchedule = [
+    { time: "08:00", amount: "1 xícara", notes: "" },
+    { time: "18:00", amount: "1 xícara", notes: "" },
+  ];
+  const defaultWalkSchedule = [
+    { time: "07:00", durationMinutes: 30, notes: "" },
+    { time: "17:00", durationMinutes: 30, notes: "" },
+  ];
+
+  const feedingSchedule: Array<{ time: string; amount: string; notes?: string }> =
+    pet?.feedingSchedule && Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule : defaultFeedingSchedule;
+  const walkSchedule: Array<{ time: string; durationMinutes: number; notes?: string }> =
+    pet?.walkSchedule && Array.isArray(pet.walkSchedule) ? pet.walkSchedule : defaultWalkSchedule;
+
+  const [editFeeding, setEditFeeding] = useState<Array<{ time: string; amount: string; notes: string }>>(
+    feedingSchedule.map((f) => ({ ...f, notes: f.notes || "" }))
+  );
+  const [editWalk, setEditWalk] = useState<Array<{ time: string; durationMinutes: number; notes: string }>>(
+    walkSchedule.map((w) => ({ ...w, notes: w.notes || "" }))
+  );
+
+  const handleSave = () => {
+    updatePetMutation.mutate(
+      {
+        crecheId,
+        petId,
+        data: {
+          feedingSchedule: editFeeding as any,
+          walkSchedule: editWalk as any,
+        },
+      },
+      {
+        onSuccess: () => {
+          setSaved(true);
+          queryClient.invalidateQueries();
+          setTimeout(() => setSaved(false), 3000);
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="space-y-6 max-w-2xl mx-auto">
+      {/* Feeding Schedule */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <UtensilsCrossed className="h-4 w-4 text-orange-400" />
+              </div>
+              <h3 className="text-lg font-display font-semibold text-white">Alimentação</h3>
+            </div>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditFeeding([...editFeeding, { time: "12:00", amount: "", notes: "" }])}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Adicionar
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {editFeeding.map((item, i) => (
+              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Horário</label>
+                    <Input
+                      type="time"
+                      value={item.time}
+                      onChange={(e) => {
+                        const copy = [...editFeeding];
+                        copy[i] = { ...copy[i], time: e.target.value };
+                        setEditFeeding(copy);
+                      }}
+                      disabled={!canEdit}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Quantidade</label>
+                    <Input
+                      value={item.amount}
+                      onChange={(e) => {
+                        const copy = [...editFeeding];
+                        copy[i] = { ...copy[i], amount: e.target.value };
+                        setEditFeeding(copy);
+                      }}
+                      disabled={!canEdit}
+                      placeholder="Ex: 1 xícara"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs text-muted-foreground">Notas</label>
+                    <Input
+                      value={item.notes}
+                      onChange={(e) => {
+                        const copy = [...editFeeding];
+                        copy[i] = { ...copy[i], notes: e.target.value };
+                        setEditFeeding(copy);
+                      }}
+                      disabled={!canEdit}
+                      placeholder="Ex: ração especial sem frango"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditFeeding(editFeeding.filter((_, j) => j !== i))}
+                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {editFeeding.length === 0 && (
+              <div className="text-center py-6 text-muted-foreground text-sm">Nenhum horário de alimentação configurado.</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Walk Schedule */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-green-500/20 flex items-center justify-center">
+                <Footprints className="h-4 w-4 text-green-400" />
+              </div>
+              <h3 className="text-lg font-display font-semibold text-white">Passeios</h3>
+            </div>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditWalk([...editWalk, { time: "12:00", durationMinutes: 30, notes: "" }])}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Adicionar
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {editWalk.map((item, i) => (
+              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
+                <div className="flex-1 grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Horário</label>
+                    <Input
+                      type="time"
+                      value={item.time}
+                      onChange={(e) => {
+                        const copy = [...editWalk];
+                        copy[i] = { ...copy[i], time: e.target.value };
+                        setEditWalk(copy);
+                      }}
+                      disabled={!canEdit}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Duração (min)</label>
+                    <Input
+                      type="number"
+                      min={5}
+                      max={180}
+                      value={item.durationMinutes}
+                      onChange={(e) => {
+                        const copy = [...editWalk];
+                        copy[i] = { ...copy[i], durationMinutes: Number(e.target.value) };
+                        setEditWalk(copy);
+                      }}
+                      disabled={!canEdit}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs text-muted-foreground">Notas</label>
+                    <Input
+                      value={item.notes}
+                      onChange={(e) => {
+                        const copy = [...editWalk];
+                        copy[i] = { ...copy[i], notes: e.target.value };
+                        setEditWalk(copy);
+                      }}
+                      disabled={!canEdit}
+                      placeholder="Ex: evitar sol forte"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditWalk(editWalk.filter((_, j) => j !== i))}
+                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+            {editWalk.length === 0 && (
+              <div className="text-center py-6 text-muted-foreground text-sm">Nenhum horário de passeio configurado.</div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {canEdit && (
+        <div className="flex items-center gap-4">
+          <Button onClick={handleSave} isLoading={updatePetMutation.isPending}>
+            Salvar Plano
+          </Button>
+          {saved && (
+            <p className="text-sm text-emerald-400">✓ Plano salvo com sucesso</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -720,6 +1028,15 @@ function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
               className="hidden"
               onChange={handleFileChange}
             />
+            {/* Hidden camera-capture input */}
+            <input
+              id="camera-capture-input"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handleFileChange}
+            />
             {preview ? (
               <div className="relative rounded-xl overflow-hidden border border-white/10">
                 <img src={preview} alt="Preview" className="w-full max-h-64 object-cover" />
@@ -731,22 +1048,29 @@ function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
                   <X className="h-4 w-4 text-white" />
                 </button>
               </div>
+            ) : compressing ? (
+              <div className="w-full h-28 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center">
+                <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
+              </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={compressing}
-                className="w-full h-32 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
-              >
-                {compressing ? (
-                  <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
-                ) : (
-                  <>
-                    <Camera className="h-7 w-7" />
-                    <span className="text-sm">Toque para adicionar uma foto</span>
-                  </>
-                )}
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="h-24 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                >
+                  <ImageIcon className="h-6 w-6" />
+                  <span className="text-xs">Galeria</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("camera-capture-input")?.click()}
+                  className="h-24 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                >
+                  <Camera className="h-6 w-6" />
+                  <span className="text-xs">Câmera</span>
+                </button>
+              </div>
             )}
           </div>
 

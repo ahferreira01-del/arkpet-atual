@@ -41,6 +41,8 @@ router.get("/", async (req: AuthRequest, res) => {
     photoUrl: petsTable.photoUrl,
     isCheckedIn: petsTable.isCheckedIn,
     feedingSchedule: petsTable.feedingSchedule,
+    walkSchedule: petsTable.walkSchedule,
+    qrToken: petsTable.qrToken,
     status: petsTable.status,
     createdAt: petsTable.createdAt,
   })
@@ -53,12 +55,50 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.post("/", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
-  const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule } = req.body;
+  const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
   const [pet] = await db.insert(petsTable).values({
     crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
-    weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule,
+    weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
   }).returning();
   res.status(201).json({ ...pet, tutorName: null });
+});
+
+router.get("/by-qr/:token", async (req: AuthRequest, res) => {
+  const crecheId = parseInt(req.params.crecheId);
+  const token = req.params.token;
+  const [pet] = await db.select({
+    id: petsTable.id,
+    crecheId: petsTable.crecheId,
+    tutorId: petsTable.tutorId,
+    tutorName: usersTable.name,
+    name: petsTable.name,
+    species: petsTable.species,
+    breed: petsTable.breed,
+    photoUrl: petsTable.photoUrl,
+    isCheckedIn: petsTable.isCheckedIn,
+    qrToken: petsTable.qrToken,
+    status: petsTable.status,
+  })
+    .from(petsTable)
+    .leftJoin(usersTable, eq(petsTable.tutorId, usersTable.id))
+    .where(and(eq(petsTable.qrToken, token), eq(petsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!pet) {
+    res.status(404).json({ error: "Pet não encontrado para este QR Code." });
+    return;
+  }
+
+  const bookings = await db.select().from(
+    (await import("@workspace/db/schema")).bookingsTable
+  ).where(
+    and(
+      eq((await import("@workspace/db/schema")).bookingsTable.petId, pet.id),
+      eq((await import("@workspace/db/schema")).bookingsTable.status, "confirmed"),
+    )
+  ).limit(1);
+
+  res.json({ ...pet, hasActiveBooking: bookings.length > 0 });
 });
 
 router.get("/:petId", async (req: AuthRequest, res) => {
@@ -82,6 +122,8 @@ router.get("/:petId", async (req: AuthRequest, res) => {
     photoUrl: petsTable.photoUrl,
     isCheckedIn: petsTable.isCheckedIn,
     feedingSchedule: petsTable.feedingSchedule,
+    walkSchedule: petsTable.walkSchedule,
+    qrToken: petsTable.qrToken,
     status: petsTable.status,
     createdAt: petsTable.createdAt,
   })
@@ -96,7 +138,7 @@ router.get("/:petId", async (req: AuthRequest, res) => {
 router.put("/:petId", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
   const petId = parseInt(req.params.petId);
-  const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, status } = req.body;
+  const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (breed !== undefined) updates.breed = breed;
@@ -108,6 +150,7 @@ router.put("/:petId", async (req: AuthRequest, res) => {
   if (specialNeeds !== undefined) updates.specialNeeds = specialNeeds;
   if (photoUrl !== undefined) updates.photoUrl = photoUrl;
   if (feedingSchedule !== undefined) updates.feedingSchedule = feedingSchedule;
+  if (walkSchedule !== undefined) updates.walkSchedule = walkSchedule;
   if (status !== undefined) updates.status = status;
   const [pet] = await db.update(petsTable).set(updates)
     .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId))).returning();

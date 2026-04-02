@@ -147,50 +147,90 @@ export default function Settings() {
               <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
                 <Building2 className="h-5 w-5 text-primary" />
               </div>
-              <h2 className="text-lg font-display font-semibold text-white">Dados da Creche</h2>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" /> Nome
-                </label>
-                <Input name="name" defaultValue={creche?.name || ""} required />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-muted-foreground" /> Endereço
-                </label>
-                <Input name="address" defaultValue={creche?.address || ""} placeholder="Rua das Flores, 123 - São Paulo" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Phone className="h-4 w-4 text-muted-foreground" /> Telefone
-                  </label>
-                  <Input name="phone" defaultValue={creche?.phone || ""} placeholder="(11) 99999-9999" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" /> Capacidade
-                  </label>
-                  <Input name="maxCapacity" type="number" min={1} max={200} defaultValue={creche?.maxCapacity || 15} />
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center gap-4">
-                <Button type="submit" isLoading={updateMutation.isPending}>
-                  <Save className="mr-2 h-4 w-4" /> Salvar Alterações
-                </Button>
-                {saved && (
-                  <p className="text-sm text-emerald-400 flex items-center gap-1">
-                    <ShieldCheck className="h-4 w-4" /> Salvo com sucesso
-                  </p>
+              <div>
+                <h2 className="text-lg font-display font-semibold text-white">Dados da Creche</h2>
+                {user?.role === "staff" && (
+                  <p className="text-xs text-muted-foreground">Apenas visualização</p>
                 )}
               </div>
-            </form>
+            </div>
+
+            {user?.role === "staff" ? (
+              <div className="space-y-5 text-sm">
+                <div className="flex items-start gap-3 py-3 border-b border-white/5">
+                  <Building2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-muted-foreground text-xs mb-0.5">Nome</p>
+                    <p className="font-medium text-white">{creche?.name || "—"}</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3 py-3 border-b border-white/5">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-muted-foreground text-xs mb-0.5">Endereço</p>
+                    <p className="font-medium text-white">{creche?.address || "—"}</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3 py-3">
+                    <Phone className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-0.5">Telefone</p>
+                      <p className="font-medium text-white">{creche?.phone || "—"}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 py-3">
+                    <Users className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-0.5">Capacidade</p>
+                      <p className="font-medium text-white">{creche?.maxCapacity || "—"} pets</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" /> Nome
+                  </label>
+                  <Input name="name" defaultValue={creche?.name || ""} required />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" /> Endereço
+                  </label>
+                  <Input name="address" defaultValue={creche?.address || ""} placeholder="Rua das Flores, 123 - São Paulo" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-muted-foreground" /> Telefone
+                    </label>
+                    <Input name="phone" defaultValue={creche?.phone || ""} placeholder="(11) 99999-9999" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" /> Capacidade
+                    </label>
+                    <Input name="maxCapacity" type="number" min={1} max={200} defaultValue={creche?.maxCapacity || 15} />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex items-center gap-4">
+                  <Button type="submit" isLoading={updateMutation.isPending}>
+                    <Save className="mr-2 h-4 w-4" /> Salvar Alterações
+                  </Button>
+                  {saved && (
+                    <p className="text-sm text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck className="h-4 w-4" /> Salvo com sucesso
+                    </p>
+                  )}
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
       )}

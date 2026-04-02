@@ -72,11 +72,20 @@ router.get("/:bookingId", async (req: AuthRequest, res) => {
 });
 
 router.put("/:bookingId", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(req.params.crecheId);
   const bookingId = parseInt(req.params.bookingId);
   const { status, notes, price } = req.body;
   const updates: Record<string, unknown> = {};
-  if (status !== undefined) updates.status = status;
+
+  // Tutors cannot change booking status — only creche_admin and staff can
+  if (status !== undefined) {
+    if (req.user.role === "tutor") {
+      res.status(403).json({ error: "Tutores não podem alterar o status de reservas." });
+      return;
+    }
+    updates.status = status;
+  }
   if (notes !== undefined) updates.notes = notes;
   if (price !== undefined) updates.price = price;
   const [booking] = await db.update(bookingsTable).set(updates)
@@ -102,6 +111,63 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
   }
 
   res.json(enriched);
+});
+
+router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const crecheId = parseInt(req.params.crecheId);
+  const bookingId = parseInt(req.params.bookingId);
+  const { type, etaMinutes } = req.body;
+
+  if (!["drop_off", "pickup"].includes(type)) {
+    res.status(400).json({ error: "type deve ser 'drop_off' ou 'pickup'" });
+    return;
+  }
+
+  const [booking] = await db.update(bookingsTable).set({
+    onTheWayType: type,
+    onTheWayEtaMinutes: etaMinutes ? parseInt(etaMinutes) : null,
+    onTheWayAt: new Date(),
+  }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
+
+  const enriched = await getBookingWithNames(booking);
+  const typeLabel = type === "drop_off" ? "levar" : "buscar";
+  const etaText = etaMinutes ? ` (aprox. ${etaMinutes} min)` : "";
+  const petName = enriched.petName ?? "um pet";
+
+  // Notify creche admins
+  sendPushToRole(crecheId, "creche_admin", {
+    title: `🚗 Tutor a caminho — ${petName}`,
+    body: `${enriched.tutorName ?? "Tutor"} está vindo ${typeLabel} ${petName}${etaText}.`,
+    tag: `on-the-way-${booking.id}`,
+    data: { type: "booking", bookingId: booking.id, crecheId },
+  }).catch(() => {});
+
+  res.json(enriched);
+});
+
+router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const crecheId = parseInt(req.params.crecheId);
+  const bookingId = parseInt(req.params.bookingId);
+
+  const [booking] = await db.select().from(bookingsTable)
+    .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).limit(1);
+  if (!booking) { res.status(404).json({ error: "Reserva não encontrada" }); return; }
+
+  // Notify tutor that creche confirmed
+  if (booking.tutorId) {
+    const enriched = await getBookingWithNames(booking);
+    const typeLabel = booking.onTheWayType === "pickup" ? "buscar" : "trazer";
+    sendPushToUser(booking.tutorId, {
+      title: `✅ Creche confirma sua chegada`,
+      body: `A creche está te esperando para ${typeLabel} ${enriched.petName ?? "seu pet"}.`,
+      tag: `arrival-confirmed-${booking.id}`,
+      data: { type: "booking", bookingId: booking.id },
+    }).catch(() => {});
+  }
+
+  res.json({ message: "Confirmação enviada ao tutor" });
 });
 
 router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {

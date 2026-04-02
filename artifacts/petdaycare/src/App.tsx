@@ -21,6 +21,7 @@ import Walks from "./pages/walks/index";
 import ManageStaff from "./pages/staff/manage";
 import Settings from "./pages/settings/index";
 import AdminUsers from "./pages/admin/users";
+import QrScanner from "./pages/staff/qr-scanner";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -96,6 +97,10 @@ function App() {
 
               <Route path="/admin/users">
                 <AppLayout><AdminUsers /></AppLayout>
+              </Route>
+
+              <Route path="/staff/qr-scanner">
+                <AppLayout><QrScanner /></AppLayout>
               </Route>
 
               <Route component={NotFound} />
