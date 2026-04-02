@@ -32,4 +32,12 @@ channel = "stable-25_05"
 
 [userenv.shared]
 JWT_SECRET = "afb141e259d941598bafdc8ddbd2ba11828669a13db857016f941f958af07b49"
+VAPID_PUBLIC_KEY = "BE_bpQ07RKp_PGaT-hajvi_q5aDIbeR3JQ1VH6DLR29PnGWbLE9gYUIQBAB5XxHFTGDOToYPFLXksFPEGOwo4QI"
+VAPID_PRIVATE_KEY = "4lWWxqTllQd8z5SRLbmEkepceThXhkUJJSKoQwy0Rew"
+VAPID_EMAIL = "mailto:admin@luxepets.com.br"
+
+[userenv.development]
+PASSWORD_SALT = "pet_daycare_salt"
+
+[userenv.production]
 PASSWORD_SALT = "e291003a802680c2022dd7c4fc6adc7b"

@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { chatMessagesTable, usersTable } from "@workspace/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, ne, desc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { sendPushToUsers } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -40,9 +41,29 @@ router.post("/", async (req: AuthRequest, res) => {
   const [msg] = await db.insert(chatMessagesTable).values({
     crecheId, petId, senderId: req.user.id, content, mediaUrl,
   }).returning();
-  res.status(201).json({
-    ...msg, senderName: req.user.name, senderRole: req.user.role,
-  });
+
+  // Notify all other users in this creche
+  const otherUsers = await db.select({ id: usersTable.id })
+    .from(usersTable)
+    .where(and(
+      eq(usersTable.crecheId, crecheId),
+      ne(usersTable.id, req.user.id),
+    ));
+
+  if (otherUsers.length) {
+    const preview = content?.length > 60 ? content.slice(0, 57) + "..." : content;
+    sendPushToUsers(
+      otherUsers.map((u) => u.id),
+      {
+        title: `💬 ${req.user.name}`,
+        body: preview || "Enviou uma mídia.",
+        tag: `chat-${crecheId}-${petId ?? "geral"}`,
+        data: { type: "chat", crecheId, petId: petId ?? null },
+      }
+    ).catch(() => {});
+  }
+
+  res.status(201).json({ ...msg, senderName: req.user.name, senderRole: req.user.role });
 });
 
 export default router;

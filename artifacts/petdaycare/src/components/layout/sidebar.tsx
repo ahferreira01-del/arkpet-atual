@@ -49,6 +49,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Passeios", href: "/walks", icon: Footprints },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
+          { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "tutor":
         return [
@@ -56,6 +57,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Meus Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
+          { name: "Configurações", href: "/settings", icon: Settings },
         ];
       default:
         return [];

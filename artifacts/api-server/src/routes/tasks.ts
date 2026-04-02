@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { sendPushToUser } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -47,6 +48,26 @@ router.post("/", async (req: AuthRequest, res) => {
     crecheId, petId, assignedToId, type, title, description,
     scheduledFor: new Date(scheduledFor), priority: priority || "medium",
   }).returning();
+
+  // Notify assigned staff member
+  if (assignedToId && assignedToId !== req.user?.id) {
+    const typeLabels: Record<string, string> = {
+      feeding: "Alimentação",
+      medication: "Medicação",
+      grooming: "Banho/Tosa",
+      walk: "Passeio",
+      checkup: "Avaliação",
+      other: "Tarefa",
+    };
+    const label = typeLabels[type] ?? "Tarefa";
+    sendPushToUser(assignedToId, {
+      title: `📋 Nova tarefa: ${label}`,
+      body: title || `Você recebeu uma nova tarefa de ${label}.`,
+      tag: `task-assigned-${task.id}`,
+      data: { type: "task", taskId: task.id, crecheId },
+    }).catch(() => {});
+  }
+
   res.status(201).json({ ...task, petName: null, assignedToName: null });
 });
 
