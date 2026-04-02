@@ -1,16 +1,27 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { UserProfile } from "@workspace/api-client-react";
-import { Bell, Search, Download, Dog } from "lucide-react";
+import { Bell, Search, Download, Dog, LogOut, ChevronDown } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { usePWA } from "@/hooks/use-pwa";
+import { useAuth } from "@/hooks/use-auth";
 
 interface HeaderProps {
   user: UserProfile;
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  master_admin: "Master Admin",
+  creche_admin: "Admin de Creche",
+  staff: "Funcionário",
+  tutor: "Tutor",
+};
+
 export function Header({ user }: HeaderProps) {
   const { canInstall, install } = usePWA();
+  const { logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -19,11 +30,20 @@ export function Header({ user }: HeaderProps) {
     return "Boa noite";
   };
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
   return (
     <header className="h-16 md:h-20 border-b border-white/5 bg-background/50 backdrop-blur-xl z-20 flex items-center justify-between px-4 md:px-6 lg:px-8 sticky top-0">
       {/* Mobile: LuxePets logo | Desktop: greeting */}
       <div className="flex items-center gap-3">
-        {/* Logo — shown only on mobile */}
         <div className="flex md:hidden items-center gap-2.5">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_14px_rgba(139,92,246,0.4)]">
             <Dog className="h-4.5 w-4.5 text-white" style={{ height: 18, width: 18 }} />
@@ -31,7 +51,6 @@ export function Header({ user }: HeaderProps) {
           <span className="font-display font-bold text-lg text-white">LuxePets</span>
         </div>
 
-        {/* Greeting — shown only on desktop */}
         <div className="hidden md:block">
           <h1 className="text-2xl font-display font-semibold text-white tracking-tight">
             {getGreeting()}, {user.name.split(" ")[0]}!
@@ -74,12 +93,49 @@ export function Header({ user }: HeaderProps) {
           <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive border border-background"></span>
         </Button>
 
-        <div className="h-9 w-9 md:h-10 md:w-10 rounded-full border border-white/10 overflow-hidden shadow-[0_0_10px_rgba(255,255,255,0.05)]">
-          <img
-            src={`${import.meta.env.BASE_URL}images/avatar-placeholder.png`}
-            alt={user.name}
-            className="h-full w-full object-cover"
-          />
+        {/* Avatar + dropdown menu */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="flex items-center gap-1.5 rounded-full focus:outline-none group"
+            aria-label="Menu do perfil"
+          >
+            <div className="h-9 w-9 md:h-10 md:w-10 rounded-full border border-white/10 overflow-hidden shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-all group-hover:border-primary/40">
+              <img
+                src={`${import.meta.env.BASE_URL}images/avatar-placeholder.png`}
+                alt={user.name}
+                className="h-full w-full object-cover"
+              />
+            </div>
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 hidden md:block ${menuOpen ? "rotate-180" : ""}`}
+            />
+          </button>
+
+          {/* Dropdown */}
+          {menuOpen && (
+            <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-56 glass-panel rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              {/* User info */}
+              <div className="px-4 py-3 border-b border-white/10">
+                <p className="text-sm font-semibold text-white truncate">{user.name}</p>
+                <p className="text-xs text-primary mt-0.5">{ROLE_LABELS[user.role] || user.role}</p>
+                {user.email && (
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.email}</p>
+                )}
+              </div>
+
+              {/* Logout */}
+              <div className="p-2">
+                <button
+                  onClick={() => { setMenuOpen(false); logout(); }}
+                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-150"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair da conta
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </header>
