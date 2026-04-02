@@ -21,16 +21,24 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", requireRole("master_admin"), async (req: AuthRequest, res) => {
-  const { name, address, phone, email, maxCapacity, adminEmail } = req.body;
+  const { name, address, phone, email, maxCapacity, adminEmail, adminName, adminPassword } = req.body;
   const [creche] = await db.insert(crechesTable).values({
     name, address, phone, email, maxCapacity: maxCapacity || 20,
   }).returning();
 
   if (adminEmail) {
-    const [admin] = await db.select().from(usersTable).where(eq(usersTable.email, adminEmail)).limit(1);
-    if (admin) {
-      await db.update(usersTable).set({ crecheId: creche.id, role: "creche_admin" }).where(eq(usersTable.id, admin.id));
-      await db.update(crechesTable).set({ adminId: admin.id }).where(eq(crechesTable.id, creche.id));
+    const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, adminEmail)).limit(1);
+    if (existing) {
+      await db.update(usersTable).set({ crecheId: creche.id, role: "creche_admin" }).where(eq(usersTable.id, existing.id));
+      await db.update(crechesTable).set({ adminId: existing.id }).where(eq(crechesTable.id, creche.id));
+    } else if (adminName && adminPassword) {
+      const [newAdmin] = await db.insert(usersTable).values({
+        name: adminName, email: adminEmail,
+        passwordHash: hashPassword(adminPassword),
+        role: "creche_admin", crecheId: creche.id,
+        mustChangePassword: true, isActive: true,
+      }).returning();
+      await db.update(crechesTable).set({ adminId: newAdmin.id }).where(eq(crechesTable.id, creche.id));
     }
   }
   res.status(201).json(creche);

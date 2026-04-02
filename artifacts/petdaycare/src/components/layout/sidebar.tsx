@@ -29,8 +29,8 @@ export function Sidebar({ user }: SidebarProps) {
       case "master_admin":
         return [
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Creches", href: "/admin", icon: Building2 },
-          { name: "Users", href: "/admin/users", icon: Users },
+          { name: "Creches", href: "/admin/creches", icon: Building2 },
+          { name: "Usuários", href: "/admin/users", icon: Users },
         ];
       case "creche_admin":
         return [

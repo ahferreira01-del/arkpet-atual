@@ -18,6 +18,10 @@ router.post("/login", async (req, res) => {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
+  if (!user.isActive) {
+    res.status(403).json({ error: "Conta desativada. Contate o administrador." });
+    return;
+  }
   const token = generateToken(user.id, user.role);
   res.json({
     token,
@@ -28,6 +32,7 @@ router.post("/login", async (req, res) => {
       role: user.role,
       crecheId: user.crecheId,
       avatarUrl: user.avatarUrl,
+      mustChangePassword: user.mustChangePassword,
       createdAt: user.createdAt,
     },
   });
@@ -77,6 +82,7 @@ router.get("/me", authenticate, async (req: AuthRequest, res) => {
     role: user.role,
     crecheId: user.crecheId,
     avatarUrl: user.avatarUrl,
+    mustChangePassword: user.mustChangePassword,
     createdAt: user.createdAt,
   });
 });
