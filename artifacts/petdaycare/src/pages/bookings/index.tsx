@@ -144,16 +144,17 @@ export default function Bookings() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-start gap-3">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">Reservas</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Reservas</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             {isTutor ? "Suas reservas na creche." : "Gerencie day use e hospedagens."}
           </p>
         </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Nova Reserva
+        <Button onClick={() => setIsCreateOpen(true)} className="flex-shrink-0">
+          <Plus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Nova Reserva</span>
         </Button>
       </div>
 
@@ -182,13 +183,13 @@ export default function Bookings() {
         </div>
       )}
 
-      {/* Status filter tabs */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Status filter tabs - horizontal scroll on mobile */}
+      <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar -mx-1 px-1">
         {["all", "pending", "confirmed", "active", "completed", "cancelled"].map((s) => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
               statusFilter === s
                 ? "bg-primary/20 text-primary border border-primary/30"
                 : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
@@ -196,7 +197,7 @@ export default function Bookings() {
           >
             {statusLabel[s] || s}
             {s !== "all" && (
-              <span className="ml-1.5 text-xs opacity-70">
+              <span className="ml-1 text-xs opacity-70">
                 ({myBookings?.filter((b) => b.status === s).length || 0})
               </span>
             )}
@@ -209,112 +210,208 @@ export default function Bookings() {
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground">Carregando reservas...</div>
           ) : filtered?.length ? (
-            <div className="overflow-x-auto custom-scrollbar">
-              <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-white/5">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Pet {!isTutor && "/ Tutor"}</th>
-                    <th className="px-6 py-4 font-medium">Tipo</th>
-                    <th className="px-6 py-4 font-medium">Datas</th>
-                    <th className="px-6 py-4 font-medium">Status</th>
-                    <th className="px-6 py-4 font-medium text-right">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filtered.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="font-medium text-white">{booking.petName}</p>
+            <>
+              {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
+              <div className="md:hidden divide-y divide-white/5">
+                {filtered.map((booking) => (
+                  <div key={booking.id} className="p-4 space-y-3">
+                    {/* Row 1: pet + status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-white">{booking.petName}</p>
                         {!isTutor && (
                           <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                         )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <Badge variant="outline" className="bg-white/5 capitalize">
-                          {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {format(new Date(booking.startDate), "dd/MM/yyyy")}
-                        {booking.endDate && (
-                          <span> → {format(new Date(booking.endDate), "dd/MM/yyyy")}</span>
-                        )}
-                        {booking.checkInTime && (
-                          <p className="text-xs text-emerald-400 mt-0.5">
-                            Check-in: {format(new Date(booking.checkInTime), "HH:mm")}
-                          </p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
                         <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
                           {statusLabel[booking.status] || booking.status}
                         </Badge>
                         {(booking as any).onTheWayType && (
-                          <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
+                          <span className="text-xs text-blue-400 flex items-center gap-0.5">
                             <Car className="h-3 w-3" /> A caminho
-                          </p>
+                          </span>
                         )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                          {/* Tutor: "on the way" button for drop-off/pickup */}
-                          {isTutor && (booking.status === "confirmed" || booking.status === "active") && (
+                      </div>
+                    </div>
+                    {/* Row 2: type + dates */}
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <Badge variant="outline" className="bg-white/5 text-xs">
+                        {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
+                      </Badge>
+                      <span>
+                        {format(new Date(booking.startDate), "dd/MM/yy")}
+                        {booking.endDate && ` → ${format(new Date(booking.endDate), "dd/MM/yy")}`}
+                      </span>
+                      {booking.checkInTime && (
+                        <span className="text-xs text-emerald-400">
+                          ✓ {format(new Date(booking.checkInTime), "HH:mm")}
+                        </span>
+                      )}
+                    </div>
+                    {/* Row 3: action buttons */}
+                    <div className="flex gap-2 flex-wrap">
+                      {isTutor && (booking.status === "confirmed" || booking.status === "active") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs"
+                          onClick={() => setOnTheWayBooking(booking)}
+                        >
+                          <Navigation className="mr-1 h-3 w-3" /> A caminho
+                        </Button>
+                      )}
+                      {!isTutor && (
+                        <>
+                          {booking.status === "confirmed" && (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
-                              onClick={() => setOnTheWayBooking(booking)}
+                              className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs"
+                              onClick={() => handleCheckIn(booking.id)}
+                              isLoading={checkInMutation.isPending}
                             >
-                              <Navigation className="mr-1.5 h-3.5 w-3.5" /> Estou a caminho
+                              <LogIn className="mr-1 h-3 w-3" /> Check-in
                             </Button>
                           )}
-                          {/* Staff/Admin actions only */}
-                          {!isTutor && (
-                            <>
-                              {booking.status === "confirmed" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                                  onClick={() => handleCheckIn(booking.id)}
-                                  isLoading={checkInMutation.isPending}
-                                >
-                                  <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
-                                </Button>
-                              )}
-                              {booking.status === "active" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                                  onClick={() => handleCheckOut(booking.id)}
-                                  isLoading={checkOutMutation.isPending}
-                                >
-                                  <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
-                                </Button>
-                              )}
-                              {booking.status === "pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleStatusUpdate(booking.id, "confirmed")}
-                                  isLoading={updateMutation.isPending}
-                                >
-                                  Confirmar
-                                </Button>
-                              )}
-                              <Button size="sm" variant="ghost" onClick={() => setEditBooking(booking)}>
-                                Editar
-                              </Button>
-                            </>
+                          {booking.status === "active" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
+                              onClick={() => handleCheckOut(booking.id)}
+                              isLoading={checkOutMutation.isPending}
+                            >
+                              <LogOut className="mr-1 h-3 w-3" /> Check-out
+                            </Button>
                           )}
-                        </div>
-                      </td>
+                          {booking.status === "pending" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                              isLoading={updateMutation.isPending}
+                            >
+                              Confirmar
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditBooking(booking)}>
+                            Editar
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
+              <div className="hidden md:block overflow-x-auto custom-scrollbar">
+                <table className="w-full text-sm text-left">
+                  <thead className="text-xs text-muted-foreground uppercase bg-white/5">
+                    <tr>
+                      <th className="px-6 py-4 font-medium">Pet {!isTutor && "/ Tutor"}</th>
+                      <th className="px-6 py-4 font-medium">Tipo</th>
+                      <th className="px-6 py-4 font-medium">Datas</th>
+                      <th className="px-6 py-4 font-medium">Status</th>
+                      <th className="px-6 py-4 font-medium text-right">Ações</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {filtered.map((booking) => (
+                      <tr key={booking.id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4">
+                          <p className="font-medium text-white">{booking.petName}</p>
+                          {!isTutor && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant="outline" className="bg-white/5 capitalize">
+                            {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {format(new Date(booking.startDate), "dd/MM/yyyy")}
+                          {booking.endDate && (
+                            <span> → {format(new Date(booking.endDate), "dd/MM/yyyy")}</span>
+                          )}
+                          {booking.checkInTime && (
+                            <p className="text-xs text-emerald-400 mt-0.5">
+                              Check-in: {format(new Date(booking.checkInTime), "HH:mm")}
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
+                            {statusLabel[booking.status] || booking.status}
+                          </Badge>
+                          {(booking as any).onTheWayType && (
+                            <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
+                              <Car className="h-3 w-3" /> A caminho
+                            </p>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            {isTutor && (booking.status === "confirmed" || booking.status === "active") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                                onClick={() => setOnTheWayBooking(booking)}
+                              >
+                                <Navigation className="mr-1.5 h-3.5 w-3.5" /> Estou a caminho
+                              </Button>
+                            )}
+                            {!isTutor && (
+                              <>
+                                {booking.status === "confirmed" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                    onClick={() => handleCheckIn(booking.id)}
+                                    isLoading={checkInMutation.isPending}
+                                  >
+                                    <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                                  </Button>
+                                )}
+                                {booking.status === "active" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                                    onClick={() => handleCheckOut(booking.id)}
+                                    isLoading={checkOutMutation.isPending}
+                                  >
+                                    <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
+                                  </Button>
+                                )}
+                                {booking.status === "pending" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                                    isLoading={updateMutation.isPending}
+                                  >
+                                    Confirmar
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" onClick={() => setEditBooking(booking)}>
+                                  Editar
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
             <EmptyState
               icon={CalendarDays}
@@ -342,7 +439,7 @@ export default function Bookings() {
               ))}
             </select>
           </div>
-            <div className="space-y-2">
+          <div className="space-y-2">
             <label className="text-sm font-medium">Tipo de Estadia</label>
             <select
               name="type"
@@ -352,7 +449,7 @@ export default function Bookings() {
               <option value="lodging">Hospedagem (pernoite)</option>
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Data de Entrada</label>
               <Input name="startDate" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")} />

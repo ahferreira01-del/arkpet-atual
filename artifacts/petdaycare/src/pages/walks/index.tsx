@@ -81,13 +81,14 @@ export default function Walks() {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start gap-3">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">Passeios</h1>
-          <p className="text-muted-foreground mt-1">Registre e acompanhe os passeios dos pets.</p>
+          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Passeios</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">Registre e acompanhe os passeios dos pets.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
+        <Button onClick={() => setIsModalOpen(true)} className="flex-shrink-0">
+          <Play className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Iniciar Passeio</span>
         </Button>
       </div>
 
@@ -100,9 +101,9 @@ export default function Walks() {
           </h2>
           {activeWalks.map((walk) => (
             <Card key={walk.id} className="border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)]">
-              <CardContent className="p-5 flex items-center justify-between">
+              <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                  <div className="h-12 w-12 flex-shrink-0 rounded-full bg-emerald-500/20 flex items-center justify-center">
                     <Footprints className="h-5 w-5 text-emerald-400" />
                   </div>
                   <div>
@@ -120,9 +121,9 @@ export default function Walks() {
                   onClick={() => endMutation.mutate({ walkId: walk.id })}
                   isLoading={endMutation.isPending}
                   variant="outline"
-                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 w-full sm:w-auto"
                 >
-                  <Square className="mr-2 h-4 w-4" /> Finalizar
+                  <Square className="mr-2 h-4 w-4" /> Finalizar Passeio
                 </Button>
               </CardContent>
             </Card>

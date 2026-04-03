@@ -131,9 +131,10 @@ export default function PetDetail({ id }: { id: number }) {
           </div>
         </div>
 
-        <div className="flex gap-3 z-10 w-full md:w-auto flex-wrap justify-center md:justify-end">
+        <div className="flex gap-2 z-10 w-full md:w-auto flex-wrap justify-center md:justify-end">
           <Button variant="glass" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2">
-            <QrCode className="h-4 w-4" /> QR Code
+            <QrCode className="h-4 w-4" />
+            <span className="hidden sm:inline">QR Code</span>
           </Button>
           {confirmedBooking && (
             <Button
@@ -142,11 +143,13 @@ export default function PetDetail({ id }: { id: number }) {
               className="gap-2 border-blue-500/30 text-blue-300 hover:bg-blue-500/10"
               onClick={() => setOnTheWayOpen(true)}
             >
-              <Navigation className="h-4 w-4" /> Estou a Caminho
+              <Navigation className="h-4 w-4" />
+              <span className="hidden sm:inline">A Caminho</span>
             </Button>
           )}
-          <Button variant="glass" onClick={() => setEditOpen(true)}>
-            Editar Perfil
+          <Button variant="glass" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+            <span className="sm:hidden">✏️</span>
+            <span className="hidden sm:inline">Editar Perfil</span>
           </Button>
           {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
             <CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} />
@@ -171,11 +174,11 @@ export default function PetDetail({ id }: { id: number }) {
               placeholder="Ex: 15"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3">
             <Button
               onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "drop_off", etaMinutes: Number(eta) })}
               isLoading={onTheWayMutation.isPending}
-              className="bg-blue-600/80 hover:bg-blue-600 border-blue-500/30"
+              className="bg-blue-600/80 hover:bg-blue-600 border-blue-500/30 w-full"
             >
               <Car className="mr-2 h-4 w-4" /> {user?.role === "tutor" ? "Levar o pet" : "Entregar o pet"}
             </Button>
@@ -183,7 +186,7 @@ export default function PetDetail({ id }: { id: number }) {
               onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "pickup", etaMinutes: Number(eta) })}
               isLoading={onTheWayMutation.isPending}
               variant="outline"
-              className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+              className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 w-full"
             >
               <Navigation className="mr-2 h-4 w-4" /> Buscar o pet
             </Button>
