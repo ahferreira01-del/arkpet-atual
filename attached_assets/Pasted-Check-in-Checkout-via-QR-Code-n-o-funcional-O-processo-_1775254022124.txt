@@ -1,0 +1,29 @@
+Check-in/Checkout via QR Code não funcional
+O processo de leitura do QR Code não está executando corretamente as ações de check-in e checkout. É necessário revisar a leitura, validação e integração com o backend para garantir que o status do pet seja atualizado corretamente.
+Remover chat global e manter apenas chat por pet
+O sistema deve eliminar o chat global e manter somente conversas vinculadas a cada pet, garantindo comunicação mais organizada e contextualizada entre tutor e creche.
+Notificações de alteração de plano
+Sempre que houver qualquer mudança no plano contratado (upgrade, downgrade ou alteração de benefícios), o sistema deve notificar o tutor de forma automática.
+Funcionalidade de passeio com falha
+A funcionalidade responsável pelo registro e/ou acompanhamento de passeios não está operando corretamente e precisa ser corrigida.
+Informações de alimentação não visíveis para o tutor
+Os dados relacionados à alimentação do pet não estão sendo exibidos para o tutor. É necessário garantir que essas informações sejam carregadas e apresentadas corretamente na interface.
+Exibição do nome da ração
+Incluir o nome da ração utilizada na alimentação do pet, garantindo maior transparência para o tutor.
+Tela de tarefas do staff inconsistente
+A tela de tarefas não está filtrando ou exibindo corretamente as atividades com base nos pets presentes na clínica. Deve considerar apenas os pets ativos no momento.
+Publicação de fotos do pet não funcionando
+A funcionalidade de upload/publicação de fotos não está concluindo o processo corretamente. É necessário validar envio, armazenamento e exibição das imagens.
+Melhoria na tela de reservas
+Implementar filtros por pet e permitir que, ao selecionar um pet, sejam exibidas todas as reservas relacionadas a ele de forma organizada.
+Restrição de check-in pelo tutor
+Remover a possibilidade de o tutor realizar check-in manual. O processo deve ser feito exclusivamente pela creche via leitura do QR Code apresentado pelo tutor.
+Implementação de modo claro e escuro
+Adicionar suporte a temas claro e escuro, permitindo alternância pelo usuário para melhor experiência visual.
+Opção “Estou a caminho” no perfil do pet
+Incluir funcionalidade no perfil do pet que permita ao tutor informar que está a caminho da creche, facilitando a preparação do atendimento.
+staff e cresce também deve ter essa opção, pois é possivel que a creche busque e leve o pet.
+Melhoria na tela de reserva do tutor
+A tela deve incluir campos obrigatórios como data de saída e opção de tipo de estadia (day use ou hospedagem), garantindo maior clareza no agendamento.
+Permissões do perfil creche_admin
+O perfil administrativo deve ter capacidade de editar dados e inativar usuários dentro do sistema, na está aparecendo no app.

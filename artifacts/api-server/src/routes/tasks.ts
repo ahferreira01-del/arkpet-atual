@@ -20,6 +20,7 @@ router.get("/", async (req: AuthRequest, res) => {
     crecheId: tasksTable.crecheId,
     petId: tasksTable.petId,
     petName: petsTable.name,
+    petIsCheckedIn: petsTable.isCheckedIn,
     assignedToId: tasksTable.assignedToId,
     assignedToName: usersTable.name,
     type: tasksTable.type,

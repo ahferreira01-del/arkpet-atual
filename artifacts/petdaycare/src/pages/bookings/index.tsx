@@ -59,6 +59,7 @@ export default function Bookings() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<any | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [petFilter, setPetFilter] = useState<number | null>(null);
   const [onTheWayBooking, setOnTheWayBooking] = useState<any | null>(null);
   const [eta, setEta] = useState("15");
 
@@ -75,7 +76,8 @@ export default function Bookings() {
     return myPetIds.includes(b.petId);
   }) : bookings;
 
-  const filtered = statusFilter === "all" ? myBookings : myBookings?.filter((b) => b.status === statusFilter);
+  const filteredByStatus = statusFilter === "all" ? myBookings : myBookings?.filter((b) => b.status === statusFilter);
+  const filtered = petFilter ? filteredByStatus?.filter((b) => b.petId === petFilter) : filteredByStatus;
 
   const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -85,7 +87,7 @@ export default function Bookings() {
         crecheId,
         data: {
           petId: Number(fd.get("petId")),
-          type: isTutor ? "day_use" : (fd.get("type") as BookingType),
+          type: (fd.get("type") as BookingType) || "day_use",
           startDate: fd.get("startDate") as string,
           endDate: fd.get("endDate") as string || undefined,
           notes: fd.get("notes") as string || undefined,
@@ -154,6 +156,31 @@ export default function Bookings() {
           <Plus className="mr-2 h-4 w-4" /> Nova Reserva
         </Button>
       </div>
+
+      {/* Pet filter (show when multiple pets) */}
+      {pets && pets.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+          <button
+            onClick={() => setPetFilter(null)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              !petFilter ? "bg-primary text-white" : "bg-white/10 text-muted-foreground hover:text-white"
+            }`}
+          >
+            Todos os pets
+          </button>
+          {pets.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setPetFilter(petFilter === p.id ? null : p.id)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
+                petFilter === p.id ? "bg-primary text-white" : "bg-white/10 text-muted-foreground hover:text-white"
+              }`}
+            >
+              🐾 {p.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Status filter tabs */}
       <div className="flex gap-2 flex-wrap">
@@ -315,29 +342,25 @@ export default function Bookings() {
               ))}
             </select>
           </div>
-          {!isTutor && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">Tipo</label>
-              <select
-                name="type"
-                className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
-              >
-                <option value="day_use">Day Use</option>
-                <option value="lodging">Hospedagem</option>
-              </select>
-            </div>
-          )}
+            <label className="text-sm font-medium">Tipo de Estadia</label>
+            <select
+              name="type"
+              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+            >
+              <option value="day_use">Day Use (volta no mesmo dia)</option>
+              <option value="lodging">Hospedagem (pernoite)</option>
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Data de Entrada</label>
               <Input name="startDate" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")} />
             </div>
-            {!isTutor && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Data de Saída</label>
-                <Input name="endDate" type="date" />
-              </div>
-            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Data de Saída</label>
+              <Input name="endDate" type="date" />
+            </div>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Observações</label>

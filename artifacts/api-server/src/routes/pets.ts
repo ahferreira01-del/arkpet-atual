@@ -98,7 +98,7 @@ router.get("/by-qr/:token", async (req: AuthRequest, res) => {
     )
   ).limit(1);
 
-  res.json({ ...pet, hasActiveBooking: bookings.length > 0 });
+  res.json({ ...pet, hasActiveBooking: bookings.length > 0, bookingId: bookings[0]?.id ?? null });
 });
 
 router.get("/:petId", async (req: AuthRequest, res) => {

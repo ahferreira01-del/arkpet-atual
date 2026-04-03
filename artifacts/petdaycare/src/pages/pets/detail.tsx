@@ -19,10 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import QRCode from "qrcode";
 
 export default function PetDetail({ id }: { id: number }) {
@@ -36,6 +36,22 @@ export default function PetDetail({ id }: { id: number }) {
 
   const [editOpen, setEditOpen] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
+  const [onTheWayOpen, setOnTheWayOpen] = useState(false);
+  const [eta, setEta] = useState("15");
+
+  const onTheWayMutation = useMutation({
+    mutationFn: async ({ bookingId, type, etaMinutes }: { bookingId: number; type: string; etaMinutes: number }) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/on-the-way`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type, etaMinutes }),
+      });
+      if (!r.ok) throw new Error("Erro ao notificar");
+      return r.json();
+    },
+    onSuccess: () => { setOnTheWayOpen(false); },
+  });
 
   const handleEditProfile = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -119,14 +135,64 @@ export default function PetDetail({ id }: { id: number }) {
           <Button variant="glass" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2">
             <QrCode className="h-4 w-4" /> QR Code
           </Button>
+          {confirmedBooking && (
+            <Button
+              variant="glass"
+              size="sm"
+              className="gap-2 border-blue-500/30 text-blue-300 hover:bg-blue-500/10"
+              onClick={() => setOnTheWayOpen(true)}
+            >
+              <Navigation className="h-4 w-4" /> Estou a Caminho
+            </Button>
+          )}
           <Button variant="glass" onClick={() => setEditOpen(true)}>
             Editar Perfil
           </Button>
-          {!pet.isCheckedIn && confirmedBooking && (
+          {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
             <CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} />
           )}
         </div>
       </div>
+
+      {/* On the Way Modal */}
+      <Modal isOpen={onTheWayOpen} onClose={() => setOnTheWayOpen(false)} title={`Estou a Caminho — ${pet.name}`}>
+        <div className="space-y-5">
+          <p className="text-sm text-muted-foreground">
+            Avise a {user?.role === "tutor" ? "creche" : "equipe"} que você está a caminho.
+          </p>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Previsão de chegada (minutos)</label>
+            <Input
+              type="number"
+              min={1}
+              max={120}
+              value={eta}
+              onChange={(e) => setEta(e.target.value)}
+              placeholder="Ex: 15"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "drop_off", etaMinutes: Number(eta) })}
+              isLoading={onTheWayMutation.isPending}
+              className="bg-blue-600/80 hover:bg-blue-600 border-blue-500/30"
+            >
+              <Car className="mr-2 h-4 w-4" /> {user?.role === "tutor" ? "Levar o pet" : "Entregar o pet"}
+            </Button>
+            <Button
+              onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "pickup", etaMinutes: Number(eta) })}
+              isLoading={onTheWayMutation.isPending}
+              variant="outline"
+              className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+            >
+              <Navigation className="mr-2 h-4 w-4" /> Buscar o pet
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={() => setOnTheWayOpen(false)}>Cancelar</Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* QR Code Modal */}
       <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={`QR Code — ${pet.name}`}>
@@ -305,8 +371,8 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
   const walkSchedule: Array<{ time: string; durationMinutes: number; notes?: string }> =
     pet?.walkSchedule && Array.isArray(pet.walkSchedule) ? pet.walkSchedule : defaultWalkSchedule;
 
-  const [editFeeding, setEditFeeding] = useState<Array<{ time: string; amount: string; notes: string }>>(
-    feedingSchedule.map((f) => ({ ...f, notes: f.notes || "" }))
+  const [editFeeding, setEditFeeding] = useState<Array<{ time: string; amount: string; foodName: string; notes: string }>>(
+    feedingSchedule.map((f) => ({ ...f, foodName: (f as any).foodName || "", notes: f.notes || "" }))
   );
   const [editWalk, setEditWalk] = useState<Array<{ time: string; durationMinutes: number; notes: string }>>(
     walkSchedule.map((w) => ({ ...w, notes: w.notes || "" }))
@@ -388,7 +454,21 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                     />
                   </div>
                   <div className="col-span-2 space-y-1">
-                    <label className="text-xs text-muted-foreground">Notas</label>
+                    <label className="text-xs text-muted-foreground">Nome da ração</label>
+                    <Input
+                      value={(item as any).foodName || ""}
+                      onChange={(e) => {
+                        const copy = [...editFeeding];
+                        copy[i] = { ...copy[i], foodName: e.target.value };
+                        setEditFeeding(copy);
+                      }}
+                      disabled={!canEdit}
+                      placeholder="Ex: Royal Canin Medium Adult"
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-xs text-muted-foreground">Observações</label>
                     <Input
                       value={item.notes}
                       onChange={(e) => {
@@ -397,7 +477,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                         setEditFeeding(copy);
                       }}
                       disabled={!canEdit}
-                      placeholder="Ex: ração especial sem frango"
+                      placeholder="Ex: evitar ração com frango"
                       className="h-9 text-sm"
                     />
                   </div>
@@ -563,22 +643,26 @@ function OverviewTab({ pet }: { pet: any }) {
 
       <Card>
         <CardContent className="p-6">
-          <h3 className="text-lg font-display font-semibold border-b border-white/10 pb-2 mb-5">Alimentação</h3>
-          {pet.feedingSchedule ? (
-            <div className="space-y-3 text-sm">
-              {[["Café da Manhã", pet.feedingSchedule.breakfastTime], ["Almoço", pet.feedingSchedule.lunchTime], ["Jantar", pet.feedingSchedule.dinnerTime]].map(([label, time]) => (
-                <div key={label as string} className="flex justify-between items-center py-2 border-b border-white/5">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span className="font-medium text-white">{time || "—"}</span>
+          <h3 className="text-lg font-display font-semibold border-b border-white/10 pb-2 mb-4">Alimentação</h3>
+          {Array.isArray(pet.feedingSchedule) && pet.feedingSchedule.length > 0 ? (
+            <div className="space-y-2.5 text-sm">
+              {pet.feedingSchedule.map((item: any, i: number) => (
+                <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-medium text-white">🕐 {item.time}</span>
+                    <span className="text-primary font-medium">{item.amount}</span>
+                  </div>
+                  {item.foodName && (
+                    <p className="text-xs text-muted-foreground">🍽️ {item.foodName}</p>
+                  )}
+                  {item.notes && (
+                    <p className="text-xs text-muted-foreground mt-0.5">📝 {item.notes}</p>
+                  )}
                 </div>
               ))}
-              <div className="mt-4 p-3 rounded-xl bg-white/5 border border-white/5">
-                <p className="text-muted-foreground text-xs mb-1">Ração</p>
-                <p className="font-medium text-white">{pet.feedingSchedule.foodType} • {pet.feedingSchedule.portionSize}</p>
-              </div>
             </div>
           ) : (
-            <EmptyState icon={Dog} title="Sem horário de alimentação" description="Nenhum horário de alimentação configurado." />
+            <div className="text-sm text-muted-foreground py-4 text-center">Nenhum horário de alimentação configurado.</div>
           )}
         </CardContent>
       </Card>

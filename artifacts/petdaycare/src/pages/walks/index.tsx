@@ -40,7 +40,7 @@ export default function Walks() {
   const startMutation = useMutation({
     mutationFn: async (petId: number) => {
       const token = localStorage.getItem("auth_token");
-      const r = await fetch(`${getBaseUrl()}/api/creches/${crecheId}/walks`, {
+      const r = await fetch(`/api/creches/${crecheId}/walks`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ petId }),
@@ -58,7 +58,7 @@ export default function Walks() {
   const endMutation = useMutation({
     mutationFn: async ({ walkId }: { walkId: number }) => {
       const token = localStorage.getItem("auth_token");
-      const r = await fetch(`${getBaseUrl()}/api/creches/${crecheId}/walks/${walkId}/end`, {
+      const r = await fetch(`/api/creches/${crecheId}/walks/${walkId}/end`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),

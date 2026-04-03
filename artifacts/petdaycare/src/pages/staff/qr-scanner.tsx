@@ -3,16 +3,35 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { QrCode, Camera, Dog, AlertTriangle, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { QrCode, Camera, Dog, AlertTriangle, CheckCircle2, XCircle, RefreshCw, LogIn } from "lucide-react";
 import { useLocation } from "wouter";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import jsQR from "jsqr";
 
-type ScanState = "idle" | "scanning" | "found" | "error";
+type ScanState = "idle" | "scanning" | "found" | "checking_in" | "checked_in" | "error";
+
+function useQrCheckIn(crecheId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (bookingId: number) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/check-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) throw new Error("Erro ao realizar check-in");
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
 
 export default function QrScanner() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,6 +42,8 @@ export default function QrScanner() {
   const [petInfo, setPetInfo] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [cameraError, setCameraError] = useState<string>("");
+
+  const checkInMutation = useQrCheckIn(crecheId);
 
   const stopCamera = useCallback(() => {
     cancelAnimationFrame(animRef.current);
@@ -48,7 +69,7 @@ export default function QrScanner() {
         videoRef.current.play();
       }
       scanLoop();
-    } catch (err: any) {
+    } catch {
       setCameraError("Não foi possível acessar a câmera. Verifique as permissões.");
       setScanState("idle");
     }
@@ -104,6 +125,21 @@ export default function QrScanner() {
     }
   };
 
+  const handleCheckIn = async () => {
+    if (!petInfo?.bookingId) return;
+    setScanState("checking_in");
+    checkInMutation.mutate(petInfo.bookingId, {
+      onSuccess: (updatedPet) => {
+        setPetInfo((prev: any) => ({ ...prev, isCheckedIn: true }));
+        setScanState("checked_in");
+      },
+      onError: () => {
+        setErrorMsg("Erro ao realizar check-in. Tente novamente.");
+        setScanState("error");
+      },
+    });
+  };
+
   useEffect(() => {
     return () => stopCamera();
   }, [stopCamera]);
@@ -115,11 +151,13 @@ export default function QrScanner() {
     setErrorMsg("");
   };
 
+  const canCheckIn = petInfo && petInfo.bookingId && !petInfo.isCheckedIn;
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-lg mx-auto">
       <div>
         <h1 className="text-3xl font-display font-bold text-white">Leitor QR Code</h1>
-        <p className="text-muted-foreground mt-1">Escaneie o QR Code da coleira do pet para identificação rápida.</p>
+        <p className="text-muted-foreground mt-1">Escaneie o QR Code da coleira do pet para check-in rápido.</p>
       </div>
 
       <Card>
@@ -158,24 +196,30 @@ export default function QrScanner() {
               </div>
             )}
 
-            {scanState === "found" && petInfo && (
-              <div className="text-center p-6 space-y-4 w-full">
-                <CheckCircle2 className="h-14 w-14 text-emerald-400 mx-auto" />
+            {(scanState === "found" || scanState === "checking_in") && petInfo && (
+              <div className="text-center p-6 space-y-3 w-full">
+                {scanState === "checking_in" ? (
+                  <div className="h-14 w-14 rounded-full bg-primary/20 border-2 border-primary animate-pulse mx-auto flex items-center justify-center">
+                    <LogIn className="h-7 w-7 text-primary" />
+                  </div>
+                ) : (
+                  <CheckCircle2 className="h-14 w-14 text-emerald-400 mx-auto" />
+                )}
                 {petInfo.photoUrl ? (
                   <img
                     src={petInfo.photoUrl}
                     alt={petInfo.name}
-                    className="h-24 w-24 rounded-full object-cover border-4 border-emerald-400/30 mx-auto"
+                    className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/30 mx-auto"
                   />
                 ) : (
-                  <div className="h-24 w-24 rounded-full bg-white/10 border-4 border-emerald-400/30 flex items-center justify-center mx-auto">
-                    <Dog className="h-12 w-12 text-white/30" />
+                  <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/30 flex items-center justify-center mx-auto">
+                    <Dog className="h-10 w-10 text-white/30" />
                   </div>
                 )}
                 <div>
-                  <h2 className="text-2xl font-display font-bold text-white">{petInfo.name}</h2>
+                  <h2 className="text-xl font-display font-bold text-white">{petInfo.name}</h2>
                   <p className="text-muted-foreground text-sm capitalize">{petInfo.breed || petInfo.species}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Tutor: {petInfo.tutorName || "—"}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Tutor: {petInfo.tutorName || "—"}</p>
                 </div>
                 <div className="flex gap-2 justify-center flex-wrap">
                   <Badge variant={petInfo.isCheckedIn ? "success" : "secondary"}>
@@ -187,6 +231,26 @@ export default function QrScanner() {
                     <Badge variant="warning">Sem reserva ativa</Badge>
                   )}
                 </div>
+              </div>
+            )}
+
+            {scanState === "checked_in" && petInfo && (
+              <div className="text-center p-6 space-y-3 w-full">
+                <div className="h-14 w-14 rounded-full bg-emerald-500/20 border-2 border-emerald-400 mx-auto flex items-center justify-center">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-400" />
+                </div>
+                {petInfo.photoUrl ? (
+                  <img src={petInfo.photoUrl} alt={petInfo.name} className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/40 mx-auto" />
+                ) : (
+                  <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/40 flex items-center justify-center mx-auto">
+                    <Dog className="h-10 w-10 text-white/30" />
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">{petInfo.name}</h2>
+                  <p className="text-xs font-semibold text-emerald-400 mt-1">✓ Check-in realizado com sucesso!</p>
+                </div>
+                <Badge variant="success" className="text-sm px-4 py-1">Presente na creche</Badge>
               </div>
             )}
 
@@ -206,17 +270,45 @@ export default function QrScanner() {
           )}
 
           {/* Actions */}
-          <div className="flex gap-3">
-            {scanState === "idle" || scanState === "error" ? (
-              <Button className="flex-1" onClick={startCamera}>
+          <div className="flex flex-col gap-2">
+            {(scanState === "idle" || scanState === "error") && (
+              <Button className="w-full" onClick={startCamera}>
                 <Camera className="mr-2 h-4 w-4" /> Escanear QR Code
               </Button>
-            ) : scanState === "scanning" ? (
-              <Button variant="outline" className="flex-1" onClick={reset}>
+            )}
+            {scanState === "scanning" && (
+              <Button variant="outline" className="w-full" onClick={reset}>
                 Cancelar
               </Button>
-            ) : (
-              <>
+            )}
+            {scanState === "found" && (
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={reset}>
+                  <RefreshCw className="mr-2 h-4 w-4" /> Outro
+                </Button>
+                {canCheckIn && (
+                  <Button
+                    className="flex-1 shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+                    onClick={handleCheckIn}
+                    isLoading={checkInMutation.isPending}
+                  >
+                    <LogIn className="mr-2 h-4 w-4" /> Fazer Check-in
+                  </Button>
+                )}
+                {!canCheckIn && petInfo && (
+                  <Button className="flex-1" onClick={() => navigate(`/pets/${petInfo.id}`)}>
+                    <Dog className="mr-2 h-4 w-4" /> Ver Perfil
+                  </Button>
+                )}
+              </div>
+            )}
+            {scanState === "checking_in" && (
+              <Button disabled className="w-full" isLoading>
+                Realizando check-in...
+              </Button>
+            )}
+            {scanState === "checked_in" && (
+              <div className="flex gap-2">
                 <Button variant="outline" className="flex-1" onClick={reset}>
                   <RefreshCw className="mr-2 h-4 w-4" /> Escanear Outro
                 </Button>
@@ -225,7 +317,7 @@ export default function QrScanner() {
                     <Dog className="mr-2 h-4 w-4" /> Ver Perfil
                   </Button>
                 )}
-              </>
+              </div>
             )}
           </div>
         </CardContent>
@@ -236,7 +328,8 @@ export default function QrScanner() {
           <p className="font-medium text-white/60">Como usar:</p>
           <p>• Clique em "Escanear QR Code" para ativar a câmera traseira.</p>
           <p>• Posicione o QR Code da coleira do pet dentro do quadro.</p>
-          <p>• O sistema identificará automaticamente o pet e verificará a reserva.</p>
+          <p>• O sistema identifica o pet e exibe o botão de check-in automaticamente.</p>
+          <p>• Pets sem reserva confirmada não podem fazer check-in.</p>
         </CardContent>
       </Card>
     </div>
