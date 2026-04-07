@@ -57,6 +57,23 @@ export default function Chat() {
     }
   }, [firstPetId]);
 
+  // On mount: mark ALL unread messages as read (user opened the inbox)
+  // This clears the bottom-nav badge immediately
+  useEffect(() => {
+    if (!user?.crecheId) return;
+    const doMarkAll = async () => {
+      try {
+        await fetch(`/api/creches/${crecheId}/chat/mark-read`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({}), // no petId = mark ALL as read
+        });
+        queryClient.invalidateQueries({ queryKey: ["chat-unread", crecheId] });
+      } catch {}
+    };
+    doMarkAll();
+  }, [crecheId]); // runs once on mount
+
   const { data: serverMessages, isLoading } = useListMessages(
     crecheId,
     selectedPetId ? { petId: selectedPetId } : {}

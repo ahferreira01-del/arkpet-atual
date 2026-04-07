@@ -100,12 +100,18 @@ export function Header({ user }: HeaderProps) {
             className="flex items-center gap-1.5 rounded-full focus:outline-none group"
             aria-label="Menu do perfil"
           >
-            <div className="h-9 w-9 md:h-10 md:w-10 rounded-full border border-white/10 overflow-hidden shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-all group-hover:border-primary/40">
-              <img
-                src={`${import.meta.env.BASE_URL}images/avatar-placeholder.png`}
-                alt={user.name}
-                className="h-full w-full object-cover"
-              />
+            <div className="relative">
+              <div className="h-9 w-9 md:h-10 md:w-10 rounded-full border border-white/10 overflow-hidden shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-all group-hover:border-primary/40">
+                <img
+                  src={`${import.meta.env.BASE_URL}images/avatar-placeholder.png`}
+                  alt={user.name}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              {/* Small chevron indicator — visible on all screen sizes */}
+              <span className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background border border-white/10 flex items-center justify-center transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}>
+                <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
+              </span>
             </div>
             <ChevronDown
               className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 hidden md:block ${menuOpen ? "rotate-180" : ""}`}

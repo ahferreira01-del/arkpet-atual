@@ -5,12 +5,12 @@ import { usePush } from "@/hooks/use-push";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck } from "lucide-react";
+import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
   const { data: creche, isLoading } = useGetCreche(crecheId);
@@ -240,18 +240,18 @@ export default function Settings() {
         <CardContent className="p-6">
           <div className="flex items-center gap-3 mb-4 pb-4 border-b border-white/10">
             <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center">
-              <Globe className="h-5 w-5 text-muted-foreground" />
+              <UserCircle className="h-5 w-5 text-muted-foreground" />
             </div>
             <h2 className="text-lg font-display font-semibold text-white">Minha Conta</h2>
           </div>
-          <div className="grid grid-cols-2 gap-6 text-sm">
+          <div className="grid grid-cols-2 gap-6 text-sm mb-6">
             <div>
               <p className="text-muted-foreground mb-1">Nome</p>
               <p className="font-medium text-white">{user?.name}</p>
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Email</p>
-              <p className="font-medium text-white">{user?.email}</p>
+              <p className="font-medium text-white truncate">{user?.email}</p>
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Perfil</p>
@@ -263,6 +263,17 @@ export default function Settings() {
               <p className="text-muted-foreground mb-1">Creche</p>
               <p className="font-medium text-white">#{crecheId}</p>
             </div>
+          </div>
+
+          {/* Logout button — prominent on mobile */}
+          <div className="pt-4 border-t border-white/10">
+            <button
+              onClick={logout}
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 font-medium text-sm transition-all duration-200 active:scale-[0.98]"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair da conta
+            </button>
           </div>
         </CardContent>
       </Card>

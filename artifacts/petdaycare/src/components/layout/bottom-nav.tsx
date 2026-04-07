@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { UserProfile } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Users,
@@ -19,31 +20,24 @@ interface BottomNavProps {
   user: UserProfile;
 }
 
+// Uses React Query so invalidating ["chat-unread", crecheId] in the chat page
+// immediately clears the badge here too — no separate polling needed.
 function useChatUnread(user: UserProfile) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!user?.crecheId) return;
-
-    const token = localStorage.getItem("auth_token");
-    const fetch_unread = async () => {
-      try {
-        const r = await fetch(`/api/creches/${user.crecheId}/chat/unread`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (r.ok) {
-          const data = await r.json();
-          setCount(data.total ?? 0);
-        }
-      } catch {}
-    };
-
-    fetch_unread();
-    const interval = setInterval(fetch_unread, 15000);
-    return () => clearInterval(interval);
-  }, [user?.crecheId]);
-
-  return count;
+  const token = localStorage.getItem("auth_token");
+  const { data } = useQuery({
+    queryKey: ["chat-unread", user?.crecheId],
+    queryFn: async () => {
+      if (!user?.crecheId) return { total: 0 };
+      const r = await fetch(`/api/creches/${user.crecheId}/chat/unread`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return r.ok ? r.json() : { total: 0 };
+    },
+    enabled: !!user?.crecheId,
+    refetchInterval: 15000,
+    staleTime: 0,
+  });
+  return (data?.total ?? 0) as number;
 }
 
 export function BottomNav({ user }: BottomNavProps) {
