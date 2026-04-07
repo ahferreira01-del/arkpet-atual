@@ -1,4 +1,4 @@
-const CACHE_NAME = "luxepets-v2";
+const CACHE_NAME = "luxepets-v4";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -46,31 +46,21 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
+  // Network-first for everything: always try network, fall back to cache
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match("./index.html"))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then(
-      (cached) =>
-        cached ||
-        fetch(request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        })
-    )
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(request).then(
+          (cached) => cached || caches.match("./index.html")
+        )
+      )
   );
 });
 
