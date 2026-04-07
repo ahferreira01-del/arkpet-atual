@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useListBookings, useCreateBooking, useUpdateBooking, useCheckIn, useCheckOut, useListPets } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CalendarDays, Plus, LogIn, LogOut, Navigation, Car } from "lucide-react";
+import { CalendarDays, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +37,85 @@ const statusLabel: Record<string, string> = {
   cancelled: "Cancelada",
   all: "Todas",
 };
+
+function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | null; onChange: (id: number | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = pets.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
+  const selected = pets.find((p) => p.id === value);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); setSearch(""); }}
+        className="flex items-center gap-2 pl-3 pr-2 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white hover:bg-white/10 transition-all min-w-[180px] max-w-[260px]"
+      >
+        <span className="flex-1 text-left truncate">
+          {selected ? `🐾 ${selected.name}` : "Todos os pets"}
+        </span>
+        {selected ? (
+          <X
+            className="h-3.5 w-3.5 text-muted-foreground hover:text-white flex-shrink-0"
+            onClick={(e) => { e.stopPropagation(); onChange(null); setOpen(false); }}
+          />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-white/10">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
+              <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar pet..."
+                className="flex-1 bg-transparent text-sm text-white placeholder:text-muted-foreground outline-none"
+              />
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => { onChange(null); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 ${!value ? "text-primary font-medium" : "text-muted-foreground hover:text-white"}`}
+            >
+              Todos os pets
+            </button>
+            {filtered.length === 0 && (
+              <p className="px-3 py-3 text-xs text-muted-foreground text-center">Nenhum pet encontrado</p>
+            )}
+            {filtered.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => { onChange(p.id); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2 ${value === p.id ? "text-primary font-medium" : "text-white hover:text-white"}`}
+              >
+                🐾 <span className="truncate">{p.name}</span>
+                {value === p.id && <span className="ml-auto text-xs text-primary">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function useOnTheWay(crecheId: number) {
   const queryClient = useQueryClient();
@@ -164,29 +243,13 @@ export default function Bookings() {
         </Button>
       </div>
 
-      {/* Pet filter (show when multiple pets) */}
-      {pets && pets.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-          <button
-            onClick={() => setPetFilter(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              !petFilter ? "bg-primary text-white" : "bg-white/10 text-muted-foreground hover:text-white"
-            }`}
-          >
-            Todos os pets
-          </button>
-          {pets.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPetFilter(petFilter === p.id ? null : p.id)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 ${
-                petFilter === p.id ? "bg-primary text-white" : "bg-white/10 text-muted-foreground hover:text-white"
-              }`}
-            >
-              🐾 {p.name}
-            </button>
-          ))}
-        </div>
+      {/* Pet filter combobox */}
+      {pets && pets.length > 0 && !isTutor && (
+        <PetCombobox
+          pets={pets}
+          value={petFilter}
+          onChange={setPetFilter}
+        />
       )}
 
       {/* Status filter tabs - horizontal scroll on mobile */}
