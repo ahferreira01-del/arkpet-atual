@@ -20,6 +20,7 @@ router.use("/creches/:crecheId/bookings", bookingsRouter);
 router.use("/creches/:crecheId/tasks", tasksRouter);
 router.use("/creches/:crecheId/chat", chatRouter);
 router.use("/creches/:crecheId/walks", walksRouter);
+router.use("/creches/:crecheId/pets/:petId/walks", walksRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 

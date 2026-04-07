@@ -9,6 +9,10 @@ router.use(authenticate);
 
 router.get("/", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
+  const petId = req.params.petId ? parseInt(req.params.petId) : (req.query.petId ? parseInt(req.query.petId as string) : null);
+  const conditions: any[] = [eq(walksTable.crecheId, crecheId)];
+  if (petId) conditions.push(eq(walksTable.petId, petId));
+
   const walks = await db.select({
     id: walksTable.id,
     petId: walksTable.petId,
@@ -25,7 +29,7 @@ router.get("/", async (req: AuthRequest, res) => {
     .from(walksTable)
     .leftJoin(petsTable, eq(walksTable.petId, petsTable.id))
     .leftJoin(usersTable, eq(walksTable.staffId, usersTable.id))
-    .where(eq(walksTable.crecheId, crecheId))
+    .where(and(...conditions))
     .orderBy(walksTable.startTime);
   res.json(walks);
 });

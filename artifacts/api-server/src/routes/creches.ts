@@ -9,6 +9,21 @@ const router = Router();
 
 router.use(authenticate);
 
+// GET tutors for a creche — accessible by all authenticated members
+router.get("/:crecheId/tutors", async (req: AuthRequest, res) => {
+  const crecheId = parseInt(req.params.crecheId);
+  if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
+  const tutors = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, "tutor"), eq(usersTable.isActive, true)))
+    .orderBy(usersTable.name);
+  res.json(tutors);
+});
+
 router.get("/", async (req: AuthRequest, res) => {
   if (req.user?.role !== "master_admin") {
     if (!req.user?.crecheId) { res.status(403).json({ error: "No creche assigned" }); return; }

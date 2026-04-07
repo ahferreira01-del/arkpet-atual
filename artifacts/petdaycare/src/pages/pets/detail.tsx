@@ -10,6 +10,7 @@ import {
   useAddTimelineEvent,
   useListBookings,
   useCheckIn,
+  useListWalks,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -255,7 +256,7 @@ export default function PetDetail({ id }: { id: number }) {
       <Tabs
         defaultTab="overview"
         tabs={[
-          { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} /> },
+          { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
           { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
           { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
           { id: "timeline", label: "Linha do Tempo", icon: <Clock className="h-4 w-4" />, content: <TimelineTab crecheId={crecheId} petId={id} /> },
@@ -605,7 +606,10 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
   );
 }
 
-function OverviewTab({ pet }: { pet: any }) {
+function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: number }) {
+  const { data: walks } = useListWalks(crecheId, petId);
+  const recentWalks = walks?.slice(0, 4) ?? [];
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Card>
@@ -669,6 +673,58 @@ function OverviewTab({ pet }: { pet: any }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Últimos Passeios — full width */}
+      <Card className="md:col-span-2">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
+            <h3 className="text-lg font-display font-semibold flex items-center gap-2">
+              <Footprints className="h-5 w-5 text-primary" />
+              Últimos Passeios
+            </h3>
+            {recentWalks.length > 0 && (
+              <Badge variant="secondary" className="text-xs">{walks?.length ?? 0} total</Badge>
+            )}
+          </div>
+          {recentWalks.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {recentWalks.map((walk: any) => {
+                const durationMs = walk.endedAt
+                  ? new Date(walk.endedAt).getTime() - new Date(walk.startedAt).getTime()
+                  : null;
+                const durationMin = durationMs != null ? Math.round(durationMs / 60000) : null;
+                return (
+                  <div key={walk.id} className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Footprints className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{walk.staffName || "Staff"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {walk.startedAt && !isNaN(new Date(walk.startedAt).getTime())
+                            ? format(new Date(walk.startedAt), "dd/MM/yy HH:mm", { locale: ptBR })
+                            : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <Badge variant={walk.endedAt ? "success" : "secondary"} className="text-xs">
+                        {walk.endedAt ? "Concluído" : "Em andamento"}
+                      </Badge>
+                      {durationMin != null && (
+                        <p className="text-xs text-muted-foreground mt-1">{durationMin} min</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground py-4 text-center">Nenhum passeio registrado para este pet.</div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -682,6 +738,18 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
 
   const [vaccineOpen, setVaccineOpen] = useState(false);
   const [medOpen, setMedOpen] = useState(false);
+  const [vaccinePhoto, setVaccinePhoto] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const vaccinePhotoRef = useRef<HTMLInputElement>(null);
+
+  const handleVaccinePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Foto deve ter no máximo 5MB"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => setVaccinePhoto(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleAddVaccine = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -696,11 +764,13 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
           nextDueDate: (fd.get("nextDueDate") as string) || null,
           veterinarian: (fd.get("veterinarian") as string) || null,
           notes: (fd.get("notes") as string) || null,
+          receiptUrl: vaccinePhoto || null,
         },
       },
       {
         onSuccess: () => {
           setVaccineOpen(false);
+          setVaccinePhoto(null);
           queryClient.invalidateQueries();
         },
       }
@@ -748,23 +818,60 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
           {vaccines?.length ? (
             <div className="space-y-3">
               {vaccines.map((v) => (
-                <div key={v.id} className="p-3 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
-                  <div>
-                    <p className="font-medium text-white">{v.name}</p>
-                    <p className="text-xs text-muted-foreground">Aplicada: {format(new Date(v.appliedDate), "dd/MM/yyyy")}</p>
-                    {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
-                  </div>
-                  {v.nextDueDate && (
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Próxima</p>
-                      <p className="text-sm font-medium text-amber-400">{format(new Date(v.nextDueDate), "dd/MM/yyyy")}</p>
-                    </div>
+                <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                  {v.receiptUrl && (
+                    <button
+                      type="button"
+                      className="w-full block"
+                      onClick={() => setLightboxUrl(v.receiptUrl!)}
+                    >
+                      <img
+                        src={v.receiptUrl}
+                        alt="Carteirinha"
+                        className="w-full h-28 object-cover border-b border-white/10 hover:opacity-90 transition-opacity"
+                      />
+                    </button>
                   )}
+                  <div className="p-3 flex justify-between items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-white">{v.name}</p>
+                        {v.receiptUrl && (
+                          <span className="text-xs text-primary flex items-center gap-0.5"><Camera className="h-3 w-3" /> foto</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Aplicada: {format(new Date(v.appliedDate), "dd/MM/yyyy")}</p>
+                      {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
+                    </div>
+                    {v.nextDueDate && (
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-muted-foreground">Próxima</p>
+                        <p className="text-sm font-medium text-amber-400">{format(new Date(v.nextDueDate), "dd/MM/yyyy")}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <EmptyState icon={Syringe} title="Sem vacinas" description="Nenhum registro de vacina encontrado." />
+          )}
+          {/* Lightbox */}
+          {lightboxUrl && (
+            <div
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setLightboxUrl(null)}
+            >
+              <div className="relative max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm"
+                  onClick={() => setLightboxUrl(null)}
+                >
+                  ✕ Fechar
+                </button>
+                <img src={lightboxUrl} alt="Carteirinha de vacina" className="w-full rounded-2xl shadow-2xl" />
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -802,7 +909,7 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
       </Card>
 
       {/* Add Vaccine Modal */}
-      <Modal isOpen={vaccineOpen} onClose={() => setVaccineOpen(false)} title="Adicionar Vacina">
+      <Modal isOpen={vaccineOpen} onClose={() => { setVaccineOpen(false); setVaccinePhoto(null); }} title="Adicionar Vacina">
         <form onSubmit={handleAddVaccine} className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Nome da Vacina</label>
@@ -826,8 +933,44 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
             <label className="text-sm font-medium">Observações</label>
             <Input name="notes" placeholder="Notas adicionais..." />
           </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setVaccineOpen(false)}>Cancelar</Button>
+          {/* Vaccine photo / certificate */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Foto da Carteirinha</label>
+            <input
+              type="file"
+              ref={vaccinePhotoRef}
+              onChange={handleVaccinePhotoChange}
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+            />
+            {vaccinePhoto ? (
+              <div className="relative rounded-xl overflow-hidden border border-white/10">
+                <img src={vaccinePhoto} alt="Carteirinha" className="w-full h-32 object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setVaccinePhoto(null)}
+                  className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+                <div className="absolute bottom-2 left-2 text-xs text-white/70 bg-black/50 px-2 py-0.5 rounded-full">
+                  foto selecionada
+                </div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => vaccinePhotoRef.current?.click()}
+              >
+                <Camera className="mr-2 h-4 w-4" /> Tirar foto ou escolher arquivo
+              </Button>
+            )}
+          </div>
+          <div className="pt-2 flex justify-end gap-3">
+            <Button type="button" variant="ghost" onClick={() => { setVaccineOpen(false); setVaccinePhoto(null); }}>Cancelar</Button>
             <Button type="submit" isLoading={addVaccineMutation.isPending}>Salvar Vacina</Button>
           </div>
         </form>

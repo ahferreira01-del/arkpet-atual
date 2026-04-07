@@ -4,6 +4,15 @@
 
 A full-stack multi-tenant SaaS platform for managing pet daycare centers (creches). Built with React + Vite frontend and Express backend with PostgreSQL.
 
+## Recent Features (April 2026)
+- **Chat unread badge**: bottom-nav chat icon shows real-time unread message count; pet chips in Chat page also show per-pet unread counts; polling every 8-15s; mark-as-read on select
+- **Staff nav**: "Reservas" link added to staff role sidebar and bottom-nav
+- **Pet creation tutor flow**: modal has "Existente"/"Novo" toggle — admins can select existing tutor from dropdown OR create a new tutor account inline (temp password shown on success)
+- **Vaccine certificate photo**: camera/file upload on vaccine form; photo stored in `receiptUrl`; thumbnail shown on vaccine card with lightbox viewer
+- **Walks in pet overview**: OverviewTab shows "Últimos Passeios" section with last 4 walks (duration, staff, status)
+- **Notification routing**: service worker `notificationclick` now routes to `/pets/:id`, `/chat?pet=id`, `/bookings`, `/staff` based on notification type + petId
+- **Bookings mobile card**: status badge now appears before type badge in mobile card view
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

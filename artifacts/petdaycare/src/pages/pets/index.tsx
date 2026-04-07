@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useListPets, useCreatePet, PetSpecies, PetGender } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,9 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Plus, Search, Filter } from "lucide-react";
+import { Dog, Plus, Search, Filter, UserPlus, Users } from "lucide-react";
 import { Link } from "wouter";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 
 const genderLabel: Record<string, string> = {
   male: "Macho",
@@ -17,24 +17,94 @@ const genderLabel: Record<string, string> = {
   unknown: "Desconhecido",
 };
 
+const selectClass = "flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white";
+
+interface Tutor { id: number; name: string; email: string; }
+
+function useTutors(crecheId: number) {
+  const token = localStorage.getItem("auth_token");
+  const [tutors, setTutors] = useState<Tutor[]>([]);
+  useEffect(() => {
+    fetch(`/api/creches/${crecheId}/tutors`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.ok ? r.json() : []).then(setTutors).catch(() => {});
+  }, [crecheId]);
+  return tutors;
+}
+
 export default function PetsDirectory() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
   const { data: pets, isLoading } = useListPets(crecheId);
   const createPetMutation = useCreatePet();
+  const tutors = useTutors(crecheId);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [tutorMode, setTutorMode] = useState<"existing" | "new">("existing");
+  const [selectedTutorId, setSelectedTutorId] = useState<string>("");
+  const [newTutorName, setNewTutorName] = useState("");
+  const [newTutorEmail, setNewTutorEmail] = useState("");
+  const [newTutorPhone, setNewTutorPhone] = useState("");
+  const [createdTutorPassword, setCreatedTutorPassword] = useState<string | null>(null);
+
+  const canManageTutors = user?.role === "creche_admin" || user?.role === "master_admin";
+
+  const createUserMutation = useMutation({
+    mutationFn: async (data: { name: string; email: string; phone?: string; tempPassword: string }) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: data.name, email: data.email, password: data.tempPassword, role: "tutor", crecheId }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Erro ao criar tutor"); }
+      return r.json();
+    },
+  });
 
   const filteredPets = pets?.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.breed?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
+  const resetModal = () => {
+    setTutorMode("existing");
+    setSelectedTutorId("");
+    setNewTutorName("");
+    setNewTutorEmail("");
+    setNewTutorPhone("");
+    setCreatedTutorPassword(null);
+  };
+
+  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
+
+    let tutorId: number;
+
+    if (user?.role === "tutor") {
+      tutorId = user.id;
+    } else if (tutorMode === "existing") {
+      tutorId = selectedTutorId ? parseInt(selectedTutorId) : 1;
+    } else {
+      const tempPass = "LuxePets@" + Math.random().toString(36).slice(2, 8).toUpperCase();
+      try {
+        const newUser = await createUserMutation.mutateAsync({
+          name: newTutorName,
+          email: newTutorEmail,
+          phone: newTutorPhone,
+          tempPassword: tempPass,
+        });
+        tutorId = newUser.id;
+        setCreatedTutorPassword(tempPass);
+      } catch (err: any) {
+        alert(err.message || "Erro ao criar tutor");
+        return;
+      }
+    }
+
     createPetMutation.mutate({
       crecheId,
       data: {
@@ -42,12 +112,13 @@ export default function PetsDirectory() {
         species: formData.get("species") as PetSpecies,
         gender: formData.get("gender") as PetGender,
         breed: formData.get("breed") as string,
-        tutorId: user?.role === 'tutor' ? user.id : 1,
+        tutorId,
       }
     }, {
       onSuccess: () => {
-        setIsModalOpen(false);
+        if (!createdTutorPassword) setIsModalOpen(false);
         queryClient.invalidateQueries();
+        resetModal();
       }
     });
   };
@@ -59,9 +130,11 @@ export default function PetsDirectory() {
           <h1 className="text-3xl font-display font-bold text-white">Diretório de Pets</h1>
           <p className="text-muted-foreground mt-1">Gerencie perfis, registros médicos e rastreamento.</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
-        </Button>
+        {user?.role !== "tutor" && (
+          <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
+            <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -107,7 +180,6 @@ export default function PetsDirectory() {
                     <p className="text-sm text-muted-foreground capitalize mb-4">
                       {pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}
                     </p>
-
                     <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between text-sm">
                       <span className="text-muted-foreground truncate">{pet.tutorName || "Sem tutor"}</span>
                       {pet.temperament && <Badge variant="outline" className="capitalize text-xs">{pet.temperament}</Badge>}
@@ -124,45 +196,140 @@ export default function PetsDirectory() {
             icon={Dog}
             title="Nenhum pet encontrado"
             description={search ? "Tente ajustar os critérios de busca." : "Nenhum pet cadastrado nesta creche ainda."}
-            action={!search ? { label: "Cadastrar Primeiro Pet", onClick: () => setIsModalOpen(true) } : undefined}
+            action={!search && user?.role !== "tutor" ? { label: "Cadastrar Primeiro Pet", onClick: () => setIsModalOpen(true) } : undefined}
           />
         </Card>
       )}
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cadastrar Pet">
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Nome do Pet</label>
-            <Input name="name" required />
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); resetModal(); }} title="Cadastrar Pet">
+        {createdTutorPassword ? (
+          /* Success: show temp password */
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
+              <p className="text-sm font-semibold text-emerald-400">Tutor criado com sucesso!</p>
+              <p className="text-sm text-muted-foreground">Compartilhe as credenciais abaixo com o tutor:</p>
+              <div className="p-3 rounded-lg bg-black/30 font-mono text-sm text-white space-y-1">
+                <p><span className="text-muted-foreground">E-mail:</span> {newTutorEmail}</p>
+                <p><span className="text-muted-foreground">Senha temp.:</span> <span className="text-primary font-bold">{createdTutorPassword}</span></p>
+              </div>
+              <p className="text-xs text-muted-foreground">O tutor será solicitado a alterar a senha no primeiro acesso.</p>
+            </div>
+            <Button className="w-full" onClick={() => { setIsModalOpen(false); resetModal(); }}>Concluir</Button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+        ) : (
+          <form onSubmit={handleCreate} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Espécie</label>
-              <select name="species" className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white">
-                <option value="dog">Cachorro</option>
-                <option value="cat">Gato</option>
-                <option value="bird">Pássaro</option>
-                <option value="other">Outro</option>
-              </select>
+              <label className="text-sm font-medium">Nome do Pet</label>
+              <Input name="name" required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Espécie</label>
+                <select name="species" className={selectClass}>
+                  <option value="dog">Cachorro</option>
+                  <option value="cat">Gato</option>
+                  <option value="bird">Pássaro</option>
+                  <option value="other">Outro</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Sexo</label>
+                <select name="gender" className={selectClass}>
+                  <option value="male">Macho</option>
+                  <option value="female">Fêmea</option>
+                  <option value="unknown">Desconhecido</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Sexo</label>
-              <select name="gender" className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white">
-                <option value="male">Macho</option>
-                <option value="female">Fêmea</option>
-                <option value="unknown">Desconhecido</option>
-              </select>
+              <label className="text-sm font-medium">Raça (Opcional)</label>
+              <Input name="breed" />
             </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Raça (Opcional)</label>
-            <Input name="breed" />
-          </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={createPetMutation.isPending}>Cadastrar Pet</Button>
-          </div>
-        </form>
+
+            {/* Tutor section — only for admin/staff */}
+            {user?.role !== "tutor" && (
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Tutor</label>
+                  {canManageTutors && (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setTutorMode("existing")}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "existing" ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground hover:bg-white/10"}`}
+                      >
+                        <Users className="h-3 w-3" /> Existente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTutorMode("new")}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "new" ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground hover:bg-white/10"}`}
+                      >
+                        <UserPlus className="h-3 w-3" /> Novo
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {(tutorMode === "existing" || !canManageTutors) && (
+                  <select
+                    value={selectedTutorId}
+                    onChange={(e) => setSelectedTutorId(e.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">Sem tutor por enquanto</option>
+                    {tutors.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} — {t.email}</option>
+                    ))}
+                  </select>
+                )}
+
+                {tutorMode === "new" && canManageTutors && (
+                  <div className="space-y-3 p-3 rounded-xl bg-white/5 border border-white/10">
+                    <p className="text-xs text-muted-foreground">Um acesso será criado automaticamente. A senha temporária será exibida após o cadastro.</p>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Nome completo *</label>
+                      <Input
+                        value={newTutorName}
+                        onChange={(e) => setNewTutorName(e.target.value)}
+                        required={tutorMode === "new"}
+                        placeholder="Maria Silva"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">E-mail *</label>
+                      <Input
+                        type="email"
+                        value={newTutorEmail}
+                        onChange={(e) => setNewTutorEmail(e.target.value)}
+                        required={tutorMode === "new"}
+                        placeholder="maria@email.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">Telefone (opcional)</label>
+                      <Input
+                        value={newTutorPhone}
+                        onChange={(e) => setNewTutorPhone(e.target.value)}
+                        placeholder="(11) 99999-9999"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="pt-4 flex justify-end gap-3">
+              <Button type="button" variant="ghost" onClick={() => { setIsModalOpen(false); resetModal(); }}>Cancelar</Button>
+              <Button
+                type="submit"
+                isLoading={createPetMutation.isPending || createUserMutation.isPending}
+              >
+                Cadastrar Pet
+              </Button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

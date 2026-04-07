@@ -1,4 +1,4 @@
-const CACHE_NAME = "luxepets-v4";
+const CACHE_NAME = "luxepets-v5";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -98,11 +98,26 @@ self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {};
   let targetUrl = "/";
 
-  if (data.type === "booking") targetUrl = "/bookings";
-  else if (data.type === "task") targetUrl = "/staff";
-  else if (data.type === "chat") targetUrl = "/chat";
-  else if (data.type === "checkin" || data.type === "checkout") targetUrl = "/bookings";
-  else if (data.type === "timeline" && data.petId) targetUrl = `/pets/${data.petId}`;
+  // Route to most specific page based on type + available IDs
+  if (data.type === "booking" || data.type === "checkin" || data.type === "checkout") {
+    targetUrl = "/bookings";
+  } else if (data.type === "task") {
+    targetUrl = "/staff";
+  } else if (data.type === "chat") {
+    // Chat is always the chat page; the app shows the right pet via URL hash
+    targetUrl = data.petId ? `/chat?pet=${data.petId}` : "/chat";
+  } else if (data.type === "walk" && data.petId) {
+    targetUrl = `/pets/${data.petId}`;
+  } else if (data.type === "medical" && data.petId) {
+    targetUrl = `/pets/${data.petId}?tab=medical`;
+  } else if (data.type === "timeline" && data.petId) {
+    targetUrl = `/pets/${data.petId}?tab=timeline`;
+  } else if (data.type === "ontheway") {
+    targetUrl = "/bookings";
+  } else if (data.petId) {
+    // Generic with a petId — go to the pet profile
+    targetUrl = `/pets/${data.petId}`;
+  }
 
   event.waitUntil(
     clients
