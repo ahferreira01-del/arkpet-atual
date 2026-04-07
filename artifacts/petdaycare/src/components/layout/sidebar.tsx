@@ -41,7 +41,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Equipe", href: "/staff/manage", icon: Users },
-          { name: "Usuários", href: "/admin/users", icon: Users },
+          { name: "Tutores", href: "/tutors", icon: Users },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "staff":

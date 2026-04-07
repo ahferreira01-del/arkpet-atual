@@ -63,7 +63,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Início", href: "/", icon: LayoutDashboard },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Tarefas", href: "/staff", icon: CheckSquare },
+          { name: "Tutores", href: "/tutors", icon: Users },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
