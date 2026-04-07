@@ -13,6 +13,7 @@ import {
   useListWalks,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { compressImage } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,27 @@ export default function PetDetail({ id }: { id: number }) {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [onTheWayOpen, setOnTheWayOpen] = useState(false);
   const [eta, setEta] = useState("15");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const dataUrl = await compressImage(file, 400, 0.85);
+      updatePetMutation.mutate(
+        { crecheId, petId: id, data: { photoUrl: dataUrl } },
+        {
+          onSuccess: () => { queryClient.invalidateQueries(); },
+          onSettled: () => { setUploadingPhoto(false); },
+        }
+      );
+    } catch {
+      setUploadingPhoto(false);
+    }
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }, [crecheId, id, updatePetMutation, queryClient]);
 
   const onTheWayMutation = useMutation({
     mutationFn: async ({ bookingId, type, etaMinutes }: { bookingId: number; type: string; etaMinutes: number }) => {
@@ -91,15 +113,38 @@ export default function PetDetail({ id }: { id: number }) {
       <div className="glass-panel rounded-3xl p-6 md:p-8 flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">
         <div className="absolute right-0 top-0 w-1/3 h-full bg-gradient-to-l from-primary/20 to-transparent pointer-events-none" />
 
-        <div className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-background bg-secondary relative z-10 shadow-[0_0_30px_rgba(139,92,246,0.3)] overflow-hidden flex-shrink-0">
-          {pet.photoUrl ? (
+        {/* Clickable pet avatar for photo upload */}
+        <div
+          className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-background bg-secondary relative z-10 shadow-[0_0_30px_rgba(139,92,246,0.3)] overflow-hidden flex-shrink-0 cursor-pointer group/avatar"
+          onClick={() => photoInputRef.current?.click()}
+          title="Clique para trocar a foto"
+        >
+          {uploadingPhoto ? (
+            <div className="h-full w-full flex items-center justify-center bg-black/60">
+              <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : pet.photoUrl ? (
             <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full flex items-center justify-center bg-white/5">
               <Dog className="h-16 w-16 text-white/30" />
             </div>
           )}
+          {/* Hover overlay */}
+          {!uploadingPhoto && (
+            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+              <Camera className="h-8 w-8 text-white mb-1" />
+              <span className="text-xs text-white font-medium">Trocar foto</span>
+            </div>
+          )}
         </div>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handlePhotoUpload}
+        />
 
         <div className="flex-1 text-center md:text-left z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-3 mb-2 justify-center md:justify-start">
@@ -1050,28 +1095,6 @@ function avatarColor(name: string) {
   let h = 0;
   for (const c of name || "") h = (h * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
   return AVATAR_COLORS[h];
-}
-
-async function compressImage(file: File, maxWidth = 1080, quality = 0.82): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const ratio = Math.min(1, maxWidth / img.width);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * ratio);
-        canvas.height = Math.round(img.height * ratio);
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = reject;
-      img.src = ev.target!.result as string;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 }
 
 function PawHeart({ liked, count }: { liked: boolean; count: number }) {
