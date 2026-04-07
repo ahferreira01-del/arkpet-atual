@@ -295,8 +295,8 @@ function QrTab({ pet }: { pet: any }) {
     if (!pet?.qrToken || !canvasRef.current) return;
     QRCode.toCanvas(canvasRef.current, pet.qrToken, {
       width: 280,
-      margin: 2,
-      color: { dark: "#ffffff", light: "#12091f" },
+      margin: 3,
+      color: { dark: "#000000", light: "#ffffff" },
     });
     QRCode.toDataURL(pet.qrToken, {
       width: 600,
@@ -331,8 +331,8 @@ function QrTab({ pet }: { pet: any }) {
             <p className="text-sm text-muted-foreground text-center mt-1">QR Code de Identificação</p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-[#12091f] border border-primary/20 shadow-[0_0_30px_rgba(139,92,246,0.2)]">
-            <canvas ref={canvasRef} className="rounded-xl" />
+          <div className="p-3 rounded-2xl bg-white shadow-[0_0_30px_rgba(139,92,246,0.3)]">
+            <canvas ref={canvasRef} className="rounded-lg block" />
           </div>
 
           <div className="w-full space-y-3">

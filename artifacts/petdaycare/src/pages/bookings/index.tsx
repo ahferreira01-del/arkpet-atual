@@ -255,7 +255,7 @@ export default function Bookings() {
                     </div>
                     {/* Row 3: action buttons */}
                     <div className="flex gap-2 flex-wrap">
-                      {isTutor && (booking.status === "confirmed" || booking.status === "active") && (
+                      {(booking.status === "confirmed" || booking.status === "active") && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -359,14 +359,14 @@ export default function Bookings() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2 flex-wrap">
-                            {isTutor && (booking.status === "confirmed" || booking.status === "active") && (
+                            {(booking.status === "confirmed" || booking.status === "active") && (
                               <Button
                                 size="sm"
                                 variant="outline"
                                 className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
                                 onClick={() => setOnTheWayBooking(booking)}
                               >
-                                <Navigation className="mr-1.5 h-3.5 w-3.5" /> Estou a caminho
+                                <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
                               </Button>
                             )}
                             {!isTutor && (
