@@ -29,7 +29,7 @@ export default function StaffDashboard() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
-  const [onlyPresent, setOnlyPresent] = useState(true);
+  const [onlyPresent, setOnlyPresent] = useState(false);
 
   const { data: tasks, isLoading } = useListTasks(crecheId);
   const { data: pets } = useListPets(crecheId);
