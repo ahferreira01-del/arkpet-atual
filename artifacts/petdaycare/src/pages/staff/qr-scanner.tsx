@@ -15,7 +15,7 @@ function useQrCheckIn(crecheId: number) {
   return useMutation({
     mutationFn: async (bookingId: number) => {
       const token = localStorage.getItem("auth_token");
-      const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/check-in`, {
+      const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/checkin`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({}),
