@@ -136,11 +136,9 @@ export default function PetsDirectory() {
           <h1 className="text-3xl font-display font-bold text-white">Diretório de Pets</h1>
           <p className="text-muted-foreground mt-1">Gerencie perfis, registros médicos e rastreamento.</p>
         </div>
-        {user?.role !== "tutor" && (
-          <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
-          </Button>
-        )}
+        <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
+          <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
