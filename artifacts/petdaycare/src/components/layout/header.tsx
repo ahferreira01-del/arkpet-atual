@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { UserProfile } from "@workspace/api-client-react";
-import { Bell, Search, Download, Dog, LogOut, ChevronDown } from "lucide-react";
+import { Search, Download, Dog, LogOut, ChevronDown } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { usePWA } from "@/hooks/use-pwa";
@@ -88,30 +88,15 @@ export function Header({ user }: HeaderProps) {
           </Button>
         )}
 
-        <Button variant="glass" size="icon" className="rounded-full relative h-9 w-9 md:h-10 md:w-10">
-          <Bell className="h-4 w-4 md:h-5 md:w-5" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-destructive border border-background"></span>
-        </Button>
-
-        {/* Avatar + dropdown menu */}
+        {/* Avatar initials + dropdown menu */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="flex items-center gap-1.5 rounded-full focus:outline-none group"
             aria-label="Menu do perfil"
           >
-            <div className="relative">
-              <div className="h-9 w-9 md:h-10 md:w-10 rounded-full border border-white/10 overflow-hidden shadow-[0_0_10px_rgba(255,255,255,0.05)] transition-all group-hover:border-primary/40">
-                <img
-                  src={`${import.meta.env.BASE_URL}images/avatar-placeholder.png`}
-                  alt={user.name}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              {/* Small chevron indicator — visible on all screen sizes */}
-              <span className={`absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background border border-white/10 flex items-center justify-center transition-transform duration-200 ${menuOpen ? "rotate-180" : ""}`}>
-                <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
-              </span>
+            <div className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-gradient-to-br from-primary/50 to-accent/50 border border-white/10 flex items-center justify-center text-white font-bold text-sm shadow-[0_0_10px_rgba(139,92,246,0.2)] transition-all group-hover:border-primary/50">
+              {user.name.charAt(0).toUpperCase()}
             </div>
             <ChevronDown
               className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 hidden md:block ${menuOpen ? "rotate-180" : ""}`}
