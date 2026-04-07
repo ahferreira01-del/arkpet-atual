@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Users, Plus, Mail, Shield, Pencil, UserX, UserCheck, AlertTriangle } from "lucide-react";
+import { Users, Plus, Mail, Shield, Pencil, UserX, UserCheck, AlertTriangle, Crown, ChevronRight } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,6 +30,18 @@ type StaffMember = {
   role: string;
   isActive?: boolean;
 };
+
+function MemberAvatar({ name, active }: { name: string; active: boolean }) {
+  return (
+    <div className={`h-11 w-11 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${
+      active
+        ? "bg-gradient-to-br from-primary/60 to-accent/60 shadow-lg shadow-primary/20"
+        : "bg-white/8"
+    }`}>
+      {name.charAt(0).toUpperCase()}
+    </div>
+  );
+}
 
 function EditMemberModal({
   member,
@@ -75,16 +87,11 @@ function EditMemberModal({
   };
 
   const handleToggleActive = () => {
-    if (member.isActive) {
+    if (member.isActive !== false) {
       setConfirmDeactivate(true);
     } else {
       updateMutation.mutate({ isActive: true });
     }
-  };
-
-  const confirmDeactivateAction = () => {
-    updateMutation.mutate({ isActive: false });
-    setConfirmDeactivate(false);
   };
 
   return (
@@ -109,7 +116,7 @@ function EditMemberModal({
             <Button variant="ghost" onClick={() => setConfirmDeactivate(false)} className="flex-1">Cancelar</Button>
             <Button
               variant="destructive"
-              onClick={confirmDeactivateAction}
+              onClick={() => { updateMutation.mutate({ isActive: false }); setConfirmDeactivate(false); }}
               isLoading={updateMutation.isPending}
               className="flex-1"
             >
@@ -119,27 +126,26 @@ function EditMemberModal({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
-          {/* Avatar + status */}
           <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
-              {member.name.charAt(0).toUpperCase()}
-            </div>
+            <MemberAvatar name={member.name} active={member.isActive !== false} />
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-white truncate">{member.name}</p>
-              <p className="text-sm text-muted-foreground truncate">{member.email}</p>
+              <p className="text-xs text-muted-foreground truncate">{member.email}</p>
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full border ${member.isActive !== false ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "bg-red-500/15 text-red-400 border-red-500/30"}`}>
+            <span className={`text-xs px-2 py-1 rounded-full border ${
+              member.isActive !== false
+                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                : "bg-red-500/15 text-red-400 border-red-500/30"
+            }`}>
               {member.isActive !== false ? "Ativo" : "Inativo"}
             </span>
           </div>
 
-          {/* Name */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-white/80">Nome</label>
             <Input name="name" defaultValue={member.name} required />
           </div>
 
-          {/* Role */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-white/80">Função</label>
             <select
@@ -152,18 +158,11 @@ function EditMemberModal({
             </select>
           </div>
 
-          {/* Actions */}
           <div className="flex flex-col gap-3 pt-2">
             <div className="flex gap-3">
-              <Button type="button" variant="ghost" onClick={onClose} className="flex-1">
-                Cancelar
-              </Button>
-              <Button type="submit" isLoading={updateMutation.isPending} className="flex-1">
-                Salvar Alterações
-              </Button>
+              <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
+              <Button type="submit" isLoading={updateMutation.isPending} className="flex-1">Salvar</Button>
             </div>
-
-            {/* Deactivate / Reactivate */}
             <button
               type="button"
               onClick={handleToggleActive}
@@ -226,161 +225,152 @@ export default function ManageStaff() {
 
   const activeStaff = staff?.filter((s) => s.isActive !== false) || [];
   const inactiveStaff = staff?.filter((s) => s.isActive === false) || [];
+  const admins = activeStaff.filter((s) => s.role === "creche_admin");
+  const funcionarios = activeStaff.filter((s) => s.role === "staff");
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex justify-between items-start gap-4">
         <div>
           <h1 className="text-3xl font-display font-bold text-white">Gestão de Equipe</h1>
           <p className="text-muted-foreground mt-1">Gerencie os membros da sua equipe.</p>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Adicionar Membro
+        <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
+          <Plus className="mr-2 h-4 w-4" /> Adicionar
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <Card className="border-primary/20">
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Users className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Total Ativo</p>
-              <p className="text-2xl font-display font-bold text-white">{activeStaff.length}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-              <Shield className="h-5 w-5 text-blue-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Funcionários</p>
-              <p className="text-2xl font-display font-bold text-white">
-                {activeStaff.filter((s) => s.role === "staff").length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-5 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-xl bg-violet-500/20 flex items-center justify-center">
-              <Shield className="h-5 w-5 text-violet-400" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Administradores</p>
-              <p className="text-2xl font-display font-bold text-white">
-                {activeStaff.filter((s) => s.role === "creche_admin").length}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats — glassmorphism horizontal */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Total */}
+        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-primary/20 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />
+          <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
+            <Users className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-2xl font-display font-bold text-white leading-none">{activeStaff.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Total Ativo</p>
+          </div>
+        </div>
+
+        {/* Funcionários */}
+        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-blue-500/20 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/8 to-transparent pointer-events-none" />
+          <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+            <Shield className="h-4 w-4 text-blue-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-display font-bold text-white leading-none">{funcionarios.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Funcionários</p>
+          </div>
+        </div>
+
+        {/* Admins */}
+        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-violet-500/20 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/8 to-transparent pointer-events-none" />
+          <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
+            <Crown className="h-4 w-4 text-violet-400" />
+          </div>
+          <div>
+            <p className="text-2xl font-display font-bold text-white leading-none">{admins.length}</p>
+            <p className="text-xs text-muted-foreground mt-1">Admins</p>
+          </div>
+        </div>
       </div>
 
-      {/* Active members */}
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Carregando equipe...</div>
-          ) : activeStaff.length ? (
-            <div className="divide-y divide-white/5">
-              {activeStaff.map((member) => (
-                <div
-                  key={member.id}
-                  className="px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="h-11 w-11 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
-                      {member.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-white">{member.name}</p>
-                      <p className="text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-                        <Mail className="h-3.5 w-3.5" />
-                        {member.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${roleColors[member.role] || ""}`}>
+      {/* Active members list */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
+          Equipe Ativa · {activeStaff.length}
+        </h2>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-white/5 animate-pulse" />
+            ))}
+          </div>
+        ) : activeStaff.length ? (
+          <div className="space-y-2">
+            {activeStaff.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => setEditingMember(member as StaffMember)}
+                className="w-full glass-panel rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-white/8 active:scale-[0.99] transition-all text-left border border-white/8 hover:border-white/15"
+              >
+                <MemberAvatar name={member.name} active={true} />
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-white text-sm">{member.name}</span>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${roleColors[member.role] || ""}`}>
                       {roleLabel[member.role] || member.role}
                     </span>
-                    <Button
-                      variant="glass"
-                      size="sm"
-                      onClick={() => setEditingMember(member as StaffMember)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity gap-1.5"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Editar
-                    </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
+                    <Mail className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{member.email}</span>
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              icon={Users}
-              title="Nenhum membro ativo"
-              description="Adicione o primeiro membro da equipe para começar."
-              action={{ label: "Adicionar Membro", onClick: () => setIsAddModalOpen(true) }}
-            />
-          )}
-        </CardContent>
-      </Card>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <span className="text-xs text-muted-foreground hidden sm:block">Editar</span>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Users}
+            title="Nenhum membro ativo"
+            description="Adicione o primeiro membro da equipe para começar."
+            action={{ label: "Adicionar Membro", onClick: () => setIsAddModalOpen(true) }}
+          />
+        )}
+      </div>
 
       {/* Inactive members */}
       {inactiveStaff.length > 0 && (
-        <div className="opacity-50 hover:opacity-80 transition-opacity">
-          <h2 className="text-base font-semibold text-muted-foreground mb-3 px-1">Membros Inativos ({inactiveStaff.length})</h2>
-          <Card>
-            <CardContent className="p-0">
-              <div className="divide-y divide-white/5">
-                {inactiveStaff.map((member) => (
-                  <div
-                    key={member.id}
-                    className="px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors group"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="h-11 w-11 rounded-full bg-white/10 flex items-center justify-center text-white/40 font-bold text-lg flex-shrink-0">
-                        {member.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-white/50 line-through">{member.name}</p>
-                        <p className="text-sm text-muted-foreground/50 flex items-center gap-1.5 mt-0.5">
-                          <Mail className="h-3.5 w-3.5" />
-                          {member.email}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs font-medium px-2.5 py-1 rounded-lg border bg-white/5 text-white/30 border-white/10">
-                        Inativo
-                      </span>
-                      <Button
-                        variant="glass"
-                        size="sm"
-                        onClick={() => setEditingMember(member as StaffMember)}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity gap-1.5"
-                      >
-                        <UserCheck className="h-3.5 w-3.5" />
-                        Reativar
-                      </Button>
-                    </div>
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
+            Inativos · {inactiveStaff.length}
+          </h2>
+          <div className="space-y-2 opacity-60">
+            {inactiveStaff.map((member) => (
+              <button
+                key={member.id}
+                onClick={() => setEditingMember(member as StaffMember)}
+                className="w-full glass-panel rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-white/5 active:scale-[0.99] transition-all text-left border border-white/5"
+              >
+                <MemberAvatar name={member.name} active={false} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-white/50 text-sm line-through">{member.name}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full border bg-white/5 text-white/30 border-white/10">
+                      Inativo
+                    </span>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  <p className="text-xs text-muted-foreground/50 flex items-center gap-1 mt-0.5 truncate">
+                    <Mail className="h-3 w-3 flex-shrink-0" />
+                    <span className="truncate">{member.email}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0 text-emerald-400/70">
+                  <UserCheck className="h-4 w-4" />
+                  <span className="text-xs hidden sm:block">Reativar</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
       {/* Add modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Adicionar Membro à Equipe">
-        <form onSubmit={handleAdd} className="space-y-4">
+        <form onSubmit={handleAdd} className="space-y-4 mt-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Nome Completo</label>
             <Input name="name" required placeholder="Ana Costa" />
@@ -403,9 +393,9 @@ export default function ManageStaff() {
               <option value="creche_admin">Admin de Creche</option>
             </select>
           </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={addStaffMutation.isPending}>Adicionar</Button>
+          <div className="pt-2 flex gap-3">
+            <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)} className="flex-1">Cancelar</Button>
+            <Button type="submit" isLoading={addStaffMutation.isPending} className="flex-1">Adicionar</Button>
           </div>
         </form>
       </Modal>
