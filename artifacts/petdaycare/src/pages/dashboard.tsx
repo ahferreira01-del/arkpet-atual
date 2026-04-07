@@ -133,7 +133,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/pets">
+        <Link href="/pets?filter=present">
           <StatCard
             title="Pets Presentes"
             value={checkedIn.length.toString()}
@@ -144,7 +144,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
             clickable
           />
         </Link>
-        <Link href="/bookings">
+        <Link href="/bookings?status=pending">
           <StatCard
             title="Reservas Pendentes"
             value={stats?.pendingBookings?.toString() ?? pendingBookings.length.toString()}
@@ -156,7 +156,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
             clickable
           />
         </Link>
-        <Link href="/staff">
+        <Link href="/staff?filter=present">
           <StatCard
             title="Tarefas Pendentes"
             value={stats?.pendingTasks?.toString() ?? todayTasks.length.toString()}
@@ -721,7 +721,7 @@ function MasterAdminDashboard() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/admin">
+        <Link href="/admin?status=active">
           <StatCard
             title="Creches Ativas"
             value={activeCreches.length.toString()}
@@ -740,7 +740,7 @@ function MasterAdminDashboard() {
           iconColor={avgOccupancy > 80 ? "text-amber-400" : "text-emerald-400"}
           iconBg={avgOccupancy > 80 ? "bg-amber-400/20" : "bg-emerald-400/20"}
         />
-        <Link href="/admin/users">
+        <Link href="/admin/users?role=tutor">
           <StatCard
             title="Usuários Totais"
             value={totalUsers.toString()}

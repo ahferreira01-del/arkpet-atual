@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useListTasks, useCompleteTask, useListPets, useAddTimelineEvent } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -259,7 +260,9 @@ export default function StaffDashboard() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
-  const [onlyPresent, setOnlyPresent] = useState(false);
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const [onlyPresent, setOnlyPresent] = useState(() => params.get("filter") === "present");
   const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
 
   const { data: tasks, isLoading } = useListTasks(crecheId);

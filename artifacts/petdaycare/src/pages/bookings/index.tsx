@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useListBookings, useCreateBooking, useUpdateBooking, useCheckIn, useCheckOut, useListPets } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -141,9 +142,11 @@ export default function Bookings() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const searchStr = useSearch();
+  const urlParams = new URLSearchParams(searchStr);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<any | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(() => urlParams.get("status") || "all");
   const [petFilter, setPetFilter] = useState<number | null>(null);
   const [onTheWayBooking, setOnTheWayBooking] = useState<any | null>(null);
   const [eta, setEta] = useState("15");

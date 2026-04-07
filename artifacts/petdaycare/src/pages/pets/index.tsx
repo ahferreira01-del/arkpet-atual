@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { useListPets, useCreatePet, PetSpecies, PetGender } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Plus, Search, Filter, UserPlus, Users } from "lucide-react";
+import { Dog, Plus, Search, UserPlus, Users } from "lucide-react";
 import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 
@@ -40,8 +41,11 @@ export default function PetsDirectory() {
   const createPetMutation = useCreatePet();
   const tutors = useTutors(crecheId);
 
+  const searchStr = useSearch();
+  const urlParams = new URLSearchParams(searchStr);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [onlyPresent, setOnlyPresent] = useState(() => urlParams.get("filter") === "present");
   const [tutorMode, setTutorMode] = useState<"existing" | "new">("existing");
   const [selectedTutorId, setSelectedTutorId] = useState<string>("");
   const [newTutorName, setNewTutorName] = useState("");
@@ -64,10 +68,12 @@ export default function PetsDirectory() {
     },
   });
 
-  const filteredPets = pets?.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.breed?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPets = pets?.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.breed?.toLowerCase() || "").includes(search.toLowerCase());
+    const matchesPresent = onlyPresent ? p.isCheckedIn : true;
+    return matchesSearch && matchesPresent;
+  });
 
   const resetModal = () => {
     setTutorMode("existing");
@@ -137,7 +143,7 @@ export default function PetsDirectory() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="w-full max-w-md">
           <Input
             icon={<Search className="h-4 w-4" />}
@@ -146,7 +152,22 @@ export default function PetsDirectory() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Button variant="outline" size="icon"><Filter className="h-4 w-4" /></Button>
+        <button
+          onClick={() => setOnlyPresent(!onlyPresent)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+            onlyPresent
+              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.15)]"
+              : "text-muted-foreground hover:text-white border-white/10 hover:bg-white/5"
+          }`}
+        >
+          <span className={`h-2 w-2 rounded-full ${onlyPresent ? "bg-emerald-400 animate-pulse" : "bg-white/20"}`} />
+          Presentes na creche
+          {onlyPresent && (
+            <span className="ml-1 bg-emerald-400/20 text-emerald-400 text-xs px-1.5 py-0.5 rounded-full">
+              {pets?.filter(p => p.isCheckedIn).length ?? 0}
+            </span>
+          )}
+        </button>
       </div>
 
       {isLoading ? (
