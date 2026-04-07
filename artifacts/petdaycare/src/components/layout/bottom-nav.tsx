@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { UserProfile } from "@workspace/api-client-react";
@@ -19,8 +19,36 @@ interface BottomNavProps {
   user: UserProfile;
 }
 
+function useChatUnread(user: UserProfile) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    if (!user?.crecheId) return;
+
+    const token = localStorage.getItem("auth_token");
+    const fetch_unread = async () => {
+      try {
+        const r = await fetch(`/api/creches/${user.crecheId}/chat/unread`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (r.ok) {
+          const data = await r.json();
+          setCount(data.total ?? 0);
+        }
+      } catch {}
+    };
+
+    fetch_unread();
+    const interval = setInterval(fetch_unread, 15000);
+    return () => clearInterval(interval);
+  }, [user?.crecheId]);
+
+  return count;
+}
+
 export function BottomNav({ user }: BottomNavProps) {
   const [location] = useLocation();
+  const unreadChat = useChatUnread(user);
 
   const getLinks = () => {
     switch (user.role) {
@@ -36,8 +64,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
-          { name: "Chat", href: "/chat", icon: MessageSquare },
-          { name: "Equipe", href: "/staff/manage", icon: Users },
+          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
       case "staff":
@@ -45,9 +72,9 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Início", href: "/", icon: LayoutDashboard },
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Passeios", href: "/walks", icon: Footprints },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Chat", href: "/chat", icon: MessageSquare },
+          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
       case "tutor":
@@ -55,7 +82,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Início", href: "/", icon: LayoutDashboard },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Chat", href: "/chat", icon: MessageSquare },
+          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
       default:
@@ -73,19 +100,18 @@ export function BottomNav({ user }: BottomNavProps) {
             const isActive =
               location === link.href ||
               (link.href !== "/" && location.startsWith(link.href));
+            const badge = (link as any).badge ?? 0;
             return (
               <Link key={link.href} href={link.href} className="flex-1">
                 <div
                   className={cn(
                     "flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
-                    isActive
-                      ? "text-primary"
-                      : "text-muted-foreground"
+                    isActive ? "text-primary" : "text-muted-foreground"
                   )}
                 >
                   <div
                     className={cn(
-                      "flex items-center justify-center h-7 w-7 rounded-lg transition-all duration-200",
+                      "relative flex items-center justify-center h-7 w-7 rounded-lg transition-all duration-200",
                       isActive && "bg-primary/20 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                     )}
                   >
@@ -95,6 +121,11 @@ export function BottomNav({ user }: BottomNavProps) {
                         isActive && "scale-110"
                       )}
                     />
+                    {badge > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    )}
                   </div>
                   <span
                     className={cn(

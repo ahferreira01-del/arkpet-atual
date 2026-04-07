@@ -49,6 +49,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
           { name: "Tarefas", href: "/staff", icon: CheckSquare },
           { name: "Pets", href: "/pets", icon: Dog },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Passeios", href: "/walks", icon: Footprints },
           { name: "Leitor QR", href: "/staff/qr-scanner", icon: QrCode },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },

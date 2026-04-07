@@ -215,7 +215,7 @@ export default function Bookings() {
               <div className="md:hidden divide-y divide-white/5">
                 {filtered.map((booking) => (
                   <div key={booking.id} className="p-4 space-y-3">
-                    {/* Row 1: pet + status */}
+                    {/* Row 1: pet name + tutor */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-white">{booking.petName}</p>
@@ -223,31 +223,29 @@ export default function Bookings() {
                           <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                         )}
                       </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
-                          {statusLabel[booking.status] || booking.status}
-                        </Badge>
-                        {(booking as any).onTheWayType && (
-                          <span className="text-xs text-blue-400 flex items-center gap-0.5">
-                            <Car className="h-3 w-3" /> A caminho
-                          </span>
-                        )}
-                      </div>
+                      {(booking as any).onTheWayType && (
+                        <span className="text-xs text-blue-400 flex items-center gap-0.5 flex-shrink-0">
+                          <Car className="h-3 w-3" /> A caminho
+                        </span>
+                      )}
                     </div>
-                    {/* Row 2: type + dates */}
-                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    {/* Row 2: status + type + dates */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="text-xs">
+                        {statusLabel[booking.status] || booking.status}
+                      </Badge>
                       <Badge variant="outline" className="bg-white/5 text-xs">
                         {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
                       </Badge>
-                      <span>
-                        {format(new Date(booking.startDate), "dd/MM/yy")}
-                        {booking.endDate && ` → ${format(new Date(booking.endDate), "dd/MM/yy")}`}
-                      </span>
                       {booking.checkInTime && (
                         <span className="text-xs text-emerald-400">
                           ✓ {format(new Date(booking.checkInTime), "HH:mm")}
                         </span>
                       )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {format(new Date(booking.startDate), "dd/MM/yyyy")}
+                      {booking.endDate && ` → ${format(new Date(booking.endDate), "dd/MM/yyyy")}`}
                     </div>
                     {/* Row 3: action buttons */}
                     <div className="flex gap-2 flex-wrap">
