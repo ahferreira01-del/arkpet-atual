@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink, Trash2 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -1069,11 +1069,71 @@ async function compressImage(file: File, maxWidth = 1080, quality = 0.82): Promi
   });
 }
 
-function FeedCard({ event }: { event: any }) {
+function PawHeart({ liked, count }: { liked: boolean; count: number }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <svg viewBox="0 0 24 24" className={`h-5 w-5 transition-all duration-200 ${liked ? "scale-110" : "scale-100"}`} xmlns="http://www.w3.org/2000/svg">
+        <path
+          d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+          fill={liked ? "#f43f5e" : "none"}
+          stroke={liked ? "#f43f5e" : "currentColor"}
+          strokeWidth={liked ? 0 : 1.5}
+        />
+        <ellipse cx="12" cy="13.8" rx="1.7" ry="1.2" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
+        <circle cx="10" cy="11.6" r="0.65" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
+        <circle cx="14" cy="11.6" r="0.65" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
+        <circle cx="8.7" cy="12.9" r="0.6" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
+        <circle cx="15.3" cy="12.9" r="0.6" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
+      </svg>
+      {count > 0 && <span className={`text-xs font-medium ${liked ? "text-rose-400" : "text-muted-foreground"}`}>{count}</span>}
+    </span>
+  );
+}
+
+function FeedCard({ event, crecheId, petId, user, onDeleted }: {
+  event: any;
+  crecheId: number;
+  petId: number;
+  user: any;
+  onDeleted: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [liked, setLiked] = useState<boolean>(event.isLikedByUser ?? false);
+  const [likeCount, setLikeCount] = useState<number>(event.likeCount ?? 0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const meta = EVENT_META[event.type] || { emoji: "📌", label: event.type, color: "bg-white/10 text-white border-white/10" };
   const date = new Date(event.createdAt);
   const relTime = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
+  const token = localStorage.getItem("auth_token");
+
+  const canDelete = user?.role === "creche_admin" || user?.role === "staff";
+  const canLike = true;
+
+  const handleLike = async () => {
+    const newLiked = !liked;
+    setLiked(newLiked);
+    setLikeCount((c) => newLiked ? c + 1 : Math.max(0, c - 1));
+    try {
+      await fetch(`/api/creches/${crecheId}/pets/${petId}/timeline/${event.id}/like`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      setLiked(!newLiked);
+      setLikeCount((c) => newLiked ? Math.max(0, c - 1) : c + 1);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await fetch(`/api/creches/${crecheId}/pets/${petId}/timeline/${event.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      onDeleted();
+    } catch {}
+    setConfirmDelete(false);
+  };
 
   return (
     <div className="glass-panel rounded-2xl overflow-hidden border border-white/8 shadow-[0_4px_32px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-2 duration-400">
@@ -1119,9 +1179,44 @@ function FeedCard({ event }: { event: any }) {
           </div>
         )}
 
-        {/* Date */}
-        <p className="text-xs text-white/30 pt-1">{format(date, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p>
+        {/* Footer: date + actions */}
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-white/30">{format(date, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p>
+          <div className="flex items-center gap-2">
+            {/* Like button */}
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${liked ? "text-rose-400 bg-rose-500/10" : "text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"}`}
+              title="Curtir"
+            >
+              <PawHeart liked={liked} count={likeCount} />
+            </button>
+            {/* Delete button (admin/staff only) */}
+            {canDelete && (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all"
+                title="Apagar publicação"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Delete confirm overlay */}
+      {confirmDelete && (
+        <div className="px-4 pb-4">
+          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between gap-3">
+            <p className="text-xs text-red-300">Apagar esta publicação permanentemente?</p>
+            <div className="flex gap-2 flex-shrink-0">
+              <button onClick={() => setConfirmDelete(false)} className="text-xs text-muted-foreground hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition-all">Cancelar</button>
+              <button onClick={handleDelete} className="text-xs text-red-400 font-medium px-2 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 transition-all">Apagar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1221,7 +1316,14 @@ function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
       {timeline?.length ? (
         <div className="space-y-5">
           {timeline.map((event) => (
-            <FeedCard key={event.id} event={event} />
+            <FeedCard
+              key={event.id}
+              event={event}
+              crecheId={crecheId}
+              petId={petId}
+              user={user}
+              onDeleted={() => queryClient.invalidateQueries({ queryKey: ["timeline", crecheId, petId] })}
+            />
           ))}
         </div>
       ) : (

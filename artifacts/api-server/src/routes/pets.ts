@@ -213,8 +213,9 @@ router.post("/:petId/medications/:medicationId/administer", async (req: AuthRequ
 router.get("/:petId/timeline", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
   const petId = parseInt(req.params.petId);
+  const userId = req.user?.id ?? 0;
   const { db: dbConn } = await import("@workspace/db");
-  const { timelineEventsTable } = await import("@workspace/db/schema");
+  const { timelineEventsTable, timelineLikesTable } = await import("@workspace/db/schema");
   const events = await dbConn.select({
     id: timelineEventsTable.id,
     crecheId: timelineEventsTable.crecheId,
@@ -226,12 +227,46 @@ router.get("/:petId/timeline", async (req: AuthRequest, res) => {
     mediaUrl: timelineEventsTable.mediaUrl,
     mediaType: timelineEventsTable.mediaType,
     createdAt: timelineEventsTable.createdAt,
+    likeCount: sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${timelineEventsTable.id})::int`,
+    isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${timelineEventsTable.id} AND user_id = ${userId})`,
   })
     .from(timelineEventsTable)
     .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
     .where(and(eq(timelineEventsTable.crecheId, crecheId), eq(timelineEventsTable.petId, petId)))
     .orderBy(sql`${timelineEventsTable.createdAt} DESC`);
   res.json(events);
+});
+
+router.delete("/:petId/timeline/:eventId", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+  const crecheId = parseInt(req.params.crecheId);
+  const eventId = parseInt(req.params.eventId);
+  const { db: dbConn } = await import("@workspace/db");
+  const { timelineEventsTable } = await import("@workspace/db/schema");
+  await dbConn.delete(timelineEventsTable).where(
+    and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId))
+  );
+  res.json({ ok: true });
+});
+
+router.post("/:petId/timeline/:eventId/like", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const eventId = parseInt(req.params.eventId);
+  const userId = req.user.id;
+  const { db: dbConn } = await import("@workspace/db");
+  const { timelineLikesTable } = await import("@workspace/db/schema");
+  const existing = await dbConn.select().from(timelineLikesTable)
+    .where(and(eq(timelineLikesTable.eventId, eventId), eq(timelineLikesTable.userId, userId)))
+    .limit(1);
+  if (existing.length > 0) {
+    await dbConn.delete(timelineLikesTable)
+      .where(and(eq(timelineLikesTable.eventId, eventId), eq(timelineLikesTable.userId, userId)));
+    res.json({ liked: false });
+  } else {
+    await dbConn.insert(timelineLikesTable).values({ eventId, userId });
+    res.json({ liked: true });
+  }
 });
 
 router.post("/:petId/timeline", async (req: AuthRequest, res) => {

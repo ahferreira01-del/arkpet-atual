@@ -19,6 +19,13 @@ export const timelineEventsTable = pgTable("timeline_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const timelineLikesTable = pgTable("timeline_likes", {
+  id: serial("id").primaryKey(),
+  eventId: integer("event_id").notNull(),
+  userId: integer("user_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const insertTimelineEventSchema = createInsertSchema(timelineEventsTable).omit({ id: true, createdAt: true });
 export type InsertTimelineEvent = z.infer<typeof insertTimelineEventSchema>;
 export type TimelineEvent = typeof timelineEventsTable.$inferSelect;
