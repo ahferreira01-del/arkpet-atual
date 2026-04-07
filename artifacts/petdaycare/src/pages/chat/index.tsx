@@ -6,9 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Send, MessageSquare, Dog, Search } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
+
+interface OptimisticMessage {
+  id: string;
+  senderId: number;
+  senderName: string;
+  content: string;
+  createdAt: string;
+  petId: number;
+  optimistic: true;
+}
 
 function useUnreadByPet(crecheId: number) {
   const token = localStorage.getItem("auth_token");
@@ -30,6 +40,7 @@ export default function Chat() {
   const crecheId = user?.crecheId || 1;
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const token = localStorage.getItem("auth_token");
@@ -46,25 +57,50 @@ export default function Chat() {
     }
   }, [firstPetId]);
 
-  const { data: messages, isLoading } = useListMessages(
+  const { data: serverMessages, isLoading } = useListMessages(
     crecheId,
     selectedPetId ? { petId: selectedPetId } : {}
   );
   const sendMutation = useSendMessage();
 
-  // Polling for new messages every 8 seconds
+  // Merge server messages with optimistic — deduplicate by content+time
+  const messages = React.useMemo(() => {
+    const serverIds = new Set((serverMessages ?? []).map((m: any) => m.id));
+    const filtered = optimisticMessages.filter(
+      (om) => !serverMessages?.some(
+        (sm: any) => sm.content === om.content && sm.senderId === om.senderId
+      )
+    );
+    return [...(serverMessages ?? []), ...filtered].sort(
+      (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  }, [serverMessages, optimisticMessages]);
+
+  // Polling for new messages every 8 seconds (true refetch, no stale key)
   useEffect(() => {
     const interval = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ["/api/creches/{crecheId}/chat"] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("/chat") });
       queryClient.invalidateQueries({ queryKey: ["chat-unread", crecheId] });
     }, 8000);
     return () => clearInterval(interval);
   }, [crecheId]);
 
-  // Auto-scroll
+  // Auto-scroll whenever messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Clean up confirmed optimistic messages after server syncs
+  useEffect(() => {
+    if (!serverMessages?.length || !optimisticMessages.length) return;
+    setOptimisticMessages((prev) =>
+      prev.filter(
+        (om) => !serverMessages.some(
+          (sm: any) => sm.content === om.content && sm.senderId === om.senderId
+        )
+      )
+    );
+  }, [serverMessages]);
 
   // Mark as read when selecting a pet
   const markAsRead = useCallback(async (petId: number) => {
@@ -80,18 +116,42 @@ export default function Chat() {
 
   const handleSelectPet = (petId: number) => {
     setSelectedPetId(petId);
+    setOptimisticMessages([]); // clear optimistic when switching pets
     markAsRead(petId);
   };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !selectedPetId) return;
+    if (!message.trim() || !selectedPetId || !user) return;
+
+    const content = message.trim();
+    setMessage("");
+
+    // ── Optimistic update: show message immediately ──
+    const optimisticMsg: OptimisticMessage = {
+      id: `opt-${Date.now()}`,
+      senderId: user.id,
+      senderName: user.name,
+      content,
+      createdAt: new Date().toISOString(),
+      petId: selectedPetId,
+      optimistic: true,
+    };
+    setOptimisticMessages((prev) => [...prev, optimisticMsg]);
+
     sendMutation.mutate(
-      { crecheId, data: { content: message, petId: selectedPetId } },
+      { crecheId, data: { content, petId: selectedPetId } },
       {
         onSuccess: () => {
-          setMessage("");
-          queryClient.invalidateQueries({ queryKey: ["/api/creches/{crecheId}/chat"] });
+          // Server confirmed — invalidate to get the official message
+          queryClient.invalidateQueries({
+            predicate: (q) => String(q.queryKey[0]).includes("/chat"),
+          });
+        },
+        onError: () => {
+          // Remove the optimistic message if send failed
+          setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
+          setMessage(content); // restore the message text
         },
       }
     );
@@ -113,14 +173,13 @@ export default function Chat() {
             Conversas em tempo real vinculadas a cada pet.
           </p>
         </div>
-        {/* Live indicator */}
         <div className="flex items-center gap-1.5 text-xs text-emerald-400">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
           Ao vivo
         </div>
       </div>
 
-      {/* Mobile: pet chips with unread badges */}
+      {/* Mobile: pet chips */}
       {pets && pets.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-2 flex-shrink-0 custom-scrollbar mb-2 md:hidden">
           {filteredPets.map((pet) => {
@@ -231,12 +290,13 @@ export default function Chat() {
                 <div className="text-center py-8 text-muted-foreground text-sm">Carregando mensagens...</div>
               ) : messages?.length ? (
                 <>
-                  {messages.map((msg) => {
+                  {messages.map((msg: any) => {
                     const isOwn = msg.senderId === user?.id;
+                    const isOptimistic = (msg as any).optimistic;
                     return (
                       <div
                         key={msg.id}
-                        className={`flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}
+                        className={`flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"} ${isOptimistic ? "opacity-80" : ""}`}
                       >
                         <p className="text-xs text-muted-foreground px-1">{msg.senderName}</p>
                         <div
@@ -247,6 +307,9 @@ export default function Chat() {
                           }`}
                         >
                           {msg.content}
+                          {isOptimistic && (
+                            <span className="ml-2 text-white/50 text-[10px]">enviando…</span>
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground/60 px-1">
                           {format(new Date(msg.createdAt), "HH:mm", { locale: ptBR })}
@@ -278,7 +341,6 @@ export default function Chat() {
               />
               <Button
                 type="submit"
-                isLoading={sendMutation.isPending}
                 disabled={!selectedPetId || !message.trim()}
                 className="h-11 px-4 flex-shrink-0"
               >
