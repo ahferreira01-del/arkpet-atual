@@ -13,7 +13,13 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
-type BookingType = "day_use" | "lodging";
+type BookingType = "day_use" | "lodging" | "visita";
+
+const bookingTypeLabel: Record<string, string> = {
+  day_use: "Day Use",
+  lodging: "Hospedagem",
+  visita: "Visita",
+};
 
 const statusVariant: Record<BookingStatus, any> = {
   pending: "warning",
@@ -235,7 +241,7 @@ export default function Bookings() {
                         {statusLabel[booking.status] || booking.status}
                       </Badge>
                       <Badge variant="outline" className="bg-white/5 text-xs">
-                        {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
+                        {bookingTypeLabel[booking.type] || booking.type}
                       </Badge>
                       {booking.checkInTime && (
                         <span className="text-xs text-emerald-400">
@@ -327,7 +333,7 @@ export default function Bookings() {
                         </td>
                         <td className="px-6 py-4">
                           <Badge variant="outline" className="bg-white/5 capitalize">
-                            {booking.type === "day_use" ? "Day Use" : "Hospedagem"}
+                            {bookingTypeLabel[booking.type] || booking.type}
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
@@ -445,6 +451,7 @@ export default function Bookings() {
             >
               <option value="day_use">Day Use (volta no mesmo dia)</option>
               <option value="lodging">Hospedagem (pernoite)</option>
+              <option value="visita">Visita (avaliação ou consulta)</option>
             </select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -484,7 +491,7 @@ export default function Bookings() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tipo</span>
-                <span className="font-medium text-white capitalize">{editBooking.type === "day_use" ? "Day Use" : "Hospedagem"}</span>
+                <span className="font-medium text-white capitalize">{bookingTypeLabel[editBooking.type] || editBooking.type}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Início</span>
