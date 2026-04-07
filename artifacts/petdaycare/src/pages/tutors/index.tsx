@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-  Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound,
+  Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound, ChevronRight, PawPrint, ToggleLeft, ToggleRight,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -69,6 +69,143 @@ function useToggleTutor(crecheId: number) {
   });
 }
 
+function useTutorPets(crecheId: number, tutorId: number | null) {
+  const token = localStorage.getItem("auth_token");
+  return useQuery<any[]>({
+    queryKey: ["tutor-pets", crecheId, tutorId],
+    queryFn: async () => {
+      const r = await fetch(`/api/creches/${crecheId}/pets?tutorId=${tutorId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) throw new Error("Erro ao carregar pets");
+      return r.json();
+    },
+    enabled: !!tutorId,
+  });
+}
+
+function useTogglePetStatus(crecheId: number) {
+  const token = localStorage.getItem("auth_token");
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ petId, status }: { petId: number; status: "active" | "inactive" }) => {
+      const r = await fetch(`/api/creches/${crecheId}/pets/${petId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ status }),
+      });
+      if (!r.ok) throw new Error("Erro ao atualizar pet");
+      return r.json();
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["tutor-pets", crecheId] });
+      qc.invalidateQueries({ queryKey: ["tutors-full", crecheId] });
+    },
+  });
+}
+
+function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: number; onClose: () => void }) {
+  const { data: pets, isLoading } = useTutorPets(crecheId, tutor.id);
+  const togglePet = useTogglePetStatus(crecheId);
+  const { toast } = useToast();
+
+  const handleTogglePet = (pet: any) => {
+    const newStatus = pet.status === "active" ? "inactive" : "active";
+    togglePet.mutate(
+      { petId: pet.id, status: newStatus },
+      {
+        onSuccess: () => {
+          toast({
+            title: newStatus === "inactive" ? "Pet desativado" : "Pet ativado",
+            description: `${pet.name} foi ${newStatus === "inactive" ? "desativado" : "reativado"} com sucesso.`,
+          });
+        },
+        onError: (err: any) => {
+          toast({ title: "Erro", description: err.message, variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  return (
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={`Pets de ${tutor.name}`}
+      description={`${tutor.email} · ${tutor.petCount ?? 0} pet${tutor.petCount !== 1 ? "s" : ""} cadastrado${tutor.petCount !== 1 ? "s" : ""}`}
+    >
+      <div className="mt-4 space-y-3">
+        {isLoading ? (
+          <div className="py-8 text-center text-muted-foreground text-sm">Carregando pets...</div>
+        ) : !pets?.length ? (
+          <div className="py-8 text-center text-muted-foreground text-sm">
+            <PawPrint className="h-10 w-10 mx-auto mb-3 opacity-20" />
+            <p>Nenhum pet cadastrado para este tutor.</p>
+          </div>
+        ) : (
+          pets.map((pet) => (
+            <div
+              key={pet.id}
+              className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
+                pet.status === "inactive"
+                  ? "bg-white/3 border-white/5 opacity-60"
+                  : "bg-white/5 border-white/10"
+              }`}
+            >
+              {/* Avatar */}
+              <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-primary/20 flex items-center justify-center">
+                {pet.photoUrl ? (
+                  <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
+                ) : (
+                  <Dog className="h-5 w-5 text-primary" />
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-white text-sm leading-tight truncate">{pet.name}</p>
+                <p className="text-xs text-muted-foreground capitalize">{pet.breed || pet.species || "—"}</p>
+              </div>
+
+              {/* Status badge */}
+              <Badge
+                variant={pet.status === "active" ? "success" : "secondary"}
+                className="flex-shrink-0 text-[10px]"
+              >
+                {pet.status === "active" ? "Ativo" : "Inativo"}
+              </Badge>
+
+              {/* Toggle button */}
+              <button
+                onClick={() => handleTogglePet(pet)}
+                disabled={togglePet.isPending}
+                className={`flex-shrink-0 transition-all ${
+                  pet.status === "active"
+                    ? "text-red-400 hover:text-red-300"
+                    : "text-emerald-400 hover:text-emerald-300"
+                }`}
+                title={pet.status === "active" ? "Desativar pet" : "Reativar pet"}
+              >
+                {pet.status === "active" ? (
+                  <ToggleRight className="h-6 w-6" />
+                ) : (
+                  <ToggleLeft className="h-6 w-6" />
+                )}
+              </button>
+            </div>
+          ))
+        )}
+
+        <div className="pt-2">
+          <Button variant="outline" className="w-full" onClick={onClose}>
+            Fechar
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function generateTempPassword() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   return "LuxePets@" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
@@ -89,6 +226,7 @@ export default function TutorsPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [createdName, setCreatedName] = useState<string | null>(null);
+  const [selectedTutor, setSelectedTutor] = useState<any | null>(null);
 
   const [form, setForm] = useState({ name: "", email: "", password: generateTempPassword() });
 
@@ -234,11 +372,19 @@ export default function TutorsPage() {
                   )}
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-white/5">
+                <div className="mt-3 pt-3 border-t border-white/5 flex gap-2">
+                  <button
+                    onClick={() => setSelectedTutor(tutor)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    <Dog className="h-3.5 w-3.5" /> Ver Pets
+                    <ChevronRight className="h-3 w-3 opacity-60" />
+                  </button>
+                  <div className="w-px bg-white/5" />
                   <button
                     onClick={() => handleToggle(tutor)}
                     disabled={toggleMutation.isPending}
-                    className={`w-full flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg transition-colors ${
                       tutor.isActive
                         ? "text-red-400 hover:bg-red-500/10"
                         : "text-emerald-400 hover:bg-emerald-500/10"
@@ -255,6 +401,15 @@ export default function TutorsPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Pets modal */}
+      {selectedTutor && (
+        <TutorPetsModal
+          tutor={selectedTutor}
+          crecheId={crecheId}
+          onClose={() => setSelectedTutor(null)}
+        />
       )}
 
       {/* Create tutor modal */}
