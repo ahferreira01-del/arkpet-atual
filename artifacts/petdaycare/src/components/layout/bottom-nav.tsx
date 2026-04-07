@@ -68,6 +68,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Passeios", href: "/walks", icon: Footprints },
           { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
