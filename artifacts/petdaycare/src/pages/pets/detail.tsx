@@ -689,8 +689,11 @@ function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; pet
           {recentWalks.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {recentWalks.map((walk: any) => {
-                const durationMs = walk.endedAt
-                  ? new Date(walk.endedAt).getTime() - new Date(walk.startedAt).getTime()
+                const isCompleted = walk.status === "completed" || !!walk.endTime;
+                const durationMs = walk.endTime && walk.startTime
+                  ? new Date(walk.endTime).getTime() - new Date(walk.startTime).getTime()
+                  : walk.durationMinutes
+                  ? walk.durationMinutes * 60000
                   : null;
                 const durationMin = durationMs != null ? Math.round(durationMs / 60000) : null;
                 return (
@@ -700,17 +703,19 @@ function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; pet
                         <Footprints className="h-4 w-4 text-primary" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{walk.staffName || "Staff"}</p>
+                        <p className="text-sm font-medium text-white truncate">
+                          {walk.staffName || "Funcionário"}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {walk.startedAt && !isNaN(new Date(walk.startedAt).getTime())
-                            ? format(new Date(walk.startedAt), "dd/MM/yy HH:mm", { locale: ptBR })
+                          {walk.startTime && !isNaN(new Date(walk.startTime).getTime())
+                            ? format(new Date(walk.startTime), "dd/MM/yy HH:mm", { locale: ptBR })
                             : "—"}
                         </p>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <Badge variant={walk.endedAt ? "success" : "secondary"} className="text-xs">
-                        {walk.endedAt ? "Concluído" : "Em andamento"}
+                      <Badge variant={isCompleted ? "success" : "secondary"} className="text-xs">
+                        {isCompleted ? "Concluído" : "Em andamento"}
                       </Badge>
                       {durationMin != null && (
                         <p className="text-xs text-muted-foreground mt-1">{durationMin} min</p>
