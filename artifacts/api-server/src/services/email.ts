@@ -9,8 +9,17 @@ const ROLE_LABELS: Record<string, string> = {
   tutor: "Tutor",
 };
 
-// Get Resend client via Replit connector (never cached — tokens expire)
+// Get Resend client — checks env vars first, then Replit connector as fallback
 async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail: string } | null> {
+  // Primary: use env vars (RESEND_API_KEY + RESEND_FROM_EMAIL)
+  if (process.env.RESEND_API_KEY) {
+    return {
+      client: new Resend(process.env.RESEND_API_KEY),
+      fromEmail: process.env.RESEND_FROM_EMAIL || "LuxePets <noreply@luxepets.qd.je>",
+    };
+  }
+
+  // Fallback: Replit connector
   try {
     const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
     const xReplitToken = process.env.REPL_IDENTITY
@@ -37,7 +46,7 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
 
     return {
       client: new Resend(settings.api_key),
-      fromEmail: settings.from_email || "LuxePets <noreply@luxepets.com.br>",
+      fromEmail: settings.from_email || "LuxePets <noreply@luxepets.qd.je>",
     };
   } catch {
     return null;
