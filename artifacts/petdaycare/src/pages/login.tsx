@@ -31,7 +31,7 @@ export default function Login() {
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
       </div>
 
-      <div className="relative z-10 w-full max-w-md mx-auto flex flex-col justify-center px-4 py-12 lg:ml-[15%]">
+      <div className="relative z-10 w-full max-w-md mx-auto flex flex-col justify-center px-4 py-12">
         <div className="mb-8 flex items-center gap-3">
           <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.5)]">
             <Dog className="h-7 w-7 text-white" />
