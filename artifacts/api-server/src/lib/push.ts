@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import { db } from "@workspace/db";
 import { pushSubscriptionsTable, usersTable } from "@workspace/db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY!;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY!;
@@ -48,7 +48,7 @@ export async function sendPushToRole(
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
   const users = await db.select({ id: usersTable.id })
     .from(usersTable)
-    .where(eq(usersTable.crecheId, crecheId));
+    .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, role)));
   const userIds = users.map((u) => u.id);
   if (!userIds.length) return;
   const subs = await db.select().from(pushSubscriptionsTable)

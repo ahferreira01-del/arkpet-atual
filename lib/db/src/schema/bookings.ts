@@ -2,7 +2,7 @@ import { pgTable, serial, text, integer, timestamp, pgEnum, date, boolean, real,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const bookingTypeEnum = pgEnum("booking_type", ["day_use", "lodging", "visita"]);
+export const bookingTypeEnum = pgEnum("booking_type", ["day_use", "lodging", "visita", "pacote_4dias", "pacote_8dias", "pacote_20dias", "visita_taxi", "creche_taxi"]);
 export const bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "active", "completed", "cancelled"]);
 
 export const bookingsTable = pgTable("bookings", {

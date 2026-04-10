@@ -14,12 +14,17 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
-type BookingType = "day_use" | "lodging" | "visita";
+type BookingType = "day_use" | "lodging" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
 
 const bookingTypeLabel: Record<string, string> = {
   day_use: "Day Use",
   lodging: "Hospedagem",
   visita: "Visita",
+  pacote_4dias: "Pacote 4 Dias",
+  pacote_8dias: "Pacote 8 Dias",
+  pacote_20dias: "Pacote 20 Dias",
+  visita_taxi: "Visita + Táxi",
+  creche_taxi: "Creche + Táxi",
 };
 
 const statusVariant: Record<BookingStatus, any> = {
@@ -518,6 +523,11 @@ export default function Bookings() {
               <option value="day_use">Day Use (volta no mesmo dia)</option>
               <option value="lodging">Hospedagem (pernoite)</option>
               <option value="visita">Visita (avaliação ou consulta)</option>
+              <option value="pacote_4dias">Pacote 4 Dias</option>
+              <option value="pacote_8dias">Pacote 8 Dias</option>
+              <option value="pacote_20dias">Pacote 20 Dias</option>
+              <option value="visita_taxi">Visita + Táxi</option>
+              <option value="creche_taxi">Creche + Táxi</option>
             </select>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

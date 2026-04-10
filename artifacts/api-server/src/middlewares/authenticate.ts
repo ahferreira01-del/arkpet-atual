@@ -31,6 +31,10 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     res.status(401).json({ error: "User not found" });
     return;
   }
+  if (user.isActive === false) {
+    res.status(401).json({ error: "Conta desativada. Entre em contato com o administrador." });
+    return;
+  }
   req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
   next();
 }

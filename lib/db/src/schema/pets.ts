@@ -27,6 +27,7 @@ export const petsTable = pgTable("pets", {
   feedingSchedule: jsonb("feeding_schedule"),
   walkSchedule: jsonb("walk_schedule"),
   qrToken: text("qr_token").unique().default(sql`gen_random_uuid()`),
+  isCastrated: boolean("is_castrated").notNull().default(false),
   status: petStatusEnum("status").notNull().default("active"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

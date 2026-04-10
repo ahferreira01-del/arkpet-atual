@@ -91,6 +91,7 @@ export default function PetDetail({ id }: { id: number }) {
           allergies: (fd.get("allergies") as string) || null,
           specialNeeds: (fd.get("specialNeeds") as string) || null,
           temperament: (fd.get("temperament") as any) || null,
+          isCastrated: fd.get("isCastrated") === "on",
         },
       },
       {
@@ -174,6 +175,9 @@ export default function PetDetail({ id }: { id: number }) {
                 <AlertCircle className="w-3 h-3 mr-1" /> Necessidades especiais
               </Badge>
             )}
+            <Badge variant="outline" className={pet.isCastrated ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-white/5 text-muted-foreground"}>
+              {pet.isCastrated ? "✓ Castrado" : "Não castrado"}
+            </Badge>
           </div>
         </div>
 
@@ -290,6 +294,13 @@ export default function PetDetail({ id }: { id: number }) {
             <label className="text-sm font-medium">Necessidades Especiais</label>
             <Input name="specialNeeds" defaultValue={pet.specialNeeds || ""} placeholder="Ex: ração medicamentosa..." />
           </div>
+          <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/8 transition-colors">
+            <input type="checkbox" name="isCastrated" defaultChecked={!!pet.isCastrated} className="h-4 w-4 rounded accent-primary" />
+            <div>
+              <p className="text-sm font-medium text-white">Castrado(a)</p>
+              <p className="text-xs text-muted-foreground">Marque se o pet já foi castrado</p>
+            </div>
+          </label>
           <div className="pt-4 flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>Cancelar</Button>
             <Button type="submit" isLoading={updatePetMutation.isPending}>Salvar Alterações</Button>
