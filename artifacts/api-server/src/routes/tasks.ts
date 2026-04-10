@@ -72,6 +72,27 @@ router.post("/", async (req: AuthRequest, res) => {
   res.status(201).json({ ...task, petName: null, assignedToName: null });
 });
 
+// Batch-complete all pending tasks for a specific pet
+router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
+  const crecheId = parseInt(req.params.crecheId);
+  const petId = parseInt(req.params.petId);
+
+  const updated = await db.update(tasksTable).set({
+    status: "completed",
+    completedAt: new Date(),
+    completedBy: req.user?.name,
+    notes: "Concluído automaticamente no check-out.",
+  }).where(
+    and(
+      eq(tasksTable.crecheId, crecheId),
+      eq(tasksTable.petId, petId),
+      eq(tasksTable.status, "pending"),
+    )
+  ).returning({ id: tasksTable.id });
+
+  res.json({ completed: updated.length });
+});
+
 router.post("/:taskId/complete", async (req: AuthRequest, res) => {
   const crecheId = parseInt(req.params.crecheId);
   const taskId = parseInt(req.params.taskId);

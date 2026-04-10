@@ -262,7 +262,7 @@ export default function StaffDashboard() {
   const queryClient = useQueryClient();
   const search = useSearch();
   const params = new URLSearchParams(search);
-  const [onlyPresent, setOnlyPresent] = useState(() => params.get("filter") === "present");
+  const [onlyPresent, setOnlyPresent] = useState(() => params.get("filter") !== "all");
   const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
 
   const { data: tasks, isLoading } = useListTasks(crecheId);
