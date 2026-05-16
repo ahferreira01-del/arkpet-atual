@@ -1,4 +1,4 @@
-const CACHE_NAME = "luxepets-v5";
+const CACHE_NAME = "arkpet-v6";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -72,15 +72,15 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "LuxePets", body: event.data ? event.data.text() : "" };
+    data = { title: "ArkPet", body: event.data ? event.data.text() : "" };
   }
 
-  const title = data.title || "LuxePets";
+  const title = data.title || "ArkPet";
   const options = {
     body: data.body || "",
     icon: data.icon || "/icons/icon.svg",
     badge: data.badge || "/icons/icon.svg",
-    tag: data.tag || "luxepets-notification",
+    tag: data.tag || "arkpet-notification",
     data: data.data || {},
     vibrate: [100, 50, 100],
     actions: [],

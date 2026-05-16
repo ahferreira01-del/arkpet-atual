@@ -1,7 +1,7 @@
 // Resend email service via Replit connector
 import { Resend } from "resend";
 
-const APP_URL = process.env.APP_URL || "https://luxepets.replit.app";
+const APP_URL = process.env.APP_URL || "https://pet-daycare-master.replit.app";
 
 const ROLE_LABELS: Record<string, string> = {
   creche_admin: "Administrador de Creche",
@@ -15,7 +15,7 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
   if (process.env.RESEND_API_KEY) {
     return {
       client: new Resend(process.env.RESEND_API_KEY),
-      fromEmail: process.env.RESEND_FROM_EMAIL || "LuxePets <noreply@luxepets.qd.je>",
+      fromEmail: process.env.RESEND_FROM_EMAIL || "ArkPet <noreply@arkpet.com.br>",
     };
   }
 
@@ -46,7 +46,7 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
 
     return {
       client: new Resend(settings.api_key),
-      fromEmail: settings.from_email || "LuxePets <noreply@luxepets.qd.je>",
+      fromEmail: settings.from_email || "ArkPet <noreply@arkpet.com.br>",
     };
   } catch {
     return null;
@@ -94,10 +94,10 @@ function buildWelcomeHtml(params: WelcomeEmailParams): string {
     <div class="card">
       <div class="logo">
         <div class="logo-icon">🐾</div>
-        <div class="logo-text">LuxePets</div>
+        <div class="logo-text">ArkPet</div>
       </div>
 
-      <h1>Bem-vindo(a) ao LuxePets, ${name}!</h1>
+      <h1>Bem-vindo(a) ao ArkPet, ${name}!</h1>
       <p>Sua conta foi criada com sucesso${crecheName ? ` na creche <strong style="color:#e2e8f0">${crecheName}</strong>` : ""}.</p>
       <span class="badge">${roleLabel}</span>
 
@@ -114,7 +114,7 @@ function buildWelcomeHtml(params: WelcomeEmailParams): string {
       </div>
 
       <div style="text-align:center">
-        <a href="${APP_URL}" class="btn">Acessar o LuxePets →</a>
+        <a href="${APP_URL}" class="btn">Acessar o ArkPet →</a>
       </div>
 
       <div class="warning">
@@ -122,7 +122,7 @@ function buildWelcomeHtml(params: WelcomeEmailParams): string {
       </div>
     </div>
     <div class="footer">
-      <p>© ${new Date().getFullYear()} LuxePets. Todos os direitos reservados.</p>
+      <p>© ${new Date().getFullYear()} ArkPet. Todos os direitos reservados.</p>
       <p>Se você não esperava este e-mail, pode ignorá-lo com segurança.</p>
     </div>
   </div>
@@ -142,7 +142,7 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void
   const { error } = await resend.client.emails.send({
     from: resend.fromEmail,
     to: params.email,
-    subject: "Bem-vindo(a) ao LuxePets! Sua conta foi criada",
+    subject: "Bem-vindo(a) ao ArkPet! Sua conta foi criada",
     html: buildWelcomeHtml(params),
   });
 
@@ -179,7 +179,7 @@ p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
 </style></head>
 <body><div class="container"><div class="card">
   <h1>🐾 Redefinição de senha</h1>
-  <p>Olá, <strong style="color:#e2e8f0">${params.name}</strong>. Recebemos uma solicitação para redefinir sua senha no LuxePets.</p>
+  <p>Olá, <strong style="color:#e2e8f0">${params.name}</strong>. Recebemos uma solicitação para redefinir sua senha no ArkPet.</p>
   <div style="text-align:center"><a href="${params.resetLink}" class="btn">Redefinir minha senha →</a></div>
   <p style="font-size:13px;color:#64748b">Este link expira em 1 hora. Se você não solicitou a redefinição, ignore este e-mail com segurança.</p>
 </div></div></body></html>`.trim();
@@ -187,7 +187,7 @@ p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
   await resend.client.emails.send({
     from: resend.fromEmail,
     to: params.email,
-    subject: "Redefinição de senha — LuxePets",
+    subject: "Redefinição de senha — ArkPet",
     html,
   });
 }

@@ -208,7 +208,7 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
 
 function generateTempPassword() {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  return "LuxePets@" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  return "ArkPet@" + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
 export default function TutorsPage() {

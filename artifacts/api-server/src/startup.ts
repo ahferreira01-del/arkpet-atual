@@ -16,8 +16,8 @@ export async function initializeDatabase() {
 
   console.log("[startup] Banco vazio — criando usuário master_admin inicial...");
 
-  const masterEmail = process.env.MASTER_ADMIN_EMAIL ?? "master@luxepets.com.br";
-  const masterPassword = process.env.MASTER_ADMIN_PASSWORD ?? "LuxePets@2024!";
+  const masterEmail = process.env.MASTER_ADMIN_EMAIL ?? "master@arkpet.com.br";
+  const masterPassword = process.env.MASTER_ADMIN_PASSWORD ?? "ArkPet@2024!";
   const masterName = process.env.MASTER_ADMIN_NAME ?? "Master Admin";
 
   await db.insert(usersTable).values({

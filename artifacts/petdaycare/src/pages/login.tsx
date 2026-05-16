@@ -36,7 +36,7 @@ export default function Login() {
           <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.5)]">
             <Dog className="h-7 w-7 text-white" />
           </div>
-          <span className="font-display font-bold text-3xl tracking-tight text-white">LuxePets</span>
+          <span className="font-display font-bold text-3xl tracking-tight text-white">ArkPet</span>
         </div>
 
         <Card className="border-white/10 shadow-2xl shadow-black/50 backdrop-blur-2xl bg-black/40">

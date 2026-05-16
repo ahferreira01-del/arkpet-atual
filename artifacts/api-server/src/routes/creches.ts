@@ -73,7 +73,7 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), as
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) { res.status(409).json({ error: "E-mail já cadastrado" }); return; }
   const [user] = await db.insert(usersTable).values({
-    name, email, passwordHash: hashPassword(password || "LuxePets@123"),
+    name, email, passwordHash: hashPassword(password || "ArkPet@123"),
     role: "tutor", crecheId, mustChangePassword: true, isActive: true,
   }).returning();
   // Send welcome email (non-blocking)

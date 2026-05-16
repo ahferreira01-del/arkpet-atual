@@ -95,7 +95,7 @@ export default function PetsDirectory() {
     } else if (tutorMode === "existing") {
       tutorId = selectedTutorId ? parseInt(selectedTutorId) : 1;
     } else {
-      const tempPass = "LuxePets@" + Math.random().toString(36).slice(2, 8).toUpperCase();
+      const tempPass = "ArkPet@" + Math.random().toString(36).slice(2, 8).toUpperCase();
       try {
         const newUser = await createUserMutation.mutateAsync({
           name: newTutorName,

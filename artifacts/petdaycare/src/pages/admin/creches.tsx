@@ -92,7 +92,7 @@ export default function AdminCreches() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-display font-bold text-white">Creches</h1>
-          <p className="text-muted-foreground mt-1">Gerencie todas as unidades da rede LuxePets.</p>
+          <p className="text-muted-foreground mt-1">Gerencie todas as unidades da rede ArkPet.</p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Nova Creche
@@ -206,7 +206,7 @@ export default function AdminCreches() {
             <EmptyState
               icon={Building2}
               title="Nenhuma creche cadastrada"
-              description="Crie a primeira unidade da rede LuxePets."
+              description="Crie a primeira unidade da rede ArkPet."
               action={{ label: "Criar Creche", onClick: () => setIsCreateOpen(true) }}
             />
           </div>
@@ -238,7 +238,7 @@ export default function AdminCreches() {
               <label className="text-sm font-medium flex items-center gap-1.5">
                 <Mail className="h-3.5 w-3.5" /> Email
               </label>
-              <Input name="email" type="email" required placeholder="creche@luxepets.com.br" />
+              <Input name="email" type="email" required placeholder="creche@arkpet.com.br" />
             </div>
           </div>
           <div className="space-y-2">
@@ -257,7 +257,7 @@ export default function AdminCreches() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Email do Admin</label>
-              <Input name="adminEmail" type="email" placeholder="ana@luxepets.com.br" />
+              <Input name="adminEmail" type="email" placeholder="ana@arkpet.com.br" />
             </div>
           </div>
           <div className="space-y-2">
@@ -314,7 +314,7 @@ export default function AdminCreches() {
                 <Input
                   value={editForm.email}
                   onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="creche@luxepets.com.br"
+                  placeholder="creche@arkpet.com.br"
                 />
               </div>
             </div>

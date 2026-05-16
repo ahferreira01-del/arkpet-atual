@@ -1,6 +1,6 @@
 {
-  "name": "LuxePets — Pet Daycare",
-  "short_name": "LuxePets",
+  "name": "ArkPet — Pet Daycare",
+  "short_name": "ArkPet",
   "description": "Plataforma de gestão para pet daycare — reservas, pets e equipe em um só lugar.",
   "start_url": "./",
   "scope": "./",

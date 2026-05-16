@@ -76,7 +76,7 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)]">
           <Dog className="h-6 w-6 text-white" />
         </div>
-        <span className="font-display font-bold text-xl tracking-tight text-white">LuxePets</span>
+        <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
       </div>
 
       <div className="px-4 py-2 mb-4">

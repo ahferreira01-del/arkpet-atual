@@ -49,7 +49,7 @@ export default function ChangePassword() {
           <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.4)] mb-4">
             <Dog className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-display font-bold text-white">LuxePets</h1>
+          <h1 className="text-3xl font-display font-bold text-white">ArkPet</h1>
         </div>
 
         <div className="glass-panel rounded-3xl p-8 border border-white/10">

@@ -42,13 +42,13 @@ export function Header({ user }: HeaderProps) {
 
   return (
     <header className="h-16 md:h-20 border-b border-white/5 bg-background/50 backdrop-blur-xl z-20 flex items-center justify-between px-4 md:px-6 lg:px-8 sticky top-0">
-      {/* Mobile: LuxePets logo | Desktop: greeting */}
+      {/* Mobile: ArkPet logo | Desktop: greeting */}
       <div className="flex items-center gap-3">
         <div className="flex md:hidden items-center gap-2.5">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_14px_rgba(139,92,246,0.4)]">
             <Dog className="h-4.5 w-4.5 text-white" style={{ height: 18, width: 18 }} />
           </div>
-          <span className="font-display font-bold text-lg text-white">LuxePets</span>
+          <span className="font-display font-bold text-lg text-white">ArkPet</span>
         </div>
 
         <div className="hidden md:block">

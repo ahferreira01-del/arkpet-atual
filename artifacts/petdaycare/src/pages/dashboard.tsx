@@ -711,7 +711,7 @@ function MasterAdminDashboard() {
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
           <h1 className="text-3xl font-display font-bold text-white">{greeting}, Master!</h1>
-          <p className="text-muted-foreground mt-1">Visão global de toda a rede LuxePets.</p>
+          <p className="text-muted-foreground mt-1">Visão global de toda a rede ArkPet.</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 self-start sm:self-auto">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
