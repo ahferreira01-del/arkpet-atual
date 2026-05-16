@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { UserProfile } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import {
   LayoutDashboard,
   Users,
@@ -14,6 +15,7 @@ import {
   Settings,
   Footprints,
   QrCode,
+  LogOut,
 } from "lucide-react";
 
 interface BottomNavProps {
@@ -43,6 +45,7 @@ function useChatUnread(user: UserProfile) {
 export function BottomNav({ user }: BottomNavProps) {
   const [location] = useLocation();
   const unreadChat = useChatUnread(user);
+  const { logout } = useAuth();
 
   const getLinks = () => {
     switch (user.role) {
@@ -51,6 +54,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Início", href: "/", icon: LayoutDashboard },
           { name: "Creches", href: "/admin/creches", icon: Building2 },
           { name: "Usuários", href: "/admin/users", icon: Users },
+          { name: "Sair", href: null, icon: LogOut, action: logout },
         ];
       case "creche_admin":
         return [
@@ -94,44 +98,59 @@ export function BottomNav({ user }: BottomNavProps) {
         <div className="flex items-stretch justify-around">
           {links.map((link) => {
             const isActive =
-              location === link.href ||
-              (link.href !== "/" && location.startsWith(link.href));
+              link.href !== null &&
+              (location === link.href ||
+              (link.href !== "/" && location.startsWith(link.href)));
             const badge = (link as any).badge ?? 0;
-            return (
-              <Link key={link.href} href={link.href} className="flex-1">
+            const action = (link as any).action;
+
+            const inner = (
+              <div
+                className={cn(
+                  "flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
+                  isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
+                )}
+              >
                 <div
                   className={cn(
-                    "flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
-                    isActive ? "text-primary" : "text-muted-foreground"
+                    "relative flex items-center justify-center h-7 w-7 rounded-lg transition-all duration-200",
+                    isActive && "bg-primary/20 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                   )}
                 >
-                  <div
+                  <link.icon
                     className={cn(
-                      "relative flex items-center justify-center h-7 w-7 rounded-lg transition-all duration-200",
-                      isActive && "bg-primary/20 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                      "h-5 w-5 transition-transform duration-200",
+                      isActive && "scale-110"
                     )}
-                  >
-                    <link.icon
-                      className={cn(
-                        "h-5 w-5 transition-transform duration-200",
-                        isActive && "scale-110"
-                      )}
-                    />
-                    {badge > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
-                        {badge > 99 ? "99+" : badge}
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={cn(
-                      "text-[10px] font-medium leading-none transition-all duration-200",
-                      isActive ? "text-primary" : "text-muted-foreground"
-                    )}
-                  >
-                    {link.name}
-                  </span>
+                  />
+                  {badge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  )}
                 </div>
+                <span
+                  className={cn(
+                    "text-[10px] font-medium leading-none transition-all duration-200",
+                    isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
+                  )}
+                >
+                  {link.name}
+                </span>
+              </div>
+            );
+
+            if (action) {
+              return (
+                <button key={link.name} onClick={action} className="flex-1">
+                  {inner}
+                </button>
+              );
+            }
+
+            return (
+              <Link key={link.href!} href={link.href!} className="flex-1">
+                {inner}
               </Link>
             );
           })}
