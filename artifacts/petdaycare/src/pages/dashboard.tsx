@@ -76,9 +76,11 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const firstName = user?.name?.split(" ")[0] || "Admin";
 
   const checkedIn = pets?.filter((p) => p.isCheckedIn) || [];
+  const checkedInIds = new Set(checkedIn.map((p) => p.id).filter((id): id is number => id != null));
   const pendingBookings = bookings?.filter((b) => b.status === "pending") || [];
   const activeWalks = (walks || []).filter((w: any) => w.status === "in_progress");
-  const todayTasks = (tasks || []).slice(0, 4);
+  const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));
+  const todayTasks = activeTasks.slice(0, 4);
   const staffCount = (staff || []).filter((s: any) => s.isActive !== false).length;
 
   const confirmBooking = (bookingId: number) => {
@@ -159,11 +161,11 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
         <Link href="/staff?filter=present">
           <StatCard
             title="Tarefas Pendentes"
-            value={stats?.pendingTasks?.toString() ?? todayTasks.length.toString()}
+            value={activeTasks.length.toString()}
             subValue="para hoje"
             icon={<CheckSquare className="h-5 w-5" />}
-            iconBg={(tasks?.length || 0) > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
-            iconColor={(tasks?.length || 0) > 0 ? "text-red-400" : "text-emerald-400"}
+            iconBg={activeTasks.length > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
+            iconColor={activeTasks.length > 0 ? "text-red-400" : "text-emerald-400"}
             clickable
           />
         </Link>
@@ -423,6 +425,8 @@ function StaffDashboard({ user }: { user: any }) {
   const { data: tasks, isLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus });
   const { data: pets } = useListPets(crecheId);
   const checkedIn = pets?.filter((p) => p.isCheckedIn) || [];
+  const checkedInIds = new Set(checkedIn.map((p) => p.id).filter((id): id is number => id != null));
+  const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
@@ -446,8 +450,8 @@ function StaffDashboard({ user }: { user: any }) {
               <CheckSquare className="h-5 w-5 text-amber-400" />
             </div>
             <p className="text-sm font-semibold text-white">Tarefas</p>
-            {(tasks?.length || 0) > 0 && (
-              <Badge variant="warning" className="text-xs">{tasks?.length}</Badge>
+            {activeTasks.length > 0 && (
+              <Badge variant="warning" className="text-xs">{activeTasks.length}</Badge>
             )}
           </div>
         </Link>
@@ -481,9 +485,9 @@ function StaffDashboard({ user }: { user: any }) {
           </div>
           {isLoading ? (
             <div className="text-center py-4 text-muted-foreground">Carregando...</div>
-          ) : tasks?.length ? (
+          ) : activeTasks.length ? (
             <div className="space-y-2.5">
-              {tasks.slice(0, 6).map((task) => (
+              {activeTasks.slice(0, 6).map((task) => (
                 <Link key={task.id} href="/staff">
                   <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all cursor-pointer group">
                     <div className="min-w-0">
