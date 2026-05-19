@@ -74,7 +74,7 @@ export function Sidebar({ user }: SidebarProps) {
     <div className="w-64 glass-panel border-y-0 border-l-0 border-r-white/10 hidden md:flex flex-col h-full z-10 relative">
       <div className="p-6 flex items-center gap-3">
         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-          <Dog className="h-6 w-6 text-white" />
+          <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8" />
         </div>
         <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
       </div>

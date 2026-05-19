@@ -46,7 +46,7 @@ export function Header({ user }: HeaderProps) {
       <div className="flex items-center gap-3">
         <div className="flex md:hidden items-center gap-2.5">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_14px_rgba(139,92,246,0.4)]">
-            <Dog className="h-4.5 w-4.5 text-white" style={{ height: 18, width: 18 }} />
+            <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" style={{ height: 22, width: 22 }} />
           </div>
           <span className="font-display font-bold text-lg text-white">ArkPet</span>
         </div>

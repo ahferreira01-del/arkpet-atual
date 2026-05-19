@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dog } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -32,11 +31,16 @@ export default function Login() {
       </div>
 
       <div className="relative z-10 w-full max-w-md mx-auto flex flex-col justify-center px-4 py-12">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_30px_rgba(139,92,246,0.5)]">
-            <Dog className="h-7 w-7 text-white" />
-          </div>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <img
+            src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+            alt="ArkPet"
+            className="h-24 w-24 mb-3 drop-shadow-[0_0_24px_rgba(100,116,139,0.45)]"
+          />
           <span className="font-display font-bold text-3xl tracking-tight text-white">ArkPet</span>
+          <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
+            Aplicativo de agendamento de cães e gatos em creche
+          </p>
         </div>
 
         <Card className="border-white/10 shadow-2xl shadow-black/50 backdrop-blur-2xl bg-black/40">

@@ -182,7 +182,9 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
     currentOccupancy: creche.currentOccupancy,
     maxCapacity: creche.maxCapacity,
     todayCheckIns: checkedInPets?.count || 0,
-    todayCheckOuts: 0,
+    todayCheckOuts: (await db.select({ count: count() }).from(bookingsTable)
+      .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "completed"),
+        gte(bookingsTable.checkOutTime as any, todayStart), lt(bookingsTable.checkOutTime as any, todayEnd))))[0]?.count || 0,
     pendingBookings: pendingBookings?.count || 0,
     activeBookings: activeBookings?.count || 0,
     pendingTasks: pendingTasks?.count || 0,
