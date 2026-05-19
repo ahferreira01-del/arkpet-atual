@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { crechesTable, usersTable, petsTable, bookingsTable, tasksTable } from "@workspace/db/schema";
-import { eq, and, count, sql } from "drizzle-orm";
+import { eq, and, count, sql, gte, lt } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { hashPassword } from "../lib/auth.js";
 import { sendWelcomeEmail } from "../services/email.js";
@@ -170,10 +170,12 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
     .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "pending")));
   const [activeBookings] = await db.select({ count: count() }).from(bookingsTable)
     .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "active")));
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
   const [pendingTasks] = await db.select({ count: count() }).from(tasksTable)
-    .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "pending")));
+    .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "pending"), gte(tasksTable.scheduledFor, todayStart), lt(tasksTable.scheduledFor, todayEnd)));
   const [completedTasks] = await db.select({ count: count() }).from(tasksTable)
-    .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "completed")));
+    .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "completed"), gte(tasksTable.scheduledFor, todayStart), lt(tasksTable.scheduledFor, todayEnd)));
 
   res.json({
     crecheId: id,

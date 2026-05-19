@@ -9,6 +9,8 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 
 router.get("/", async (req: AuthRequest, res) => {
+  // Tutors do not have access to the internal task list
+  if (req.user?.role === "tutor") { res.json([]); return; }
   const crecheId = parseInt(req.params.crecheId);
   const { status, assignedTo } = req.query;
   let conditions: any[] = [eq(tasksTable.crecheId, crecheId)];

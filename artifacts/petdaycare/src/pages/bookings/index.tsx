@@ -14,10 +14,12 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
-type BookingType = "day_use" | "lodging" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
+type BookingType = "day_use" | "lodging" | "banho" | "hospedagem_banho" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
 
 const bookingTypeLabel: Record<string, string> = {
   day_use: "Day Use",
+  banho: "Banho",
+  hospedagem_banho: "Hospedagem + Banho",
   lodging: "Hospedagem",
   visita: "Visita",
   pacote_4dias: "Pacote 4 Dias",
@@ -372,6 +374,17 @@ export default function Bookings() {
                           <Navigation className="mr-1 h-3 w-3" /> A caminho
                         </Button>
                       )}
+                      {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 text-xs"
+                          onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                          isLoading={updateMutation.isPending}
+                        >
+                          Cancelar reserva
+                        </Button>
+                      )}
                       {!isTutor && (
                         <>
                           {booking.status === "confirmed" && (
@@ -476,6 +489,17 @@ export default function Bookings() {
                                 <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
                               </Button>
                             )}
+                            {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-destructive/40 text-destructive/80 hover:bg-destructive/10"
+                                onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                isLoading={updateMutation.isPending}
+                              >
+                                Cancelar reserva
+                              </Button>
+                            )}
                             {!isTutor && (
                               <>
                                 {booking.status === "confirmed" && (
@@ -558,6 +582,8 @@ export default function Bookings() {
             >
               <option value="day_use">Day Use (volta no mesmo dia)</option>
               <option value="lodging">Hospedagem (pernoite)</option>
+              <option value="banho">Banho</option>
+              <option value="hospedagem_banho">Hospedagem + Banho</option>
               <option value="visita">Visita (avaliação ou consulta)</option>
               <option value="pacote_4dias">Pacote 4 Dias</option>
               <option value="pacote_8dias">Pacote 8 Dias</option>

@@ -38,7 +38,13 @@ router.post("/", async (req: AuthRequest, res) => {
   }).returning();
   const enriched = await getBookingWithNames(booking);
 
-  const typeLabel = type === "lodging" ? "Hospedagem" : "Day Use";
+  const typeLabels: Record<string, string> = {
+    lodging: "Hospedagem", banho: "Banho", hospedagem_banho: "Hospedagem + Banho",
+    day_use: "Day Use", visita: "Visita", pacote_4dias: "Pacote 4 Dias",
+    pacote_8dias: "Pacote 8 Dias", pacote_20dias: "Pacote 20 Dias",
+    visita_taxi: "Visita + Táxi", creche_taxi: "Creche + Táxi",
+  };
+  const typeLabel = typeLabels[type] ?? type;
   const petName = enriched.petName ?? "Pet";
 
   // Notify admins of the creche
@@ -78,11 +84,23 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
   const { status, notes, price } = req.body;
   const updates: Record<string, unknown> = {};
 
-  // Tutors cannot change booking status — only creche_admin and staff can
   if (status !== undefined) {
     if (req.user.role === "tutor") {
-      res.status(403).json({ error: "Tutores não podem alterar o status de reservas." });
-      return;
+      // Tutors may only cancel their own pending or confirmed bookings
+      if (status !== "cancelled") {
+        res.status(403).json({ error: "Tutores só podem cancelar reservas." });
+        return;
+      }
+      const [existing] = await db.select().from(bookingsTable)
+        .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.crecheId, crecheId))).limit(1);
+      if (!existing || existing.tutorId !== req.user.id) {
+        res.status(403).json({ error: "Reserva não encontrada." });
+        return;
+      }
+      if (!["pending", "confirmed"].includes(existing.status)) {
+        res.status(400).json({ error: "Só é possível cancelar reservas pendentes ou confirmadas." });
+        return;
+      }
     }
     updates.status = status;
   }
