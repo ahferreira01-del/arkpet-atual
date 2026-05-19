@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       retry: false,
       refetchOnWindowFocus: false,
       enabled: !!localStorage.getItem("auth_token"),
-    }
+    } as any,
   });
 
   const loginMutation = useLogin({

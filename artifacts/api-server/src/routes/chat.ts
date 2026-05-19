@@ -11,7 +11,7 @@ router.use(authenticate);
 // GET /unread — total unread count for current user
 router.get("/unread", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
 
   const rows = await db.select({ id: chatMessagesTable.id, petId: chatMessagesTable.petId })
     .from(chatMessagesTable)
@@ -44,7 +44,7 @@ router.get("/unread", async (req: AuthRequest, res) => {
 // POST /mark-read — mark all messages in a pet conversation as read
 router.post("/mark-read", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId } = req.body;
 
   const conditions: any[] = [
@@ -63,7 +63,7 @@ router.post("/mark-read", async (req: AuthRequest, res) => {
 
 // GET / — list messages
 router.get("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId, limit } = req.query;
   let conditions: any[] = [eq(chatMessagesTable.crecheId, crecheId)];
   if (petId) conditions.push(eq(chatMessagesTable.petId, parseInt(petId as string)));
@@ -91,7 +91,7 @@ router.get("/", async (req: AuthRequest, res) => {
 // POST / — send message
 router.post("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId, content, mediaUrl } = req.body;
   const [msg] = await db.insert(chatMessagesTable).values({
     crecheId, petId, senderId: req.user.id, content, mediaUrl,

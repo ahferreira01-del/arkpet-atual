@@ -92,7 +92,7 @@ export default function PetDetail({ id }: { id: number }) {
           specialNeeds: (fd.get("specialNeeds") as string) || null,
           temperament: (fd.get("temperament") as any) || null,
           isCastrated: fd.get("isCastrated") === "on",
-        },
+        } as any,
       },
       {
         onSuccess: () => {
@@ -175,8 +175,8 @@ export default function PetDetail({ id }: { id: number }) {
                 <AlertCircle className="w-3 h-3 mr-1" /> Necessidades especiais
               </Badge>
             )}
-            <Badge variant="outline" className={pet.isCastrated ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-white/5 text-muted-foreground"}>
-              {pet.isCastrated ? "✓ Castrado" : "Não castrado"}
+            <Badge variant="outline" className={(pet as any).isCastrated ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-white/5 text-muted-foreground"}>
+              {(pet as any).isCastrated ? "✓ Castrado" : "Não castrado"}
             </Badge>
           </div>
         </div>
@@ -295,7 +295,7 @@ export default function PetDetail({ id }: { id: number }) {
             <Input name="specialNeeds" defaultValue={pet.specialNeeds || ""} placeholder="Ex: ração medicamentosa..." />
           </div>
           <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/8 transition-colors">
-            <input type="checkbox" name="isCastrated" defaultChecked={!!pet.isCastrated} className="h-4 w-4 rounded accent-primary" />
+            <input type="checkbox" name="isCastrated" defaultChecked={!!(pet as any).isCastrated} className="h-4 w-4 rounded accent-primary" />
             <div>
               <p className="text-sm font-medium text-white">Castrado(a)</p>
               <p className="text-xs text-muted-foreground">Marque se o pet já foi castrado</p>
@@ -331,7 +331,7 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
     <Button
       onClick={() =>
         checkInMutation.mutate(
-          { crecheId, bookingId, data: {} },
+          { crecheId, bookingId } as any,
           { onSuccess: () => queryClient.invalidateQueries() }
         )
       }
@@ -444,9 +444,9 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
         crecheId,
         petId,
         data: {
-          feedingSchedule: editFeeding as any,
-          walkSchedule: editWalk as any,
-        },
+          feedingSchedule: editFeeding,
+          walkSchedule: editWalk,
+        } as any,
       },
       {
         onSuccess: () => {
@@ -474,7 +474,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setEditFeeding([...editFeeding, { time: "12:00", amount: "", notes: "" }])}
+                onClick={() => setEditFeeding([...editFeeding, { time: "12:00", amount: "", foodName: "", notes: "" }])}
               >
                 <Plus className="h-4 w-4 mr-1" /> Adicionar
               </Button>

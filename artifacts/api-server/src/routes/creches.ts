@@ -12,7 +12,7 @@ router.use(authenticate);
 
 // GET tutors (simple list, used internally) — accessible by all authenticated members
 router.get("/:crecheId/tutors", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" });
     return;
@@ -27,7 +27,7 @@ router.get("/:crecheId/tutors", async (req: AuthRequest, res) => {
 
 // GET tutors with full data + pet count — for tutor management page
 router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" });
     return;
@@ -64,7 +64,7 @@ router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin
 
 // POST create tutor
 router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
   }
@@ -83,8 +83,8 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), as
 
 // PATCH toggle tutor active status
 router.patch("/:crecheId/tutors/:tutorId", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const tutorId = parseInt(req.params.tutorId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const tutorId = parseInt(String(req.params.tutorId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
   }
@@ -135,14 +135,14 @@ router.post("/", requireRole("master_admin"), async (req: AuthRequest, res) => {
 });
 
 router.get("/:crecheId", async (req: AuthRequest, res) => {
-  const id = parseInt(req.params.crecheId);
+  const id = parseInt(String(req.params.crecheId));
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Creche not found" }); return; }
   res.json(creche);
 });
 
 router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const id = parseInt(req.params.crecheId);
+  const id = parseInt(String(req.params.crecheId));
   const { name, address, phone, email, maxCapacity, status, logoUrl } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
@@ -157,7 +157,7 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
 });
 
 router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
-  const id = parseInt(req.params.crecheId);
+  const id = parseInt(String(req.params.crecheId));
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -195,7 +195,7 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
 });
 
 router.get("/:crecheId/staff", async (req: AuthRequest, res) => {
-  const id = parseInt(req.params.crecheId);
+  const id = parseInt(String(req.params.crecheId));
   const staff = await db.select({
     id: usersTable.id,
     name: usersTable.name,
@@ -209,7 +209,7 @@ router.get("/:crecheId/staff", async (req: AuthRequest, res) => {
 });
 
 router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const id = parseInt(req.params.crecheId);
+  const id = parseInt(String(req.params.crecheId));
   const { email, name, role, password } = req.body;
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) {

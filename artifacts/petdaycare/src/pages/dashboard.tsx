@@ -65,7 +65,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
   const { data: bookings, isLoading: bookingsLoading } = useListBookings(crecheId);
   const { data: tasks, isLoading: tasksLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus });
-  const { data: walks } = useListWalks(crecheId);
+  const { data: walks } = (useListWalks as any)(crecheId);
   const { data: staff } = useListCrecheStaff(crecheId);
 
   const updateBookingMutation = useUpdateBooking();

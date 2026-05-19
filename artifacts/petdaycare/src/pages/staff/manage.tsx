@@ -223,8 +223,8 @@ export default function ManageStaff() {
     );
   };
 
-  const activeStaff = staff?.filter((s) => s.isActive !== false) || [];
-  const inactiveStaff = staff?.filter((s) => s.isActive === false) || [];
+  const activeStaff = staff?.filter((s) => (s as any).isActive !== false) || [];
+  const inactiveStaff = staff?.filter((s) => (s as any).isActive === false) || [];
   const admins = activeStaff.filter((s) => s.role === "creche_admin");
   const funcionarios = activeStaff.filter((s) => s.role === "staff");
 

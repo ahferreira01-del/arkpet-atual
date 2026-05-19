@@ -8,7 +8,7 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 
 router.get("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { status, tutorId } = req.query;
 
   let conditions = [eq(petsTable.crecheId, crecheId)];
@@ -54,7 +54,7 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
   const [pet] = await db.insert(petsTable).values({
     crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
@@ -64,8 +64,8 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 router.get("/by-qr/:token", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const token = req.params.token;
+  const crecheId = parseInt(String(req.params.crecheId));
+  const token = String(req.params.token);
   const [pet] = await db.select({
     id: petsTable.id,
     crecheId: petsTable.crecheId,
@@ -102,8 +102,8 @@ router.get("/by-qr/:token", async (req: AuthRequest, res) => {
 });
 
 router.get("/:petId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const [pet] = await db.select({
     id: petsTable.id,
     crecheId: petsTable.crecheId,
@@ -136,8 +136,8 @@ router.get("/:petId", async (req: AuthRequest, res) => {
 });
 
 router.put("/:petId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
@@ -158,16 +158,16 @@ router.put("/:petId", async (req: AuthRequest, res) => {
 });
 
 router.get("/:petId/vaccines", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const vaccines = await db.select().from(vaccinesTable)
     .where(and(eq(vaccinesTable.crecheId, crecheId), eq(vaccinesTable.petId, petId)));
   res.json(vaccines);
 });
 
 router.post("/:petId/vaccines", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl } = req.body;
   const [vaccine] = await db.insert(vaccinesTable).values({
     petId, crecheId, name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl,
@@ -176,16 +176,16 @@ router.post("/:petId/vaccines", async (req: AuthRequest, res) => {
 });
 
 router.get("/:petId/medications", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const meds = await db.select().from(medicationsTable)
     .where(and(eq(medicationsTable.crecheId, crecheId), eq(medicationsTable.petId, petId)));
   res.json(meds);
 });
 
 router.post("/:petId/medications", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { name, dosage, frequency, startDate, endDate, times, notes } = req.body;
   const [med] = await db.insert(medicationsTable).values({
     petId, crecheId, name, dosage, frequency, startDate, endDate, times: times || [], notes,
@@ -194,9 +194,9 @@ router.post("/:petId/medications", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/medications/:medicationId/administer", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
-  const medicationId = parseInt(req.params.medicationId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
+  const medicationId = parseInt(String(req.params.medicationId));
   const { administeredBy, notes } = req.body;
   const [med] = await db.update(medicationsTable).set({
     lastAdministered: new Date(),
@@ -211,8 +211,8 @@ router.post("/:petId/medications/:medicationId/administer", async (req: AuthRequ
 });
 
 router.get("/:petId/timeline", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const userId = req.user?.id ?? 0;
   const { db: dbConn } = await import("@workspace/db");
   const { timelineEventsTable, timelineLikesTable } = await import("@workspace/db/schema");
@@ -240,8 +240,8 @@ router.get("/:petId/timeline", async (req: AuthRequest, res) => {
 router.delete("/:petId/timeline/:eventId", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const eventId = parseInt(req.params.eventId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const eventId = parseInt(String(req.params.eventId));
   const { db: dbConn } = await import("@workspace/db");
   const { timelineEventsTable } = await import("@workspace/db/schema");
   await dbConn.delete(timelineEventsTable).where(
@@ -252,7 +252,7 @@ router.delete("/:petId/timeline/:eventId", async (req: AuthRequest, res) => {
 
 router.post("/:petId/timeline/:eventId/like", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const eventId = parseInt(req.params.eventId);
+  const eventId = parseInt(String(req.params.eventId));
   const userId = req.user.id;
   const { db: dbConn } = await import("@workspace/db");
   const { timelineLikesTable } = await import("@workspace/db/schema");
@@ -271,8 +271,8 @@ router.post("/:petId/timeline/:eventId/like", async (req: AuthRequest, res) => {
 
 router.post("/:petId/timeline", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { db: dbConn } = await import("@workspace/db");
   const { timelineEventsTable } = await import("@workspace/db/schema");
   const { type, content, mediaUrl, mediaType } = req.body;
@@ -309,8 +309,8 @@ router.post("/:petId/timeline", async (req: AuthRequest, res) => {
 });
 
 router.get("/:petId/walks", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { db: dbConn } = await import("@workspace/db");
   const { walksTable } = await import("@workspace/db/schema");
   const walks = await dbConn.select({
@@ -333,8 +333,8 @@ router.get("/:petId/walks", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/walks", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
   const { db: dbConn } = await import("@workspace/db");
   const { walksTable } = await import("@workspace/db/schema");
   const { staffId, notes } = req.body;
@@ -345,9 +345,9 @@ router.post("/:petId/walks", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/walks/:walkId/end", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
-  const walkId = parseInt(req.params.walkId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
+  const walkId = parseInt(String(req.params.walkId));
   const { db: dbConn } = await import("@workspace/db");
   const { walksTable } = await import("@workspace/db/schema");
   const now = new Date();

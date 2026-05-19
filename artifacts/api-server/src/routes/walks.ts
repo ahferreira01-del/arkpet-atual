@@ -8,8 +8,8 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 
 router.get("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = req.params.petId ? parseInt(req.params.petId) : (req.query.petId ? parseInt(req.query.petId as string) : null);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = req.params.petId ? parseInt(String(req.params.petId)) : (req.query.petId ? parseInt(req.query.petId as string) : null);
   const conditions: any[] = [eq(walksTable.crecheId, crecheId)];
   if (petId) conditions.push(eq(walksTable.petId, petId));
 
@@ -36,7 +36,7 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.post("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId } = req.body;
   if (!petId) { res.status(400).json({ error: "petId is required" }); return; }
   const [walk] = await db.insert(walksTable).values({
@@ -52,8 +52,8 @@ router.post("/", async (req: AuthRequest, res) => {
 
 router.put("/:walkId/end", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const walkId = parseInt(req.params.walkId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const walkId = parseInt(String(req.params.walkId));
   const { notes } = req.body || {};
   const endTime = new Date();
   const [existing] = await db.select().from(walksTable).where(and(eq(walksTable.id, walkId), eq(walksTable.crecheId, crecheId))).limit(1);

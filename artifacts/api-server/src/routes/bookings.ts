@@ -15,7 +15,7 @@ async function getBookingWithNames(booking: typeof bookingsTable.$inferSelect) {
 }
 
 router.get("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { status, type } = req.query;
   let conditions: any[] = [eq(bookingsTable.crecheId, crecheId)];
   if (req.user?.role === "tutor") conditions.push(eq(bookingsTable.tutorId, req.user.id));
@@ -28,7 +28,7 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.post("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId, type, startDate, endDate, notes, isRecurring, recurringDays, price } = req.body;
   const [pet] = await db.select().from(petsTable).where(eq(petsTable.id, petId)).limit(1);
   const tutorId = req.user.role === "tutor" ? req.user.id : (pet?.tutorId ?? req.user.id);
@@ -69,8 +69,8 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 router.get("/:bookingId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
   const [booking] = await db.select().from(bookingsTable)
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).limit(1);
   if (!booking) { res.status(404).json({ error: "Not found" }); return; }
@@ -79,8 +79,8 @@ router.get("/:bookingId", async (req: AuthRequest, res) => {
 
 router.put("/:bookingId", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
   const { status, notes, price } = req.body;
   const updates: Record<string, unknown> = {};
 
@@ -133,8 +133,8 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
 
 router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
   const { type, etaMinutes } = req.body;
 
   if (!["drop_off", "pickup"].includes(type)) {
@@ -166,8 +166,8 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
 
 router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
 
   const [booking] = await db.select().from(bookingsTable)
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).limit(1);
@@ -189,8 +189,8 @@ router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
 });
 
 router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
   const [booking] = await db.update(bookingsTable).set({
     status: "active", checkInTime: new Date(),
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
@@ -212,8 +212,8 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
 });
 
 router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const bookingId = parseInt(req.params.bookingId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
   const [booking] = await db.update(bookingsTable).set({
     status: "completed", checkOutTime: new Date(),
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();

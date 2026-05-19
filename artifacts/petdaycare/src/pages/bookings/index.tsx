@@ -186,11 +186,11 @@ export default function Bookings() {
         crecheId,
         data: {
           petId: Number(fd.get("petId")),
-          type: (fd.get("type") as BookingType) || "day_use",
+          type: ((fd.get("type") as string) || "day_use") as any,
           startDate: fd.get("startDate") as string,
           endDate: fd.get("endDate") as string || undefined,
           notes: fd.get("notes") as string || undefined,
-        },
+        } as any,
       },
       {
         onSuccess: () => {
@@ -214,7 +214,7 @@ export default function Bookings() {
 
   const handleCheckIn = (bookingId: number) => {
     checkInMutation.mutate(
-      { crecheId, bookingId, data: {} },
+      { crecheId, bookingId } as any,
       { onSuccess: () => queryClient.invalidateQueries() }
     );
   };
@@ -224,7 +224,7 @@ export default function Bookings() {
 
   const doCheckOut = (bookingId: number) => {
     checkOutMutation.mutate(
-      { crecheId, bookingId, data: {} },
+      { crecheId, bookingId } as any,
       {
         onSuccess: () => {
           queryClient.invalidateQueries();
@@ -549,7 +549,7 @@ export default function Bookings() {
             </>
           ) : (
             <EmptyState
-              icon={CalendarDays}
+              icon={Calendar}
               title="Nenhuma reserva encontrada"
               description={statusFilter !== "all" ? `Nenhuma reserva com status "${statusLabel[statusFilter] || statusFilter}".` : isTutor ? "Agende uma visita para seu pet." : "Crie a primeira reserva."}
               action={statusFilter === "all" ? { label: "Nova Reserva", onClick: () => setIsCreateOpen(true) } : undefined}

@@ -11,7 +11,7 @@ router.use(authenticate);
 router.get("/", async (req: AuthRequest, res) => {
   // Tutors do not have access to the internal task list
   if (req.user?.role === "tutor") { res.json([]); return; }
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { status, assignedTo } = req.query;
   let conditions: any[] = [eq(tasksTable.crecheId, crecheId)];
   if (status) conditions.push(eq(tasksTable.status, status as any));
@@ -45,7 +45,7 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   const { petId, assignedToId, type, title, description, scheduledFor, priority } = req.body;
   const [task] = await db.insert(tasksTable).values({
     crecheId, petId, assignedToId, type, title, description,
@@ -76,8 +76,8 @@ router.post("/", async (req: AuthRequest, res) => {
 
 // Batch-complete all pending tasks for a specific pet
 router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const petId = parseInt(req.params.petId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
 
   const updated = await db.update(tasksTable).set({
     status: "completed",
@@ -96,8 +96,8 @@ router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
 });
 
 router.post("/:taskId/complete", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
-  const taskId = parseInt(req.params.taskId);
+  const crecheId = parseInt(String(req.params.crecheId));
+  const taskId = parseInt(String(req.params.taskId));
   const { notes } = req.body || {};
 
   const [before] = await db.select({

@@ -10,7 +10,7 @@ router.use(authenticate);
 
 // GET users by creche (creche_admin or master_admin)
 router.get("/by-creche/:crecheId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(req.params.crecheId);
+  const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.role === "master_admin" || (req.user?.role === "creche_admin" && req.user.crecheId === crecheId)) {
     const users = await db.select({
       id: usersTable.id, name: usersTable.name, email: usersTable.email,
@@ -73,7 +73,7 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
 
 // GET single user
 router.get("/:userId", async (req: AuthRequest, res) => {
-  const userId = parseInt(req.params.userId);
+  const userId = parseInt(String(req.params.userId));
   const [user] = await db.select({
     id: usersTable.id, name: usersTable.name, email: usersTable.email,
     role: usersTable.role, crecheId: usersTable.crecheId, avatarUrl: usersTable.avatarUrl,
@@ -86,7 +86,7 @@ router.get("/:userId", async (req: AuthRequest, res) => {
 
 // PUT update user
 router.put("/:userId", async (req: AuthRequest, res) => {
-  const userId = parseInt(req.params.userId);
+  const userId = parseInt(String(req.params.userId));
   const isSelf = req.user?.id === userId;
   const isAdmin = req.user?.role === "master_admin" || req.user?.role === "creche_admin";
   if (!isSelf && !isAdmin) { res.status(403).json({ error: "Sem permissão" }); return; }
@@ -115,7 +115,7 @@ router.put("/:userId", async (req: AuthRequest, res) => {
 
 // DELETE (deactivate) user
 router.delete("/:userId", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const userId = parseInt(req.params.userId);
+  const userId = parseInt(String(req.params.userId));
   await db.update(usersTable).set({ isActive: false }).where(eq(usersTable.id, userId));
   res.json({ message: "Usuário desativado" });
 });

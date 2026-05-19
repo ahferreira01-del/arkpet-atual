@@ -258,7 +258,7 @@ export default function Settings() {
             <div>
               <p className="text-muted-foreground mb-1">Perfil</p>
               <p className="font-medium text-white capitalize">
-                {{ master_admin: "Master Admin", creche_admin: "Admin de Creche", staff: "Funcionário", tutor: "Tutor" }[user?.role || ""] || user?.role}
+                {({ master_admin: "Master Admin", creche_admin: "Admin de Creche", staff: "Funcionário", tutor: "Tutor" } as Record<string, string>)[user?.role || ""] || user?.role}
               </p>
             </div>
             <div>
