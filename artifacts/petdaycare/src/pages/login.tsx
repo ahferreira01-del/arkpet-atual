@@ -19,39 +19,30 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex relative overflow-hidden bg-background">
-      <div className="absolute inset-0 z-0 opacity-40">
-        <img
-          src={`${import.meta.env.BASE_URL}images/hero-bg.png`}
-          alt="Fundo luxuoso"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/50 to-transparent" />
-      </div>
+    <div className="min-h-screen w-full flex bg-background">
+      <div className="w-full max-w-sm mx-auto flex flex-col justify-center px-6 py-12">
 
-      <div className="relative z-10 w-full max-w-md mx-auto flex flex-col justify-center px-4 py-12">
-        <div className="mb-6 flex flex-col items-center text-center">
+        <div className="mb-8 flex flex-col items-center text-center">
           <img
             src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
             alt="ArkPet"
-            className="h-24 w-24 mb-3 drop-shadow-[0_0_24px_rgba(100,116,139,0.45)]"
+            className="h-20 w-20 mb-4 opacity-90"
           />
-          <span className="font-display font-bold text-3xl tracking-tight text-white">ArkPet</span>
-          <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">
-            Aplicativo de agendamento de cães e gatos em creche
+          <span className="font-display font-bold text-2xl tracking-tight text-foreground">ArkPet</span>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Agendamento de cães e gatos em creche
           </p>
         </div>
 
-        <Card className="border-white/10 shadow-2xl shadow-black/50 backdrop-blur-2xl bg-black/40">
-          <CardHeader>
-            <CardTitle className="text-2xl">Bem-vindo de volta</CardTitle>
-            <CardDescription className="text-gray-400">Entre na sua conta para continuar</CardDescription>
+        <Card className="border-border shadow-md bg-card">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-xl">Bem-vindo de volta</CardTitle>
+            <CardDescription>Entre na sua conta para continuar</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-gray-300">E-mail</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="email">E-mail</Label>
                 <Input
                   id="email"
                   type="email"
@@ -61,10 +52,12 @@ export default function Login() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label htmlFor="password" className="text-gray-300">Senha</Label>
-                  <a href="#" className="text-xs text-primary hover:underline">Esqueceu a senha?</a>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="password">Senha</Label>
+                  <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                    Esqueceu a senha?
+                  </a>
                 </div>
                 <Input
                   id="password"
@@ -74,12 +67,13 @@ export default function Login() {
                   required
                 />
               </div>
-              <Button type="submit" className="w-full mt-4" size="lg" isLoading={isSubmitting}>
+              <Button type="submit" className="w-full mt-2" size="lg" isLoading={isSubmitting}>
                 Entrar
               </Button>
             </form>
           </CardContent>
         </Card>
+
       </div>
     </div>
   );

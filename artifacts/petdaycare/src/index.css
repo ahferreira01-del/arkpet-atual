@@ -33,34 +33,34 @@
 }
 
 :root {
-  /* Dark Glassmorphism Theme — medium gray */
-  --background: 240 8% 14%;
-  --foreground: 210 40% 98%;
-  
-  --card: 240 8% 18%;
-  --card-foreground: 210 40% 98%;
-  
-  --popover: 240 8% 18%;
-  --popover-foreground: 210 40% 98%;
-  
-  --primary: 220 9% 46%;
+  /* Clean Slate — confortável e legível */
+  --background: 220 12% 17%;
+  --foreground: 210 18% 91%;
+
+  --card: 220 12% 22%;
+  --card-foreground: 210 18% 91%;
+
+  --popover: 220 12% 22%;
+  --popover-foreground: 210 18% 91%;
+
+  --primary: 220 9% 50%;
   --primary-foreground: 0 0% 100%;
-  
-  --secondary: 240 8% 23%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 240 8% 23%;
-  --muted-foreground: 240 8% 68%;
-  
-  --accent: 220 9% 62%;
-  --accent-foreground: 210 40% 98%;
-  
-  --destructive: 0 84% 60%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 240 8% 26%;
-  --input: 240 8% 26%;
-  --ring: 220 9% 46%;
+
+  --secondary: 220 12% 28%;
+  --secondary-foreground: 210 18% 91%;
+
+  --muted: 220 12% 28%;
+  --muted-foreground: 220 9% 62%;
+
+  --accent: 220 9% 65%;
+  --accent-foreground: 210 18% 91%;
+
+  --destructive: 0 72% 58%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 12% 30%;
+  --input: 220 12% 26%;
+  --ring: 220 9% 50%;
 }
 
 @layer base {
@@ -76,10 +76,10 @@
   }
 }
 
-/* Custom Scrollbar for luxury feel */
+/* Scrollbar clean */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -92,12 +92,12 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Glassmorphism Utilities */
+/* Glass panel — mais sutil */
 .glass-panel {
-  @apply bg-card/40 backdrop-blur-xl border border-white/5 shadow-2xl shadow-black/50;
+  @apply bg-card/70 backdrop-blur-md border border-white/8 shadow-lg shadow-black/20;
 }
 .glass-button {
-  @apply relative overflow-hidden bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_20px_rgba(255,255,255,0.05)] transition-all duration-300;
+  @apply relative overflow-hidden bg-white/5 border border-white/10 hover:bg-white/8 hover:border-white/18 transition-all duration-200;
 }
 .text-gradient {
   @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
