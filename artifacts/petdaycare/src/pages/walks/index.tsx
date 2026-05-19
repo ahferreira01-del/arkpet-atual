@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { Footprints, Play, Square, Dog, Clock } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -80,17 +81,18 @@ export default function Walks() {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto">
-      <div className="flex justify-between items-start gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Passeios</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">Registre e acompanhe os passeios dos pets.</p>
-        </div>
-        <Button onClick={() => setIsModalOpen(true)} className="flex-shrink-0">
-          <Play className="h-4 w-4 sm:mr-2" />
-          <span className="hidden sm:inline">Iniciar Passeio</span>
-        </Button>
-      </div>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto">
+      <PageHeader
+        title="Passeios"
+        description="Registre e acompanhe os passeios dos pets."
+        icon={Footprints}
+        action={
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Play className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Iniciar Passeio</span>
+          </Button>
+        }
+      />
 
       {/* Active walks */}
       {activeWalks.length > 0 && (

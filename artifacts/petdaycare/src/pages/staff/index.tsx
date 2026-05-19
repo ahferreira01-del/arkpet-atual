@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CheckSquare, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles } from "lucide-react";
+import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
@@ -304,18 +305,17 @@ export default function StaffDashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Tarefas do Dia</h1>
-          <p className="text-muted-foreground mt-1">
-            {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{presentCount} pet{presentCount !== 1 ? "s" : ""} presente{presentCount !== 1 ? "s" : ""}</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Tarefas do Dia"
+        description={format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+        icon={ClipboardList}
+        action={
+          <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+            <Users className="h-4 w-4" />
+            {presentCount} pet{presentCount !== 1 ? "s" : ""} presente{presentCount !== 1 ? "s" : ""}
+          </div>
+        }
+      />
 
       {/* Filter toggle */}
       <div className="flex gap-2">

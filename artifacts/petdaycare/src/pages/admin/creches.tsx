@@ -10,6 +10,7 @@ import {
   Building2, Plus, MapPin, Phone, Users, Mail,
   Pencil, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -89,15 +90,16 @@ export default function AdminCreches() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Creches</h1>
-          <p className="text-muted-foreground mt-1">Gerencie todas as unidades da rede ArkPet.</p>
-        </div>
-        <Button onClick={() => setIsCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Nova Creche
-        </Button>
-      </div>
+      <PageHeader
+        title="Creches"
+        description="Gerencie todas as unidades da rede ArkPet."
+        icon={Building2}
+        action={
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Nova Creche</span>
+          </Button>
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

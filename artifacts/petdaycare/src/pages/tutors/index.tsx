@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound, ChevronRight, PawPrint, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -270,18 +271,17 @@ export default function TutorsPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Tutores</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Gerencie os tutores cadastrados na sua creche.
-          </p>
-        </div>
-        <Button onClick={() => { setShowModal(true); setCreatedPassword(null); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Novo Tutor
-        </Button>
-      </div>
+      <PageHeader
+        title="Tutores"
+        description="Gerencie os tutores cadastrados na sua creche."
+        icon={Users}
+        action={
+          <Button onClick={() => { setShowModal(true); setCreatedPassword(null); }}>
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Novo Tutor</span>
+          </Button>
+        }
+      />
 
       {/* Temp password banner */}
       {createdPassword && createdName && (

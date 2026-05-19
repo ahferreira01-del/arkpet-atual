@@ -5,7 +5,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Send, MessageSquare, Dog, Search } from "lucide-react";
+import { Send, MessageSquare, MessageSquare as MessageCircle, Dog, Search } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -183,17 +184,18 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-3 flex-shrink-0 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Mensagens</h1>
-          <p className="text-sm text-muted-foreground mt-0.5 hidden md:block">
-            Conversas em tempo real vinculadas a cada pet.
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 text-xs text-emerald-400">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          Ao vivo
-        </div>
+      <div className="mb-4 flex-shrink-0">
+        <PageHeader
+          title="Mensagens"
+          description="Conversas em tempo real vinculadas a cada pet."
+          icon={MessageCircle}
+          action={
+            <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+              Ao vivo
+            </div>
+          }
+        />
       </div>
 
       {/* Mobile: pet chips */}

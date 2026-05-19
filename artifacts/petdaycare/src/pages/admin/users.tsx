@@ -10,6 +10,7 @@ import {
   Users, Mail, Building2, Search, UserCheck, UserX,
   AlertCircle, Plus, Eye, EyeOff, KeyRound, Pencil,
 } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -172,17 +173,16 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Usuários</h1>
-          <p className="text-muted-foreground mt-1">
-            {isMaster ? "Todos os usuários registrados na plataforma." : "Usuários da sua creche."}
-          </p>
-        </div>
-        <Button onClick={() => { setCreateError(""); setIsCreateOpen(true); }}>
-          <Plus className="mr-2 h-4 w-4" /> Novo Usuário
-        </Button>
-      </div>
+      <PageHeader
+        title="Usuários"
+        description={isMaster ? "Todos os usuários registrados na plataforma." : "Usuários da sua creche."}
+        icon={Users}
+        action={
+          <Button onClick={() => { setCreateError(""); setIsCreateOpen(true); }}>
+            <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Novo Usuário</span>
+          </Button>
+        }
+      />
 
       {/* Role summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CalendarDays, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList } from "lucide-react";
+import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -275,19 +276,18 @@ export default function Bookings() {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-start gap-3">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-display font-bold text-white">Reservas</h1>
-          <p className="text-muted-foreground mt-0.5 text-sm">
-            {isTutor ? "Suas reservas na creche." : "Gerencie day use e hospedagens."}
-          </p>
-        </div>
-        <Button onClick={() => setIsCreateOpen(true)} className="flex-shrink-0">
-          <Plus className="h-4 w-4 sm:mr-2" />
-          <span className="hidden sm:inline">Nova Reserva</span>
-        </Button>
-      </div>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <PageHeader
+        title="Reservas"
+        description={isTutor ? "Suas reservas na creche." : "Gerencie day use e hospedagens."}
+        icon={Calendar}
+        action={
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">Nova Reserva</span>
+          </Button>
+        }
+      />
 
       {/* Pet filter combobox */}
       {pets && pets.length > 0 && !isTutor && (

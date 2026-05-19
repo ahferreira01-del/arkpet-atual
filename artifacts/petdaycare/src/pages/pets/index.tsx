@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dog, Plus, Search, UserPlus, Users } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 
@@ -131,15 +132,16 @@ export default function PetsDirectory() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Diretório de Pets</h1>
-          <p className="text-muted-foreground mt-1">Gerencie perfis, registros médicos e rastreamento.</p>
-        </div>
-        <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
-          <Plus className="mr-2 h-4 w-4" /> Cadastrar Pet
-        </Button>
-      </div>
+      <PageHeader
+        title="Diretório de Pets"
+        description="Gerencie perfis, registros médicos e rastreamento."
+        icon={Dog}
+        action={
+          <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
+            <Plus className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Cadastrar Pet</span><span className="sm:hidden">Novo</span>
+          </Button>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="w-full max-w-md">

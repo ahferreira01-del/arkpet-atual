@@ -5,7 +5,8 @@ import { usePush } from "@/hooks/use-push";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle } from "lucide-react";
+import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon } from "lucide-react";
+import { PageHeader } from "@/components/layout/page-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 
@@ -45,10 +46,11 @@ export default function Settings() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-white">Configurações</h1>
-        <p className="text-muted-foreground mt-1">Gerencie o perfil da creche e suas preferências.</p>
-      </div>
+      <PageHeader
+        title="Configurações"
+        description="Gerencie o perfil da creche e suas preferências."
+        icon={SettingsIcon}
+      />
 
       {/* Push Notifications Card */}
       <Card>
