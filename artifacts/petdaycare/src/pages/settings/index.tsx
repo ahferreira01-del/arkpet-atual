@@ -17,7 +17,7 @@ export default function Settings() {
   const { data: creche, isLoading } = useGetCreche(crecheId);
   const updateMutation = useUpdateCreche();
   const [saved, setSaved] = useState(false);
-  const { isSupported, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
+  const { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -72,10 +72,18 @@ export default function Settings() {
             </div>
           </div>
 
-          {!isSupported ? (
+          {isIosWithoutPwa ? (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
+              <BellOff className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium mb-1">Adicione o app à tela inicial</p>
+                <p className="text-xs opacity-80">No iPhone/iPad, as notificações só funcionam quando o ArkPet está instalado como app. Toque em <strong>Compartilhar</strong> e depois em <strong>"Adicionar à Tela de Início"</strong>, depois abra o app de lá.</p>
+              </div>
+            </div>
+          ) : !isSupported ? (
             <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
               <BellOff className="h-5 w-5 flex-shrink-0" />
-              <p>Seu navegador não suporta notificações push. Use Chrome no Android ou Safari no iOS 16+.</p>
+              <p>Seu navegador não suporta notificações push. Use Chrome no Android ou Safari no iOS 16.4+ (via tela inicial).</p>
             </div>
           ) : (
             <div className="space-y-4">

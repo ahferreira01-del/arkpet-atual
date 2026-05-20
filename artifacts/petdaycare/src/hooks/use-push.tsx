@@ -6,7 +6,25 @@ function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+// Safe btoa for ArrayBuffer — avoids spread RangeError on mobile
+function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
+  if (!buffer) return "";
+  const bytes = new Uint8Array(buffer);
+  let str = "";
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str);
+}
+
+function isIos() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function isInStandaloneMode() {
+  return "standalone" in navigator && (navigator as any).standalone === true;
 }
 
 const STORAGE_KEY = "arkpet_push_subscribed";
@@ -93,8 +111,9 @@ export function usePush() {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
 
-      const p256dh = btoa(String.fromCharCode(...new Uint8Array(sub.getKey("p256dh")!)));
-      const auth = btoa(String.fromCharCode(...new Uint8Array(sub.getKey("auth")!)));
+      const p256dh = arrayBufferToBase64(sub.getKey("p256dh"));
+      const auth = arrayBufferToBase64(sub.getKey("auth"));
+      if (!p256dh || !auth) throw new Error("Chaves de assinatura inválidas");
 
       // Register on server
       const token = localStorage.getItem("auth_token");
@@ -163,5 +182,9 @@ export function usePush() {
     "PushManager" in window &&
     "Notification" in window;
 
-  return { isSupported, permission, isSubscribed, isLoading, subscribe, unsubscribe };
+  // iOS requires PWA (added to home screen) for push to work
+  const isIosWithoutPwa =
+    typeof window !== "undefined" && isIos() && !isInStandaloneMode();
+
+  return { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading, subscribe, unsubscribe };
 }

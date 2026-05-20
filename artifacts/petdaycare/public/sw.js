@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v6";
+const CACHE_NAME = "arkpet-v7";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -137,22 +137,30 @@ self.addEventListener("notificationclick", (event) => {
 // ──────────────────────────────────────────────────────
 // Push subscription change (browser auto-refreshes key)
 // ──────────────────────────────────────────────────────
+// Safe btoa for ArrayBuffer — avoids spread RangeError on mobile
+function arrayBufferToBase64(buffer) {
+  if (!buffer) return "";
+  const bytes = new Uint8Array(buffer);
+  let str = "";
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str);
+}
+
 self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     self.registration.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: event.oldSubscription?.options?.applicationServerKey,
     }).then((newSub) => {
-      // POST new subscription — token retrieved from IndexedDB by the app
+      const p256dh = arrayBufferToBase64(newSub.getKey("p256dh"));
+      const auth = arrayBufferToBase64(newSub.getKey("auth"));
+      // Note: SW has no access to localStorage, so no auth token here.
+      // The server accepts unauthenticated re-subscriptions to avoid losing subscriptions.
       return fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          endpoint: newSub.endpoint,
-          p256dh: btoa(String.fromCharCode(...new Uint8Array(newSub.getKey("p256dh")))),
-          auth: btoa(String.fromCharCode(...new Uint8Array(newSub.getKey("auth")))),
-        }),
+        body: JSON.stringify({ endpoint: newSub.endpoint, p256dh, auth }),
       });
-    })
+    }).catch(() => {})
   );
 });
