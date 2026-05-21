@@ -14,6 +14,14 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   console.warn("[push] VAPID keys missing — push notifications disabled.");
 }
 
+// Push service topic must be URL-safe base64 (RFC 8030), max 32 chars.
+// We hash the tag to a stable, short identifier.
+function makeTopic(tag: string): string {
+  let hash = 5381;
+  for (let i = 0; i < tag.length; i++) hash = ((hash << 5) + hash + tag.charCodeAt(i)) >>> 0;
+  return Buffer.from(String(hash)).toString("base64url").slice(0, 32);
+}
+
 export interface PushPayload {
   title: string;
   body: string;
@@ -32,9 +40,18 @@ async function sendToSubscription(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify({
         ...payload,
-        icon: payload.icon ?? "./icons/icon-192.png",
-        badge: "./icons/icon-192.png",
+        // Let the SW resolve icon paths against its own scope.
+        icon: payload.icon,
       }),
+      {
+        // Keep notification queued on push services for 24h so devices that
+        // come back online still receive it (default TTL is ~0 = drop instantly).
+        TTL: 60 * 60 * 24,
+        urgency: "high",
+        // Topic lets push services collapse same-topic notifications.
+        // Must be URL-safe base64, max 32 chars. Hash the tag.
+        ...(payload.tag ? { topic: makeTopic(payload.tag) } : {}),
+      },
     );
   } catch (err: any) {
     const status = err?.statusCode ?? err?.status;

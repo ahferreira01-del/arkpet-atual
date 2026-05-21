@@ -18,6 +18,24 @@ export default function Settings() {
   const updateMutation = useUpdateCreche();
   const [saved, setSaved] = useState(false);
   const { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
+  const [testingPush, setTestingPush] = useState(false);
+
+  const handleTestPush = async () => {
+    setTestingPush(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${import.meta.env.BASE_URL}api/push/test`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Falha no servidor");
+      // Toast is intentionally not shown — the actual push notification IS the feedback.
+    } catch (e) {
+      console.error("[push test]", e);
+    } finally {
+      setTimeout(() => setTestingPush(false), 1500);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -127,6 +145,18 @@ export default function Settings() {
                   </Button>
                 )}
               </div>
+
+              {isSubscribed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleTestPush}
+                  isLoading={testingPush}
+                  className="w-full justify-center"
+                >
+                  <BellRing className="mr-2 h-4 w-4" /> Enviar notificação de teste
+                </Button>
+              )}
 
               {/* What you'll get */}
               {!isSubscribed && permission !== "denied" && (

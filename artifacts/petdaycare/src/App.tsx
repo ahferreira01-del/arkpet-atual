@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -42,12 +42,53 @@ function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Listens to messages from the service worker:
+// - { kind: "navigate", path } → in-app navigation after notification click
+// - { kind: "push", payload }   → refresh queries so the UI reflects the event
+function ServiceWorkerBridge() {
+  const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (!msg || typeof msg !== "object") return;
+      if (msg.kind === "navigate" && typeof msg.path === "string") {
+        navigate(msg.path);
+      } else if (msg.kind === "push") {
+        // Scoped refresh based on push type — keeps the UI live without
+        // triggering a full app-wide refetch storm on every notification.
+        const type = msg.payload?.type;
+        const petId = msg.payload?.data?.petId;
+        if (type === "chat") {
+          queryClient.invalidateQueries({ queryKey: ["listMessages"] });
+        } else if (type === "task") {
+          queryClient.invalidateQueries({ queryKey: ["listTasks"] });
+        } else if (
+          type === "booking" || type === "checkin" || type === "checkout" || type === "ontheway"
+        ) {
+          queryClient.invalidateQueries({ queryKey: ["listBookings"] });
+          queryClient.invalidateQueries({ queryKey: ["listPets"] });
+        } else if (type === "walk") {
+          queryClient.invalidateQueries({ queryKey: ["listWalks"] });
+        } else if (petId) {
+          queryClient.invalidateQueries({ queryKey: ["getPet"] });
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, [navigate, queryClient]);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
+            <ServiceWorkerBridge />
             <ChangePasswordGuard>
             <Switch>
               <Route path="/login"><Login /></Route>

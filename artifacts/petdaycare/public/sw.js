@@ -1,10 +1,19 @@
-const CACHE_NAME = "arkpet-v8";
+const CACHE_NAME = "arkpet-v9";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icons/icon.svg",
 ];
+
+// Resolve a path relative to the SW scope so it works under any BASE_PATH.
+function scopedUrl(path) {
+  try {
+    return new URL(path.replace(/^\/+/, ""), self.registration.scope).toString();
+  } catch {
+    return path;
+  }
+}
 
 // ──────────────────────────────────────────────────────
 // Install
@@ -66,6 +75,11 @@ self.addEventListener("fetch", (event) => {
 // ──────────────────────────────────────────────────────
 // Push notifications
 // ──────────────────────────────────────────────────────
+async function anyClientFocused() {
+  const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  return list.some((c) => c.visibilityState === "visible" && c.focused);
+}
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -75,27 +89,40 @@ self.addEventListener("push", (event) => {
   }
 
   const title = data.title || "ArkPet";
-
-  // Use unique tag per notification so renotify always fires.
-  // If a tag is provided use it; append timestamp to force renotify display.
-  const baseTag = data.tag || "arkpet-notification";
-  const uniqueTag = `${baseTag}-${Date.now()}`;
+  // Use the provided tag verbatim. With renotify:true the same tag
+  // replaces the previous notification but still buzzes/sounds the device.
+  // This prevents the duplicate-notification spam from previous versions.
+  const tag = data.tag || "arkpet-notification";
 
   const options = {
     body: data.body || "",
-    // Prefer PNG for better Android/iOS compatibility
-    icon: data.icon || "./icons/icon-192.png",
-    badge: "./icons/icon-192.png",
-    tag: uniqueTag,
-    // renotify: true ensures the notification is always shown even if same tag
+    icon: data.icon || scopedUrl("icons/icon-192.png"),
+    badge: scopedUrl("icons/icon-192.png"),
+    tag,
     renotify: true,
     requireInteraction: false,
     silent: false,
     data: data.data || {},
     vibrate: [200, 100, 200],
+    timestamp: Date.now(),
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    (async () => {
+      // If the app is open AND the relevant tab is focused, skip the OS
+      // notification — the in-app UI (toast / live update) covers it and
+      // we avoid the double-notify experience users complain about.
+      // Chat messages are an exception: always show so the user notices.
+      const isChat = data.type === "chat";
+      if (!isChat && await anyClientFocused()) {
+        // Still update the app via postMessage so any open client can refresh.
+        const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const c of list) c.postMessage({ kind: "push", payload: data });
+        return;
+      }
+      await self.registration.showNotification(title, options);
+    })()
+  );
 });
 
 // ──────────────────────────────────────────────────────
@@ -105,40 +132,42 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  let targetUrl = "/";
+  let targetPath = "/";
 
   if (data.type === "booking" || data.type === "checkin" || data.type === "checkout") {
-    targetUrl = "/bookings";
+    targetPath = "/bookings";
   } else if (data.type === "task") {
-    targetUrl = "/staff";
+    targetPath = "/staff";
   } else if (data.type === "chat") {
-    targetUrl = data.petId ? `/chat?pet=${data.petId}` : "/chat";
+    targetPath = data.petId ? `/chat?pet=${data.petId}` : "/chat";
   } else if (data.type === "walk" && data.petId) {
-    targetUrl = `/pets/${data.petId}`;
+    targetPath = `/pets/${data.petId}`;
   } else if (data.type === "medical" && data.petId) {
-    targetUrl = `/pets/${data.petId}?tab=medical`;
+    targetPath = `/pets/${data.petId}?tab=medical`;
   } else if (data.type === "timeline" && data.petId) {
-    targetUrl = `/pets/${data.petId}?tab=timeline`;
+    targetPath = `/pets/${data.petId}?tab=timeline`;
   } else if (data.type === "ontheway") {
-    targetUrl = "/bookings";
+    targetPath = "/bookings";
   } else if (data.type === "mensalidade") {
-    targetUrl = "/settings";
+    targetPath = "/settings";
   } else if (data.petId) {
-    targetUrl = `/pets/${data.petId}`;
+    targetPath = `/pets/${data.petId}`;
   }
 
+  const fullUrl = scopedUrl(targetPath);
+
   event.waitUntil(
-    clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && "focus" in client) {
-            client.navigate(targetUrl);
-            return client.focus();
-          }
+    (async () => {
+      const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // Try to focus an existing client and ask it to navigate (in-app router).
+      for (const c of list) {
+        if (c.url.startsWith(self.location.origin)) {
+          c.postMessage({ kind: "navigate", path: targetPath });
+          try { await c.focus(); return; } catch {}
         }
-        return clients.openWindow(targetUrl);
-      })
+      }
+      await self.clients.openWindow(fullUrl);
+    })()
   );
 });
 
@@ -154,20 +183,31 @@ function arrayBufferToBase64(buffer) {
 }
 
 self.addEventListener("pushsubscriptionchange", (event) => {
+  const oldEndpoint = event.oldSubscription?.endpoint;
   event.waitUntil(
-    self.registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: event.oldSubscription?.options?.applicationServerKey,
-    }).then((newSub) => {
-      const p256dh = arrayBufferToBase64(newSub.getKey("p256dh"));
-      const auth = arrayBufferToBase64(newSub.getKey("auth"));
-      return fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: newSub.endpoint, p256dh, auth }),
-      });
-    }).catch((err) => {
-      console.error("[SW] pushsubscriptionchange error:", err);
-    })
+    self.registration.pushManager
+      .subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: event.oldSubscription?.options?.applicationServerKey,
+      })
+      .then(async (newSub) => {
+        const p256dh = arrayBufferToBase64(newSub.getKey("p256dh"));
+        const auth = arrayBufferToBase64(newSub.getKey("auth"));
+        // Send oldEndpoint so the server can locate and rotate the existing
+        // row without requiring an auth token (SW has no localStorage).
+        await fetch(scopedUrl("api/push/subscribe"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: newSub.endpoint,
+            p256dh,
+            auth,
+            oldEndpoint,
+          }),
+        });
+      })
+      .catch((err) => {
+        console.error("[SW] pushsubscriptionchange error:", err);
+      })
   );
 });
