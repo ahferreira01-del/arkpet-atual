@@ -161,7 +161,12 @@ export default function Bookings() {
   const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
 
-  const { data: bookings, isLoading } = useListBookings(crecheId);
+  const { data: bookings, isLoading } = useListBookings(crecheId, undefined, {
+    query: {
+      refetchInterval: 20_000,
+      refetchOnWindowFocus: true,
+    } as any,
+  });
   const { data: pets } = useListPets(crecheId);
   const { data: allTasks } = useListTasks(crecheId);
   const createMutation = useCreateBooking();
@@ -205,17 +210,49 @@ export default function Bookings() {
     );
   };
 
+  const statusSuccessMessages: Partial<Record<BookingStatus, string>> = {
+    confirmed: "Reserva confirmada com sucesso!",
+    cancelled: "Reserva cancelada.",
+    pending: "Reserva marcada como pendente.",
+  };
+
   const handleStatusUpdate = (bookingId: number, newStatus: BookingStatus) => {
     updateMutation.mutate(
       { crecheId, bookingId, data: { status: newStatus } },
-      { onSuccess: () => queryClient.invalidateQueries() }
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
+          toast({
+            title: statusSuccessMessages[newStatus] ?? "Status atualizado.",
+          });
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Erro ao atualizar reserva",
+            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      }
     );
   };
 
   const handleCheckIn = (bookingId: number) => {
     checkInMutation.mutate(
       { crecheId, bookingId } as any,
-      { onSuccess: () => queryClient.invalidateQueries() }
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
+          toast({ title: "Check-in realizado!" });
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Erro no check-in",
+            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      }
     );
   };
 
@@ -227,8 +264,16 @@ export default function Bookings() {
       { crecheId, bookingId } as any,
       {
         onSuccess: () => {
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
           setCheckoutBooking(null);
+          toast({ title: "Check-out realizado!" });
+        },
+        onError: (err: any) => {
+          toast({
+            title: "Erro no check-out",
+            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            variant: "destructive",
+          });
         },
       }
     );
