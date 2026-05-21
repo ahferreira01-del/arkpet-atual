@@ -396,7 +396,7 @@ export default function Bookings() {
                           <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                         )}
                       </div>
-                      {(booking as any).onTheWayType && (
+                      {(booking as any).onTheWayType && booking.status !== "active" && booking.status !== "completed" && (
                         <span className="text-xs text-blue-400 flex items-center gap-0.5 flex-shrink-0">
                           <Car className="h-3 w-3" /> A caminho
                         </span>
@@ -551,7 +551,7 @@ export default function Bookings() {
                           <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
                             {statusLabel[booking.status] || booking.status}
                           </Badge>
-                          {(booking as any).onTheWayType && (
+                          {(booking as any).onTheWayType && booking.status !== "active" && booking.status !== "completed" && (
                             <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
                               <Car className="h-3 w-3" /> A caminho
                             </p>
