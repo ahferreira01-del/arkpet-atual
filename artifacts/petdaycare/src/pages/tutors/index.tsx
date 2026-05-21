@@ -33,7 +33,7 @@ function useCreateTutor(crecheId: number) {
   const token = localStorage.getItem("auth_token");
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { name: string; email: string; password: string }) => {
+    mutationFn: async (data: { name: string; email: string; password: string; mensalidadeDia?: number | null }) => {
       const r = await fetch(`/api/creches/${crecheId}/tutors`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -229,7 +229,7 @@ export default function TutorsPage() {
   const [createdName, setCreatedName] = useState<string | null>(null);
   const [selectedTutor, setSelectedTutor] = useState<any | null>(null);
 
-  const [form, setForm] = useState({ name: "", email: "", password: generateTempPassword() });
+  const [form, setForm] = useState({ name: "", email: "", password: generateTempPassword(), mensalidadeDia: "" });
 
   const filtered = (tutors ?? []).filter(
     (t) =>
@@ -241,11 +241,15 @@ export default function TutorsPage() {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim()) return;
     try {
-      const created = await createMutation.mutateAsync(form);
+      const payload = {
+        ...form,
+        mensalidadeDia: form.mensalidadeDia ? parseInt(form.mensalidadeDia) : null,
+      };
+      const created = await createMutation.mutateAsync(payload);
       setCreatedPassword(form.password);
       setCreatedName(created.name || form.name);
       setShowModal(false);
-      setForm({ name: "", email: "", password: generateTempPassword() });
+      setForm({ name: "", email: "", password: generateTempPassword(), mensalidadeDia: "" });
       toast({ title: "Tutor criado!", description: `${form.name} foi cadastrado com sucesso.` });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -365,11 +369,15 @@ export default function TutorsPage() {
                     <Dog className="h-3.5 w-3.5" />
                     <span>{tutor.petCount ?? 0} pet{tutor.petCount !== 1 ? "s" : ""}</span>
                   </div>
-                  {tutor.createdAt && (
+                  {tutor.mensalidadeDia ? (
+                    <span className="text-[10px] text-amber-400/80 font-medium">
+                      Venc. dia {tutor.mensalidadeDia}
+                    </span>
+                  ) : tutor.createdAt ? (
                     <span className="text-[10px] text-muted-foreground/60">
                       Desde {format(new Date(tutor.createdAt), "MMM yyyy", { locale: ptBR })}
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-white/5 flex gap-2">
@@ -459,6 +467,23 @@ export default function TutorsPage() {
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               O tutor deverá alterar esta senha no primeiro acesso.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-1.5">
+              Dia de vencimento da mensalidade
+              <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
+            </label>
+            <Input
+              type="number"
+              min="1"
+              max="31"
+              placeholder="Ex: 10 (dia 10 de cada mês)"
+              value={form.mensalidadeDia}
+              onChange={(e) => setForm((f) => ({ ...f, mensalidadeDia: e.target.value }))}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              O tutor receberá uma notificação 3 dias antes do vencimento.
             </p>
           </div>
           <div className="flex gap-3 pt-2">

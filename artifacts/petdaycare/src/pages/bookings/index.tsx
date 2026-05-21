@@ -15,7 +15,7 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
 
-type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
+type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled" | "cancel_requested";
 type BookingType = "day_use" | "lodging" | "banho" | "hospedagem_banho" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
 
 const bookingTypeLabel: Record<string, string> = {
@@ -37,6 +37,7 @@ const statusVariant: Record<BookingStatus, any> = {
   active: "success",
   completed: "secondary",
   cancelled: "destructive",
+  cancel_requested: "destructive",
 };
 
 const statusLabel: Record<string, string> = {
@@ -45,6 +46,7 @@ const statusLabel: Record<string, string> = {
   active: "Ativa",
   completed: "Concluída",
   cancelled: "Cancelada",
+  cancel_requested: "Cancelamento Solicitado",
   all: "Todas",
 };
 
@@ -162,6 +164,7 @@ export default function Bookings() {
   const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
   const [personalItemsBooking, setPersonalItemsBooking] = useState<any | null>(null);
+  const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
   const { data: bookings, isLoading } = useListBookings(crecheId, undefined, {
     query: {
@@ -185,37 +188,44 @@ export default function Bookings() {
   const filteredByStatus = statusFilter === "all" ? myBookings : myBookings?.filter((b) => b.status === statusFilter);
   const filtered = petFilter ? filteredByStatus?.filter((b) => b.petId === petFilter) : filteredByStatus;
 
-  const handleCreate = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!selectedPetIds.length) {
+      toast({ title: "Selecione pelo menos um pet", variant: "destructive" });
+      return;
+    }
     const fd = new FormData(e.currentTarget);
-    createMutation.mutate(
-      {
-        crecheId,
-        data: {
-          petId: Number(fd.get("petId")),
-          type: ((fd.get("type") as string) || "day_use") as any,
-          startDate: fd.get("startDate") as string,
-          endDate: fd.get("endDate") as string || undefined,
-          notes: fd.get("notes") as string || undefined,
-        } as any,
-      },
-      {
-        onSuccess: () => {
-          setIsCreateOpen(false);
-          queryClient.invalidateQueries();
-          toast({ title: "Reserva criada!", description: "Aguardando confirmação da creche." });
-        },
-        onError: (err: any) => {
-          toast({ title: "Erro", description: err?.data?.error || "Não foi possível criar a reserva.", variant: "destructive" });
-        },
-      }
-    );
+    const type = ((fd.get("type") as string) || "day_use") as any;
+    const startDate = fd.get("startDate") as string;
+    const endDate = (fd.get("endDate") as string) || undefined;
+    const notes = (fd.get("notes") as string) || undefined;
+    try {
+      await Promise.all(
+        selectedPetIds.map((petId) =>
+          createMutation.mutateAsync({
+            crecheId,
+            data: { petId, type, startDate, endDate, notes } as any,
+          })
+        )
+      );
+      setIsCreateOpen(false);
+      setSelectedPetIds([]);
+      queryClient.invalidateQueries();
+      const count = selectedPetIds.length;
+      toast({
+        title: count === 1 ? "Reserva criada!" : `${count} reservas criadas!`,
+        description: "Aguardando confirmação da creche.",
+      });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err?.data?.error || "Não foi possível criar as reservas.", variant: "destructive" });
+    }
   };
 
   const statusSuccessMessages: Partial<Record<BookingStatus, string>> = {
     confirmed: "Reserva confirmada com sucesso!",
     cancelled: "Reserva cancelada.",
     pending: "Reserva marcada como pendente.",
+    cancel_requested: "Solicitação de cancelamento enviada à creche.",
   };
 
   const handleStatusUpdate = (bookingId: number, newStatus: BookingStatus) => {
@@ -427,14 +437,36 @@ export default function Bookings() {
                           size="sm"
                           variant="outline"
                           className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 text-xs"
-                          onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                          onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
                           isLoading={updateMutation.isPending}
                         >
-                          Cancelar reserva
+                          Solicitar Cancelamento
                         </Button>
                       )}
                       {!isTutor && (
                         <>
+                          {booking.status === "cancel_requested" && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 text-xs"
+                                onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                isLoading={updateMutation.isPending}
+                              >
+                                Aprovar Cancel.
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs"
+                                onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                                isLoading={updateMutation.isPending}
+                              >
+                                Recusar
+                              </Button>
+                            </>
+                          )}
                           {booking.status === "confirmed" && (
                             <Button
                               size="sm"
@@ -542,14 +574,36 @@ export default function Bookings() {
                                 size="sm"
                                 variant="outline"
                                 className="border-destructive/40 text-destructive/80 hover:bg-destructive/10"
-                                onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
                                 isLoading={updateMutation.isPending}
                               >
-                                Cancelar reserva
+                                Solicitar Cancelamento
                               </Button>
                             )}
                             {!isTutor && (
                               <>
+                                {booking.status === "cancel_requested" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-destructive/40 text-destructive/80 hover:bg-destructive/10"
+                                      onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                      isLoading={updateMutation.isPending}
+                                    >
+                                      Aprovar Cancelamento
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                      onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                                      isLoading={updateMutation.isPending}
+                                    >
+                                      Recusar
+                                    </Button>
+                                  </>
+                                )}
                                 {booking.status === "confirmed" && (
                                   <Button
                                     size="sm"
@@ -607,20 +661,51 @@ export default function Bookings() {
       </Card>
 
       {/* Create Modal */}
-      <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Nova Reserva">
+      <Modal isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); setSelectedPetIds([]); }} title="Nova Reserva">
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Pet</label>
-            <select
-              name="petId"
-              required
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
-            >
-              <option value="">Selecione um pet...</option>
-              {pets?.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.breed || p.species})</option>
-              ))}
-            </select>
+            <label className="text-sm font-medium">
+              Pets <span className="text-muted-foreground text-xs">(selecione um ou mais)</span>
+            </label>
+            {!pets?.length ? (
+              <p className="text-xs text-muted-foreground py-2">Nenhum pet disponível.</p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {(isTutor ? pets?.filter((p) => p.tutorId === user?.id) : pets)?.map((p) => {
+                  const checked = selectedPetIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                        checked
+                          ? "border-primary/50 bg-primary/10"
+                          : "border-white/10 bg-white/5 hover:bg-white/8"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="accent-primary w-4 h-4 flex-shrink-0"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedPetIds((ids) =>
+                            ids.includes(p.id) ? ids.filter((i) => i !== p.id) : [...ids, p.id]
+                          )
+                        }
+                      />
+                      <span className="text-sm text-white font-medium">{p.name}</span>
+                      {(p.breed || p.species) && (
+                        <span className="text-xs text-muted-foreground ml-auto">{p.breed || p.species}</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {selectedPetIds.length > 1 && (
+              <p className="text-xs text-primary/80 font-medium">
+                {selectedPetIds.length} pets selecionados — será criada uma reserva para cada.
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Tipo de Estadia</label>

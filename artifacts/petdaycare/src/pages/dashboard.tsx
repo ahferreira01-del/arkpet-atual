@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useListTasks,
@@ -60,6 +60,11 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, navigate] = useLocation();
+
+  useEffect(() => {
+    const id = setInterval(() => queryClient.invalidateQueries(), 20_000);
+    return () => clearInterval(id);
+  }, [queryClient]);
 
   const { data: stats } = useGetCrecheStats(crecheId);
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
@@ -422,8 +427,14 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
 // ─── Staff ────────────────────────────────────────────────────────────────────
 function StaffDashboard({ user }: { user: any }) {
   const crecheId = user.crecheId || 1;
+  const queryClient = useQueryClient();
   const { data: tasks, isLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus });
   const { data: pets } = useListPets(crecheId);
+
+  useEffect(() => {
+    const id = setInterval(() => queryClient.invalidateQueries(), 20_000);
+    return () => clearInterval(id);
+  }, [queryClient]);
   const checkedIn = pets?.filter((p) => p.isCheckedIn) || [];
   const checkedInIds = new Set(checkedIn.map((p) => p.id).filter((id): id is number => id != null));
   const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));

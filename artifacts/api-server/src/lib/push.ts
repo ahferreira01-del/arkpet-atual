@@ -9,6 +9,9 @@ const VAPID_EMAIL = process.env.VAPID_EMAIL ?? "mailto:admin@arkpet.com.br";
 
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
   webpush.setVapidDetails(VAPID_EMAIL, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  console.log("[push] VAPID configured.");
+} else {
+  console.warn("[push] VAPID keys missing — push notifications disabled.");
 }
 
 export interface PushPayload {
@@ -20,24 +23,47 @@ export interface PushPayload {
   data?: Record<string, unknown>;
 }
 
+async function sendToSubscription(
+  sub: { id: number; endpoint: string; p256dh: string; auth: string },
+  payload: PushPayload,
+) {
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify({
+        ...payload,
+        icon: payload.icon ?? "./icons/icon-192.png",
+        badge: "./icons/icon-192.png",
+      }),
+    );
+  } catch (err: any) {
+    const status = err?.statusCode ?? err?.status;
+    if (status === 410 || status === 404) {
+      console.log(`[push] Removing expired subscription id=${sub.id} (HTTP ${status})`);
+      await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, sub.id));
+    } else if (status === 401) {
+      console.error(`[push] VAPID auth error for sub id=${sub.id} — check VAPID keys. Body:`, err?.body ?? err?.message);
+    } else if (status === 400) {
+      console.error(`[push] Bad request for sub id=${sub.id}. Body:`, err?.body ?? err?.message);
+    } else {
+      console.error(`[push] Failed to send to sub id=${sub.id} (HTTP ${status}):`, err?.message ?? String(err));
+    }
+  }
+}
+
 export async function sendPushToUser(userId: number, payload: PushPayload) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.warn("[push] Skipping sendPushToUser — VAPID not configured.");
+    return;
+  }
   const subs = await db.select().from(pushSubscriptionsTable)
     .where(eq(pushSubscriptionsTable.userId, userId));
-  await Promise.allSettled(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify({ ...payload, icon: payload.icon ?? "/icons/icon.svg", badge: "/icons/icon.svg" }),
-        );
-      } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, sub.id));
-        }
-      }
-    })
-  );
+  if (!subs.length) {
+    console.log(`[push] No subscriptions for userId=${userId}`);
+    return;
+  }
+  console.log(`[push] Sending to userId=${userId}, ${subs.length} sub(s), tag="${payload.tag}"`);
+  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
 }
 
 export async function sendPushToRole(
@@ -45,46 +71,40 @@ export async function sendPushToRole(
   role: "master_admin" | "creche_admin" | "staff" | "tutor",
   payload: PushPayload,
 ) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.warn("[push] Skipping sendPushToRole — VAPID not configured.");
+    return;
+  }
   const users = await db.select({ id: usersTable.id })
     .from(usersTable)
     .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, role)));
   const userIds = users.map((u) => u.id);
-  if (!userIds.length) return;
+  if (!userIds.length) {
+    console.log(`[push] No users with role=${role} in crecheId=${crecheId}`);
+    return;
+  }
   const subs = await db.select().from(pushSubscriptionsTable)
     .where(inArray(pushSubscriptionsTable.userId, userIds));
-  await Promise.allSettled(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify({ ...payload, icon: "/icons/icon.svg", badge: "/icons/icon.svg" }),
-        );
-      } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, sub.id));
-        }
-      }
-    })
-  );
+  if (!subs.length) {
+    console.log(`[push] No subscriptions for role=${role} in crecheId=${crecheId}`);
+    return;
+  }
+  console.log(`[push] Sending to role=${role} crecheId=${crecheId}, ${subs.length} sub(s), tag="${payload.tag}"`);
+  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
 }
 
 export async function sendPushToUsers(userIds: number[], payload: PushPayload) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !userIds.length) return;
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !userIds.length) {
+    if (!userIds.length) return;
+    console.warn("[push] Skipping sendPushToUsers — VAPID not configured.");
+    return;
+  }
   const subs = await db.select().from(pushSubscriptionsTable)
     .where(inArray(pushSubscriptionsTable.userId, userIds));
-  await Promise.allSettled(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify({ ...payload, icon: "/icons/icon.svg", badge: "/icons/icon.svg" }),
-        );
-      } catch (err: any) {
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          await db.delete(pushSubscriptionsTable).where(eq(pushSubscriptionsTable.id, sub.id));
-        }
-      }
-    })
-  );
+  if (!subs.length) {
+    console.log(`[push] No subscriptions for userIds=[${userIds.join(",")}]`);
+    return;
+  }
+  console.log(`[push] Sending to ${userIds.length} user(s), ${subs.length} sub(s), tag="${payload.tag}"`);
+  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
 }

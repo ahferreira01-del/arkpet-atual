@@ -1,6 +1,6 @@
 import app from "./app";
 import { initializeDatabase } from "./startup.js";
-import { startScheduler } from "./lib/scheduler.js";
+import { startScheduler, startMensalidadeScheduler } from "./lib/scheduler.js";
 
 const rawPort = process.env["PORT"];
 
@@ -18,6 +18,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 initializeDatabase().then(() => {
   startScheduler();
+  startMensalidadeScheduler();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
   });

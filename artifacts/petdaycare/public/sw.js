@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v7";
+const CACHE_NAME = "arkpet-v8";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -35,7 +35,7 @@ self.addEventListener("activate", (event) => {
 });
 
 // ──────────────────────────────────────────────────────
-// Fetch (network strategy)
+// Fetch (network-first strategy)
 // ──────────────────────────────────────────────────────
 self.addEventListener("fetch", (event) => {
   const { request } = event;
@@ -46,7 +46,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first for everything: always try network, fall back to cache
   event.respondWith(
     fetch(request)
       .then((response) => {
@@ -76,21 +75,31 @@ self.addEventListener("push", (event) => {
   }
 
   const title = data.title || "ArkPet";
+
+  // Use unique tag per notification so renotify always fires.
+  // If a tag is provided use it; append timestamp to force renotify display.
+  const baseTag = data.tag || "arkpet-notification";
+  const uniqueTag = `${baseTag}-${Date.now()}`;
+
   const options = {
     body: data.body || "",
-    icon: data.icon || "/icons/icon.svg",
-    badge: data.badge || "/icons/icon.svg",
-    tag: data.tag || "arkpet-notification",
+    // Prefer PNG for better Android/iOS compatibility
+    icon: data.icon || "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    tag: uniqueTag,
+    // renotify: true ensures the notification is always shown even if same tag
+    renotify: true,
+    requireInteraction: false,
+    silent: false,
     data: data.data || {},
-    vibrate: [100, 50, 100],
-    actions: [],
+    vibrate: [200, 100, 200],
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
 // ──────────────────────────────────────────────────────
-// Notification click — open the app
+// Notification click — open or focus the app
 // ──────────────────────────────────────────────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
@@ -98,13 +107,11 @@ self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {};
   let targetUrl = "/";
 
-  // Route to most specific page based on type + available IDs
   if (data.type === "booking" || data.type === "checkin" || data.type === "checkout") {
     targetUrl = "/bookings";
   } else if (data.type === "task") {
     targetUrl = "/staff";
   } else if (data.type === "chat") {
-    // Chat is always the chat page; the app shows the right pet via URL hash
     targetUrl = data.petId ? `/chat?pet=${data.petId}` : "/chat";
   } else if (data.type === "walk" && data.petId) {
     targetUrl = `/pets/${data.petId}`;
@@ -114,8 +121,9 @@ self.addEventListener("notificationclick", (event) => {
     targetUrl = `/pets/${data.petId}?tab=timeline`;
   } else if (data.type === "ontheway") {
     targetUrl = "/bookings";
+  } else if (data.type === "mensalidade") {
+    targetUrl = "/settings";
   } else if (data.petId) {
-    // Generic with a petId — go to the pet profile
     targetUrl = `/pets/${data.petId}`;
   }
 
@@ -137,7 +145,6 @@ self.addEventListener("notificationclick", (event) => {
 // ──────────────────────────────────────────────────────
 // Push subscription change (browser auto-refreshes key)
 // ──────────────────────────────────────────────────────
-// Safe btoa for ArrayBuffer — avoids spread RangeError on mobile
 function arrayBufferToBase64(buffer) {
   if (!buffer) return "";
   const bytes = new Uint8Array(buffer);
@@ -154,13 +161,13 @@ self.addEventListener("pushsubscriptionchange", (event) => {
     }).then((newSub) => {
       const p256dh = arrayBufferToBase64(newSub.getKey("p256dh"));
       const auth = arrayBufferToBase64(newSub.getKey("auth"));
-      // Note: SW has no access to localStorage, so no auth token here.
-      // The server accepts unauthenticated re-subscriptions to avoid losing subscriptions.
       return fetch("/api/push/subscribe", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoint: newSub.endpoint, p256dh, auth }),
       });
-    }).catch(() => {})
+    }).catch((err) => {
+      console.error("[SW] pushsubscriptionchange error:", err);
+    })
   );
 });

@@ -38,6 +38,7 @@ router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin
       name: usersTable.name,
       email: usersTable.email,
       isActive: usersTable.isActive,
+      mensalidadeDia: usersTable.mensalidadeDia,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -68,17 +69,18 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), as
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
   }
-  const { name, email, password } = req.body;
+  const { name, email, password, mensalidadeDia } = req.body;
   if (!name || !email) { res.status(400).json({ error: "Nome e e-mail são obrigatórios" }); return; }
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) { res.status(409).json({ error: "E-mail já cadastrado" }); return; }
   const [user] = await db.insert(usersTable).values({
     name, email, passwordHash: hashPassword(password || "ArkPet@123"),
     role: "tutor", crecheId, mustChangePassword: true, isActive: true,
+    mensalidadeDia: mensalidadeDia ? parseInt(String(mensalidadeDia)) : null,
   }).returning();
   // Send welcome email (non-blocking)
   sendWelcomeEmail({ name: user.name, email: user.email, role: "tutor", tempPassword: password }).catch(() => {});
-  res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role, crecheId: user.crecheId, createdAt: user.createdAt });
+  res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role, crecheId: user.crecheId, mensalidadeDia: user.mensalidadeDia, createdAt: user.createdAt });
 });
 
 // PATCH toggle tutor active status
@@ -88,13 +90,16 @@ router.patch("/:crecheId/tutors/:tutorId", requireRole("master_admin", "creche_a
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
   }
-  const { isActive } = req.body;
+  const { isActive, mensalidadeDia } = req.body;
+  const setFields: Record<string, unknown> = {};
+  if (isActive !== undefined) setFields.isActive = isActive;
+  if (mensalidadeDia !== undefined) setFields.mensalidadeDia = mensalidadeDia ? parseInt(String(mensalidadeDia)) : null;
   const [updated] = await db.update(usersTable)
-    .set({ isActive })
+    .set(setFields)
     .where(and(eq(usersTable.id, tutorId), eq(usersTable.crecheId, crecheId), eq(usersTable.role, "tutor")))
     .returning();
   if (!updated) { res.status(404).json({ error: "Tutor não encontrado" }); return; }
-  res.json({ id: updated.id, name: updated.name, isActive: updated.isActive });
+  res.json({ id: updated.id, name: updated.name, isActive: updated.isActive, mensalidadeDia: updated.mensalidadeDia });
 });
 
 router.get("/", async (req: AuthRequest, res) => {

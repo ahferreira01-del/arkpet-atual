@@ -22,6 +22,32 @@ interface BottomNavProps {
   user: UserProfile;
 }
 
+function useBookingsBadge(user: UserProfile) {
+  const token = localStorage.getItem("auth_token");
+  const { data } = useQuery({
+    queryKey: ["bookings-badge", user?.crecheId, user?.role],
+    queryFn: async () => {
+      if (!user?.crecheId) return 0;
+      // Admins/staff: count pending + cancel_requested bookings
+      const [pendingRes, cancelRes] = await Promise.all([
+        fetch(`/api/creches/${user.crecheId}/bookings?status=pending`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/creches/${user.crecheId}/bookings?status=cancel_requested`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const pending = pendingRes.ok ? await pendingRes.json() : [];
+      const cancelRequested = cancelRes.ok ? await cancelRes.json() : [];
+      return (pending.length ?? 0) + (cancelRequested.length ?? 0);
+    },
+    enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
+    refetchInterval: 20_000,
+    staleTime: 0,
+  });
+  return (data ?? 0) as number;
+}
+
 // Uses React Query so invalidating ["chat-unread", crecheId] in the chat page
 // immediately clears the badge here too — no separate polling needed.
 function useChatUnread(user: UserProfile) {
@@ -45,6 +71,7 @@ function useChatUnread(user: UserProfile) {
 export function BottomNav({ user }: BottomNavProps) {
   const [location] = useLocation();
   const unreadChat = useChatUnread(user);
+  const bookingsBadge = useBookingsBadge(user);
   const { logout } = useAuth();
 
   const getLinks = () => {
@@ -61,7 +88,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Início", href: "/", icon: LayoutDashboard },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays, badge: bookingsBadge },
           { name: "Tutores", href: "/tutors", icon: Users },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
@@ -73,7 +100,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Passeios", href: "/walks", icon: Footprints },
           { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
+          { name: "Reservas", href: "/bookings", icon: CalendarDays, badge: bookingsBadge },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
           { name: "Config.", href: "/settings", icon: Settings },
         ];

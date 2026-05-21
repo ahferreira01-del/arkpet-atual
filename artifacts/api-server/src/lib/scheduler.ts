@@ -2,7 +2,7 @@ import cron from "node-cron";
 import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, lte, isNotNull } from "drizzle-orm";
 import { sendPushToUser } from "./push.js";
 
 const notifiedTaskIds = new Set<number>();
@@ -193,4 +193,43 @@ export function startScheduler() {
   });
 
   console.log("[scheduler] Task reminder scheduler started.");
+}
+
+async function sendMensalidadeReminders() {
+  try {
+    // Get 3 days from now
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 3);
+    const targetDay = futureDate.getDate();
+
+    const tutors = await db
+      .select({ id: usersTable.id, name: usersTable.name, mensalidadeDia: usersTable.mensalidadeDia })
+      .from(usersTable)
+      .where(and(eq(usersTable.role, "tutor"), eq(usersTable.isActive, true), isNotNull(usersTable.mensalidadeDia)));
+
+    const dueToday = tutors.filter((t) => t.mensalidadeDia === targetDay);
+    if (!dueToday.length) return;
+
+    console.log(`[scheduler] Sending mensalidade reminders to ${dueToday.length} tutor(s) (due day ${targetDay})`);
+
+    for (const tutor of dueToday) {
+      await sendPushToUser(tutor.id, {
+        title: "📅 Mensalidade vencendo em breve",
+        body: `Sua mensalidade vence em 3 dias (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`,
+        tag: `mensalidade-${tutor.id}-${targetDay}`,
+        data: { type: "mensalidade" },
+      }).catch(() => {});
+    }
+  } catch (err) {
+    console.error("[scheduler] mensalidade reminder error:", err);
+  }
+}
+
+export function startMensalidadeScheduler() {
+  // Run daily at 9am
+  cron.schedule("0 9 * * *", async () => {
+    console.log("[scheduler] Running mensalidade check...");
+    await sendMensalidadeReminders();
+  });
+  console.log("[scheduler] Mensalidade reminder scheduler started.");
 }

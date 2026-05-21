@@ -86,9 +86,9 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
 
   if (status !== undefined) {
     if (req.user.role === "tutor") {
-      // Tutors may only cancel their own pending or confirmed bookings
-      if (status !== "cancelled") {
-        res.status(403).json({ error: "Tutores só podem cancelar reservas." });
+      // Tutors may only request cancellation on their own pending/confirmed bookings
+      if (status !== "cancel_requested") {
+        res.status(403).json({ error: "Tutores só podem solicitar cancelamento de reservas." });
         return;
       }
       const [existing] = await db.select().from(bookingsTable)
@@ -98,7 +98,7 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
         return;
       }
       if (!["pending", "confirmed"].includes(existing.status)) {
-        res.status(400).json({ error: "Só é possível cancelar reservas pendentes ou confirmadas." });
+        res.status(400).json({ error: "Só é possível solicitar cancelamento de reservas pendentes ou confirmadas." });
         return;
       }
     }
@@ -110,21 +110,31 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
   const enriched = await getBookingWithNames(booking);
 
-  // Notify tutor of status changes
-  if (status && booking.tutorId) {
-    const statusLabels: Record<string, string> = {
-      confirmed: "confirmada ✅",
-      cancelled: "cancelada ❌",
-      pending: "pendente ⏳",
-    };
-    const label = statusLabels[status];
-    if (label) {
-      sendPushToUser(booking.tutorId, {
-        title: `Reserva ${label}`,
-        body: `A reserva de ${enriched.petName ?? "seu pet"} foi ${label}.`,
-        tag: `booking-status-${booking.id}`,
-        data: { type: "booking", bookingId: booking.id },
+  // Notify of status changes
+  if (status) {
+    if (status === "cancel_requested" && booking.tutorId) {
+      // Notify creche admins that tutor requested cancellation
+      sendPushToRole(crecheId, "creche_admin", {
+        title: `⚠️ Cancelamento solicitado — ${enriched.petName ?? "Pet"}`,
+        body: `${enriched.tutorName ?? "Tutor"} solicitou o cancelamento da reserva de ${enriched.petName ?? "Pet"}.`,
+        tag: `booking-cancel-req-${booking.id}`,
+        data: { type: "booking", bookingId: booking.id, crecheId },
       }).catch(() => {});
+    } else if (booking.tutorId) {
+      const statusLabels: Record<string, string> = {
+        confirmed: "confirmada ✅",
+        cancelled: "cancelada ❌",
+        pending: "pendente ⏳",
+      };
+      const label = statusLabels[status];
+      if (label) {
+        sendPushToUser(booking.tutorId, {
+          title: `Reserva ${label}`,
+          body: `A reserva de ${enriched.petName ?? "seu pet"} foi ${label}.`,
+          tag: `booking-status-${booking.id}`,
+          data: { type: "booking", bookingId: booking.id },
+        }).catch(() => {});
+      }
     }
   }
 
