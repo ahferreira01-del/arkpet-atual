@@ -70,7 +70,7 @@ router.put("/:walkId/end", async (req: AuthRequest, res) => {
       title: "Passeio concluído!",
       body: `${pet.name ?? "Seu pet"} acabou de passear com ${req.user.name ?? "um funcionário"}${durationStr}.`,
       tag: `walk-end-${walk.id}`,
-      data: { type: "walk", walkId: walk.id, crecheId },
+      data: { type: "walk", walkId: walk.id, petId: walk.petId, crecheId },
     }).catch(() => {});
   }
   res.json({ ...walk, petName: pet?.name ?? null, staffName: req.user.name, startedAt: walk.startTime, endedAt: walk.endTime });

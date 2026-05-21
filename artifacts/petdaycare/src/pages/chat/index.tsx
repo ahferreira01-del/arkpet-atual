@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useSearch } from "wouter";
 import { useListMessages, useSendMessage, useListPets } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,6 +40,7 @@ function useUnreadByPet(crecheId: number) {
 export default function Chat() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
+  const searchStr = useSearch(); // e.g. "pet=5" when navigated from a push notification
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
@@ -49,14 +51,25 @@ export default function Chat() {
   const { data: pets } = useListPets(crecheId);
   const unreadByPet = useUnreadByPet(crecheId);
 
-  const firstPetId = pets?.[0]?.id;
-  const [selectedPetId, setSelectedPetId] = useState<number | undefined>(undefined);
+  // Parse petId from URL (?pet=5) — set when user clicks a push notification deep link.
+  const urlPetId = searchStr
+    ? parseInt(new URLSearchParams(searchStr).get("pet") ?? "", 10) || undefined
+    : undefined;
 
+  const firstPetId = pets?.[0]?.id;
+  const [selectedPetId, setSelectedPetId] = useState<number | undefined>(urlPetId);
+
+  // When pets load: honour URL param first, then fall back to first pet.
   useEffect(() => {
-    if (firstPetId && selectedPetId === undefined) {
+    if (!pets?.length) return;
+    if (urlPetId && pets.some((p) => p.id === urlPetId)) {
+      setSelectedPetId(urlPetId);
+    } else if (selectedPetId === undefined) {
       setSelectedPetId(firstPetId);
     }
-  }, [firstPetId]);
+  // Re-run if the URL param changes (e.g. another notification click while page is open)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstPetId, urlPetId]);
 
   // On mount: mark ALL unread messages as read (user opened the inbox)
   // This clears the bottom-nav badge immediately
