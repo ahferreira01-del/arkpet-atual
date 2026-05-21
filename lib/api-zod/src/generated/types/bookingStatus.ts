@@ -14,4 +14,5 @@ export const BookingStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
+  cancel_requested: "cancel_requested",
 } as const;
