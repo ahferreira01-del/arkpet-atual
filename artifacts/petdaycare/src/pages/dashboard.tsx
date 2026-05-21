@@ -532,10 +532,13 @@ function TutorDashboard({ user }: { user: any }) {
   const crecheId = user.crecheId || 1;
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
   const { data: bookings, isLoading: bookingsLoading } = useListBookings(crecheId);
+  const { data: walks } = (useListWalks as any)(crecheId);
 
   const myPets = pets || [];
   const checkedInPets = myPets.filter((p) => p.isCheckedIn);
   const myBookings = (bookings || []).slice(0, 4);
+  const myPetIds = new Set(myPets.map((p: any) => p.id));
+  const myRecentWalks = (walks || []).filter((w: any) => myPetIds.has(w.petId)).slice(0, 4);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
@@ -679,6 +682,47 @@ function TutorDashboard({ user }: { user: any }) {
           </Card>
         </div>
       </div>
+
+      {/* Últimos Passeios dos meus pets */}
+      {myRecentWalks.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
+              <Footprints className="h-5 w-5 text-primary" />
+              Últimos Passeios
+            </h2>
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <div className="divide-y divide-white/5">
+                {myRecentWalks.map((walk: any) => (
+                  <div key={walk.id} className="flex items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Footprints className="h-4 w-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-white text-sm">{walk.petName || "Pet"}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {walk.staffName || "Funcionário"} · {walk.startedAt ? format(new Date(walk.startedAt), "dd/MM HH:mm", { locale: ptBR }) : "—"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge variant={walk.status === "completed" ? "success" : "secondary"} className="text-xs">
+                        {walk.status === "completed" ? "Concluído" : "Em andamento"}
+                      </Badge>
+                      {walk.durationMinutes != null && (
+                        <p className="text-xs text-muted-foreground mt-1">{walk.durationMinutes} min</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

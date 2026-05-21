@@ -23,6 +23,7 @@ export const petsTable = pgTable("pets", {
   allergies: text("allergies"),
   specialNeeds: text("special_needs"),
   photoUrl: text("photo_url"),
+  lastCheckinPhotoUrl: text("last_checkin_photo_url"),
   isCheckedIn: boolean("is_checked_in").notNull().default(false),
   feedingSchedule: jsonb("feeding_schedule"),
   walkSchedule: jsonb("walk_schedule"),

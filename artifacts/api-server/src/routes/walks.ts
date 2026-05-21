@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { walksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { sendPushToUser } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -62,7 +63,16 @@ router.put("/:walkId/end", async (req: AuthRequest, res) => {
   const [walk] = await db.update(walksTable).set({
     endTime, status: "completed", durationMinutes: duration ?? undefined, notes,
   }).where(and(eq(walksTable.id, walkId), eq(walksTable.crecheId, crecheId))).returning();
-  const [pet] = await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, walk.petId)).limit(1);
+  const [pet] = await db.select({ name: petsTable.name, tutorId: petsTable.tutorId }).from(petsTable).where(eq(petsTable.id, walk.petId)).limit(1);
+  if (pet?.tutorId) {
+    const durationStr = duration != null ? ` (${duration} min)` : "";
+    sendPushToUser(pet.tutorId, {
+      title: "Passeio concluído!",
+      body: `${pet.name ?? "Seu pet"} acabou de passear com ${req.user.name ?? "um funcionário"}${durationStr}.`,
+      tag: `walk-end-${walk.id}`,
+      data: { type: "walk", walkId: walk.id, crecheId },
+    }).catch(() => {});
+  }
   res.json({ ...walk, petName: pet?.name ?? null, staffName: req.user.name, startedAt: walk.startTime, endedAt: walk.endTime });
 });
 

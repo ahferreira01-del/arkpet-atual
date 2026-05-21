@@ -164,6 +164,7 @@ export default function Bookings() {
   const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
   const [personalItemsBooking, setPersonalItemsBooking] = useState<any | null>(null);
+  const [bookingPersonalItems, setBookingPersonalItems] = useState<Record<number, { hasItems: boolean; photoUrl: string | null }>>({});
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
   const { data: bookings, isLoading } = useListBookings(crecheId, undefined, {
@@ -802,7 +803,8 @@ export default function Bookings() {
         <PersonalItemsModal
           booking={personalItemsBooking}
           open={!!personalItemsBooking}
-          onComplete={() => {
+          onComplete={(result) => {
+            setBookingPersonalItems((prev) => ({ ...prev, [personalItemsBooking.id]: result }));
             setPersonalItemsBooking(null);
             queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
             toast({ title: "Check-in realizado!" });
@@ -818,24 +820,30 @@ export default function Bookings() {
         >
           <div className="space-y-5">
             {/* Personal items warning */}
-            {checkoutBooking.hasPersonalItems && checkoutBooking.personalItemsPhotoUrl && (
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
-                  <Package className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-white">⚠️ Pet veio com itens pessoais</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Lembre-se de devolver todos os itens ao tutor.</p>
+            {(() => {
+              const cached = bookingPersonalItems[checkoutBooking.id];
+              const hasItems = cached != null ? cached.hasItems : checkoutBooking.hasPersonalItems;
+              const photoUrl = cached?.photoUrl ?? checkoutBooking.personalItemsPhotoUrl;
+              if (!hasItems || !photoUrl) return null;
+              return (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                    <Package className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-white">⚠️ Pet veio com itens pessoais</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Lembre-se de devolver todos os itens ao tutor.</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl overflow-hidden border border-white/10 aspect-[4/3]">
+                    <img
+                      src={`/api/storage${photoUrl}`}
+                      alt="Itens pessoais registrados no check-in"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </div>
-                <div className="rounded-xl overflow-hidden border border-white/10 aspect-[4/3]">
-                  <img
-                    src={`/api/storage${checkoutBooking.personalItemsPhotoUrl}`}
-                    alt="Itens pessoais registrados no check-in"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {pendingTasksForBooking(checkoutBooking).length > 0 && (
               <>

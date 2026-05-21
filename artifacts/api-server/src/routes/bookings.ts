@@ -219,6 +219,12 @@ router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId)))
     .returning();
 
+  if (hasItems && photoUrl && booking?.petId) {
+    await db.update(petsTable)
+      .set({ lastCheckinPhotoUrl: photoUrl })
+      .where(eq(petsTable.id, booking.petId));
+  }
+
   res.json(await getBookingWithNames(booking));
 });
 

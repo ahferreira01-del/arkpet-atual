@@ -12,7 +12,7 @@ interface PersonalItemsModalProps {
     crecheId: number;
   };
   open: boolean;
-  onComplete: () => void;
+  onComplete: (result: { hasItems: boolean; photoUrl: string | null }) => void;
 }
 
 type Step = "ask" | "camera" | "preview" | "uploading" | "saving" | "done";
@@ -82,7 +82,7 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
       const token = localStorage.getItem("auth_token") ?? "";
       await savePersonalItems(booking.crecheId, booking.id, false, null, token);
       setStep("done");
-      setTimeout(() => { reset(); onComplete(); }, 1200);
+      setTimeout(() => { reset(); onComplete({ hasItems: false, photoUrl: null }); }, 1200);
     } catch {
       toast({ title: "Erro ao registrar", description: "Tente novamente.", variant: "destructive" });
       setStep("ask");
@@ -122,7 +122,7 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
       await savePersonalItems(booking.crecheId, booking.id, true, objectPath, token);
       setStep("done");
       if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setTimeout(() => { reset(); onComplete(); }, 1200);
+      setTimeout(() => { reset(); onComplete({ hasItems: true, photoUrl: objectPath }); }, 1200);
     } catch (err: any) {
       toast({
         title: "Erro ao salvar foto",

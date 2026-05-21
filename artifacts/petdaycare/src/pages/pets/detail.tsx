@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink, Trash2 } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink, Trash2, Package } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -729,6 +729,28 @@ function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; pet
           )}
         </CardContent>
       </Card>
+
+      {/* Foto dos Itens Pessoais — último check-in */}
+      {pet.lastCheckinPhotoUrl && (
+        <Card className="md:col-span-2">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
+              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
+                <Package className="h-5 w-5 text-amber-400" />
+                Itens Pessoais
+              </h3>
+              <span className="text-xs text-muted-foreground">Foto do último check-in</span>
+            </div>
+            <div className="rounded-xl overflow-hidden border border-white/10 max-w-sm">
+              <img
+                src={`/api/storage${pet.lastCheckinPhotoUrl}`}
+                alt="Itens pessoais registrados no check-in"
+                className="w-full object-cover"
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Últimos Passeios — full width */}
       <Card className="md:col-span-2">
