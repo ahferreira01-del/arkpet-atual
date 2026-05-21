@@ -26,7 +26,7 @@ router.post("/subscribe", async (req: AuthRequest, res) => {
     try {
       const { verifyToken } = await import("../lib/auth.js");
       const payload = verifyToken(authHeader.slice(7));
-      userId = (payload as any)?.id ?? null;
+      userId = payload?.userId ?? null;
     } catch {}
   }
 

@@ -112,9 +112,11 @@ self.addEventListener("push", (event) => {
       // If the app is open AND the relevant tab is focused, skip the OS
       // notification — the in-app UI (toast / live update) covers it and
       // we avoid the double-notify experience users complain about.
-      // Chat messages are an exception: always show so the user notices.
+      // Chat messages and explicit tests are exceptions: always show so
+      // the user gets visible feedback.
       const isChat = data.type === "chat";
-      if (!isChat && await anyClientFocused()) {
+      const isTest = data.type === "test";
+      if (!isChat && !isTest && await anyClientFocused()) {
         // Still update the app via postMessage so any open client can refresh.
         const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
         for (const c of list) c.postMessage({ kind: "push", payload: data });

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function Settings() {
@@ -20,6 +21,7 @@ export default function Settings() {
   const { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
   const [testingPush, setTestingPush] = useState(false);
 
+  const { toast } = useToast();
   const handleTestPush = async () => {
     setTestingPush(true);
     try {
@@ -28,10 +30,22 @@ export default function Settings() {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Falha no servidor");
-      // Toast is intentionally not shown — the actual push notification IS the feedback.
-    } catch (e) {
+      if (!res.ok) {
+        let msg = "";
+        try { msg = (await res.json())?.error ?? ""; } catch {}
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+      toast({
+        title: "Teste enviado ✓",
+        description: "Você deve receber uma notificação em segundos. Se nada aparecer, verifique as permissões do navegador.",
+      });
+    } catch (e: any) {
       console.error("[push test]", e);
+      toast({
+        title: "Falha no teste",
+        description: e?.message ?? "Não foi possível enviar o teste.",
+        variant: "destructive",
+      });
     } finally {
       setTimeout(() => setTestingPush(false), 1500);
     }

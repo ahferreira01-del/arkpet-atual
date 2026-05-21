@@ -115,7 +115,7 @@ export function usePush() {
       const auth = arrayBufferToBase64(sub.getKey("auth"));
       if (!p256dh || !auth) throw new Error("Chaves de assinatura inválidas");
 
-      // Register on server
+      // Register on server — MUST succeed, otherwise rollback browser subscription.
       const token = localStorage.getItem("auth_token");
       const saveRes = await fetch("/api/push/subscribe", {
         method: "POST",
@@ -123,8 +123,12 @@ export function usePush() {
         body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
       });
       if (!saveRes.ok) {
-        // Server save failed but browser subscription is active — still mark as subscribed
-        console.warn("[push] Falha ao salvar assinatura no servidor, mas browser está inscrito");
+        // Rollback browser subscription to keep state consistent.
+        let serverMsg = "";
+        try { serverMsg = (await saveRes.json())?.error ?? ""; } catch {}
+        try { await sub.unsubscribe(); } catch {}
+        console.error("[push] Falha ao salvar assinatura no servidor:", saveRes.status, serverMsg);
+        throw new Error(serverMsg || `Servidor recusou a assinatura (HTTP ${saveRes.status})`);
       }
 
       if (!mountedRef.current) return;
