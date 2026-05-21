@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList } from "lucide-react";
+import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
 
 type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled";
 type BookingType = "day_use" | "lodging" | "banho" | "hospedagem_banho" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
@@ -160,6 +161,7 @@ export default function Bookings() {
   const [eta, setEta] = useState("15");
   const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
+  const [personalItemsBooking, setPersonalItemsBooking] = useState<any | null>(null);
 
   const { data: bookings, isLoading } = useListBookings(crecheId, undefined, {
     query: {
@@ -237,13 +239,14 @@ export default function Bookings() {
     );
   };
 
-  const handleCheckIn = (bookingId: number) => {
+  const handleCheckIn = (booking: any) => {
     checkInMutation.mutate(
-      { crecheId, bookingId } as any,
+      { crecheId, bookingId: booking.id } as any,
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
-          toast({ title: "Check-in realizado!" });
+          // Open personal items modal right after check-in
+          setPersonalItemsBooking({ ...booking, crecheId });
         },
         onError: (err: any) => {
           toast({
@@ -437,7 +440,7 @@ export default function Bookings() {
                               size="sm"
                               variant="outline"
                               className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs"
-                              onClick={() => handleCheckIn(booking.id)}
+                              onClick={() => handleCheckIn(booking)}
                               isLoading={checkInMutation.isPending}
                             >
                               <LogIn className="mr-1 h-3 w-3" /> Check-in
@@ -552,7 +555,7 @@ export default function Bookings() {
                                     size="sm"
                                     variant="outline"
                                     className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                                    onClick={() => handleCheckIn(booking.id)}
+                                    onClick={() => handleCheckIn(booking)}
                                     isLoading={checkInMutation.isPending}
                                   >
                                     <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
@@ -710,53 +713,89 @@ export default function Bookings() {
       )}
 
       {/* Checkout — Pending Tasks Confirmation Dialog */}
+      {personalItemsBooking && (
+        <PersonalItemsModal
+          booking={personalItemsBooking}
+          open={!!personalItemsBooking}
+          onComplete={() => {
+            setPersonalItemsBooking(null);
+            queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
+            toast({ title: "Check-in realizado!" });
+          }}
+        />
+      )}
+
       {checkoutBooking && (
         <Modal
           isOpen={!!checkoutBooking}
           onClose={() => !checkOutMutation.isPending && setCheckoutBooking(null)}
-          title="Tarefas Pendentes"
+          title="Confirmar Check-out"
         >
           <div className="space-y-5">
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-              <ClipboardList className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-sm font-semibold text-white">
-                  {checkoutBooking.petName} tem{" "}
-                  {pendingTasksForBooking(checkoutBooking).length} tarefa
-                  {pendingTasksForBooking(checkoutBooking).length !== 1 ? "s" : ""} pendente
-                  {pendingTasksForBooking(checkoutBooking).length !== 1 ? "s" : ""}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Deseja concluir todas as tarefas pendentes deste pet antes de fazer o check-out?
-                </p>
+            {/* Personal items warning */}
+            {checkoutBooking.hasPersonalItems && checkoutBooking.personalItemsPhotoUrl && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                  <Package className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">⚠️ Pet veio com itens pessoais</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Lembre-se de devolver todos os itens ao tutor.</p>
+                  </div>
+                </div>
+                <div className="rounded-xl overflow-hidden border border-white/10 aspect-[4/3]">
+                  <img
+                    src={`/api/storage${checkoutBooking.personalItemsPhotoUrl}`}
+                    alt="Itens pessoais registrados no check-in"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* List pending tasks */}
-            <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-              {pendingTasksForBooking(checkoutBooking).map((t: any) => (
-                <li key={t.id} className="flex items-center gap-2 text-sm text-muted-foreground px-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                  {t.title}
-                </li>
-              ))}
-            </ul>
+            {pendingTasksForBooking(checkoutBooking).length > 0 && (
+              <>
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <ClipboardList className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      {checkoutBooking.petName} tem{" "}
+                      {pendingTasksForBooking(checkoutBooking).length} tarefa
+                      {pendingTasksForBooking(checkoutBooking).length !== 1 ? "s" : ""} pendente
+                      {pendingTasksForBooking(checkoutBooking).length !== 1 ? "s" : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Deseja concluir todas as tarefas pendentes deste pet antes de fazer o check-out?
+                    </p>
+                  </div>
+                </div>
+                <ul className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {pendingTasksForBooking(checkoutBooking).map((t: any) => (
+                    <li key={t.id} className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                      {t.title}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             <div className="flex flex-col gap-2 pt-1">
-              <Button
-                onClick={handleCheckOutCompleteTasks}
-                isLoading={checkoutStep === "completing" || checkOutMutation.isPending}
-                className="w-full"
-              >
-                Sim, concluir todas e fazer check-out
-              </Button>
+              {pendingTasksForBooking(checkoutBooking).length > 0 && (
+                <Button
+                  onClick={handleCheckOutCompleteTasks}
+                  isLoading={checkoutStep === "completing" || checkOutMutation.isPending}
+                  className="w-full"
+                >
+                  Concluir tarefas e fazer check-out
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => doCheckOut(checkoutBooking.id)}
                 disabled={checkoutStep === "completing" || checkOutMutation.isPending}
                 className="w-full border-white/10 text-muted-foreground hover:text-white"
               >
-                Não, fazer check-out sem concluir
+                {pendingTasksForBooking(checkoutBooking).length > 0 ? "Fazer check-out sem concluir" : "Confirmar check-out"}
               </Button>
               <button
                 onClick={() => setCheckoutBooking(null)}

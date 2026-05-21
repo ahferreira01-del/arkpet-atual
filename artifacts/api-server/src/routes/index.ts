@@ -9,9 +9,11 @@ import chatRouter from "./chat.js";
 import usersRouter from "./users.js";
 import pushRouter from "./push.js";
 import walksRouter from "./walks.js";
+import storageRouter from "./storage.js";
 const router = Router();
 
 router.use(healthRouter);
+router.use(storageRouter);
 router.use("/auth", authRouter);
 router.use("/creches", crechesRouter);
 router.use("/creches/:crecheId/pets", petsRouter);

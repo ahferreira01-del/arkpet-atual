@@ -23,6 +23,8 @@ export const bookingsTable = pgTable("bookings", {
   onTheWayType: text("on_the_way_type"),
   onTheWayEtaMinutes: integer("on_the_way_eta_minutes"),
   onTheWayAt: timestamp("on_the_way_at"),
+  hasPersonalItems: boolean("has_personal_items"),
+  personalItemsPhotoUrl: text("personal_items_photo_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -188,6 +188,30 @@ router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
   res.json({ message: "Confirmação enviada ao tutor" });
 });
 
+router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
+  const { hasItems, photoUrl } = req.body;
+
+  if (typeof hasItems !== "boolean") {
+    res.status(400).json({ error: "hasItems (boolean) é obrigatório" }); return;
+  }
+  if (hasItems && !photoUrl) {
+    res.status(400).json({ error: "photoUrl é obrigatório quando há itens" }); return;
+  }
+
+  const [booking] = await db.update(bookingsTable)
+    .set({
+      hasPersonalItems: hasItems,
+      personalItemsPhotoUrl: hasItems ? photoUrl : null,
+    })
+    .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId)))
+    .returning();
+
+  res.json(await getBookingWithNames(booking));
+});
+
 router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
