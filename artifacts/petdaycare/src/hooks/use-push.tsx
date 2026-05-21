@@ -70,6 +70,7 @@ export function usePush() {
       toast({ title: "Não suportado", description: "Seu navegador não suporta notificações push.", variant: "destructive" });
       return;
     }
+    if (isLoading) return; // Guard against double-tap creating duplicate subscriptions
     setIsLoading(true);
     try {
       const perm = await Notification.requestPermission();
@@ -99,17 +100,62 @@ export function usePush() {
         return;
       }
 
-      const reg = await navigator.serviceWorker.ready;
+      let reg = await navigator.serviceWorker.ready;
 
-      // Unsubscribe old subscription if exists
+      // Unsubscribe old subscription if exists (clears VAPID key binding)
       const existing = await reg.pushManager.getSubscription();
-      if (existing) await existing.unsubscribe();
+      if (existing) {
+        try { await existing.unsubscribe(); } catch {}
+      }
 
-      // Create new subscription
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
+      // Subscribe — with one automatic retry on "push service error",
+      // which usually means FCM has a stale binding. Unregistering the
+      // SW and re-registering forces Chrome to recreate the push channel.
+      let sub: PushSubscription;
+      try {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        const isPushServiceError = /push service error|registration failed/i.test(msg);
+        if (!isPushServiceError) throw err;
+
+        console.warn("[push] Subscribe falhou, recriando Service Worker:", msg);
+        // Unregister ALL SWs to clear any stale FCM bindings
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+
+        // Re-register using the same base path as main.tsx (deployment-safe)
+        const base = import.meta.env.BASE_URL || "/";
+        const swPath = base.endsWith("/") ? `${base}sw.js` : `${base}/sw.js`;
+        const scope = base.endsWith("/") ? base : `${base}/`;
+        await navigator.serviceWorker.register(swPath, { scope });
+
+        // Wait for the registration to have an active worker, not just "ready"
+        reg = await navigator.serviceWorker.ready;
+        if (!reg.active) {
+          await new Promise<void>((resolve) => {
+            const installing = reg.installing || reg.waiting;
+            if (!installing) return resolve();
+            const onState = () => {
+              if (installing.state === "activated") {
+                installing.removeEventListener("statechange", onState);
+                resolve();
+              }
+            };
+            installing.addEventListener("statechange", onState);
+            // Safety timeout — don't hang forever
+            setTimeout(resolve, 3000);
+          });
+        }
+
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
 
       const p256dh = arrayBufferToBase64(sub.getKey("p256dh"));
       const auth = arrayBufferToBase64(sub.getKey("auth"));
