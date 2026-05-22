@@ -19,7 +19,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-[60] bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}
@@ -38,7 +38,8 @@ const DialogContent = React.forwardRef<
       className={cn(
         // On mobile the dialog is bottom-anchored so it doesn't fight with the
         // Safari toolbar. On sm+ it reverts to the classic centered layout.
-        "fixed z-50 w-full gap-4 border bg-background p-6 shadow-lg duration-200",
+        // z-[60] keeps the dialog above the BottomNav (z-50).
+        "fixed z-[60] w-full gap-4 border bg-background p-6 shadow-lg duration-200",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         // Mobile: bottom sheet
         "bottom-0 left-0 right-0 rounded-t-3xl modal-max-h overflow-y-auto pb-safe",

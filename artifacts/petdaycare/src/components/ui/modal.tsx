@@ -35,20 +35,21 @@ export function Modal({ isOpen, onClose, title, description, children, className
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop — z-[60] so it sits ABOVE the bottom nav (z-50). */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm"
           />
 
           {/* ── Mobile: bottom sheet ──────────────────────────────────────
-              Slides up from the bottom, respects notch & home indicator.
+              z-[60] covers the fixed BottomNav so the sheet's Save/Cancel
+              buttons are not hidden behind it.
               max-h uses svh (small viewport = always excludes browser chrome)
               with vh fallback for iOS < 15.4.                              */}
-          <div className="fixed inset-x-0 bottom-0 z-50 flex md:hidden">
+          <div className="fixed inset-x-0 bottom-0 z-[60] flex md:hidden">
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
@@ -83,7 +84,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
           </div>
 
           {/* ── Desktop: centered dialog ──────────────────────────────────*/}
-          <div className="fixed inset-0 z-50 hidden md:flex items-center justify-center p-4 pointer-events-none">
+          <div className="fixed inset-0 z-[60] hidden md:flex items-center justify-center p-4 pointer-events-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
