@@ -825,13 +825,16 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const vaccinePhotoRef = useRef<HTMLInputElement>(null);
 
-  const handleVaccinePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVaccinePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert("Foto deve ter no máximo 5MB"); return; }
-    const reader = new FileReader();
-    reader.onload = (ev) => setVaccinePhoto(ev.target?.result as string);
-    reader.readAsDataURL(file);
+    if (file.size > 10 * 1024 * 1024) { alert("Foto deve ter no máximo 10MB"); return; }
+    try {
+      const compressed = await compressImage(file, 1200, 0.85);
+      setVaccinePhoto(compressed);
+    } catch {
+      alert("Não foi possível processar a imagem.");
+    }
   };
 
   const handleAddVaccine = (e: React.FormEvent<HTMLFormElement>) => {

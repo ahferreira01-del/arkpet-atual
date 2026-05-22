@@ -113,7 +113,11 @@ body {
 button, a, [role="button"] {
   touch-action: manipulation;
 }
-input, textarea, select {
+/* Exclude file, checkbox, radio and range — they rely on native OS UI.
+   Removing appearance from input[type=file] blocks the iOS gallery picker. */
+input:not([type=file]):not([type=checkbox]):not([type=radio]):not([type=range]),
+textarea,
+select {
   -webkit-appearance: none;
   appearance: none;
   border-radius: 0; /* reset iOS rounding — our components set their own */
