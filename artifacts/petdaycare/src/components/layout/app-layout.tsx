@@ -44,7 +44,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Header user={user} />
         {/* pb-nav-safe: clears the fixed bottom nav + system gesture/notch area.
             On md+ (desktop) the bottom nav is hidden so we revert to p-6/p-8. */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 lg:p-8 pb-nav-safe md:pb-6">
+        <main className="flex-1 overflow-y-auto overscroll-none custom-scrollbar p-4 md:p-6 lg:p-8 pb-nav-safe md:pb-6">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>

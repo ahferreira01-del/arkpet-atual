@@ -92,6 +92,38 @@
   background: hsl(var(--muted-foreground) / 0.5);
 }
 
+/* ── iOS / WebKit baseline fixes ──────────────────────────────────────────
+   These rules prevent the most common Safari mobile issues:
+   - text-size-adjust: stops iOS from bumping font sizes after orientation change
+   - tap-highlight: removes the grey flash when tapping links/buttons
+   - touch-action: removes the 300ms tap delay on interactive elements
+   - overscroll-behavior on body: prevents the rubber-band bounce from
+     revealing the dark OS background behind the app
+   - input/select appearance: removes iOS default chrome (rounded corners,
+     gradient, inner shadow) so our custom styles render correctly
+   - -webkit-overflow-scrolling: enables momentum scrolling on older iOS   */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+body {
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+button, a, [role="button"] {
+  touch-action: manipulation;
+}
+input, textarea, select {
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 0; /* reset iOS rounding — our components set their own */
+}
+.custom-scrollbar,
+.overflow-y-auto,
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ── Safe-area & dynamic-viewport helpers ─────────────────────────────────
    Required for iPhone notch/Dynamic Island and Android gesture navigation.
    viewport-fit=cover is set in index.html so env() values are non-zero.   */
@@ -110,9 +142,10 @@
 
 /* ── Dynamic viewport height ───────────────────────────────────────────────
    100dvh = visual viewport, shrinks when the browser toolbar is visible.
-   Falls back to 100vh on older browsers via the cascade.               */
-.h-dvh     { height:     100dvh; }
-.min-h-dvh { min-height: 100dvh; }
+   100vh fallback is listed first so older browsers (iOS < 15.4) use it;
+   browsers that understand dvh override it with the second declaration.  */
+.h-dvh     { height:     100vh; height:     100dvh; }
+.min-h-dvh { min-height: 100vh; min-height: 100dvh; }
 
 /* Glass panel — mais sutil */
 .glass-panel {

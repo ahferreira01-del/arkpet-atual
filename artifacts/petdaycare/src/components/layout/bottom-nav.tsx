@@ -120,7 +120,9 @@ export function BottomNav({ user }: BottomNavProps) {
   const links = getLinks();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
+    // will-change-transform forces GPU compositing on iOS so the fixed nav
+    // doesn't jump or flicker when the soft keyboard opens/closes.
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden will-change-transform">
       {/* pb-safe pads the nav bar itself away from the system home indicator /
           gesture area. pl-safe/pr-safe handle landscape notches on iPhone. */}
       <div className="bg-background/80 backdrop-blur-xl border-t border-white/10 px-2 pb-safe pl-safe pr-safe">
