@@ -128,7 +128,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
           <p className="text-sm text-muted-foreground mb-1">
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h1 className="text-3xl font-display font-bold text-white">{greeting}, {firstName}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {firstName}!</h1>
           <p className="text-muted-foreground mt-1">Veja o que está acontecendo na sua creche hoje.</p>
         </div>
         <Link href="/staff/qr-scanner">
@@ -445,7 +445,7 @@ function StaffDashboard({ user }: { user: any }) {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
           <p className="text-muted-foreground mt-1">{format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0">
@@ -454,7 +454,7 @@ function StaffDashboard({ user }: { user: any }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Link href="/staff">
           <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
             <div className="h-10 w-10 rounded-xl bg-amber-400/20 flex items-center justify-center">
@@ -551,7 +551,7 @@ function TutorDashboard({ user }: { user: any }) {
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
           <p className="text-muted-foreground mt-1">Acompanhe seus pets em tempo real.</p>
         </div>
         {checkedInPets.length > 0 && (
@@ -564,7 +564,7 @@ function TutorDashboard({ user }: { user: any }) {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Link href="/pets">
           <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
             <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -769,7 +769,7 @@ function MasterAdminDashboard() {
           <p className="text-sm text-muted-foreground mb-1">
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h1 className="text-3xl font-display font-bold text-white">{greeting}, Master!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, Master!</h1>
           <p className="text-muted-foreground mt-1">Visão global de toda a rede ArkPet.</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 self-start sm:self-auto">

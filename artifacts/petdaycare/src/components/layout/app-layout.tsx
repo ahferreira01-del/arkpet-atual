@@ -30,7 +30,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex min-h-screen bg-background overflow-hidden relative">
+    <div className="flex min-h-dvh bg-background overflow-hidden relative">
       {/* Ambient background glow */}
       <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
       <div className="fixed bottom-[-20%] right-[-10%] w-[40%] h-[50%] rounded-full bg-accent/10 blur-[120px] pointer-events-none" />
@@ -38,9 +38,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <Sidebar user={user} />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative z-0">
+      {/* h-dvh so the content column fills the real visual viewport on mobile
+          (100vh can be wrong when the browser toolbar is visible) */}
+      <div className="flex-1 flex flex-col h-dvh overflow-hidden relative z-0">
         <Header user={user} />
-        <main className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 lg:p-8 pb-24 md:pb-6">
+        {/* pb-nav-safe: clears the fixed bottom nav + system gesture/notch area.
+            On md+ (desktop) the bottom nav is hidden so we revert to p-6/p-8. */}
+        <main className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 lg:p-8 pb-nav-safe md:pb-6">
           <div className="max-w-7xl mx-auto">
             {children}
           </div>

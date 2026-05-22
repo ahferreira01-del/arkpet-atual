@@ -121,7 +121,9 @@ export function BottomNav({ user }: BottomNavProps) {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
-      <div className="bg-background/80 backdrop-blur-xl border-t border-white/10 px-2 pb-safe">
+      {/* pb-safe pads the nav bar itself away from the system home indicator /
+          gesture area. pl-safe/pr-safe handle landscape notches on iPhone. */}
+      <div className="bg-background/80 backdrop-blur-xl border-t border-white/10 px-2 pb-safe pl-safe pr-safe">
         <div className="flex items-stretch justify-around">
           {links.map((link) => {
             const isActive =
@@ -134,7 +136,7 @@ export function BottomNav({ user }: BottomNavProps) {
             const inner = (
               <div
                 className={cn(
-                  "flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
+                  "flex flex-col items-center justify-center py-2.5 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
                   isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
                 )}
               >
@@ -151,14 +153,14 @@ export function BottomNav({ user }: BottomNavProps) {
                     )}
                   />
                   {badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-lg">
                       {badge > 99 ? "99+" : badge}
                     </span>
                   )}
                 </div>
                 <span
                   className={cn(
-                    "text-[10px] font-medium leading-none transition-all duration-200",
+                    "text-[11px] font-medium leading-none transition-all duration-200 truncate max-w-full px-0.5",
                     isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
                   )}
                 >
