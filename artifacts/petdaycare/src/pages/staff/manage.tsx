@@ -158,7 +158,7 @@ function EditMemberModal({
             </select>
           </div>
 
-          <div className="flex flex-col gap-3 pt-2">
+          <div className="modal-sticky-footer flex flex-col gap-3">
             <div className="flex gap-3">
               <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
               <Button type="submit" isLoading={updateMutation.isPending} className="flex-1">Salvar</Button>
@@ -393,7 +393,7 @@ export default function ManageStaff() {
               <option value="creche_admin">Admin de Creche</option>
             </select>
           </div>
-          <div className="pt-2 flex gap-3">
+          <div className="modal-sticky-footer flex gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)} className="flex-1">Cancelar</Button>
             <Button type="submit" isLoading={addStaffMutation.isPending} className="flex-1">Adicionar</Button>
           </div>

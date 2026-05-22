@@ -157,6 +157,24 @@ select {
    92vh fallback for iOS < 15.4 where svh is not supported.              */
 .modal-max-h { max-height: 92vh; max-height: 92svh; }
 
+/* ── Sticky action footer inside Modal/Dialog ────────────────────────────
+   Put this on the Save/Cancel button row so it is always pinned to the
+   visible bottom of the scrollable modal body. This guarantees the
+   buttons are reachable on small phones and long forms.
+   Negative -mx-6 stretches the footer past the body's px-6 padding so the
+   border-top spans the full modal width.                                 */
+.modal-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  margin: 1rem -1.5rem 0;
+  padding: 0.75rem 1.5rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: hsl(var(--card) / 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid hsl(var(--border));
+  z-index: 5;
+}
+
 /* Glass panel — mais sutil */
 .glass-panel {
   @apply bg-card/70 backdrop-blur-md border border-white/8 shadow-lg shadow-black/20;

@@ -486,7 +486,7 @@ export default function TutorsPage() {
               O tutor receberá uma notificação 3 dias antes do vencimento.
             </p>
           </div>
-          <div className="flex gap-3 pt-2">
+          <div className="modal-sticky-footer flex gap-3">
             <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>
               Cancelar
             </Button>

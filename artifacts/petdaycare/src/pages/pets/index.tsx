@@ -340,7 +340,7 @@ export default function PetsDirectory() {
               </div>
             )}
 
-            <div className="pt-4 flex justify-end gap-3">
+            <div className="modal-sticky-footer flex justify-end gap-3">
               <Button type="button" variant="ghost" onClick={() => { setIsModalOpen(false); resetModal(); }}>Cancelar</Button>
               <Button
                 type="submit"

@@ -745,7 +745,7 @@ export default function Bookings() {
               Sua reserva ficará pendente até ser confirmada pela creche.
             </div>
           )}
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="modal-sticky-footer flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
             <Button type="submit" isLoading={createMutation.isPending}>Solicitar Reserva</Button>
           </div>

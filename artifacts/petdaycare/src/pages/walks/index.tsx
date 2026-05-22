@@ -208,7 +208,7 @@ export default function Walks() {
               </div>
             )}
           </div>
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="modal-sticky-footer flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
             <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId}>
               <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
