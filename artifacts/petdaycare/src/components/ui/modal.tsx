@@ -14,17 +14,28 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, description, children, className }: ModalProps) {
-  // Prevent scrolling when modal is open
+  // iOS-safe scroll lock.
+  // Setting overflow:hidden on <body> does NOT prevent scrolling on Safari —
+  // we must fix the body's position instead.
   React.useEffect(() => {
-    if (isOpen) document.body.style.overflow = "hidden";
-    else document.body.style.overflow = "unset";
-    return () => { document.body.style.overflow = "unset"; };
+    if (!isOpen) return;
+    const scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    return () => {
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.width = "";
+      window.scrollTo(0, scrollY);
+    };
   }, [isOpen]);
 
   return (
     <AnimatePresence>
       {isOpen && (
         <>
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -32,7 +43,47 @@ export function Modal({ isOpen, onClose, title, description, children, className
             onClick={onClose}
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
           />
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+
+          {/* ── Mobile: bottom sheet ──────────────────────────────────────
+              Slides up from the bottom, respects notch & home indicator.
+              max-h uses svh (small viewport = always excludes browser chrome)
+              with vh fallback for iOS < 15.4.                              */}
+          <div className="fixed inset-x-0 bottom-0 z-50 flex md:hidden">
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 320 }}
+              className={cn(
+                "glass-panel w-full rounded-t-3xl flex flex-col modal-max-h",
+                className
+              )}
+            >
+              {/* Drag handle */}
+              <div className="pt-3 pb-1 flex justify-center flex-shrink-0">
+                <div className="w-10 h-1 bg-white/20 rounded-full" />
+              </div>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 pt-3 pb-4 flex-shrink-0">
+                <div>
+                  <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
+                  {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+                </div>
+                <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full -mr-2">
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+
+              {/* Scrollable body — pb-safe keeps content above home indicator */}
+              <div className="overflow-y-auto flex-1 custom-scrollbar px-6 pb-safe">
+                {children}
+              </div>
+            </motion.div>
+          </div>
+
+          {/* ── Desktop: centered dialog ──────────────────────────────────*/}
+          <div className="fixed inset-0 z-50 hidden md:flex items-center justify-center p-4 pointer-events-none">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -43,7 +94,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
                 className
               )}
             >
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
                 <div>
                   <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
                   {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}

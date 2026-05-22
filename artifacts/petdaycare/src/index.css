@@ -151,6 +151,12 @@ select {
 .h-dvh     { height:     100vh; height:     100dvh; }
 .min-h-dvh { min-height: 100vh; min-height: 100dvh; }
 
+/* ── Modal / bottom-sheet max height ───────────────────────────────────────
+   svh = small viewport height (always excludes browser chrome on iOS).
+   This prevents the sheet from ever extending behind the Safari toolbar.
+   92vh fallback for iOS < 15.4 where svh is not supported.              */
+.modal-max-h { max-height: 92vh; max-height: 92svh; }
+
 /* Glass panel — mais sutil */
 .glass-panel {
   @apply bg-card/70 backdrop-blur-md border border-white/8 shadow-lg shadow-black/20;
