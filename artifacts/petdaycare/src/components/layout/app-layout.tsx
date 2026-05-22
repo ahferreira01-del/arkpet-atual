@@ -42,11 +42,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
           (100vh can be wrong when the browser toolbar is visible) */}
       <div className="flex-1 flex flex-col h-dvh overflow-hidden relative z-0">
         <Header user={user} />
-        {/* pb-nav-safe: clears the fixed bottom nav + system gesture/notch area.
-            On md+ (desktop) the bottom nav is hidden so we revert to p-6/p-8. */}
-        <main className="flex-1 overflow-y-auto overscroll-none custom-scrollbar p-4 md:p-6 lg:p-8 pb-nav-safe md:pb-6">
+        {/* Use pt/px (no pb shorthand from p-4) so padding-bottom is
+            controlled exclusively by the spacer div below.               */}
+        <main className="flex-1 overflow-y-auto overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">
           <div className="max-w-7xl mx-auto">
             {children}
+            {/* Physical bottom spacer — visible only on mobile.
+                A real element is more reliable than padding-bottom on
+                overflow-y:auto in Safari (known Safari bug).
+                Height = nav bar (~68 px) + safe-area-inset-bottom.        */}
+            <div
+              className="block md:hidden flex-shrink-0"
+              aria-hidden="true"
+              style={{ height: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+            />
           </div>
         </main>
       </div>
