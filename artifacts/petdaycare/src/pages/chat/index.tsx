@@ -71,22 +71,12 @@ export default function Chat() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPetId, urlPetId]);
 
-  // On mount: mark ALL unread messages as read (user opened the inbox)
-  // This clears the bottom-nav badge immediately
+  // When selectedPetId changes (including initial selection), mark that pet's messages as read
   useEffect(() => {
-    if (!user?.crecheId) return;
-    const doMarkAll = async () => {
-      try {
-        await fetch(`/api/creches/${crecheId}/chat/mark-read`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({}), // no petId = mark ALL as read
-        });
-        queryClient.invalidateQueries({ queryKey: ["chat-unread", crecheId] });
-      } catch {}
-    };
-    doMarkAll();
-  }, [crecheId]); // runs once on mount
+    if (!selectedPetId || !user?.crecheId) return;
+    markAsRead(selectedPetId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPetId]);
 
   const { data: serverMessages, isLoading } = useListMessages(
     crecheId,
