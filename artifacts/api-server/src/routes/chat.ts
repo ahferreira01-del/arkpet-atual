@@ -97,24 +97,58 @@ router.post("/", async (req: AuthRequest, res) => {
     crecheId, petId, senderId: req.user.id, content, mediaUrl,
   }).returning();
 
-  const otherUsers = await db.select({ id: usersTable.id })
-    .from(usersTable)
-    .where(and(
-      eq(usersTable.crecheId, crecheId),
-      ne(usersTable.id, req.user.id),
-    ));
+  const preview = content?.length > 60 ? content.slice(0, 57) + "..." : content;
+  const pushPayload = {
+    title: `💬 ${req.user.name}`,
+    body: preview || "Enviou uma mídia.",
+    tag: `chat-${crecheId}-${petId ?? "geral"}`,
+    data: { type: "chat", crecheId, petId: petId ?? null },
+  };
 
-  if (otherUsers.length) {
-    const preview = content?.length > 60 ? content.slice(0, 57) + "..." : content;
-    sendPushToUsers(
-      otherUsers.map((u) => u.id),
-      {
-        title: `💬 ${req.user.name}`,
-        body: preview || "Enviou uma mídia.",
-        tag: `chat-${crecheId}-${petId ?? "geral"}`,
-        data: { type: "chat", crecheId, petId: petId ?? null },
-      }
-    ).catch(() => {});
+  if (petId) {
+    // Per-pet chat: only notify the pet's tutor + staff/admin.
+    // NEVER notify tutors of OTHER pets — they have no access to this conversation.
+    const parsedPetId = parseInt(String(petId));
+
+    const [pet] = await db
+      .select({ tutorId: petsTable.tutorId })
+      .from(petsTable)
+      .where(eq(petsTable.id, parsedPetId))
+      .limit(1);
+
+    // All staff and admins of this creche (never tutors of other pets)
+    const staffAndAdmin = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.crecheId, crecheId),
+        ne(usersTable.id, req.user.id),
+        ne(usersTable.role, "tutor"),
+      ));
+
+    const recipientIds = staffAndAdmin.map((u) => u.id);
+
+    // Add this pet's tutor only if they are not the sender
+    if (pet?.tutorId && pet.tutorId !== req.user.id) {
+      recipientIds.push(pet.tutorId);
+    }
+
+    if (recipientIds.length) {
+      sendPushToUsers(recipientIds, pushPayload).catch(() => {});
+    }
+  } else {
+    // General chat (no specific pet): notify everyone in the creche
+    const allOthers = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(and(
+        eq(usersTable.crecheId, crecheId),
+        ne(usersTable.id, req.user.id),
+      ));
+
+    if (allOthers.length) {
+      sendPushToUsers(allOthers.map((u) => u.id), pushPayload).catch(() => {});
+    }
   }
 
   res.status(201).json({ ...msg, senderName: req.user.name, senderRole: req.user.role });
