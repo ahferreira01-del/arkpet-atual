@@ -44,7 +44,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <Header user={user} />
         {/* Use pt/px (no pb shorthand from p-4) so padding-bottom is
             controlled exclusively by the spacer div below.               */}
-        <main className="flex-1 overflow-y-auto overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">
           <div className="max-w-7xl mx-auto">
             {children}
             {/* Physical bottom spacer — visible only on mobile.

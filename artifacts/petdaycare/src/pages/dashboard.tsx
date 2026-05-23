@@ -270,8 +270,8 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                   <div className="divide-y divide-white/5">
                     {checkedIn.map((pet) => (
                       <Link key={pet.id} href={`/pets/${pet.id}`}>
-                        <div className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors cursor-pointer group">
-                          <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer group">
+                          <div className="flex items-center gap-3 min-w-0">
                             <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
                               {pet.photoUrl ? (
                                 <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
@@ -281,12 +281,12 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                                 </div>
                               )}
                             </div>
-                            <div>
-                              <p className="font-medium text-white group-hover:text-primary transition-colors">{pet.name}</p>
-                              <p className="text-sm text-muted-foreground capitalize">{pet.breed || pet.species}</p>
+                            <div className="min-w-0">
+                              <p className="font-medium text-white group-hover:text-primary transition-colors truncate">{pet.name}</p>
+                              <p className="text-sm text-muted-foreground capitalize truncate">{pet.breed || pet.species}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             <Badge variant="success">Presente</Badge>
                             <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
@@ -607,8 +607,8 @@ function TutorDashboard({ user }: { user: any }) {
                 <div className="divide-y divide-white/5">
                   {myPets.map((pet) => (
                     <Link key={pet.id} href={`/pets/${pet.id}`}>
-                      <div className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors cursor-pointer group">
-                        <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer group">
+                        <div className="flex items-center gap-3 min-w-0">
                           <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
                             {pet.photoUrl ? (
                               <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
@@ -618,12 +618,12 @@ function TutorDashboard({ user }: { user: any }) {
                               </div>
                             )}
                           </div>
-                          <div>
-                            <p className="font-medium text-white group-hover:text-primary transition-colors">{pet.name}</p>
-                            <p className="text-sm text-muted-foreground capitalize">{pet.breed || pet.species}</p>
+                          <div className="min-w-0">
+                            <p className="font-medium text-white group-hover:text-primary transition-colors truncate">{pet.name}</p>
+                            <p className="text-sm text-muted-foreground capitalize truncate">{pet.breed || pet.species}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                           {pet.isCheckedIn ? (
                             <Badge variant="success">Na creche</Badge>
                           ) : (

@@ -118,6 +118,7 @@ export function BottomNav({ user }: BottomNavProps) {
   };
 
   const links = getLinks();
+  const isCompact = links.length >= 6;
 
   return (
     // will-change-transform forces GPU compositing on iOS so the fixed nav
@@ -125,7 +126,7 @@ export function BottomNav({ user }: BottomNavProps) {
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden will-change-transform">
       {/* pb-safe pads the nav bar itself away from the system home indicator /
           gesture area. pl-safe/pr-safe handle landscape notches on iPhone. */}
-      <div className="bg-background/80 backdrop-blur-xl border-t border-white/10 px-2 pb-safe pl-safe pr-safe">
+      <div className="bg-background/80 backdrop-blur-xl border-t border-white/10 px-1 pb-safe pl-safe pr-safe">
         <div className="flex items-stretch justify-around">
           {links.map((link) => {
             const isActive =
@@ -138,31 +139,35 @@ export function BottomNav({ user }: BottomNavProps) {
             const inner = (
               <div
                 className={cn(
-                  "flex flex-col items-center justify-center py-2.5 gap-1 transition-all duration-200 rounded-xl mx-0.5 mt-1",
+                  "flex flex-col items-center justify-center gap-0.5 transition-all duration-200 rounded-xl mt-1",
+                  isCompact ? "py-1.5 mx-0" : "py-2.5 mx-0.5",
                   isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
                 )}
               >
                 <div
                   className={cn(
-                    "relative flex items-center justify-center h-7 w-7 rounded-lg transition-all duration-200",
+                    "relative flex items-center justify-center rounded-lg transition-all duration-200",
+                    isCompact ? "h-6 w-6" : "h-7 w-7",
                     isActive && "bg-primary/20 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                   )}
                 >
                   <link.icon
                     className={cn(
-                      "h-5 w-5 transition-transform duration-200",
+                      "transition-transform duration-200",
+                      isCompact ? "h-4 w-4" : "h-5 w-5",
                       isActive && "scale-110"
                     )}
                   />
                   {badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none shadow-lg">
+                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-0.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
                       {badge > 99 ? "99+" : badge}
                     </span>
                   )}
                 </div>
                 <span
                   className={cn(
-                    "text-[11px] font-medium leading-none transition-all duration-200 truncate max-w-full px-0.5",
+                    "font-medium leading-none transition-all duration-200 truncate max-w-full",
+                    isCompact ? "text-[9px]" : "text-[11px]",
                     isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
                   )}
                 >

@@ -143,23 +143,23 @@ export default function Walks() {
             ) : completedWalks.length ? (
               <div className="divide-y divide-white/5">
                 {completedWalks.map((walk) => (
-                  <div key={walk.id} className="px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center">
+                  <div key={walk.id} className="px-4 py-4 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
                         <Dog className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div>
-                        <p className="font-medium text-white">{walk.petName}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(walk.startedAt), "dd/MM/yyyy HH:mm")}
+                      <div className="min-w-0">
+                        <p className="font-medium text-white truncate">{walk.petName}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {format(new Date(walk.startedAt), "dd/MM HH:mm")}
                           {walk.endedAt && ` → ${format(new Date(walk.endedAt), "HH:mm")}`}
                         </p>
                         {walk.staffName && (
-                          <p className="text-xs text-muted-foreground">por {walk.staffName}</p>
+                          <p className="text-xs text-muted-foreground truncate">por {walk.staffName}</p>
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0">
                       {walk.durationMinutes ? (
                         <Badge variant="outline" className="bg-white/5">
                           <Clock className="h-3 w-3 mr-1" />

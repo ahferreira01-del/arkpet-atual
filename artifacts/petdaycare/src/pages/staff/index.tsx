@@ -378,7 +378,7 @@ export default function StaffDashboard() {
                       {format(new Date(task.scheduledFor), "HH:mm")} · {taskTypeLabel[task.type] || task.type}
                     </p>
                     {task.description && (
-                      <p className="text-xs text-muted-foreground/70 mt-0.5 truncate max-w-xs">{task.description}</p>
+                      <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{task.description}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
