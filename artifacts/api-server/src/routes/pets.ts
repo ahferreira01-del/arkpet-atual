@@ -45,6 +45,7 @@ router.get("/", async (req: AuthRequest, res) => {
     walkSchedule: petsTable.walkSchedule,
     qrToken: petsTable.qrToken,
     status: petsTable.status,
+    isCastrated: petsTable.isCastrated,
     createdAt: petsTable.createdAt,
   })
     .from(petsTable)
@@ -127,6 +128,7 @@ router.get("/:petId", async (req: AuthRequest, res) => {
     walkSchedule: petsTable.walkSchedule,
     qrToken: petsTable.qrToken,
     status: petsTable.status,
+    isCastrated: petsTable.isCastrated,
     createdAt: petsTable.createdAt,
   })
     .from(petsTable)
@@ -140,7 +142,7 @@ router.get("/:petId", async (req: AuthRequest, res) => {
 router.put("/:petId", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const petId = parseInt(String(req.params.petId));
-  const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status } = req.body;
+  const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status, isCastrated } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (breed !== undefined) updates.breed = breed;
@@ -154,6 +156,7 @@ router.put("/:petId", async (req: AuthRequest, res) => {
   if (feedingSchedule !== undefined) updates.feedingSchedule = feedingSchedule;
   if (walkSchedule !== undefined) updates.walkSchedule = walkSchedule;
   if (status !== undefined) updates.status = status;
+  if (isCastrated !== undefined) updates.isCastrated = isCastrated;
   const [pet] = await db.update(petsTable).set(updates)
     .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId))).returning();
   res.json({ ...pet, tutorName: null });
