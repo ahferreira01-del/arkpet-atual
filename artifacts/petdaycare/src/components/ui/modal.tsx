@@ -46,11 +46,14 @@ export function Modal({ isOpen, onClose, title, description, children, className
           />
 
           {/* ── Mobile: bottom sheet ──────────────────────────────────────
-              zIndex:100 inline-style guarantees it covers the BottomNav
-              (z-50) regardless of Tailwind purge / arbitrary-value issues.
-              max-h uses svh (small viewport = always excludes browser chrome)
-              with vh fallback for iOS < 15.4.                              */}
-          <div style={{ zIndex: 100 }} className="fixed inset-x-0 bottom-0 flex md:hidden">
+              Positioned ABOVE the bottom nav bar (not bottom-0) so the
+              sheet content and sticky footer are never covered by the nav.
+              Standard pattern for iOS/Android sheets above tab bars.
+              bottom = nav height (~68px) + system safe-area                */}
+          <div
+            style={{ zIndex: 100, bottom: "calc(68px + env(safe-area-inset-bottom, 0px))" }}
+            className="fixed inset-x-0 flex md:hidden"
+          >
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
@@ -77,8 +80,8 @@ export function Modal({ isOpen, onClose, title, description, children, className
                 </Button>
               </div>
 
-              {/* Scrollable body — pb-safe keeps content above home indicator */}
-              <div className="overflow-y-auto flex-1 custom-scrollbar px-6 pb-safe">
+              {/* Scrollable body */}
+              <div className="overflow-y-auto flex-1 custom-scrollbar px-6 pb-4">
                 {children}
               </div>
             </motion.div>
