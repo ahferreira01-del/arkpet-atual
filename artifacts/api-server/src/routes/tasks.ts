@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
@@ -12,10 +12,16 @@ router.get("/", async (req: AuthRequest, res) => {
   // Tutors do not have access to the internal task list
   if (req.user?.role === "tutor") { res.json([]); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-  const { status, assignedTo } = req.query;
+  const { status, assignedTo, date } = req.query;
   let conditions: any[] = [eq(tasksTable.crecheId, crecheId)];
   if (status) conditions.push(eq(tasksTable.status, status as any));
   if (assignedTo) conditions.push(eq(tasksTable.assignedToId, parseInt(assignedTo as string)));
+  if (date) {
+    const startOfDay = new Date((date as string) + "T00:00:00");
+    const endOfDay = new Date((date as string) + "T23:59:59");
+    conditions.push(gte(tasksTable.scheduledFor, startOfDay));
+    conditions.push(lte(tasksTable.scheduledFor, endOfDay));
+  }
 
   const tasks = await db.select({
     id: tasksTable.id,

@@ -1,20 +1,131 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
-import { and, eq, gte, lte, isNotNull } from "drizzle-orm";
+import { and, eq, gte, lte, isNotNull, inArray, or, isNull } from "drizzle-orm";
 import { sendPushToUser } from "./push.js";
 
 const notifiedTaskIds = new Set<number>();
 
-async function generateDailyTasks() {
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
+function makeTimeOnDate(todayStr: string, hours: number, minutes: number): Date {
+  const d = new Date(todayStr + "T00:00:00");
+  d.setHours(hours, minutes, 0, 0);
+  return d;
+}
+
+// ─── Single-pet task generation (called on check-in) ─────────────────────────
+
+export async function generateTasksForPetToday(petId: number, crecheId: number) {
   try {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+    const todayStr = new Date().toISOString().split("T")[0];
     const startOfDay = new Date(todayStr + "T00:00:00");
     const endOfDay = new Date(todayStr + "T23:59:59");
 
-    // All active pets with feeding/walk schedules
+    const [pet] = await db.select({
+      id: petsTable.id,
+      name: petsTable.name,
+      crecheId: petsTable.crecheId,
+      feedingSchedule: petsTable.feedingSchedule,
+      walkSchedule: petsTable.walkSchedule,
+    }).from(petsTable).where(eq(petsTable.id, petId)).limit(1);
+    if (!pet) return;
+
+    const existingTasks = await db.select({
+      petId: tasksTable.petId,
+      type: tasksTable.type,
+      scheduledFor: tasksTable.scheduledFor,
+    }).from(tasksTable).where(and(
+      eq(tasksTable.petId, petId),
+      gte(tasksTable.scheduledFor, startOfDay),
+      lte(tasksTable.scheduledFor, endOfDay),
+    ));
+
+    const allMeds = await db.select({
+      name: medicationsTable.name,
+      dosage: medicationsTable.dosage,
+      times: medicationsTable.times,
+      startDate: medicationsTable.startDate,
+      endDate: medicationsTable.endDate,
+    }).from(medicationsTable).where(and(eq(medicationsTable.petId, petId), eq(medicationsTable.isActive, true)));
+
+    const activeMeds = allMeds.filter((m) => {
+      if (m.startDate > todayStr) return false;
+      if (m.endDate && m.endDate < todayStr) return false;
+      return true;
+    });
+
+    const alreadyExists = (type: string, h: number, m: number) =>
+      existingTasks.some((t) => {
+        if (t.type !== type) return false;
+        const d = new Date(t.scheduledFor);
+        return d.getHours() === h && d.getMinutes() === m;
+      });
+
+    const newTasks: (typeof tasksTable.$inferInsert)[] = [];
+
+    const feeding: Array<{ time: string; amount?: string; notes?: string }> =
+      Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
+    for (const f of feeding) {
+      if (!f.time) continue;
+      const [h, m] = f.time.split(":").map(Number);
+      if (isNaN(h) || isNaN(m)) continue;
+      if (alreadyExists("feeding", h, m)) continue;
+      const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
+      newTasks.push({ crecheId, petId, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+    }
+
+    const walks: Array<{ time: string; durationMinutes?: number; notes?: string }> =
+      Array.isArray(pet.walkSchedule) ? pet.walkSchedule as any : [];
+    for (const w of walks) {
+      if (!w.time) continue;
+      const [h, m] = w.time.split(":").map(Number);
+      if (isNaN(h) || isNaN(m)) continue;
+      if (alreadyExists("walk", h, m)) continue;
+      newTasks.push({ crecheId, petId, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+    }
+
+    for (const med of activeMeds) {
+      const times: string[] = Array.isArray(med.times) ? med.times as string[] : [];
+      for (const time of times) {
+        const [h, m] = time.split(":").map(Number);
+        if (isNaN(h) || isNaN(m)) continue;
+        if (alreadyExists("medication", h, m)) continue;
+        newTasks.push({ crecheId, petId, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
+      }
+    }
+
+    if (newTasks.length > 0) {
+      await db.insert(tasksTable).values(newTasks);
+      console.log(`[scheduler] check-in: gerou ${newTasks.length} tarefa(s) para ${pet.name} em ${todayStr}`);
+    }
+  } catch (err) {
+    console.error("[scheduler] erro ao gerar tarefas no check-in:", err);
+  }
+}
+
+// ─── Daily bulk task generation (midnight cron) ───────────────────────────────
+
+async function generateDailyTasks() {
+  try {
+    const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
+    const startOfDay = new Date(todayStr + "T00:00:00");
+    const endOfDay = new Date(todayStr + "T23:59:59");
+
+    // Only generate for pets that have a confirmed/active booking covering today
+    const bookedRows = await db.select({ petId: bookingsTable.petId })
+      .from(bookingsTable)
+      .where(and(
+        inArray(bookingsTable.status, ["confirmed", "active"] as any),
+        lte(bookingsTable.startDate, todayStr),
+        or(isNull(bookingsTable.endDate), gte(bookingsTable.endDate, todayStr)),
+      ));
+
+    const bookedPetIds = [...new Set(bookedRows.map((r) => r.petId))];
+    if (!bookedPetIds.length) return;
+
     const pets = await db.select({
       id: petsTable.id,
       name: petsTable.name,
@@ -22,22 +133,19 @@ async function generateDailyTasks() {
       feedingSchedule: petsTable.feedingSchedule,
       walkSchedule: petsTable.walkSchedule,
     }).from(petsTable)
-      .where(eq(petsTable.status, "active"));
+      .where(and(eq(petsTable.status, "active"), inArray(petsTable.id, bookedPetIds)));
 
     if (!pets.length) return;
 
-    // Tasks already existing for today (to avoid duplicates)
     const existingTasks = await db.select({
       petId: tasksTable.petId,
       type: tasksTable.type,
       scheduledFor: tasksTable.scheduledFor,
-    }).from(tasksTable)
-      .where(and(
-        gte(tasksTable.scheduledFor, startOfDay),
-        lte(tasksTable.scheduledFor, endOfDay),
-      ));
+    }).from(tasksTable).where(and(
+      gte(tasksTable.scheduledFor, startOfDay),
+      lte(tasksTable.scheduledFor, endOfDay),
+    ));
 
-    // Active medications for today
     const allMedications = await db.select({
       id: medicationsTable.id,
       petId: medicationsTable.petId,
@@ -47,8 +155,7 @@ async function generateDailyTasks() {
       times: medicationsTable.times,
       startDate: medicationsTable.startDate,
       endDate: medicationsTable.endDate,
-    }).from(medicationsTable)
-      .where(eq(medicationsTable.isActive, true));
+    }).from(medicationsTable).where(eq(medicationsTable.isActive, true));
 
     const activeMeds = allMedications.filter((m) => {
       if (m.startDate > todayStr) return false;
@@ -69,16 +176,9 @@ async function generateDailyTasks() {
         return d.getHours() === hours && d.getMinutes() === minutes;
       });
 
-    const makeTime = (hours: number, minutes: number): Date => {
-      const d = new Date(todayStr + "T00:00:00");
-      d.setHours(hours, minutes, 0, 0);
-      return d;
-    };
-
     const newTasks: (typeof tasksTable.$inferInsert)[] = [];
 
     for (const pet of pets) {
-      // Feeding tasks
       const feeding: Array<{ time: string; amount?: string; notes?: string }> =
         Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
       for (const f of feeding) {
@@ -87,10 +187,9 @@ async function generateDailyTasks() {
         if (isNaN(h) || isNaN(m)) continue;
         if (alreadyExists(pet.id, "feeding", h, m)) continue;
         const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
-        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTime(h, m), priority: "medium" });
+        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
       }
 
-      // Walk tasks
       const walks: Array<{ time: string; durationMinutes?: number; notes?: string }> =
         Array.isArray(pet.walkSchedule) ? pet.walkSchedule as any : [];
       for (const w of walks) {
@@ -98,17 +197,16 @@ async function generateDailyTasks() {
         const [h, m] = w.time.split(":").map(Number);
         if (isNaN(h) || isNaN(m)) continue;
         if (alreadyExists(pet.id, "walk", h, m)) continue;
-        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTime(h, m), priority: "medium" });
+        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
       }
 
-      // Medication tasks
       for (const med of medsByPet.get(pet.id) ?? []) {
         const times: string[] = Array.isArray(med.times) ? med.times as string[] : [];
         for (const time of times) {
           const [h, m] = time.split(":").map(Number);
           if (isNaN(h) || isNaN(m)) continue;
           if (alreadyExists(pet.id, "medication", h, m)) continue;
-          newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTime(h, m), priority: "high" });
+          newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
         }
       }
     }
@@ -123,15 +221,12 @@ async function generateDailyTasks() {
 }
 
 export function startScheduler() {
-  // Generate daily tasks immediately on startup
   generateDailyTasks();
 
-  // Regenerate every day at midnight
   cron.schedule("1 0 * * *", () => {
     generateDailyTasks();
   });
 
-  // Every minute: check for tasks starting in the next 5 minutes
   cron.schedule("* * * * *", async () => {
     try {
       const now = new Date();
@@ -151,13 +246,11 @@ export function startScheduler() {
         .from(tasksTable)
         .leftJoin(petsTable, eq(tasksTable.petId, petsTable.id))
         .leftJoin(usersTable, eq(tasksTable.assignedToId, usersTable.id))
-        .where(
-          and(
-            eq(tasksTable.status, "pending"),
-            gte(tasksTable.scheduledFor, windowStart),
-            lte(tasksTable.scheduledFor, windowEnd),
-          )
-        );
+        .where(and(
+          eq(tasksTable.status, "pending"),
+          gte(tasksTable.scheduledFor, windowStart),
+          lte(tasksTable.scheduledFor, windowEnd),
+        ));
 
       const typeLabels: Record<string, string> = {
         feeding: "🍽️ Alimentação", medication: "💊 Medicação", grooming: "✂️ Banho/Tosa",
@@ -197,7 +290,6 @@ export function startScheduler() {
 
 async function sendMensalidadeReminders() {
   try {
-    // Get 3 days from now
     const futureDate = new Date();
     futureDate.setDate(futureDate.getDate() + 3);
     const targetDay = futureDate.getDate();
@@ -226,7 +318,6 @@ async function sendMensalidadeReminders() {
 }
 
 export function startMensalidadeScheduler() {
-  // Run daily at 9am
   cron.schedule("0 9 * * *", async () => {
     console.log("[scheduler] Running mensalidade check...");
     await sendMensalidadeReminders();

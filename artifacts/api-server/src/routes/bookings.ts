@@ -47,7 +47,6 @@ router.post("/", async (req: AuthRequest, res) => {
   const typeLabel = typeLabels[type] ?? type;
   const petName = enriched.petName ?? "Pet";
 
-  // Notify admins of the creche
   sendPushToRole(crecheId, "creche_admin", {
     title: `Nova Reserva — ${petName}`,
     body: `${typeLabel} solicitado por ${enriched.tutorName ?? "tutor"}. Verifique as reservas.`,
@@ -55,7 +54,6 @@ router.post("/", async (req: AuthRequest, res) => {
     data: { type: "booking", bookingId: booking.id, crecheId },
   }).catch(() => {});
 
-  // Notify tutor (if booking was created by staff/admin)
   if (req.user.role !== "tutor" && tutorId !== req.user.id) {
     sendPushToUser(tutorId, {
       title: `Reserva criada — ${petName}`,
@@ -84,16 +82,18 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
   const { status, notes, price } = req.body;
   const updates: Record<string, unknown> = {};
 
+  // Fetch existing booking upfront (needed for push logic and tutor validation)
+  const [existing] = await db.select().from(bookingsTable)
+    .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.crecheId, crecheId))).limit(1);
+  if (!existing) { res.status(404).json({ error: "Reserva não encontrada." }); return; }
+
   if (status !== undefined) {
     if (req.user.role === "tutor") {
-      // Tutors may only request cancellation on their own pending/confirmed bookings
       if (status !== "cancel_requested") {
         res.status(403).json({ error: "Tutores só podem solicitar cancelamento de reservas." });
         return;
       }
-      const [existing] = await db.select().from(bookingsTable)
-        .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.crecheId, crecheId))).limit(1);
-      if (!existing || existing.tutorId !== req.user.id) {
+      if (existing.tutorId !== req.user.id) {
         res.status(403).json({ error: "Reserva não encontrada." });
         return;
       }
@@ -106,14 +106,15 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
   }
   if (notes !== undefined) updates.notes = notes;
   if (price !== undefined) updates.price = price;
+
   const [booking] = await db.update(bookingsTable).set(updates)
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
   const enriched = await getBookingWithNames(booking);
 
-  // Notify of status changes
+  // Push notifications based on status change
   if (status) {
     if (status === "cancel_requested" && booking.tutorId) {
-      // Notify creche admins that tutor requested cancellation
+      // Tutor requested cancellation → notify creche admins
       sendPushToRole(crecheId, "creche_admin", {
         title: `⚠️ Cancelamento solicitado — ${enriched.petName ?? "Pet"}`,
         body: `${enriched.tutorName ?? "Tutor"} solicitou o cancelamento da reserva de ${enriched.petName ?? "Pet"}.`,
@@ -121,19 +122,40 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
         data: { type: "booking", bookingId: booking.id, crecheId },
       }).catch(() => {});
     } else if (booking.tutorId) {
-      const statusLabels: Record<string, string> = {
-        confirmed: "confirmada ✅",
-        cancelled: "cancelada ❌",
-        pending: "pendente ⏳",
-      };
-      const label = statusLabels[status];
-      if (label) {
+      const prevStatus = existing.status;
+
+      if (prevStatus === "cancel_requested" && status === "confirmed") {
+        // Creche REJEITOU o cancelamento → informar tutor
         sendPushToUser(booking.tutorId, {
-          title: `Reserva ${label}`,
-          body: `A reserva de ${enriched.petName ?? "seu pet"} foi ${label}.`,
+          title: `❌ Cancelamento recusado`,
+          body: `A creche recusou o cancelamento da reserva de ${enriched.petName ?? "seu pet"}. A reserva segue confirmada.`,
+          tag: `booking-cancel-rejected-${booking.id}`,
+          data: { type: "booking", bookingId: booking.id },
+        }).catch(() => {});
+      } else if (prevStatus === "cancel_requested" && status === "cancelled") {
+        // Creche APROVOU o cancelamento
+        sendPushToUser(booking.tutorId, {
+          title: `✅ Cancelamento aprovado`,
+          body: `A creche aprovou o cancelamento da reserva de ${enriched.petName ?? "seu pet"}.`,
           tag: `booking-status-${booking.id}`,
           data: { type: "booking", bookingId: booking.id },
         }).catch(() => {});
+      } else {
+        // Outras mudanças de status
+        const statusLabels: Record<string, string> = {
+          confirmed: "confirmada ✅",
+          cancelled: "cancelada ❌",
+          pending: "pendente ⏳",
+        };
+        const label = statusLabels[status];
+        if (label) {
+          sendPushToUser(booking.tutorId, {
+            title: `Reserva ${label}`,
+            body: `A reserva de ${enriched.petName ?? "seu pet"} foi ${label}.`,
+            tag: `booking-status-${booking.id}`,
+            data: { type: "booking", bookingId: booking.id },
+          }).catch(() => {});
+        }
       }
     }
   }
@@ -162,14 +184,33 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
   const typeLabel = type === "drop_off" ? "levar" : "buscar";
   const etaText = etaMinutes ? ` (aprox. ${etaMinutes} min)` : "";
   const petName = enriched.petName ?? "um pet";
+  const senderName = req.user.name ?? "Alguém";
 
-  // Notify creche admins
-  sendPushToRole(crecheId, "creche_admin", {
-    title: `🚗 Tutor a caminho — ${petName}`,
-    body: `${enriched.tutorName ?? "Tutor"} está vindo ${typeLabel} ${petName}${etaText}.`,
-    tag: `on-the-way-${booking.id}`,
-    data: { type: "booking", bookingId: booking.id, crecheId },
-  }).catch(() => {});
+  if (req.user.role === "tutor") {
+    // Tutor está a caminho → avisar creche (admins e staff)
+    sendPushToRole(crecheId, "creche_admin", {
+      title: `🚗 Tutor a caminho — ${petName}`,
+      body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
+      tag: `on-the-way-${booking.id}`,
+      data: { type: "booking", bookingId: booking.id, crecheId },
+    }).catch(() => {});
+    sendPushToRole(crecheId, "staff", {
+      title: `🚗 Tutor a caminho — ${petName}`,
+      body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
+      tag: `on-the-way-${booking.id}`,
+      data: { type: "booking", bookingId: booking.id, crecheId },
+    }).catch(() => {});
+  } else {
+    // Creche (admin/staff) está a caminho → avisar tutor
+    if (booking.tutorId) {
+      sendPushToUser(booking.tutorId, {
+        title: `🚗 Creche a caminho — ${petName}`,
+        body: `A creche está vindo ${typeLabel} ${petName}${etaText}.`,
+        tag: `on-the-way-${booking.id}`,
+        data: { type: "booking", bookingId: booking.id },
+      }).catch(() => {});
+    }
+  }
 
   res.json(enriched);
 });
@@ -183,7 +224,6 @@ router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
     .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).limit(1);
   if (!booking) { res.status(404).json({ error: "Reserva não encontrada" }); return; }
 
-  // Notify tutor that creche confirmed
   if (booking.tutorId) {
     const enriched = await getBookingWithNames(booking);
     const typeLabel = booking.onTheWayType === "pickup" ? "buscar" : "trazer";
@@ -231,12 +271,48 @@ router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
 router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
+
+  // Fetch booking first to get petId and validate status
+  const [existingBooking] = await db.select().from(bookingsTable)
+    .where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).limit(1);
+  if (!existingBooking) { res.status(404).json({ error: "Reserva não encontrada" }); return; }
+  if (existingBooking.status !== "confirmed") {
+    res.status(400).json({ error: "Apenas reservas confirmadas podem realizar check-in." }); return;
+  }
+
+  // Block if pet already has an active check-in
+  const [alreadyActive] = await db.select({ id: bookingsTable.id })
+    .from(bookingsTable)
+    .where(and(
+      eq(bookingsTable.crecheId, crecheId),
+      eq(bookingsTable.petId, existingBooking.petId),
+      eq(bookingsTable.status, "active"),
+    )).limit(1);
+  if (alreadyActive) {
+    res.status(409).json({ error: "Este pet já possui um check-in ativo. Realize o check-out antes de fazer um novo." });
+    return;
+  }
+
+  // Proceed: check-in + clear on-the-way state
   const [booking] = await db.update(bookingsTable).set({
-    status: "active", checkInTime: new Date(),
+    status: "active",
+    checkInTime: new Date(),
+    onTheWayType: null,
+    onTheWayEtaMinutes: null,
+    onTheWayAt: null,
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
+
   await db.update(petsTable).set({ isCheckedIn: true }).where(eq(petsTable.id, booking.petId));
-  await db.update(crechesTable).set({ currentOccupancy: db.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any }).where(eq(crechesTable.id, crecheId));
+  await db.update(crechesTable).set({
+    currentOccupancy: db.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any,
+  }).where(eq(crechesTable.id, crecheId));
+
   const enriched = await getBookingWithNames(booking);
+
+  // Generate tasks for this pet today (fire-and-forget)
+  import("../lib/scheduler.js").then(({ generateTasksForPetToday }) => {
+    generateTasksForPetToday(booking.petId, crecheId).catch(() => {});
+  }).catch(() => {});
 
   // Notify tutor of check-in
   if (booking.tutorId) {
@@ -255,7 +331,11 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
   const [booking] = await db.update(bookingsTable).set({
-    status: "completed", checkOutTime: new Date(),
+    status: "completed",
+    checkOutTime: new Date(),
+    onTheWayType: null,
+    onTheWayEtaMinutes: null,
+    onTheWayAt: null,
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
   await db.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, booking.petId));
   const enriched = await getBookingWithNames(booking);
@@ -267,6 +347,42 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
       body: `${enriched.petName ?? "Seu pet"} está pronto para ir para casa.`,
       tag: `checkout-${booking.id}`,
       data: { type: "checkout", bookingId: booking.id, petId: booking.petId },
+    }).catch(() => {});
+  }
+
+  res.json(enriched);
+});
+
+// Finaliza um serviço específico sem fazer checkout do pet (pet permanece presente)
+router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+  const crecheId = parseInt(String(req.params.crecheId));
+  const bookingId = parseInt(String(req.params.bookingId));
+
+  const [booking] = await db.update(bookingsTable).set({
+    status: "completed",
+    checkOutTime: new Date(),
+  }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
+
+  if (!booking) { res.status(404).json({ error: "Reserva não encontrada" }); return; }
+
+  const enriched = await getBookingWithNames(booking);
+
+  // Notify tutor that the specific service was completed (pet stays)
+  if (booking.tutorId) {
+    const typeLabels: Record<string, string> = {
+      banho: "Banho", hospedagem_banho: "Hospedagem + Banho",
+      visita: "Visita", day_use: "Day Use", lodging: "Hospedagem",
+      pacote_4dias: "Pacote 4 Dias", pacote_8dias: "Pacote 8 Dias",
+      pacote_20dias: "Pacote 20 Dias", visita_taxi: "Visita + Táxi", creche_taxi: "Creche + Táxi",
+    };
+    const serviceLabel = typeLabels[booking.type] ?? "Serviço";
+    sendPushToUser(booking.tutorId, {
+      title: `✅ ${serviceLabel} concluído — ${enriched.petName ?? "Seu pet"}`,
+      body: `O serviço de ${serviceLabel} de ${enriched.petName ?? "seu pet"} foi finalizado. O pet continua na creche.`,
+      tag: `service-done-${booking.id}`,
+      data: { type: "booking", bookingId: booking.id },
     }).catch(() => {});
   }
 

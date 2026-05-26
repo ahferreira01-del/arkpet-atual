@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package } from "lucide-react";
+import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -146,6 +146,25 @@ function useOnTheWay(crecheId: number) {
   });
 }
 
+function useCompleteService(crecheId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (bookingId: number) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/complete-service`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw Object.assign(new Error("Erro"), { data });
+      }
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
 export default function Bookings() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
@@ -180,6 +199,9 @@ export default function Bookings() {
   const checkInMutation = useCheckIn();
   const checkOutMutation = useCheckOut();
   const onTheWayMutation = useOnTheWay(crecheId);
+  const completeServiceMutation = useCompleteService(crecheId);
+
+  const isPetPresent = (petId: number) => pets?.find((p) => p.id === petId)?.isCheckedIn ?? false;
 
   const myBookings = isTutor ? bookings?.filter((b) => {
     const myPetIds = pets?.map((p) => p.id) || [];
@@ -256,18 +278,31 @@ export default function Bookings() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
-          // Open personal items modal right after check-in
           setPersonalItemsBooking({ ...booking, crecheId });
         },
         onError: (err: any) => {
+          const msg = err?.data?.error ?? err?.message ?? "Tente novamente.";
+          const isDouble = typeof msg === "string" && msg.includes("check-in ativo");
           toast({
-            title: "Erro no check-in",
-            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            title: isDouble ? "Check-in não permitido" : "Erro no check-in",
+            description: msg,
             variant: "destructive",
           });
         },
       }
     );
+  };
+
+  const handleCompleteService = (booking: any) => {
+    completeServiceMutation.mutate(booking.id, {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
+        toast({ title: "Serviço concluído!", description: `A reserva de ${booking.petName} foi finalizada. O pet permanece na creche.` });
+      },
+      onError: (err: any) => {
+        toast({ title: "Erro", description: err?.data?.error ?? err?.message ?? "Tente novamente.", variant: "destructive" });
+      },
+    });
   };
 
   const pendingTasksForBooking = (booking: any) =>
@@ -325,7 +360,10 @@ export default function Bookings() {
       {
         onSuccess: () => {
           setOnTheWayBooking(null);
-          toast({ title: "Notificação enviada!", description: "A creche foi avisada que você está a caminho." });
+          const desc = isTutor
+            ? "A creche foi avisada que você está a caminho."
+            : "O tutor foi avisado que a equipe está a caminho.";
+          toast({ title: "Notificação enviada!", description: desc });
         },
         onError: () => {
           toast({ title: "Erro", description: "Não foi possível enviar a notificação.", variant: "destructive" });
@@ -397,7 +435,7 @@ export default function Bookings() {
                           <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                         )}
                       </div>
-                      {(booking as any).onTheWayType && booking.status !== "active" && booking.status !== "completed" && (
+                      {(booking as any).onTheWayAt && booking.status !== "completed" && (
                         <span className="text-xs text-blue-400 flex items-center gap-0.5 flex-shrink-0">
                           <Car className="h-3 w-3" /> A caminho
                         </span>
@@ -468,7 +506,7 @@ export default function Bookings() {
                               </Button>
                             </>
                           )}
-                          {booking.status === "confirmed" && (
+                          {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -477,6 +515,17 @@ export default function Bookings() {
                               isLoading={checkInMutation.isPending}
                             >
                               <LogIn className="mr-1 h-3 w-3" /> Check-in
+                            </Button>
+                          )}
+                          {booking.status === "confirmed" && isPetPresent(booking.petId) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 text-xs"
+                              onClick={() => handleCompleteService(booking)}
+                              isLoading={completeServiceMutation.isPending}
+                            >
+                              <CheckCircle className="mr-1 h-3 w-3" /> Concluir Serviço
                             </Button>
                           )}
                           {booking.status === "active" && (
@@ -552,7 +601,7 @@ export default function Bookings() {
                           <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
                             {statusLabel[booking.status] || booking.status}
                           </Badge>
-                          {(booking as any).onTheWayType && booking.status !== "active" && booking.status !== "completed" && (
+                          {(booking as any).onTheWayAt && booking.status !== "completed" && (
                             <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
                               <Car className="h-3 w-3" /> A caminho
                             </p>
@@ -605,7 +654,7 @@ export default function Bookings() {
                                     </Button>
                                   </>
                                 )}
-                                {booking.status === "confirmed" && (
+                                {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -614,6 +663,17 @@ export default function Bookings() {
                                     isLoading={checkInMutation.isPending}
                                   >
                                     <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                                  </Button>
+                                )}
+                                {booking.status === "confirmed" && isPetPresent(booking.petId) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                                    onClick={() => handleCompleteService(booking)}
+                                    isLoading={completeServiceMutation.isPending}
+                                  >
+                                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
                                   </Button>
                                 )}
                                 {booking.status === "active" && (
@@ -902,13 +962,15 @@ export default function Bookings() {
         </Modal>
       )}
 
-      {/* On the Way Modal — Tutor only */}
+      {/* On the Way Modal */}
       {onTheWayBooking && (
-        <Modal isOpen={!!onTheWayBooking} onClose={() => setOnTheWayBooking(null)} title="Estou a Caminho">
+        <Modal isOpen={!!onTheWayBooking} onClose={() => setOnTheWayBooking(null)} title="A Caminho">
           <div className="space-y-5">
             <p className="text-sm text-muted-foreground">
-              Avise a creche que você está a caminho para{" "}
-              <span className="text-white font-medium">{onTheWayBooking.petName}</span>.
+              {isTutor
+                ? <>Avise a creche que você está a caminho para <span className="text-white font-medium">{onTheWayBooking.petName}</span>.</>
+                : <>Avise o tutor que a equipe está a caminho para <span className="text-white font-medium">{onTheWayBooking.petName}</span>.</>
+              }
             </p>
 
             <div className="space-y-2">
