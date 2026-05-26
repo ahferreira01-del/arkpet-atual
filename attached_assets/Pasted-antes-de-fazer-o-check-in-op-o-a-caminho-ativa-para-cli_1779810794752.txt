@@ -1,0 +1,26 @@
+antes de fazer o check-in --> opção a caminho ativa para clicar, tanto para creche, quanto para o tutor --> e quem clicar primeiro e falar que está a caminho desaparece para o outro perfil, ele só recebe a informação de que está a caminho e fica aparecendo que está a caminho --> Fez check-in na creche, somente a opção fica ativa novamente para os dois, pois a creche pode levar ou tutor ir buscar --> quando fizer checkout, opção não aparece mais em lugar nenhum
+
+Lembrando que tudo deve ser notificado via push.
+
+as notificações de cancelamento de reserva, não estão sendo enviadas, necessário que quando o tutor solicitar o cancelamento, a creche seja notificada e quando a creche cancelar o tutor também deve ser notificado do cancelamento.
+
+Não permitir realizar vários check in, pois hoje permite, e quando realiza check out ele faz todos os check outs pendentes para aquele pet, o certo é apenas um check simultâneo, porém o tutor pode fazer outro tipo de agendamento para o pet, exemplo, o pet entrou como hospedagem e após isso, o tutor acaba gerando outra reserva para o banho.. Como poderíamos resolver isso? Resolução abaixo.
+
+Check-in/check-out = presença física do pet na creche (estado binário)
+Reservas = serviços agendados (podem ser vários do mesmo pet)
+
+A solução mais limpa seria tratar os dois de forma independente:
+
+Check-in bloqueado se já presente: Se isCheckedIn = true, impedir um novo check-in para aquele pet. O pet só pode dar entrada uma vez por vez. A UI ocultaria/desabilitaria o botão de check-in enquanto o pet estiver presente.
+
+Múltiplas reservas são normais: O tutor pode criar reserva de hospedagem + banho no mesmo período. Elas coexistem como serviços independentes. O check-in não precisa ser "por reserva", ele é "por pet".
+
+Check-out único por presença: O checkout marca isCheckedIn = false e conclui todos os serviços ativos daquela presença — que é exatamente o que acontece hoje, só que de forma intencional e controlada. O pet foi embora, então tudo que estava em andamento encerra junto.
+
+Serviços concluídos internamente: Se o banho acabou mas o pet ainda está hospedado, a reserva de banho pode ser marcada como completed sem fazer checkout — o pet segue presente. Seria uma ação separada do checkout físico.
+
+Resumindo: check-in e check-out controlam a presença física, as reservas controlam os serviços prestados durante essa presença. São fluxos paralelos que se cruzam mas não dependem um do outro para existir.
+
+
+as tarefas também estão estranhas, não está sendo geradas as tarefas de pets com novo check in, pelo contrario está trazendo tarefas antigas de outros pets.
+
