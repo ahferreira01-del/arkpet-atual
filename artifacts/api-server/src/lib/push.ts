@@ -48,9 +48,13 @@ async function sendToSubscription(
         // come back online still receive it (default TTL is ~0 = drop instantly).
         TTL: 60 * 60 * 24,
         urgency: "high",
-        // Topic lets push services collapse same-topic notifications.
-        // Must be URL-safe base64, max 32 chars. Hash the tag.
-        ...(payload.tag ? { topic: makeTopic(payload.tag) } : {}),
+        // NOTE: We intentionally do NOT send a Topic header here.
+        // FCM (Android) uses Topic to collapse same-topic pushes in transit,
+        // meaning if two notifications with the same topic arrive at FCM before
+        // the device comes online, only the last one is delivered. This was
+        // silently dropping notifications. The SW already handles dedup at
+        // display time via `tag` + `renotify:true`, so we don't need cloud-level
+        // collapsing. Each push now arrives independently at the device.
       },
     );
   } catch (err: any) {

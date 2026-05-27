@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v11";
+const CACHE_NAME = "arkpet-v12";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -75,11 +75,6 @@ self.addEventListener("fetch", (event) => {
 // ──────────────────────────────────────────────────────
 // Push notifications
 // ──────────────────────────────────────────────────────
-async function anyClientFocused() {
-  const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  return list.some((c) => c.visibilityState === "visible" && c.focused);
-}
-
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -89,9 +84,6 @@ self.addEventListener("push", (event) => {
   }
 
   const title = data.title || "ArkPet";
-  // Use the provided tag verbatim. With renotify:true the same tag
-  // replaces the previous notification but still buzzes/sounds the device.
-  // This prevents the duplicate-notification spam from previous versions.
   const tag = data.tag || "arkpet-notification";
 
   const options = {
@@ -109,19 +101,28 @@ self.addEventListener("push", (event) => {
 
   event.waitUntil(
     (async () => {
-      // If the app is open AND the relevant tab is focused, skip the OS
-      // notification — the in-app UI (toast / live update) covers it and
-      // we avoid the double-notify experience users complain about.
-      // Chat messages and explicit tests are exceptions: always show so
-      // the user gets visible feedback.
+      const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+      // Always send postMessage so open tabs update their UI in real-time,
+      // regardless of whether we also show an OS notification.
+      for (const c of list) c.postMessage({ kind: "push", payload: data });
+
+      // Decide whether to also show the OS notification.
+      // Chat and test events always show — they need explicit visual feedback.
+      // Other events: suppress only when at least one tab is visibly in the
+      // foreground. We intentionally do NOT check `c.focused` here because
+      // on Android Chrome (PWA standalone mode) `focused` is often reported
+      // as false even when the app is in the foreground, causing notifications
+      // to leak through when the app is already open.
       const isChat = data.type === "chat";
       const isTest = data.type === "test";
-      if (!isChat && !isTest && await anyClientFocused()) {
-        // Still update the app via postMessage so any open client can refresh.
-        const list = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-        for (const c of list) c.postMessage({ kind: "push", payload: data });
+      const anyVisible = list.some((c) => c.visibilityState === "visible");
+
+      if (!isChat && !isTest && anyVisible) {
+        // App is open and visible — in-app toast/UI handles the update.
         return;
       }
+
       await self.registration.showNotification(title, options);
     })()
   );

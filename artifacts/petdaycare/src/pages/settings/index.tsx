@@ -172,6 +172,18 @@ export default function Settings() {
                 </Button>
               )}
 
+              {/* Android battery optimization warning */}
+              {isSubscribed && /android/i.test(navigator.userAgent) && (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/8 border border-amber-500/15 text-xs text-amber-300/80">
+                  <span className="flex-shrink-0 mt-0.5">⚡</span>
+                  <p>
+                    <span className="font-medium text-amber-300">Dica Android:</span> para garantir o recebimento mesmo com o app fechado, vá em{" "}
+                    <span className="font-medium">Configurações → Aplicativos → Chrome → Bateria</span>{" "}
+                    e selecione <span className="font-medium">"Sem restrições"</span>.
+                  </p>
+                </div>
+              )}
+
               {/* What you'll get */}
               {!isSubscribed && permission !== "denied" && (
                 <div className="grid grid-cols-1 gap-2">
