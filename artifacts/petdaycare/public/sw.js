@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v13";
+const CACHE_NAME = "arkpet-v14";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -114,8 +114,11 @@ self.addEventListener("push", (event) => {
       // on Android Chrome (PWA standalone mode) `focused` is often reported
       // as false even when the app is in the foreground, causing notifications
       // to leak through when the app is already open.
-      const isChat = data.type === "chat";
-      const isTest = data.type === "test";
+      // data is the full push payload: { title, body, tag, data: { type, ... } }
+      // The actual notification type lives in data.data.type, not data.type.
+      const notifType = (data.data?.type ?? data.type) || "";
+      const isChat = notifType === "chat";
+      const isTest = notifType === "test";
       const anyVisible = list.some((c) => c.visibilityState === "visible");
 
       if (!isChat && !isTest && anyVisible) {

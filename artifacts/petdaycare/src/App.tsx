@@ -58,7 +58,9 @@ function ServiceWorkerBridge() {
       } else if (msg.kind === "push") {
         // Scoped refresh based on push type — keeps the UI live without
         // triggering a full app-wide refetch storm on every notification.
-        const type = msg.payload?.type;
+        // msg.payload is the full push payload: { title, body, tag, data: { type, ... } }
+        // The actual type lives in msg.payload.data.type, not msg.payload.type.
+        const type = msg.payload?.data?.type ?? msg.payload?.type;
         const petId = msg.payload?.data?.petId;
         if (type === "chat") {
           queryClient.invalidateQueries({ queryKey: ["listMessages"] });

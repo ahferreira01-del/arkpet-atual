@@ -31,3 +31,17 @@ When `?b=` / `?t=` params are present:
 
 ## CACHE_NAME versioning
 Bump CACHE_NAME (arkpet-vN) every time sw.js behavior changes so devices actually activate the new SW. Current: v13.
+
+## Critical payload structure bug (found and fixed)
+
+The SW push handler receives the FULL push payload as `event.data.json()`:
+```js
+data = { title, body, tag, data: { type: "chat", petId, ... } }
+```
+The notification type is at `data.data.type`, NOT `data.type` (which is `undefined`).
+
+Two places were reading `data.type` incorrectly:
+1. **sw.js isChat/isTest check** — `const isChat = data.type === "chat"` → always `false` → ALL notifications were suppressed when the app was visible (including chat, which should always show). Fix: `(data.data?.type ?? data.type) === "chat"`
+2. **App.tsx ServiceWorkerBridge** — `const type = msg.payload?.type` → always `undefined` → cache invalidation never fired for any notification type. Fix: `msg.payload?.data?.type ?? msg.payload?.type`
+
+**Why:** The push payload is a nested object (`{ ..., data: { type } }`). The `data.data` field holds the notification-specific metadata; `data.type` is the MIME type of the notification spec, not our app type.
