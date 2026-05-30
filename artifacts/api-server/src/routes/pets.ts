@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { petsTable, usersTable, vaccinesTable, medicationsTable } from "@workspace/db/schema";
+import { petsTable, usersTable, vaccinesTable, medicationsTable, crechesTable, bookingsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 
@@ -362,6 +362,44 @@ router.post("/:petId/walks/:walkId/end", async (req: AuthRequest, res) => {
     endTime: now, status: "completed", durationMinutes: duration,
   }).where(and(eq(walksTable.id, walkId), eq(walksTable.petId, petId), eq(walksTable.crecheId, crecheId))).returning();
   res.json({ ...walk, staffName: req.user?.name });
+});
+
+// Force-checkout: libera um pet preso (isCheckedIn=true sem reserva ativa).
+// Útil quando complete-service ou outro bug deixou o pet travado na creche.
+router.post("/:petId/force-checkout", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+  const crecheId = parseInt(String(req.params.crecheId));
+  const petId = parseInt(String(req.params.petId));
+
+  const [pet] = await db.select({ id: petsTable.id, isCheckedIn: petsTable.isCheckedIn })
+    .from(petsTable)
+    .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!pet) { res.status(404).json({ error: "Pet não encontrado" }); return; }
+  if (!pet.isCheckedIn) { res.status(400).json({ error: "Pet não está marcado como presente" }); return; }
+
+  // Only allow if there's no active booking (if there is, use regular checkout)
+  const [activeBooking] = await db.select({ id: bookingsTable.id })
+    .from(bookingsTable)
+    .where(and(
+      eq(bookingsTable.crecheId, crecheId),
+      eq(bookingsTable.petId, petId),
+      eq(bookingsTable.status, "active"),
+    )).limit(1);
+
+  if (activeBooking) {
+    res.status(409).json({ error: "Pet possui reserva ativa. Use o check-out normal." });
+    return;
+  }
+
+  await db.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, petId));
+  await db.update(crechesTable).set({
+    currentOccupancy: db.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any,
+  }).where(eq(crechesTable.id, crecheId));
+
+  res.json({ ok: true, petId });
 });
 
 export default router;

@@ -354,6 +354,7 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
 });
 
 // Finaliza um serviço específico sem fazer checkout do pet (pet permanece presente)
+// Se não houver outra reserva ativa para o pet, atualiza isCheckedIn para false automaticamente.
 router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
@@ -366,6 +367,22 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
 
   if (!booking) { res.status(404).json({ error: "Reserva não encontrada" }); return; }
+
+  // If no other active booking exists for this pet, release it from the creche
+  const [otherActive] = await db.select({ id: bookingsTable.id })
+    .from(bookingsTable)
+    .where(and(
+      eq(bookingsTable.crecheId, crecheId),
+      eq(bookingsTable.petId, booking.petId),
+      eq(bookingsTable.status, "active"),
+    )).limit(1);
+
+  if (!otherActive) {
+    await db.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, booking.petId));
+    await db.update(crechesTable).set({
+      currentOccupancy: db.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any,
+    }).where(eq(crechesTable.id, crecheId));
+  }
 
   const enriched = await getBookingWithNames(booking);
 

@@ -165,6 +165,25 @@ function useCompleteService(crecheId: number) {
   });
 }
 
+function useForceCheckout(crecheId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (petId: number) => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(`/api/creches/${crecheId}/pets/${petId}/force-checkout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw Object.assign(new Error(data?.error ?? "Erro ao liberar pet"), { data });
+      }
+      return r.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
 export default function Bookings() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
@@ -200,8 +219,22 @@ export default function Bookings() {
   const checkOutMutation = useCheckOut();
   const onTheWayMutation = useOnTheWay(crecheId);
   const completeServiceMutation = useCompleteService(crecheId);
+  const forceCheckoutMutation = useForceCheckout(crecheId);
 
   const isPetPresent = (petId: number) => pets?.find((p) => p.id === petId)?.isCheckedIn ?? false;
+
+  // Pets marcados como presentes mas sem reserva ativa (estado inconsistente)
+  const stuckPets = !isTutor ? (pets ?? []).filter((p) => {
+    if (!p.isCheckedIn) return false;
+    return !(bookings ?? []).some((b) => b.petId === p.id && b.status === "active");
+  }) : [];
+
+  const handleForceCheckout = (pet: any) => {
+    forceCheckoutMutation.mutate(pet.id, {
+      onSuccess: () => toast({ title: `${pet.name} liberado`, description: "Pet removido da lista de presentes." }),
+      onError: (err: any) => toast({ title: "Erro", description: err.message ?? "Não foi possível liberar o pet.", variant: "destructive" }),
+    });
+  };
 
   const myBookings = isTutor ? bookings?.filter((b) => {
     const myPetIds = pets?.map((p) => p.id) || [];
@@ -385,6 +418,32 @@ export default function Bookings() {
           </Button>
         }
       />
+
+      {/* Recovery banner: pets stuck as present without an active booking */}
+      {stuckPets.length > 0 && (
+        <div className="rounded-xl border border-red-500/25 bg-red-500/8 p-4 space-y-3">
+          <p className="text-sm font-medium text-red-400 flex items-center gap-2">
+            <span>⚠️</span>
+            {stuckPets.length === 1
+              ? `${stuckPets[0].name} está marcado como presente mas não tem reserva ativa.`
+              : `${stuckPets.length} pets estão marcados como presentes sem reserva ativa.`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {stuckPets.map((p: any) => (
+              <Button
+                key={p.id}
+                size="sm"
+                variant="outline"
+                className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                onClick={() => handleForceCheckout(p)}
+                isLoading={forceCheckoutMutation.isPending}
+              >
+                <LogOut className="mr-1 h-3 w-3" /> Liberar {p.name}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Pet filter combobox */}
       {pets && pets.length > 0 && !isTutor && (
