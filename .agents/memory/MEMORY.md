@@ -1,0 +1,1 @@
+- [Push notification navigation](push-notification-navigation.md) — SW resolveTargetPath() maps type→URL; ?b= and ?t= params for booking/task deep-link highlighting; bump CACHE_NAME on every SW change.

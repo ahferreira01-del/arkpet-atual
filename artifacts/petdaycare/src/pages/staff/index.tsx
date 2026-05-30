@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useListTasks, useCompleteTask, useListPets, useAddTimelineEvent } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch } from "wouter";
@@ -263,8 +263,21 @@ export default function StaffDashboard() {
   const queryClient = useQueryClient();
   const search = useSearch();
   const params = new URLSearchParams(search);
-  const [onlyPresent, setOnlyPresent] = useState(() => params.get("filter") !== "all");
+  const highlightTaskId = params.get("t") ? parseInt(params.get("t")!) : null;
+  // When navigating from a notification with a specific task, show all tasks so it's visible
+  const [onlyPresent, setOnlyPresent] = useState(() => {
+    if (highlightTaskId) return false;
+    return params.get("filter") !== "all";
+  });
   const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    const timer = setTimeout(() => {
+      document.getElementById(`task-${highlightTaskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [highlightTaskId]);
 
   const { data: tasks, isLoading } = useListTasks(crecheId);
   const { data: pets } = useListPets(crecheId);
@@ -356,11 +369,12 @@ export default function StaffDashboard() {
               {pendingTasks.map(task => (
                 <div
                   key={task.id}
+                  id={`task-${task.id}`}
                   className={`p-4 rounded-xl bg-white/5 border flex items-center justify-between hover:bg-white/10 transition-all group ${
                     task.petId && checkedInPetIds.has(task.petId)
                       ? "border-emerald-500/20"
                       : "border-white/10"
-                  }`}
+                  } ${highlightTaskId === task.id ? "ring-2 ring-violet-400/50 bg-violet-500/5" : ""}`}
                 >
                   <div className="flex flex-col min-w-0">
                     <p className="font-semibold text-white text-base">{task.title}</p>
@@ -415,7 +429,7 @@ export default function StaffDashboard() {
           </h2>
           <div className="space-y-2.5">
             {completedTasks.map(task => (
-              <div key={task.id} className="p-4 rounded-xl bg-transparent border border-white/5 flex items-center justify-between">
+              <div key={task.id} id={`task-${task.id}`} className="p-4 rounded-xl bg-transparent border border-white/5 flex items-center justify-between">
                 <div>
                   <p className="font-medium text-white line-through">{task.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">

@@ -51,7 +51,7 @@ router.post("/", async (req: AuthRequest, res) => {
     title: `Nova Reserva — ${petName}`,
     body: `${typeLabel} solicitado por ${enriched.tutorName ?? "tutor"}. Verifique as reservas.`,
     tag: `booking-new-${booking.id}`,
-    data: { type: "booking", bookingId: booking.id, crecheId },
+    data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
   }).catch(() => {});
 
   if (req.user.role !== "tutor" && tutorId !== req.user.id) {
@@ -59,7 +59,7 @@ router.post("/", async (req: AuthRequest, res) => {
       title: `Reserva criada — ${petName}`,
       body: `Uma reserva de ${typeLabel} foi criada para ${petName}.`,
       tag: `booking-created-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id },
+      data: { type: "booking", bookingId: booking.id, petId: booking.petId },
     }).catch(() => {});
   }
 
@@ -119,7 +119,7 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
         title: `⚠️ Cancelamento solicitado — ${enriched.petName ?? "Pet"}`,
         body: `${enriched.tutorName ?? "Tutor"} solicitou o cancelamento da reserva de ${enriched.petName ?? "Pet"}.`,
         tag: `booking-cancel-req-${booking.id}`,
-        data: { type: "booking", bookingId: booking.id, crecheId },
+        data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
       }).catch(() => {});
     } else if (booking.tutorId) {
       const prevStatus = existing.status;
@@ -130,7 +130,7 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
           title: `❌ Cancelamento recusado`,
           body: `A creche recusou o cancelamento da reserva de ${enriched.petName ?? "seu pet"}. A reserva segue confirmada.`,
           tag: `booking-cancel-rejected-${booking.id}`,
-          data: { type: "booking", bookingId: booking.id },
+          data: { type: "booking", bookingId: booking.id, petId: booking.petId },
         }).catch(() => {});
       } else if (prevStatus === "cancel_requested" && status === "cancelled") {
         // Creche APROVOU o cancelamento
@@ -138,7 +138,7 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
           title: `✅ Cancelamento aprovado`,
           body: `A creche aprovou o cancelamento da reserva de ${enriched.petName ?? "seu pet"}.`,
           tag: `booking-status-${booking.id}`,
-          data: { type: "booking", bookingId: booking.id },
+          data: { type: "booking", bookingId: booking.id, petId: booking.petId },
         }).catch(() => {});
       } else {
         // Outras mudanças de status
@@ -153,7 +153,7 @@ router.put("/:bookingId", async (req: AuthRequest, res) => {
             title: `Reserva ${label}`,
             body: `A reserva de ${enriched.petName ?? "seu pet"} foi ${label}.`,
             tag: `booking-status-${booking.id}`,
-            data: { type: "booking", bookingId: booking.id },
+            data: { type: "booking", bookingId: booking.id, petId: booking.petId },
           }).catch(() => {});
         }
       }
@@ -192,13 +192,13 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
       title: `🚗 Tutor a caminho — ${petName}`,
       body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
       tag: `on-the-way-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id, crecheId },
+      data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
     }).catch(() => {});
     sendPushToRole(crecheId, "staff", {
       title: `🚗 Tutor a caminho — ${petName}`,
       body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
       tag: `on-the-way-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id, crecheId },
+      data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
     }).catch(() => {});
   } else {
     // Creche (admin/staff) está a caminho → avisar tutor
@@ -207,7 +207,7 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
         title: `🚗 Creche a caminho — ${petName}`,
         body: `A creche está vindo ${typeLabel} ${petName}${etaText}.`,
         tag: `on-the-way-${booking.id}`,
-        data: { type: "booking", bookingId: booking.id },
+        data: { type: "booking", bookingId: booking.id, petId: booking.petId },
       }).catch(() => {});
     }
   }
@@ -231,7 +231,7 @@ router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
       title: `✅ Creche confirma sua chegada`,
       body: `A creche está te esperando para ${typeLabel} ${enriched.petName ?? "seu pet"}.`,
       tag: `arrival-confirmed-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id },
+      data: { type: "booking", bookingId: booking.id, petId: booking.petId },
     }).catch(() => {});
   }
 
@@ -399,7 +399,7 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
       title: `✅ ${serviceLabel} concluído — ${enriched.petName ?? "Seu pet"}`,
       body: `O serviço de ${serviceLabel} de ${enriched.petName ?? "seu pet"} foi finalizado. O pet continua na creche.`,
       tag: `service-done-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id },
+      data: { type: "booking", bookingId: booking.id, petId: booking.petId },
     }).catch(() => {});
   }
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v12";
+const CACHE_NAME = "arkpet-v13";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -129,34 +129,78 @@ self.addEventListener("push", (event) => {
 });
 
 // ──────────────────────────────────────────────────────
+// Resolve the in-app path to navigate to from a push data payload.
+// Rules:
+//  - Never open the root "/" when a more specific route exists.
+//  - Never open a random/previous page.
+//  - Use query params (?b= for booking, ?t= for task, ?pet= for chat)
+//    so the target page can scroll to and highlight the specific item.
+// ──────────────────────────────────────────────────────
+function resolveTargetPath(data) {
+  const type = data.type || "";
+
+  // ── Booking events ──────────────────────────────────
+  if (["booking", "checkin", "checkout", "ontheway"].includes(type)) {
+    if (data.bookingId) return `/bookings?b=${data.bookingId}`;
+    if (data.petId)     return `/bookings?pet=${data.petId}`;
+    return "/bookings";
+  }
+
+  // ── Task events ──────────────────────────────────────
+  if (type === "task") {
+    if (data.taskId) return `/staff?t=${data.taskId}`;
+    return "/staff";
+  }
+
+  // ── Chat events ───────────────────────────────────────
+  if (type === "chat") {
+    if (data.petId) return `/chat?pet=${data.petId}`;
+    return "/chat";
+  }
+
+  // ── Walk events ───────────────────────────────────────
+  if (type === "walk") {
+    if (data.petId) return `/pets/${data.petId}?tab=timeline`;
+    return "/walks";
+  }
+
+  // ── Timeline / pet events ─────────────────────────────
+  if (type === "timeline") {
+    if (data.petId) return `/pets/${data.petId}?tab=timeline`;
+    return "/pets";
+  }
+  if (type === "medical") {
+    if (data.petId) return `/pets/${data.petId}?tab=medical`;
+    return "/pets";
+  }
+
+  // ── Financial / settings ──────────────────────────────
+  if (type === "mensalidade") return "/settings";
+
+  // ── Test push (sent from Settings) ───────────────────
+  if (type === "test") return "/settings";
+
+  // ── Admin / tutor events ──────────────────────────────
+  if (type === "tutor")  return "/tutors";
+  if (type === "admin")  return "/admin";
+
+  // ── Generic fallback — prefer a known entity over "/" ─
+  if (data.petId)     return `/pets/${data.petId}`;
+  if (data.bookingId) return `/bookings?b=${data.bookingId}`;
+  if (data.taskId)    return `/staff?t=${data.taskId}`;
+
+  // Last resort: dashboard (never a random previous page)
+  return "/";
+}
+
+// ──────────────────────────────────────────────────────
 // Notification click — open or focus the app
 // ──────────────────────────────────────────────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
   const data = event.notification.data || {};
-  let targetPath = "/";
-
-  if (data.type === "booking" || data.type === "checkin" || data.type === "checkout") {
-    targetPath = "/bookings";
-  } else if (data.type === "task") {
-    targetPath = "/staff";
-  } else if (data.type === "chat") {
-    targetPath = data.petId ? `/chat?pet=${data.petId}` : "/chat";
-  } else if (data.type === "walk" && data.petId) {
-    targetPath = `/pets/${data.petId}`;
-  } else if (data.type === "medical" && data.petId) {
-    targetPath = `/pets/${data.petId}?tab=medical`;
-  } else if (data.type === "timeline" && data.petId) {
-    targetPath = `/pets/${data.petId}?tab=timeline`;
-  } else if (data.type === "ontheway") {
-    targetPath = "/bookings";
-  } else if (data.type === "mensalidade") {
-    targetPath = "/settings";
-  } else if (data.petId) {
-    targetPath = `/pets/${data.petId}`;
-  }
-
+  const targetPath = resolveTargetPath(data);
   const fullUrl = scopedUrl(targetPath);
 
   event.waitUntil(

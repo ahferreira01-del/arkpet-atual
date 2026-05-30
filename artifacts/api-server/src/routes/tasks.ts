@@ -73,7 +73,7 @@ router.post("/", async (req: AuthRequest, res) => {
       title: `📋 Nova tarefa: ${label}`,
       body: title || `Você recebeu uma nova tarefa de ${label}.`,
       tag: `task-assigned-${task.id}`,
-      data: { type: "task", taskId: task.id, crecheId },
+      data: { type: "task", taskId: task.id, petId: task.petId ?? undefined, crecheId },
     }).catch(() => {});
   }
 
@@ -140,7 +140,7 @@ router.post("/:taskId/complete", async (req: AuthRequest, res) => {
       title: `✅ Tarefa concluída: ${label}${petName}`,
       body: `${before.assignedToName ?? "Staff"} concluiu "${before.title ?? label}".`,
       tag: `task-done-${task.id}`,
-      data: { type: "task", taskId: task.id, crecheId },
+      data: { type: "task", taskId: task.id, petId: before.petId ?? undefined, crecheId },
     }).catch(() => {});
   }
 

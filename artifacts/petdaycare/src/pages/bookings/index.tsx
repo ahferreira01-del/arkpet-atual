@@ -193,9 +193,14 @@ export default function Bookings() {
 
   const searchStr = useSearch();
   const urlParams = new URLSearchParams(searchStr);
+  const highlightBookingId = urlParams.get("b") ? parseInt(urlParams.get("b")!) : null;
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editBooking, setEditBooking] = useState<any | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>(() => urlParams.get("status") || "all");
+  // When navigating from a notification with a specific booking, show all statuses so it's visible
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    if (highlightBookingId) return "all";
+    return urlParams.get("status") || "all";
+  });
   const [petFilter, setPetFilter] = useState<number | null>(null);
   const [onTheWayBooking, setOnTheWayBooking] = useState<any | null>(null);
   const [eta, setEta] = useState("15");
@@ -235,6 +240,15 @@ export default function Bookings() {
       onError: (err: any) => toast({ title: "Erro", description: err.message ?? "Não foi possível liberar o pet.", variant: "destructive" }),
     });
   };
+
+  // Scroll to and highlight a specific booking when navigating from a push notification
+  useEffect(() => {
+    if (!highlightBookingId || !bookings?.length) return;
+    const timer = setTimeout(() => {
+      document.getElementById(`booking-${highlightBookingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [highlightBookingId, bookings?.length]);
 
   const myBookings = isTutor ? bookings?.filter((b) => {
     const myPetIds = pets?.map((p) => p.id) || [];
@@ -485,7 +499,11 @@ export default function Bookings() {
               {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
               <div className="md:hidden divide-y divide-white/5">
                 {filtered.map((booking) => (
-                  <div key={booking.id} className="p-4 space-y-3">
+                  <div
+                    key={booking.id}
+                    id={`booking-${booking.id}`}
+                    className={`p-4 space-y-3 transition-colors ${highlightBookingId === booking.id ? "bg-violet-500/8 ring-1 ring-inset ring-violet-400/30" : ""}`}
+                  >
                     {/* Row 1: pet name + tutor */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
