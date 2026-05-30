@@ -359,7 +359,6 @@ export const BookingStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
-  cancel_requested: "cancel_requested",
 } as const;
 
 export interface Booking {
@@ -410,7 +409,6 @@ export const UpdateBookingRequestStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
-  cancel_requested: "cancel_requested",
 } as const;
 
 export interface UpdateBookingRequest {
@@ -598,13 +596,29 @@ export interface StartWalkRequest {
   notes?: string | null;
 }
 
+export type ChatConversationPetsItem = {
+  id: number;
+  name: string;
+};
+
+export interface ChatConversation {
+  tutorId: number;
+  tutorName: string;
+  pets: ChatConversationPetsItem[];
+  lastMessage?: string | null;
+  lastAt?: string | null;
+  unread: number;
+}
+
 export interface ChatMessage {
   id: number;
   crecheId: number;
+  tutorId?: number | null;
   petId?: number | null;
   senderId: number;
   senderName?: string | null;
   senderRole?: string | null;
+  petName?: string | null;
   content: string;
   mediaUrl?: string | null;
   readAt?: string | null;
@@ -612,6 +626,7 @@ export interface ChatMessage {
 }
 
 export interface SendMessageRequest {
+  tutorId: number;
   petId?: number | null;
   content: string;
   mediaUrl?: string | null;
@@ -680,6 +695,10 @@ export type ListWalksParams = {
 };
 
 export type ListMessagesParams = {
-  petId?: number;
+  tutorId?: number;
+  /**
+   * Last message id for pagination (load older messages)
+   */
+  cursor?: number;
   limit?: number;
 };

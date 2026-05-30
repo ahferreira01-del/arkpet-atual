@@ -13,6 +13,8 @@ export * from "./authResponse";
 export * from "./booking";
 export * from "./bookingStatus";
 export * from "./bookingType";
+export * from "./chatConversation";
+export * from "./chatConversationPetsItem";
 export * from "./chatMessage";
 export * from "./completeTaskRequest";
 export * from "./createBookingRequest";

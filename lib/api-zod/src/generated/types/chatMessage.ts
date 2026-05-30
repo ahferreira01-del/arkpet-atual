@@ -9,10 +9,12 @@
 export interface ChatMessage {
   id: number;
   crecheId: number;
+  tutorId?: number | null;
   petId?: number | null;
   senderId: number;
   senderName?: string | null;
   senderRole?: string | null;
+  petName?: string | null;
   content: string;
   mediaUrl?: string | null;
   readAt?: Date | null;

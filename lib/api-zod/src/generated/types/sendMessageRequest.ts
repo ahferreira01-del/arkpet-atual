@@ -7,6 +7,7 @@
  */
 
 export interface SendMessageRequest {
+  tutorId: number;
   petId?: number | null;
   content: string;
   mediaUrl?: string | null;

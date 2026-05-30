@@ -21,6 +21,7 @@ import type {
   AdministerMedicationRequest,
   AuthResponse,
   Booking,
+  ChatConversation,
   ChatMessage,
   CompleteTaskRequest,
   CreateBookingRequest,
@@ -3274,6 +3275,95 @@ export const useEndWalk = <
 > => {
   return useMutation(getEndWalkMutationOptions(options));
 };
+
+/**
+ * @summary List chat conversations (one per tutor)
+ */
+export const getListConversationsUrl = (crecheId: number) => {
+  return `/api/creches/${crecheId}/chat/conversations`;
+};
+
+export const listConversations = async (
+  crecheId: number,
+  options?: RequestInit,
+): Promise<ChatConversation[]> => {
+  return customFetch<ChatConversation[]>(getListConversationsUrl(crecheId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListConversationsQueryKey = (crecheId: number) => {
+  return [`/api/creches/${crecheId}/chat/conversations`] as const;
+};
+
+export const getListConversationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listConversations>>,
+  TError = ErrorType<unknown>,
+>(
+  crecheId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listConversations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListConversationsQueryKey(crecheId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listConversations>>
+  > = ({ signal }) =>
+    listConversations(crecheId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!crecheId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listConversations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListConversationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listConversations>>
+>;
+export type ListConversationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List chat conversations (one per tutor)
+ */
+
+export function useListConversations<
+  TData = Awaited<ReturnType<typeof listConversations>>,
+  TError = ErrorType<unknown>,
+>(
+  crecheId: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listConversations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListConversationsQueryOptions(crecheId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List chat messages

@@ -63,7 +63,12 @@ function ServiceWorkerBridge() {
         const type = msg.payload?.data?.type ?? msg.payload?.type;
         const petId = msg.payload?.data?.petId;
         if (type === "chat") {
-          queryClient.invalidateQueries({ queryKey: ["listMessages"] });
+          // Invalidate both the messages for the open conversation and the
+          // conversations list (so last-message preview + unread badge refresh).
+          queryClient.invalidateQueries({
+            predicate: (q) => String(q.queryKey[0]).includes("/chat"),
+          });
+          queryClient.invalidateQueries({ queryKey: ["chat-unread"] });
         } else if (type === "task") {
           queryClient.invalidateQueries({ queryKey: ["listTasks"] });
         } else if (

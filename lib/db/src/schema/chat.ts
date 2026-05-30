@@ -5,6 +5,7 @@ import { z } from "zod/v4";
 export const chatMessagesTable = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
   crecheId: integer("creche_id").notNull(),
+  tutorId: integer("tutor_id"),
   petId: integer("pet_id"),
   senderId: integer("sender_id").notNull(),
   content: text("content").notNull(),

@@ -931,6 +931,30 @@ export const EndWalkResponse = zod.object({
 });
 
 /**
+ * @summary List chat conversations (one per tutor)
+ */
+export const ListConversationsParams = zod.object({
+  crecheId: zod.coerce.number(),
+});
+
+export const ListConversationsResponseItem = zod.object({
+  tutorId: zod.number(),
+  tutorName: zod.string(),
+  pets: zod.array(
+    zod.object({
+      id: zod.number(),
+      name: zod.string(),
+    }),
+  ),
+  lastMessage: zod.string().nullish(),
+  lastAt: zod.date().nullish(),
+  unread: zod.number(),
+});
+export const ListConversationsResponse = zod.array(
+  ListConversationsResponseItem,
+);
+
+/**
  * @summary List chat messages
  */
 export const ListMessagesParams = zod.object({
@@ -940,17 +964,23 @@ export const ListMessagesParams = zod.object({
 export const listMessagesQueryLimitDefault = 50;
 
 export const ListMessagesQueryParams = zod.object({
-  petId: zod.coerce.number().optional(),
+  tutorId: zod.coerce.number().optional(),
+  cursor: zod.coerce
+    .number()
+    .optional()
+    .describe("Last message id for pagination (load older messages)"),
   limit: zod.coerce.number().default(listMessagesQueryLimitDefault),
 });
 
 export const ListMessagesResponseItem = zod.object({
   id: zod.number(),
   crecheId: zod.number(),
+  tutorId: zod.number().nullish(),
   petId: zod.number().nullish(),
   senderId: zod.number(),
   senderName: zod.string().nullish(),
   senderRole: zod.string().nullish(),
+  petName: zod.string().nullish(),
   content: zod.string(),
   mediaUrl: zod.string().nullish(),
   readAt: zod.date().nullish(),
@@ -966,6 +996,7 @@ export const SendMessageParams = zod.object({
 });
 
 export const SendMessageBody = zod.object({
+  tutorId: zod.number(),
   petId: zod.number().nullish(),
   content: zod.string(),
   mediaUrl: zod.string().nullish(),

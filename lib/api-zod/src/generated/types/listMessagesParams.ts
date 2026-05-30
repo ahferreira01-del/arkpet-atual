@@ -7,6 +7,10 @@
  */
 
 export type ListMessagesParams = {
-  petId?: number;
+  tutorId?: number;
+  /**
+   * Last message id for pagination (load older messages)
+   */
+  cursor?: number;
   limit?: number;
 };

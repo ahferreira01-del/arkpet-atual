@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v14";
+const CACHE_NAME = "arkpet-v15";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -157,7 +157,7 @@ function resolveTargetPath(data) {
 
   // ── Chat events ───────────────────────────────────────
   if (type === "chat") {
-    if (data.petId) return `/chat?pet=${data.petId}`;
+    if (data.tutorId) return `/chat?tutor=${data.tutorId}`;
     return "/chat";
   }
 
