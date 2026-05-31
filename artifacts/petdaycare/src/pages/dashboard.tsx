@@ -713,27 +713,29 @@ function TutorDashboard({ user }: { user: any }) {
                 color: "text-muted-foreground bg-white/5 border-white/10",
               };
               return (
-                <div key={ev.id} className="glass-panel rounded-2xl p-4">
-                  {/* Header: pet avatar + name + event type badge + time */}
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0 mt-0.5">
+                <div key={ev.id} className="glass-panel rounded-2xl overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
+                    {/* Pet avatar */}
+                    <div className="h-9 w-9 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
                       {ev.petPhotoUrl ? (
                         <img src={ev.petPhotoUrl} alt={ev.petName} className="h-full w-full object-cover" />
                       ) : (
                         <div className="h-full w-full flex items-center justify-center">
-                          <Dog className="h-3.5 w-3.5 text-white/60" />
+                          <Dog className="h-4 w-4 text-white/60" />
                         </div>
                       )}
                     </div>
+                    {/* Name + badge + time */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <p className="text-sm font-semibold text-white">{ev.petName}</p>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${cfg.color}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-semibold text-white leading-tight">{ev.petName}</p>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium flex-shrink-0 ${cfg.color}`}>
                           {cfg.icon}
                           {cfg.label}
                         </span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground">
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
                         {ev.authorName ? `${ev.authorName} · ` : ""}
                         {format(parseUTC(ev.createdAt), "dd/MM · HH:mm", { locale: ptBR })}
                       </p>
@@ -742,23 +744,23 @@ function TutorDashboard({ user }: { user: any }) {
 
                   {/* Text content */}
                   {ev.content && (
-                    <p className="text-sm text-white/80 mb-3 leading-relaxed pl-11">{ev.content}</p>
+                    <p className="text-sm text-white/80 px-4 pb-3 leading-relaxed">{ev.content}</p>
                   )}
 
-                  {/* Media */}
+                  {/* Media — full width, no side margins */}
                   {ev.mediaUrl && ev.mediaType === "photo" && (
-                    <div className="rounded-xl overflow-hidden mb-3 ml-11">
-                      <img src={ev.mediaUrl} alt="foto" className="w-full object-cover max-h-72" />
-                    </div>
+                    <img
+                      src={ev.mediaUrl}
+                      alt="foto"
+                      className="w-full object-cover max-h-80"
+                    />
                   )}
                   {ev.mediaUrl && ev.mediaType === "video" && (
-                    <div className="rounded-xl overflow-hidden mb-3 ml-11">
-                      <video src={ev.mediaUrl} controls className="w-full max-h-64" />
-                    </div>
+                    <video src={ev.mediaUrl} controls className="w-full max-h-64" />
                   )}
 
                   {/* Like */}
-                  <div className="pl-11">
+                  <div className="px-4 py-2.5">
                     <button
                       onClick={() => handleLike(ev)}
                       className={`flex items-center gap-1.5 text-xs transition-colors ${
