@@ -520,56 +520,83 @@ export default function Chat() {
 
   // ── Layout ────────────────────────────────────────────────────────────────
 
+  const pageHeaderAction = (
+    <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+      Ao vivo
+    </div>
+  );
+
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-10rem)] animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="mb-4 flex-shrink-0">
+    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      {/* ── PageHeader — hidden on mobile when inside a conversation ── */}
+      <div className={`mb-4 ${showConversation ? "hidden md:block" : "block"}`}>
         <PageHeader
           title="Mensagens"
           description="Conversas em tempo real com os tutores."
           icon={MessageSquare}
-          action={
-            <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              Ao vivo
-            </div>
-          }
+          action={pageHeaderAction}
         />
       </div>
 
-      <div className="flex gap-4 flex-1 min-h-0">
-        {/* Conversations list — always visible on desktop; hidden on mobile when conversation is open */}
+      {/* ── MOBILE: conversation list (only when not inside a conversation) ── */}
+      {!isTutor && (
+        <div className={`md:hidden ${showConversation ? "hidden" : "flex flex-col"}`}>
+          {listView}
+        </div>
+      )}
+
+      {/* ── MOBILE: conversation as a fixed full-screen overlay ──────────────
+          Sits between the app header (h-16 = 4rem) and the bottom nav
+          (72px + safe-area). This bypasses the overflow-y:auto main container
+          so the input is never clipped by the bottom nav spacer.            */}
+      {(isTutor || showConversation) && (
+        <div
+          className="md:hidden fixed inset-x-0 z-30 flex flex-col"
+          style={{
+            top: "4rem",
+            bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-card border-t border-white/10">
+            {selectedTutorId ? (
+              conversationView
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <EmptyState
+                  icon={MessageSquare}
+                  title="Selecione uma conversa"
+                  description="Escolha um tutor para visualizar as mensagens."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── DESKTOP: side-by-side layout ──────────────────────────────────── */}
+      <div className="hidden md:flex gap-4 h-[calc(100dvh-13rem)] min-h-0">
         {!isTutor && (
-          <div
-            className={`flex flex-col w-full md:w-72 flex-shrink-0 ${
-              showConversation ? "hidden md:flex" : "flex"
-            }`}
-          >
+          <div className="w-72 flex-shrink-0 flex flex-col min-h-0">
             {listView}
           </div>
         )}
-
-        {/* Conversation panel */}
-        {(isTutor || showConversation || selectedTutorId) && (
-          <Card
-            className={`flex-1 flex flex-col min-h-0 overflow-hidden ${
-              !isTutor && !showConversation ? "hidden md:flex" : "flex"
-            }`}
-          >
-            <CardContent className="p-0 flex flex-col h-full min-h-0">
-              {selectedTutorId ? (
-                conversationView
-              ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <EmptyState
-                    icon={MessageSquare}
-                    title="Selecione uma conversa"
-                    description="Escolha um tutor para visualizar as mensagens."
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <CardContent className="p-0 flex flex-col h-full min-h-0">
+            {selectedTutorId ? (
+              conversationView
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <EmptyState
+                  icon={MessageSquare}
+                  title="Selecione uma conversa"
+                  description="Escolha um tutor para visualizar as mensagens."
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
