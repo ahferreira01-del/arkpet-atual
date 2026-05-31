@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { AppLayout } from "./components/layout/app-layout";
+import { PushPrompt } from "./components/push-prompt";
 import ChangePasswordPage from "./pages/change-password";
 
 import Login from "./pages/login";
@@ -96,6 +97,7 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
             <ServiceWorkerBridge />
+            <PushPrompt />
             <ChangePasswordGuard>
             <Switch>
               <Route path="/login"><Login /></Route>

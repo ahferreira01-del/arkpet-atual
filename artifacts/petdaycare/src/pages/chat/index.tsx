@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import {
   useListConversations,
   useListMessages,
@@ -233,7 +233,14 @@ export default function Chat() {
     setShowConversation(true);
   };
 
-  const handleBack = () => setShowConversation(false);
+  const [, setLocation] = useLocation();
+  const handleBack = () => {
+    if (isTutor) {
+      setLocation("/");
+    } else {
+      setShowConversation(false);
+    }
+  };
 
   const handleLoadOlder = async () => {
     if (!selectedTutorId || loadingOlder || allOlderLoaded) return;
