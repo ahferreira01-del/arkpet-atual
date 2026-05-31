@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { bookingsTable, petsTable, usersTable, crechesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
@@ -21,7 +21,7 @@ router.get("/", async (req: AuthRequest, res) => {
   if (req.user?.role === "tutor") conditions.push(eq(bookingsTable.tutorId, req.user.id));
   if (status) conditions.push(eq(bookingsTable.status, status as any));
   if (type) conditions.push(eq(bookingsTable.type, type as any));
-  const bookings = await db.select().from(bookingsTable).where(and(...conditions)).orderBy(bookingsTable.startDate);
+  const bookings = await db.select().from(bookingsTable).where(and(...conditions)).orderBy(desc(bookingsTable.startDate));
   const enriched = await Promise.all(bookings.map(getBookingWithNames));
   res.json(enriched);
 });
