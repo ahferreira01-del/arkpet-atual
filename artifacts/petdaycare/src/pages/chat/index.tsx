@@ -35,8 +35,23 @@ interface OptimisticMessage {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Drizzle/pg returns timestamps without the "Z" suffix (e.g. "2026-05-31T12:58:00.000").
+ * Without "Z", new Date() treats the string as *local* time instead of UTC, so the
+ * displayed hour is wrong on any device outside UTC. This helper forces UTC parsing.
+ */
+function parseUTC(dateStr: string): Date {
+  if (!dateStr) return new Date(NaN);
+  // Already has timezone info — parse as-is
+  if (dateStr.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr);
+  }
+  // No timezone suffix → treat as UTC
+  return new Date(dateStr + "Z");
+}
+
 function relativeTime(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseUTC(dateStr);
   if (isToday(date)) return format(date, "HH:mm");
   if (isYesterday(date)) return "ontem";
   return format(date, "dd/MM", { locale: ptBR });
@@ -159,7 +174,7 @@ export default function Chat() {
         )
     );
     return [...dedupedOlder, ...server, ...dedupeOpt].sort(
-      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      (a, b) => parseUTC(a.createdAt).getTime() - parseUTC(b.createdAt).getTime()
     );
   }, [olderMessages, serverMessages, optimisticMessages]);
 
@@ -389,7 +404,7 @@ export default function Chat() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground/60 px-1">
-                    {format(new Date(msg.createdAt), "HH:mm", { locale: ptBR })}
+                    {format(parseUTC(msg.createdAt), "HH:mm", { locale: ptBR })}
                   </p>
                 </div>
               );
