@@ -40,12 +40,23 @@ import {
   QrCode,
   ChevronRight,
   UserCheck,
+  LogIn,
+  LogOut,
+  UtensilsCrossed,
+  Pill,
+  Camera,
+  Video,
+  FileText,
+  Heart,
+  Gamepad2,
+  RefreshCw,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { parseUTC } from "@/lib/date-utils";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -528,201 +539,245 @@ function StaffDashboard({ user }: { user: any }) {
 }
 
 // ─── Tutor ────────────────────────────────────────────────────────────────────
+
+type TutorTimelineEvent = {
+  id: number;
+  petId: number;
+  petName: string;
+  petPhotoUrl: string | null;
+  authorName: string | null;
+  type: string;
+  content: string | null;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  createdAt: string;
+  likeCount: number;
+  isLikedByUser: boolean;
+};
+
+function useTutorTimeline(crecheId: number, tutorId: number) {
+  return useQuery<TutorTimelineEvent[]>({
+    queryKey: ["tutor-timeline", crecheId, tutorId],
+    queryFn: async () => {
+      const token = localStorage.getItem("auth_token");
+      const r = await fetch(
+        `/api/creches/${crecheId}/tutor-timeline?tutorId=${tutorId}&limit=50`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!r.ok) throw new Error("Erro ao carregar timeline");
+      return r.json();
+    },
+    enabled: !!crecheId && !!tutorId,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+const eventConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
+  check_in:   { icon: <LogIn className="h-3.5 w-3.5" />,         label: "Check-in",    color: "text-emerald-400 bg-emerald-500/15 border-emerald-500/25" },
+  check_out:  { icon: <LogOut className="h-3.5 w-3.5" />,        label: "Check-out",   color: "text-amber-400 bg-amber-500/15 border-amber-500/25" },
+  feeding:    { icon: <UtensilsCrossed className="h-3.5 w-3.5" />, label: "Alimentação", color: "text-orange-400 bg-orange-500/15 border-orange-500/25" },
+  medication: { icon: <Pill className="h-3.5 w-3.5" />,          label: "Medicação",   color: "text-red-400 bg-red-500/15 border-red-500/25" },
+  walk:       { icon: <Footprints className="h-3.5 w-3.5" />,    label: "Passeio",     color: "text-violet-400 bg-violet-500/15 border-violet-500/25" },
+  play:       { icon: <Gamepad2 className="h-3.5 w-3.5" />,      label: "Brincadeira", color: "text-pink-400 bg-pink-500/15 border-pink-500/25" },
+  photo:      { icon: <Camera className="h-3.5 w-3.5" />,        label: "Foto",        color: "text-sky-400 bg-sky-500/15 border-sky-500/25" },
+  video:      { icon: <Video className="h-3.5 w-3.5" />,         label: "Vídeo",       color: "text-blue-400 bg-blue-500/15 border-blue-500/25" },
+  note:       { icon: <FileText className="h-3.5 w-3.5" />,      label: "Anotação",    color: "text-slate-300 bg-slate-500/15 border-slate-500/25" },
+  health:     { icon: <Heart className="h-3.5 w-3.5" />,         label: "Saúde",       color: "text-rose-400 bg-rose-500/15 border-rose-500/25" },
+};
+
 function TutorDashboard({ user }: { user: any }) {
   const crecheId = user.crecheId || 1;
-  const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
-  const { data: bookings, isLoading: bookingsLoading } = useListBookings(crecheId);
-  const { data: walks } = (useListWalks as any)(crecheId);
+  const queryClient = useQueryClient();
+  const { data: pets } = useListPets(crecheId);
+  const { data: timeline, isLoading: timelineLoading, refetch } = useTutorTimeline(crecheId, user.id);
 
   const myPets = pets || [];
   const checkedInPets = myPets.filter((p) => p.isCheckedIn);
-  const myBookings = (bookings || []).slice(0, 4);
-  const myPetIds = new Set(myPets.map((p: any) => p.id));
-  const myRecentWalks = (walks || []).filter((w: any) => myPetIds.has(w.petId)).slice(0, 4);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const events = timeline || [];
 
-  const bookingStatusLabel: Record<string, string> = {
-    active: "Ativo", pending: "Pendente", confirmed: "Confirmado",
-    cancelled: "Cancelado", completed: "Concluído",
+  const handleLike = async (ev: TutorTimelineEvent) => {
+    const token = localStorage.getItem("auth_token");
+    await fetch(
+      `/api/creches/${crecheId}/pets/${ev.petId}/timeline/${ev.id}/like`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+    );
+    queryClient.invalidateQueries({ queryKey: ["tutor-timeline"] });
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
+
+      {/* ── Greeting ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
-          <p className="text-muted-foreground mt-1">Acompanhe seus pets em tempo real.</p>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">
+            {greeting}, {user.name.split(" ")[0]}!
+          </h1>
+          <p className="text-muted-foreground mt-1 text-sm">
+            {myPets.length > 0
+              ? `${myPets.length} pet${myPets.length !== 1 ? "s" : ""} cadastrado${myPets.length !== 1 ? "s" : ""}`
+              : "Acompanhe seus pets em tempo real."}
+          </p>
         </div>
         {checkedInPets.length > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-xs text-emerald-400 font-medium">
-              {checkedInPets.length} pet{checkedInPets.length !== 1 ? "s" : ""} na creche
+              {checkedInPets.length} na creche
             </span>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      {/* ── Quick actions ── */}
+      <div className="grid grid-cols-3 gap-2">
         <Link href="/pets">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Dog className="h-5 w-5 text-primary" />
+          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
+            <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
+              <Dog className="h-4 w-4 text-primary" />
             </div>
-            <p className="text-sm font-semibold text-white">Meus Pets</p>
-            <p className="text-xs text-muted-foreground">{myPets.length} cadastrado{myPets.length !== 1 ? "s" : ""}</p>
+            <p className="text-xs font-semibold text-white">Meus Pets</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {myPets.length} cadastrado{myPets.length !== 1 ? "s" : ""}
+            </p>
           </div>
         </Link>
         <Link href="/bookings">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-              <Calendar className="h-5 w-5 text-blue-400" />
+          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
+            <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+              <Calendar className="h-4 w-4 text-blue-400" />
             </div>
-            <p className="text-sm font-semibold text-white">Reservas</p>
+            <p className="text-xs font-semibold text-white">Reservas</p>
           </div>
         </Link>
         <Link href="/chat">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <MessageSquare className="h-5 w-5 text-emerald-400" />
+          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
+            <div className="h-9 w-9 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+              <MessageSquare className="h-4 w-4 text-emerald-400" />
             </div>
-            <p className="text-sm font-semibold text-white">Mensagens</p>
+            <p className="text-xs font-semibold text-white">Mensagens</p>
           </div>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* My Pets */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-display font-semibold text-white">Meus Pets</h2>
-            <Link href="/pets"><button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todos →</button></Link>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              {petsLoading ? (
-                <div className="p-8 text-center text-muted-foreground">Carregando...</div>
-              ) : myPets.length ? (
-                <div className="divide-y divide-white/5">
-                  {myPets.map((pet) => (
-                    <Link key={pet.id} href={`/pets/${pet.id}`}>
-                      <div className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer group">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
-                            {pet.photoUrl ? (
-                              <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
-                            ) : (
-                              <div className="h-full w-full flex items-center justify-center">
-                                <Dog className="h-5 w-5 text-white/60" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-white group-hover:text-primary transition-colors truncate">{pet.name}</p>
-                            <p className="text-sm text-muted-foreground capitalize truncate">{pet.breed || pet.species}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {pet.isCheckedIn ? (
-                            <Badge variant="success">Na creche</Badge>
-                          ) : (
-                            <Badge variant="secondary">Em casa</Badge>
-                          )}
-                          <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <EmptyState icon={Dog} title="Nenhum pet" description="Seus pets aparecerão aqui." className="py-10" />
-              )}
-            </CardContent>
-          </Card>
+      {/* ── Timeline ── */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-display font-semibold text-white">
+            Atividades dos seus pets
+          </h2>
+          <button
+            onClick={() => refetch()}
+            className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Atualizar
+          </button>
         </div>
 
-        {/* My Bookings */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-display font-semibold text-white">Reservas</h2>
-            <Link href="/bookings"><button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button></Link>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              {bookingsLoading ? (
-                <div className="p-8 text-center text-muted-foreground">Carregando...</div>
-              ) : myBookings.length ? (
-                <div className="divide-y divide-white/5">
-                  {myBookings.map((b) => (
-                    <Link key={b.id} href="/bookings">
-                      <div className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors cursor-pointer">
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                            <Calendar className="h-4 w-4 text-blue-400" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-white text-sm">{b.petName}</p>
-                            <p className="text-xs text-muted-foreground capitalize">
-                              {b.type.replace("_", " ")} · {format(new Date(b.startDate), "dd/MM/yyyy")}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={b.status === "active" || b.status === "confirmed" ? "success" : b.status === "pending" ? "warning" : "secondary"}>
-                          {bookingStatusLabel[b.status] || b.status}
-                        </Badge>
-                      </div>
-                    </Link>
-                  ))}
+        {/* Loading skeleton */}
+        {timelineLoading && (
+          <div className="flex flex-col gap-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="glass-panel rounded-2xl p-4 flex gap-3 animate-pulse">
+                <div className="h-8 w-8 rounded-full bg-white/10 flex-shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-3 bg-white/10 rounded w-1/3" />
+                  <div className="h-3 bg-white/10 rounded w-2/3" />
                 </div>
-              ) : (
-                <EmptyState icon={Calendar} title="Nenhuma reserva" description="Faça sua primeira reserva." className="py-10" />
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Últimos Passeios dos meus pets */}
-      {myRecentWalks.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
-              <Footprints className="h-5 w-5 text-primary" />
-              Últimos Passeios
-            </h2>
+              </div>
+            ))}
           </div>
-          <Card>
-            <CardContent className="p-0">
-              <div className="divide-y divide-white/5">
-                {myRecentWalks.map((walk: any) => (
-                  <div key={walk.id} className="flex items-center justify-between p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Footprints className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-white text-sm">{walk.petName || "Pet"}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {walk.staffName || "Funcionário"} · {walk.startedAt ? format(new Date(walk.startedAt), "dd/MM HH:mm", { locale: ptBR }) : "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge variant={walk.status === "completed" ? "success" : "secondary"} className="text-xs">
-                        {walk.status === "completed" ? "Concluído" : "Em andamento"}
-                      </Badge>
-                      {walk.durationMinutes != null && (
-                        <p className="text-xs text-muted-foreground mt-1">{walk.durationMinutes} min</p>
+        )}
+
+        {/* Empty state */}
+        {!timelineLoading && events.length === 0 && (
+          <EmptyState
+            icon={Sparkles}
+            title="Nenhuma atividade ainda"
+            description="Quando a creche registrar algo sobre seus pets, aparecerá aqui."
+            className="py-12"
+          />
+        )}
+
+        {/* Events */}
+        {!timelineLoading && events.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {events.map((ev) => {
+              const cfg = eventConfig[ev.type] ?? {
+                icon: <Sparkles className="h-3.5 w-3.5" />,
+                label: ev.type,
+                color: "text-muted-foreground bg-white/5 border-white/10",
+              };
+              return (
+                <div key={ev.id} className="glass-panel rounded-2xl p-4">
+                  {/* Header: pet avatar + name + event type badge + time */}
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0 mt-0.5">
+                      {ev.petPhotoUrl ? (
+                        <img src={ev.petPhotoUrl} alt={ev.petName} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center">
+                          <Dog className="h-3.5 w-3.5 text-white/60" />
+                        </div>
                       )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                        <p className="text-sm font-semibold text-white">{ev.petName}</p>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium ${cfg.color}`}>
+                          {cfg.icon}
+                          {cfg.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {ev.authorName ? `${ev.authorName} · ` : ""}
+                        {format(parseUTC(ev.createdAt), "dd/MM · HH:mm", { locale: ptBR })}
+                      </p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+
+                  {/* Text content */}
+                  {ev.content && (
+                    <p className="text-sm text-white/80 mb-3 leading-relaxed pl-11">{ev.content}</p>
+                  )}
+
+                  {/* Media */}
+                  {ev.mediaUrl && ev.mediaType === "photo" && (
+                    <div className="rounded-xl overflow-hidden mb-3 ml-11">
+                      <img src={ev.mediaUrl} alt="foto" className="w-full object-cover max-h-72" />
+                    </div>
+                  )}
+                  {ev.mediaUrl && ev.mediaType === "video" && (
+                    <div className="rounded-xl overflow-hidden mb-3 ml-11">
+                      <video src={ev.mediaUrl} controls className="w-full max-h-64" />
+                    </div>
+                  )}
+
+                  {/* Like */}
+                  <div className="pl-11">
+                    <button
+                      onClick={() => handleLike(ev)}
+                      className={`flex items-center gap-1.5 text-xs transition-colors ${
+                        ev.isLikedByUser
+                          ? "text-rose-400"
+                          : "text-muted-foreground hover:text-rose-400"
+                      }`}
+                    >
+                      <Heart className={`h-3.5 w-3.5 ${ev.isLikedByUser ? "fill-rose-400" : ""}`} />
+                      {ev.likeCount > 0 && <span>{ev.likeCount}</span>}
+                      <span>{ev.isLikedByUser ? "Curtido" : "Curtir"}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

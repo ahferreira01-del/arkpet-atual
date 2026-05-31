@@ -10,6 +10,7 @@ import usersRouter from "./users.js";
 import pushRouter from "./push.js";
 import walksRouter from "./walks.js";
 import storageRouter from "./storage.js";
+import tutorTimelineRouter from "./tutor-timeline.js";
 const router = Router();
 
 router.use(healthRouter);
@@ -22,6 +23,7 @@ router.use("/creches/:crecheId/tasks", tasksRouter);
 router.use("/creches/:crecheId/chat", chatRouter);
 router.use("/creches/:crecheId/walks", walksRouter);
 router.use("/creches/:crecheId/pets/:petId/walks", walksRouter);
+router.use("/creches/:crecheId/tutor-timeline", tutorTimelineRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 
