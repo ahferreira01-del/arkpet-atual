@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Building2, Plus, MapPin, Phone, Users, Mail,
-  Pencil, ToggleLeft, ToggleRight,
+  Pencil, ToggleLeft, ToggleRight, Trash2,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
@@ -22,6 +22,8 @@ export default function AdminCreches() {
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editCreche, setEditCreche] = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -76,6 +78,25 @@ export default function AdminCreches() {
         },
       }
     );
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${import.meta.env.BASE_URL}api/creches/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error((await res.json())?.error ?? `HTTP ${res.status}`);
+      setDeleteTarget(null);
+      queryClient.invalidateQueries();
+    } catch (e: any) {
+      alert(e?.message ?? "Erro ao excluir creche.");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleToggleStatus = (creche: any) => {
@@ -197,6 +218,14 @@ export default function AdminCreches() {
                       onClick={() => handleOpenEdit(creche)}
                     >
                       <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                      onClick={() => setDeleteTarget(creche)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
@@ -350,6 +379,29 @@ export default function AdminCreches() {
               <Button variant="ghost" onClick={() => setEditCreche(null)}>Cancelar</Button>
               <Button onClick={handleSaveEdit} isLoading={updateMutation.isPending}>
                 Salvar alterações
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteTarget && (
+        <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Excluir Creche">
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tem certeza que deseja excluir permanentemente a creche{" "}
+              <span className="font-semibold text-white">{deleteTarget.name.trim()}</span>?
+              Esta ação não pode ser desfeita.
+            </p>
+            <div className="pt-2 flex justify-end gap-3 border-t border-white/10">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+              <Button
+                onClick={handleDeleteConfirm}
+                isLoading={deleting}
+                className="bg-red-600 hover:bg-red-500 border-red-500/30 text-white"
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> Excluir
               </Button>
             </div>
           </div>

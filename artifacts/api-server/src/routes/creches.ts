@@ -139,6 +139,16 @@ router.post("/", requireRole("master_admin"), async (req: AuthRequest, res) => {
   res.status(201).json(creche);
 });
 
+router.delete("/:crecheId", requireRole("master_admin"), async (req: AuthRequest, res) => {
+  const id = parseInt(String(req.params.crecheId));
+  const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
+  if (!creche) { res.status(404).json({ error: "Creche não encontrada" }); return; }
+  // Dissociate users before deleting so foreign-key constraints don't block
+  await db.update(usersTable).set({ crecheId: null as any }).where(eq(usersTable.crecheId, id));
+  await db.delete(crechesTable).where(eq(crechesTable.id, id));
+  res.json({ ok: true });
+});
+
 router.get("/:crecheId", async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
