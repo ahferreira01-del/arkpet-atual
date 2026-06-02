@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "8xcne2Fl0i5T6K08PAQzy"
+uri = "file://attached_assets/tasks-mockup-arkpet.png"
+type = "image"
+title = "ArkPet tasks screen dark mobile"
+
+[[outputs]]
+id = "uZBdMLqlsIn21ILk4xhUB"
+uri = "file://attached_assets/tasks-mockup-arkpet.png"
+type = "image"
+title = "Tela de Tarefas — ArkPet (conceito visual)"
