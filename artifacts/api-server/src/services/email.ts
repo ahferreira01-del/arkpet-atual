@@ -1,7 +1,9 @@
 // Resend email service via Replit connector
 import { Resend } from "resend";
 
-const APP_URL = process.env.APP_URL || "https://pet-daycare-master.replit.app";
+import { getAppBaseUrl } from "../lib/config.js";
+
+const APP_URL = getAppBaseUrl();
 
 const ROLE_LABELS: Record<string, string> = {
   creche_admin: "Administrador de Creche",

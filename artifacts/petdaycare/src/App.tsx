@@ -11,6 +11,8 @@ import ChangePasswordPage from "./pages/change-password";
 
 import Login from "./pages/login";
 import RegisterCreche from "./pages/register-creche";
+import ForgotPassword from "./pages/forgot-password";
+import ResetPassword from "./pages/reset-password";
 import Dashboard from "./pages/dashboard";
 import PetsDirectory from "./pages/pets/index";
 import PetDetail from "./pages/pets/detail";
@@ -39,7 +41,7 @@ const queryClient = new QueryClient({
 function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
-  if (isLoading || location === "/login" || location === "/cadastro") return <>{children}</>;
+  if (isLoading || location === "/login" || location === "/cadastro" || location === "/recuperar-senha" || location === "/redefinir-senha") return <>{children}</>;
   if (user && (user as any).mustChangePassword) return <ChangePasswordPage />;
   return <>{children}</>;
 }
@@ -103,6 +105,8 @@ function App() {
             <Switch>
               <Route path="/login"><Login /></Route>
               <Route path="/cadastro"><RegisterCreche /></Route>
+              <Route path="/recuperar-senha"><ForgotPassword /></Route>
+              <Route path="/redefinir-senha"><ResetPassword /></Route>
 
               <Route path="/">
                 <AppLayout><Dashboard /></AppLayout>

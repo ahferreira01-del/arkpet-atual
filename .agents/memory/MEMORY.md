@@ -2,3 +2,4 @@
 - [Lib rebuild order](lib-rebuild-order.md) — after codegen or schema changes, both lib/db and lib/api-client-react must be rebuilt (tsc --build) before frontend TS checks pass.
 - [Chat tutor-centric refactor](chat-tutor-centric.md) — chat is tutor-centric (conversations per tutor), petId is an optional tag on messages; orphan messages excluded via isNotNull(tutorId).
 - [DB conventions & API dev quirks](db-and-api-dev-quirks.md) — no FK constraints anywhere; test API at localhost:8080 (not DEV_DOMAIN/api); drizzle-kit push prompts on constraints (use psql); known pre-existing issues.
+- [Auth session & reset](auth-session-and-reset.md) — stateless tokens revoked via users.password_changed_at vs token issuedAt; reset token single-use = atomic UPDATE...WHERE used_at IS NULL RETURNING.

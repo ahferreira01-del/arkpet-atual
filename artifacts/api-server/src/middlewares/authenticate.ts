@@ -35,6 +35,11 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     res.status(401).json({ error: "Conta desativada. Entre em contato com o administrador." });
     return;
   }
+  // Invalidate tokens issued before the last password change (e.g. after a reset).
+  if (user.passwordChangedAt && payload.issuedAt < user.passwordChangedAt.getTime()) {
+    res.status(401).json({ error: "Sessão expirada. Entre novamente." });
+    return;
+  }
   req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
   next();
 }
