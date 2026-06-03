@@ -654,6 +654,57 @@ export interface SendMessageRequest {
   mediaUrl?: string | null;
 }
 
+export interface Plan {
+  id: number;
+  name: string;
+  petLimit: number;
+  priceBrl: number;
+  stripePriceId?: string | null;
+  description?: string | null;
+  isActive: boolean;
+  createdAt?: string;
+}
+
+export type SubscriptionWithPlanStatus =
+  (typeof SubscriptionWithPlanStatus)[keyof typeof SubscriptionWithPlanStatus];
+
+export const SubscriptionWithPlanStatus = {
+  trial: "trial",
+  active: "active",
+  past_due: "past_due",
+  suspended: "suspended",
+  cancelled: "cancelled",
+} as const;
+
+export interface SubscriptionWithPlan {
+  id: number;
+  crecheId: number;
+  planId: number;
+  status: SubscriptionWithPlanStatus;
+  trialEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  pastDueSince?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripeCustomerId?: string | null;
+  plan: Plan;
+}
+
+export interface CheckoutRequest {
+  planId: number;
+}
+
+export interface CheckoutResponse {
+  url: string | null;
+}
+
+export interface ConfirmCheckoutRequest {
+  sessionId: string;
+}
+
+export interface OkResponse {
+  ok: boolean;
+}
+
 export type ListPetsParams = {
   status?: ListPetsStatus;
   tutorId?: string;

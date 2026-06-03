@@ -15,6 +15,7 @@ import {
   Settings,
   Footprints,
   QrCode,
+  CreditCard,
   LogOut,
 } from "lucide-react";
 
@@ -91,6 +92,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Reservas", href: "/bookings", icon: CalendarDays, badge: bookingsBadge },
           { name: "Tutores", href: "/tutors", icon: Users },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
+          { name: "Plano", href: "/assinatura", icon: CreditCard },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
       case "staff":

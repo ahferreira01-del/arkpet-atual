@@ -11,6 +11,7 @@ import pushRouter from "./push.js";
 import walksRouter from "./walks.js";
 import storageRouter from "./storage.js";
 import tutorTimelineRouter from "./tutor-timeline.js";
+import billingRouter from "./billing.js";
 const router = Router();
 
 router.use(healthRouter);
@@ -26,5 +27,6 @@ router.use("/creches/:crecheId/pets/:petId/walks", walksRouter);
 router.use("/creches/:crecheId/tutor-timeline", tutorTimelineRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
+router.use("/billing", billingRouter);
 
 export default router;

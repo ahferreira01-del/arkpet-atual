@@ -27,6 +27,8 @@ import Settings from "./pages/settings/index";
 import AdminUsers from "./pages/admin/users";
 import QrScanner from "./pages/staff/qr-scanner";
 import Tutors from "./pages/tutors/index";
+import Billing from "./pages/billing/index";
+import BillingSuccess from "./pages/billing/success";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -162,6 +164,14 @@ function App() {
 
               <Route path="/tutors">
                 <AppLayout><Tutors /></AppLayout>
+              </Route>
+
+              <Route path="/assinatura/sucesso">
+                <AppLayout><BillingSuccess /></AppLayout>
+              </Route>
+
+              <Route path="/assinatura">
+                <AppLayout><Billing /></AppLayout>
               </Route>
 
               <Route component={NotFound} />

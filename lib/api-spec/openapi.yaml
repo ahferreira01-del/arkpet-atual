@@ -29,6 +29,8 @@ tags:
     description: Medical records
   - name: walks
     description: Walk tracking
+  - name: billing
+    description: Plans, subscriptions and Stripe billing
 paths:
   /healthz:
     get:
@@ -896,6 +898,87 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UserProfile"
+
+  /billing/plans:
+    get:
+      operationId: getBillingPlans
+      tags: [billing]
+      summary: List active plans
+      responses:
+        "200":
+          description: List of active plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+
+  /billing/subscription:
+    get:
+      operationId: getBillingSubscription
+      tags: [billing]
+      summary: Current creche subscription with plan
+      responses:
+        "200":
+          description: Current subscription
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionWithPlan"
+        "404":
+          description: Subscription not found
+
+  /billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      tags: [billing]
+      summary: Create a Stripe Checkout session for a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+
+  /billing/confirm:
+    post:
+      operationId: confirmBillingCheckout
+      tags: [billing]
+      summary: Confirm a completed checkout session and activate the subscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmCheckoutRequest"
+      responses:
+        "200":
+          description: Subscription activated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OkResponse"
+
+  /billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [billing]
+      summary: Open the Stripe billing portal for self-service management
+      responses:
+        "200":
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
 
 components:
   parameters:
@@ -1804,3 +1887,90 @@ components:
           type: string
           nullable: true
       required: [tutorId, content]
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        petLimit:
+          type: integer
+        priceBrl:
+          type: integer
+        stripePriceId:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, petLimit, priceBrl, isActive]
+
+    SubscriptionWithPlan:
+      type: object
+      properties:
+        id:
+          type: integer
+        crecheId:
+          type: integer
+        planId:
+          type: integer
+        status:
+          type: string
+          enum: [trial, active, past_due, suspended, cancelled]
+        trialEndsAt:
+          type: string
+          format: date-time
+          nullable: true
+        currentPeriodEnd:
+          type: string
+          format: date-time
+          nullable: true
+        pastDueSince:
+          type: string
+          format: date-time
+          nullable: true
+        stripeSubscriptionId:
+          type: string
+          nullable: true
+        stripeCustomerId:
+          type: string
+          nullable: true
+        plan:
+          $ref: "#/components/schemas/Plan"
+      required: [id, crecheId, planId, status, plan]
+
+    CheckoutRequest:
+      type: object
+      properties:
+        planId:
+          type: integer
+      required: [planId]
+
+    CheckoutResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          nullable: true
+      required: [url]
+
+    ConfirmCheckoutRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+      required: [sessionId]
+
+    OkResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required: [ok]

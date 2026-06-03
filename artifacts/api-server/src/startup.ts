@@ -1,6 +1,7 @@
 import { db, usersTable, crechesTable, plansTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
+import { getStripeSync } from "./lib/stripeClient.js";
 
 const DEFAULT_PLANS = [
   { name: "Trial", petLimit: 10, priceBrl: 0, description: "Teste grátis por 10 dias" },
@@ -16,6 +17,39 @@ export async function seedPlans() {
   if (Number(total) > 0) return;
   await db.insert(plansTable).values(DEFAULT_PLANS);
   console.log(`[startup] ${DEFAULT_PLANS.length} planos criados.`);
+}
+
+// Initializes Stripe: creates/updates the `stripe` schema, registers the managed
+// webhook, and backfills existing Stripe data. Non-fatal: if Stripe is not
+// connected the rest of the app must still boot.
+export async function initStripe() {
+  try {
+    const { runMigrations } = await import("stripe-replit-sync");
+    console.log("[stripe] Inicializando schema...");
+    await runMigrations({ databaseUrl: process.env.DATABASE_URL!, schema: "stripe" });
+
+    const stripeSync = await getStripeSync();
+
+    const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+    if (domain) {
+      const webhookResult = await stripeSync.findOrCreateManagedWebhook(
+        `https://${domain}/api/stripe/webhook`,
+      );
+      console.log("[stripe] Webhook:", webhookResult?.webhook?.url ?? "configurado");
+    } else {
+      console.warn("[stripe] REPLIT_DOMAINS ausente — webhook não configurado.");
+    }
+
+    stripeSync
+      .syncBackfill()
+      .then(() => console.log("[stripe] Dados sincronizados."))
+      .catch((err) => console.error("[stripe] Falha ao sincronizar:", err));
+  } catch (err) {
+    console.warn(
+      "[stripe] Stripe não inicializado (integração pode não estar conectada):",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 export async function initializeDatabase() {

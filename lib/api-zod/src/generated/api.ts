@@ -1089,3 +1089,72 @@ export const UpdateUserResponse = zod.object({
   avatarUrl: zod.string().nullish(),
   createdAt: zod.date(),
 });
+
+/**
+ * @summary List active plans
+ */
+export const GetBillingPlansResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  petLimit: zod.number(),
+  priceBrl: zod.number(),
+  stripePriceId: zod.string().nullish(),
+  description: zod.string().nullish(),
+  isActive: zod.boolean(),
+  createdAt: zod.date().optional(),
+});
+export const GetBillingPlansResponse = zod.array(GetBillingPlansResponseItem);
+
+/**
+ * @summary Current creche subscription with plan
+ */
+export const GetBillingSubscriptionResponse = zod.object({
+  id: zod.number(),
+  crecheId: zod.number(),
+  planId: zod.number(),
+  status: zod.enum(["trial", "active", "past_due", "suspended", "cancelled"]),
+  trialEndsAt: zod.date().nullish(),
+  currentPeriodEnd: zod.date().nullish(),
+  pastDueSince: zod.date().nullish(),
+  stripeSubscriptionId: zod.string().nullish(),
+  stripeCustomerId: zod.string().nullish(),
+  plan: zod.object({
+    id: zod.number(),
+    name: zod.string(),
+    petLimit: zod.number(),
+    priceBrl: zod.number(),
+    stripePriceId: zod.string().nullish(),
+    description: zod.string().nullish(),
+    isActive: zod.boolean(),
+    createdAt: zod.date().optional(),
+  }),
+});
+
+/**
+ * @summary Create a Stripe Checkout session for a plan
+ */
+export const CreateBillingCheckoutBody = zod.object({
+  planId: zod.number(),
+});
+
+export const CreateBillingCheckoutResponse = zod.object({
+  url: zod.string().nullable(),
+});
+
+/**
+ * @summary Confirm a completed checkout session and activate the subscription
+ */
+export const ConfirmBillingCheckoutBody = zod.object({
+  sessionId: zod.string(),
+});
+
+export const ConfirmBillingCheckoutResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * @summary Open the Stripe billing portal for self-service management
+ */
+export const CreateBillingPortalResponse = zod.object({
+  url: zod.string().nullable(),
+});

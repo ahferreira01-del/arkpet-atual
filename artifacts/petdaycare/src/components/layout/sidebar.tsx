@@ -13,7 +13,8 @@ import {
   Settings,
   LogOut,
   Footprints,
-  QrCode
+  QrCode,
+  CreditCard
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -42,6 +43,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Equipe", href: "/staff/manage", icon: Users },
           { name: "Tutores", href: "/tutors", icon: Users },
+          { name: "Assinatura", href: "/assinatura", icon: CreditCard },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "staff":
