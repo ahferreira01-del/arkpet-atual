@@ -66,6 +66,18 @@ uri = "file://attached_assets/screen-qr-scanner.png"
 type = "image"
 title = "qr scanner screen"
 
+[[generated]]
+id = "MDI4gyVWMDU_PF725TnC7"
+uri = "file://attached_assets/screen-billing-plans.png"
+type = "image"
+title = "billing plans selection screen"
+
+[[generated]]
+id = "cvHvR33aSu81vSGzL_b7y"
+uri = "file://attached_assets/screen-billing-checkout.png"
+type = "image"
+title = "billing checkout confirmation"
+
 [[outputs]]
 id = "uZBdMLqlsIn21ILk4xhUB"
 uri = "file://attached_assets/tasks-mockup-arkpet.png"
@@ -131,3 +143,15 @@ id = "LS8vWN3WPZXV5PzL9cvC-"
 uri = "file://attached_assets/screen-qr-scanner.png"
 type = "image"
 title = "10. QR Scanner — Check-in"
+
+[[outputs]]
+id = "TsCcUv5rhHAXvXNLJa9Rv"
+uri = "file://attached_assets/screen-billing-plans.png"
+type = "image"
+title = "Tela de Planos — escolha e trial"
+
+[[outputs]]
+id = "LcXvh-xvOlmvBPAoCUkt_"
+uri = "file://attached_assets/screen-billing-checkout.png"
+type = "image"
+title = "Confirmação de Assinatura — checkout"
