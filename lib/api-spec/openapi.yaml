@@ -98,6 +98,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthResponse"
 
+  /auth/register-creche:
+    post:
+      operationId: registerCreche
+      tags: [auth]
+      summary: Self-service creche registration (public)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterCrecheRequest"
+      responses:
+        "201":
+          description: Creche registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+        "409":
+          description: Email already registered
+
   /auth/logout:
     post:
       operationId: logout
@@ -890,6 +913,26 @@ components:
           type: integer
           nullable: true
       required: [name, email, password, role]
+
+    RegisterCrecheRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        crecheName:
+          type: string
+        crechePhone:
+          type: string
+          nullable: true
+        crecheAddress:
+          type: string
+          nullable: true
+      required: [name, email, password, crecheName]
 
     AuthResponse:
       type: object

@@ -43,6 +43,7 @@ import type {
   LoginRequest,
   Medication,
   Pet,
+  RegisterCrecheRequest,
   RegisterRequest,
   SendMessageRequest,
   StartWalkRequest,
@@ -374,6 +375,92 @@ export const useRegister = <
   TContext
 > => {
   return useMutation(getRegisterMutationOptions(options));
+};
+
+/**
+ * @summary Self-service creche registration (public)
+ */
+export const getRegisterCrecheUrl = () => {
+  return `/api/auth/register-creche`;
+};
+
+export const registerCreche = async (
+  registerCrecheRequest: RegisterCrecheRequest,
+  options?: RequestInit,
+): Promise<AuthResponse> => {
+  return customFetch<AuthResponse>(getRegisterCrecheUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(registerCrecheRequest),
+  });
+};
+
+export const getRegisterCrecheMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerCreche>>,
+    TError,
+    { data: BodyType<RegisterCrecheRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof registerCreche>>,
+  TError,
+  { data: BodyType<RegisterCrecheRequest> },
+  TContext
+> => {
+  const mutationKey = ["registerCreche"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof registerCreche>>,
+    { data: BodyType<RegisterCrecheRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return registerCreche(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RegisterCrecheMutationResult = NonNullable<
+  Awaited<ReturnType<typeof registerCreche>>
+>;
+export type RegisterCrecheMutationBody = BodyType<RegisterCrecheRequest>;
+export type RegisterCrecheMutationError = ErrorType<void>;
+
+/**
+ * @summary Self-service creche registration (public)
+ */
+export const useRegisterCreche = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof registerCreche>>,
+    TError,
+    { data: BodyType<RegisterCrecheRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof registerCreche>>,
+  TError,
+  { data: BodyType<RegisterCrecheRequest> },
+  TContext
+> => {
+  return useMutation(getRegisterCrecheMutationOptions(options));
 };
 
 /**

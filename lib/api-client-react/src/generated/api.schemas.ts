@@ -32,6 +32,15 @@ export interface RegisterRequest {
   crecheId?: number | null;
 }
 
+export interface RegisterCrecheRequest {
+  name: string;
+  email: string;
+  password: string;
+  crecheName: string;
+  crechePhone?: string | null;
+  crecheAddress?: string | null;
+}
+
 export type UserProfileRole =
   (typeof UserProfileRole)[keyof typeof UserProfileRole];
 

@@ -10,6 +10,7 @@ import { PushPrompt } from "./components/push-prompt";
 import ChangePasswordPage from "./pages/change-password";
 
 import Login from "./pages/login";
+import RegisterCreche from "./pages/register-creche";
 import Dashboard from "./pages/dashboard";
 import PetsDirectory from "./pages/pets/index";
 import PetDetail from "./pages/pets/detail";
@@ -38,7 +39,7 @@ const queryClient = new QueryClient({
 function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
-  if (isLoading || location === "/login") return <>{children}</>;
+  if (isLoading || location === "/login" || location === "/cadastro") return <>{children}</>;
   if (user && (user as any).mustChangePassword) return <ChangePasswordPage />;
   return <>{children}</>;
 }
@@ -101,6 +102,7 @@ function App() {
             <ChangePasswordGuard>
             <Switch>
               <Route path="/login"><Login /></Route>
+              <Route path="/cadastro"><RegisterCreche /></Route>
 
               <Route path="/">
                 <AppLayout><Dashboard /></AppLayout>

@@ -54,6 +54,7 @@ export * from "./petGender";
 export * from "./petSpecies";
 export * from "./petStatus";
 export * from "./petTemperament";
+export * from "./registerCrecheRequest";
 export * from "./registerRequest";
 export * from "./registerRequestRole";
 export * from "./sendMessageRequest";

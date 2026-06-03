@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,13 @@ export default function Login() {
                 Entrar
               </Button>
             </form>
+
+            <p className="text-center text-sm text-muted-foreground mt-6">
+              Não tem conta?{" "}
+              <Link href="/cadastro" className="text-foreground font-medium hover:underline">
+                Cadastre sua creche
+              </Link>
+            </p>
           </CardContent>
         </Card>
 

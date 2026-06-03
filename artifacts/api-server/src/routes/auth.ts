@@ -1,11 +1,15 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
+import { usersTable, crechesTable, subscriptionsTable, plansTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, generateToken } from "../lib/auth.js";
-import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
+import { sendSelfSignupWelcomeEmail } from "../services/email.js";
 
 const router = Router();
+
+const TRIAL_DAYS = 10;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
@@ -38,7 +42,7 @@ router.post("/login", async (req, res) => {
   });
 });
 
-router.post("/register", async (req, res) => {
+router.post("/register", authenticate, requireRole("master_admin"), async (req, res) => {
   const { name, email, password, role, crecheId } = req.body;
   if (!name || !email || !password || !role) {
     res.status(400).json({ error: "Missing required fields" });
@@ -69,6 +73,104 @@ router.post("/register", async (req, res) => {
       createdAt: user.createdAt,
     },
   });
+});
+
+router.post("/register-creche", async (req, res) => {
+  const { name, email, password, crecheName, crechePhone, crecheAddress } = req.body;
+
+  if (!name?.trim() || !email?.trim() || !password || !crecheName?.trim()) {
+    res.status(400).json({ error: "Preencha nome, e-mail, senha e nome da creche." });
+    return;
+  }
+  if (!EMAIL_RE.test(email)) {
+    res.status(400).json({ error: "E-mail inválido." });
+    return;
+  }
+  if (String(password).length < 6) {
+    res.status(400).json({ error: "A senha deve ter no mínimo 6 caracteres." });
+    return;
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+  if (existing) {
+    res.status(409).json({ error: "Este e-mail já está cadastrado." });
+    return;
+  }
+
+  const [trialPlan] = await db.select().from(plansTable).where(eq(plansTable.name, "Trial")).limit(1);
+  if (!trialPlan) {
+    res.status(500).json({ error: "Plano de trial não configurado. Contate o suporte." });
+    return;
+  }
+
+  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [user] = await tx.insert(usersTable).values({
+        name: name.trim(),
+        email: normalizedEmail,
+        passwordHash: hashPassword(password),
+        role: "creche_admin",
+        mustChangePassword: false,
+        isActive: true,
+      }).returning();
+
+      const [creche] = await tx.insert(crechesTable).values({
+        name: crecheName.trim(),
+        address: crecheAddress?.trim() || "",
+        phone: crechePhone?.trim() || "",
+        email: normalizedEmail,
+        adminId: user.id,
+        status: "active",
+      }).returning();
+
+      const [updatedUser] = await tx.update(usersTable)
+        .set({ crecheId: creche.id })
+        .where(eq(usersTable.id, user.id))
+        .returning();
+
+      const [subscription] = await tx.insert(subscriptionsTable).values({
+        crecheId: creche.id,
+        planId: trialPlan.id,
+        status: "trial",
+        trialEndsAt,
+      }).returning();
+
+      return { user: updatedUser, creche, subscription };
+    });
+
+    sendSelfSignupWelcomeEmail({
+      name: result.user.name,
+      email: result.user.email,
+      crecheName: result.creche.name,
+    }).catch((err) => console.error("[auth] welcome email failed:", err));
+
+    const token = generateToken(result.user.id, result.user.role);
+    res.status(201).json({
+      token,
+      user: {
+        id: result.user.id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        crecheId: result.user.crecheId,
+        avatarUrl: result.user.avatarUrl,
+        mustChangePassword: result.user.mustChangePassword,
+        createdAt: result.user.createdAt,
+      },
+    });
+  } catch (err) {
+    // Handle the race where two concurrent signups pass the email precheck and
+    // collide on the users.email unique constraint (Postgres 23505).
+    if ((err as { code?: string })?.code === "23505") {
+      res.status(409).json({ error: "Este e-mail já está cadastrado." });
+      return;
+    }
+    console.error("[auth] register-creche failed:", err);
+    res.status(500).json({ error: "Não foi possível concluir o cadastro. Tente novamente." });
+  }
 });
 
 router.get("/me", authenticate, async (req: AuthRequest, res) => {

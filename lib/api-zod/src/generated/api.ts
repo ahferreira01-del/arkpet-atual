@@ -60,6 +60,18 @@ export const RegisterBody = zod.object({
 });
 
 /**
+ * @summary Self-service creche registration (public)
+ */
+export const RegisterCrecheBody = zod.object({
+  name: zod.string(),
+  email: zod.string().email(),
+  password: zod.string(),
+  crecheName: zod.string(),
+  crechePhone: zod.string().nullish(),
+  crecheAddress: zod.string().nullish(),
+});
+
+/**
  * @summary List all creches (master admin only)
  */
 export const ListCrechesResponseItem = zod.object({

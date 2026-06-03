@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { petsTable, usersTable, vaccinesTable, medicationsTable, crechesTable, bookingsTable } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { checkPetLimit } from "../middlewares/checkPetLimit.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -55,7 +56,7 @@ router.get("/", async (req: AuthRequest, res) => {
   res.json(pets);
 });
 
-router.post("/", async (req: AuthRequest, res) => {
+router.post("/", checkPetLimit, async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
   const [pet] = await db.insert(petsTable).values({

@@ -154,6 +154,60 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void
   console.log(`[email] Welcome email sent to ${params.email} (${roleLabel})`);
 }
 
+export async function sendSelfSignupWelcomeEmail(params: {
+  name: string;
+  email: string;
+  crecheName: string;
+}): Promise<void> {
+  const resend = await getUncachableResendClient();
+
+  if (!resend) {
+    console.log(`[email] Resend not configured — would send self-signup welcome to ${params.email}`);
+    return;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8" /><style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f1a; color: #e2e8f0; margin: 0; padding: 0; }
+.container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 40px; }
+.logo { text-align: center; margin-bottom: 32px; }
+.logo-icon { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; background: linear-gradient(135deg, #8b5cf6, #a78bfa); border-radius: 14px; font-size: 28px; }
+.logo-text { font-size: 24px; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-top: 12px; }
+h1 { font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 16px; }
+p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
+.highlight { background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.2); border-radius: 10px; padding: 16px 18px; color: #c4b5fd; font-size: 14px; margin: 20px 0; }
+.btn { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #8b5cf6, #a78bfa); color: #fff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; margin: 24px 0; }
+.footer { text-align: center; margin-top: 32px; color: #475569; font-size: 12px; }
+</style></head>
+<body><div class="container"><div class="card">
+  <div class="logo"><div class="logo-icon">🐾</div><div class="logo-text">ArkPet</div></div>
+  <h1>Bem-vindo(a) ao ArkPet, ${params.name}!</h1>
+  <p>A creche <strong style="color:#e2e8f0">${params.crecheName}</strong> foi criada com sucesso. Sua conta já está ativa.</p>
+  <div class="highlight">🎉 Você tem <strong>10 dias de teste grátis</strong> com até 10 pets cadastrados. Aproveite para conhecer todas as funcionalidades!</div>
+  <div style="text-align:center"><a href="${APP_URL}" class="btn">Acessar o ArkPet →</a></div>
+  <p style="font-size:13px;color:#64748b">Qualquer dúvida, estamos à disposição. Bom trabalho!</p>
+</div>
+<div class="footer"><p>© ${new Date().getFullYear()} ArkPet. Todos os direitos reservados.</p></div>
+</div></body></html>`.trim();
+
+  const { error } = await resend.client.emails.send({
+    from: resend.fromEmail,
+    to: params.email,
+    subject: "Bem-vindo(a) ao ArkPet! Sua creche foi criada 🐾",
+    html,
+  });
+
+  if (error) {
+    console.error(`[email] Failed to send self-signup welcome to ${params.email}:`, error);
+    throw new Error(error.message);
+  }
+
+  console.log(`[email] Self-signup welcome sent to ${params.email}`);
+}
+
 export async function sendPasswordResetEmail(params: {
   name: string;
   email: string;

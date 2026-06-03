@@ -1,3 +1,4 @@
 - [Push notification navigation](push-notification-navigation.md) — SW resolveTargetPath() maps type→URL; ?b= and ?t= params for booking/task deep-link highlighting; bump CACHE_NAME on every SW change.
 - [Lib rebuild order](lib-rebuild-order.md) — after codegen or schema changes, both lib/db and lib/api-client-react must be rebuilt (tsc --build) before frontend TS checks pass.
 - [Chat tutor-centric refactor](chat-tutor-centric.md) — chat is tutor-centric (conversations per tutor), petId is an optional tag on messages; orphan messages excluded via isNotNull(tutorId).
+- [DB conventions & API dev quirks](db-and-api-dev-quirks.md) — no FK constraints anywhere; test API at localhost:8080 (not DEV_DOMAIN/api); drizzle-kit push prompts on constraints (use psql); known pre-existing issues.
