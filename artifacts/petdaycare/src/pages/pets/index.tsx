@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { useListPets, useCreatePet, PetSpecies, PetGender } from "@workspace/api-client-react";
+import { useListPets, useCreatePet, useGetBillingSubscription, PetSpecies, PetGender } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Plus, Search, UserPlus, Users } from "lucide-react";
+import { Dog, Plus, Search, UserPlus, Users, AlertTriangle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -43,6 +43,14 @@ export default function PetsDirectory() {
   const { data: pets, isLoading } = useListPets(crecheId);
   const createPetMutation = useCreatePet();
   const tutors = useTutors(crecheId);
+  const [, navigate] = useLocation();
+  const { data: subscription } = useGetBillingSubscription();
+  const activePetCount = pets?.filter((p) => p.status === "active").length ?? 0;
+  const petLimit = subscription?.plan?.petLimit;
+  const isLimitReached = typeof petLimit === "number" && activePetCount >= petLimit;
+  const subStatus = subscription?.status;
+  const isSubBlocked = subStatus === "suspended" || subStatus === "cancelled";
+  const isBlocked = isLimitReached || isSubBlocked;
 
   const searchStr = useSearch();
   const urlParams = new URLSearchParams(searchStr);
@@ -249,6 +257,36 @@ export default function PetsDirectory() {
               <p className="text-xs text-muted-foreground">O tutor será solicitado a alterar a senha no primeiro acesso.</p>
             </div>
             <Button className="w-full" onClick={() => { setIsModalOpen(false); resetModal(); }}>Concluir</Button>
+          </div>
+        ) : isBlocked ? (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-red-200">
+                    {isSubBlocked ? "Assinatura inativa" : "Limite de pets atingido"}
+                  </p>
+                  <p className="text-sm text-red-200/80">
+                    {isSubBlocked
+                      ? "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
+                      : `Você atingiu o limite de ${petLimit} ${petLimit === 1 ? "pet" : "pets"} do plano ${subscription?.plan?.name ?? ""}. Faça upgrade para cadastrar mais.`}
+                  </p>
+                </div>
+              </div>
+              {user?.role === "creche_admin" ? (
+                <Button type="button" onClick={() => navigate("/assinatura")} className="self-start">
+                  Fazer upgrade
+                </Button>
+              ) : (
+                <p className="text-xs text-red-200/70">
+                  Fale com o administrador da creche para liberar mais vagas.
+                </p>
+              )}
+            </div>
+            <Button type="button" variant="ghost" className="w-full" onClick={() => { setIsModalOpen(false); resetModal(); }}>
+              Fechar
+            </Button>
           </div>
         ) : (
           <form onSubmit={handleCreate} className="space-y-4">
