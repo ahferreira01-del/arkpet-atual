@@ -20,6 +20,9 @@ export const subscriptionsTable = pgTable("subscriptions", {
   pastDueSince: timestamp("past_due_since"),
   stripeSubscriptionId: text("stripe_subscription_id"),
   stripeCustomerId: text("stripe_customer_id"),
+  // Timestamp of the last Stripe webhook event applied to this row. Used to
+  // discard out-of-order (stale) webhook deliveries.
+  lastStripeEventAt: timestamp("last_stripe_event_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

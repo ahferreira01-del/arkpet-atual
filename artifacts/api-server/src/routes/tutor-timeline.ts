@@ -4,9 +4,11 @@ import { timelineEventsTable, petsTable, usersTable } from "@workspace/db/schema
 import { eq, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 /**
  * GET /api/creches/:crecheId/tutor-timeline?tutorId=X&limit=N

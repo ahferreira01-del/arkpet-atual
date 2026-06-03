@@ -3,10 +3,12 @@ import { db } from "@workspace/db";
 import { walksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 router.get("/", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));

@@ -3,10 +3,12 @@ import { db } from "@workspace/db";
 import { chatMessagesTable, usersTable, petsTable } from "@workspace/db/schema";
 import { eq, and, ne, desc, isNull, isNotNull, inArray, lt, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUsers } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 // ─────────────────────────────────────────────────────────────
 // GET /conversations — list of tutor conversations

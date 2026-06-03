@@ -3,10 +3,12 @@ import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 router.get("/", async (req: AuthRequest, res) => {
   // Tutors do not have access to the internal task list

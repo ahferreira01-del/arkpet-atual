@@ -151,6 +151,10 @@ router.delete("/:crecheId", requireRole("master_admin"), async (req: AuthRequest
 
 router.get("/:crecheId", async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
+  if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Creche not found" }); return; }
   res.json(creche);
@@ -158,6 +162,10 @@ router.get("/:crecheId", async (req: AuthRequest, res) => {
 
 router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
+  if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
   const { name, address, phone, email, maxCapacity, status, logoUrl } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
@@ -173,6 +181,10 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
 
 router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
+  if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Not found" }); return; }
 
@@ -211,6 +223,10 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
 
 router.get("/:crecheId/staff", async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
+  if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
   const staff = await db.select({
     id: usersTable.id,
     name: usersTable.name,
@@ -225,6 +241,10 @@ router.get("/:crecheId/staff", async (req: AuthRequest, res) => {
 
 router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
+  if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
   const { email, name, role, password } = req.body;
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) {

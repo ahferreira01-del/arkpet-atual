@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { BottomNav } from "./bottom-nav";
+import { SubscriptionBanner } from "./subscription-banner";
 import { Loader2 } from "lucide-react";
 
 export function AppLayout({ children }: { children: ReactNode }) {
@@ -42,6 +43,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           (100vh can be wrong when the browser toolbar is visible) */}
       <div className="flex-1 flex flex-col h-dvh overflow-hidden relative z-0">
         <Header user={user} />
+        {(user.role === "creche_admin" || user.role === "staff") && <SubscriptionBanner />}
         {/* Use pt/px (no pb shorthand from p-4) so padding-bottom is
             controlled exclusively by the spacer div below.               */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">

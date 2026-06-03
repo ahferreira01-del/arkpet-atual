@@ -3,10 +3,13 @@ import { db } from "@workspace/db";
 import { bookingsTable, petsTable, usersTable, crechesTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 async function getBookingWithNames(booking: typeof bookingsTable.$inferSelect) {
   const [pet] = await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, booking.petId)).limit(1);
@@ -26,7 +29,7 @@ router.get("/", async (req: AuthRequest, res) => {
   res.json(enriched);
 });
 
-router.post("/", async (req: AuthRequest, res) => {
+router.post("/", requireActiveSubscription, async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
   const { petId, type, startDate, endDate, notes, isRecurring, recurringDays, price } = req.body;
