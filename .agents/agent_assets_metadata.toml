@@ -6,8 +6,128 @@ uri = "file://attached_assets/tasks-mockup-arkpet.png"
 type = "image"
 title = "ArkPet tasks screen dark mobile"
 
+[[generated]]
+id = "d4f2fjHShHAzJGWWqg6z9"
+uri = "file://attached_assets/screen-dashboard.png"
+type = "image"
+title = "dashboard home screen"
+
+[[generated]]
+id = "h7B46yM6mGfIVP3owTuPY"
+uri = "file://attached_assets/screen-pets.png"
+type = "image"
+title = "pets list screen"
+
+[[generated]]
+id = "zJ-95xCswgbN_OqLh9VDH"
+uri = "file://attached_assets/screen-pet-detail.png"
+type = "image"
+title = "pet detail screen"
+
+[[generated]]
+id = "HOXSmn2dlmhMO9JkkSZ0k"
+uri = "file://attached_assets/screen-bookings.png"
+type = "image"
+title = "bookings reservas screen"
+
+[[generated]]
+id = "fhg-Gouhyfj9dQ-WiiAr8"
+uri = "file://attached_assets/screen-chat.png"
+type = "image"
+title = "chat conversations screen"
+
+[[generated]]
+id = "Y1AvzbFV9tFptMC7LaeTW"
+uri = "file://attached_assets/screen-staff.png"
+type = "image"
+title = "staff team screen"
+
+[[generated]]
+id = "NEDyaie2eO1A-cFH_LHvH"
+uri = "file://attached_assets/screen-walks.png"
+type = "image"
+title = "walks passeios screen"
+
+[[generated]]
+id = "HGN7JiKUBNAR2jNSxJf1a"
+uri = "file://attached_assets/screen-admin-creches.png"
+type = "image"
+title = "admin creches screen"
+
+[[generated]]
+id = "WZ9TKaAI7kQD2x6jGYpDe"
+uri = "file://attached_assets/screen-settings.png"
+type = "image"
+title = "settings screen"
+
+[[generated]]
+id = "ijJ1uqQKYO0k02vy1STGn"
+uri = "file://attached_assets/screen-qr-scanner.png"
+type = "image"
+title = "qr scanner screen"
+
 [[outputs]]
 id = "uZBdMLqlsIn21ILk4xhUB"
 uri = "file://attached_assets/tasks-mockup-arkpet.png"
 type = "image"
 title = "Tela de Tarefas — ArkPet (conceito visual)"
+
+[[outputs]]
+id = "VjO6lKwK6RJjKU_-vNOqD"
+uri = "file://attached_assets/screen-dashboard.png"
+type = "image"
+title = "1. Dashboard — Home"
+
+[[outputs]]
+id = "gvwJSUe5d_8_h9SsgVyOO"
+uri = "file://attached_assets/screen-pets.png"
+type = "image"
+title = "2. Lista de Pets"
+
+[[outputs]]
+id = "vK6GNR5vJVYkXUcZ_viyl"
+uri = "file://attached_assets/screen-pet-detail.png"
+type = "image"
+title = "3. Detalhe do Pet"
+
+[[outputs]]
+id = "Xr96_Tet7CoWqK-e12Cv0"
+uri = "file://attached_assets/screen-bookings.png"
+type = "image"
+title = "4. Reservas"
+
+[[outputs]]
+id = "D3ImzCZMeLjFzrSuln5t2"
+uri = "file://attached_assets/screen-chat.png"
+type = "image"
+title = "5. Chat"
+
+[[outputs]]
+id = "YF2bZo1x-YUKbwB0pMOYP"
+uri = "file://attached_assets/screen-staff.png"
+type = "image"
+title = "6. Equipe / Staff"
+
+[[outputs]]
+id = "NCU7uat4-rydsneKs3oAW"
+uri = "file://attached_assets/screen-walks.png"
+type = "image"
+title = "7. Passeios"
+
+[[outputs]]
+id = "kspcGzbr9_ci4U_4dtp7U"
+uri = "file://attached_assets/screen-admin-creches.png"
+type = "image"
+title = "8. Admin — Creches"
+
+[[outputs]]
+id = "FIchv5g9qgCMRUu1qEBfM"
+uri = "file://attached_assets/screen-settings.png"
+type = "image"
+title = "9. Configurações"
+
+[[outputs]]
+id = "LS8vWN3WPZXV5PzL9cvC-"
+uri = "file://attached_assets/screen-qr-scanner.png"
+type = "image"
+title = "10. QR Scanner — Check-in"
