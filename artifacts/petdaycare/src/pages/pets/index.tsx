@@ -12,6 +12,7 @@ import { Dog, Plus, Search, UserPlus, Users } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 
 const genderLabel: Record<string, string> = {
   male: "Macho",
@@ -38,6 +39,7 @@ export default function PetsDirectory() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: pets, isLoading } = useListPets(crecheId);
   const createPetMutation = useCreatePet();
   const tutors = useTutors(crecheId);
@@ -107,7 +109,11 @@ export default function PetsDirectory() {
         tutorId = newUser.id;
         setCreatedTutorPassword(tempPass);
       } catch (err: any) {
-        alert(err.message || "Erro ao criar tutor");
+        toast({
+          title: "Não foi possível criar o tutor",
+          description: err?.data?.message ?? err?.message ?? "Verifique os dados e tente novamente.",
+          variant: "destructive",
+        });
         return;
       }
     }
@@ -126,7 +132,14 @@ export default function PetsDirectory() {
         if (!createdTutorPassword) setIsModalOpen(false);
         queryClient.invalidateQueries();
         resetModal();
-      }
+      },
+      onError: (err: any) => {
+        toast({
+          title: "Não foi possível cadastrar o pet",
+          description: err?.data?.message ?? "Tente novamente em instantes.",
+          variant: "destructive",
+        });
+      },
     });
   };
 

@@ -287,7 +287,11 @@ export default function Bookings() {
         description: "Aguardando confirmação da creche.",
       });
     } catch (err: any) {
-      toast({ title: "Erro", description: err?.data?.error || "Não foi possível criar as reservas.", variant: "destructive" });
+      toast({
+        title: "Não foi possível criar a reserva",
+        description: err?.data?.message ?? "Tente novamente em instantes.",
+        variant: "destructive",
+      });
     }
   };
 
