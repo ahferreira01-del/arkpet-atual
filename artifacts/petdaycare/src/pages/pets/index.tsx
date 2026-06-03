@@ -19,7 +19,7 @@ const genderLabel: Record<string, string> = {
   unknown: "Desconhecido",
 };
 
-const selectClass = "flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white";
+const selectClass = "flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white";
 
 interface Tutor { id: number; name: string; email: string; }
 

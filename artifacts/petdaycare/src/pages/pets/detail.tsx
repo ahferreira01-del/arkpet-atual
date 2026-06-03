@@ -277,7 +277,7 @@ export default function PetDetail({ id }: { id: number }) {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Temperamento</label>
-            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
+            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
               <option value="">Selecione...</option>
               <option value="calm">Calmo</option>
               <option value="playful">Brincalhão</option>
@@ -496,7 +496,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                         setEditFeeding(copy);
                       }}
                       disabled={!canEdit}
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                   <div className="space-y-1">
@@ -510,7 +510,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                       }}
                       disabled={!canEdit}
                       placeholder="Ex: 1 xícara"
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                   <div className="col-span-2 space-y-1">
@@ -524,7 +524,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                       }}
                       disabled={!canEdit}
                       placeholder="Ex: Royal Canin Medium Adult"
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                   <div className="col-span-2 space-y-1">
@@ -538,7 +538,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                       }}
                       disabled={!canEdit}
                       placeholder="Ex: evitar ração com frango"
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                 </div>
@@ -596,7 +596,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                         setEditWalk(copy);
                       }}
                       disabled={!canEdit}
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                   <div className="space-y-1">
@@ -612,7 +612,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                         setEditWalk(copy);
                       }}
                       disabled={!canEdit}
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                   <div className="col-span-2 space-y-1">
@@ -626,7 +626,7 @@ function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: 
                       }}
                       disabled={!canEdit}
                       placeholder="Ex: evitar sol forte"
-                      className="h-9 text-sm"
+                      className="h-9 text-base"
                     />
                   </div>
                 </div>
@@ -1486,7 +1486,7 @@ function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
               name="content"
               rows={4}
               placeholder="Escreva uma legenda para este momento especial..."
-              className="flex w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md resize-none placeholder:text-muted-foreground"
+              className="flex w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md resize-none placeholder:text-muted-foreground"
             />
           </div>
 

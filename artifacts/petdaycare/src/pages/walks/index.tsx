@@ -195,7 +195,7 @@ export default function Walks() {
                 value={selectedPetId}
                 onChange={(e) => setSelectedPetId(Number(e.target.value))}
                 required
-                className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
               >
                 <option value={0} disabled>Escolha um pet com check-in...</option>
                 {checkedInPets.map((p) => (

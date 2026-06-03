@@ -151,7 +151,7 @@ function EditMemberModal({
             <select
               name="role"
               defaultValue={member.role}
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
             >
               <option value="staff">Funcionário</option>
               <option value="creche_admin">Admin de Creche</option>
@@ -387,7 +387,7 @@ export default function ManageStaff() {
             <label className="text-sm font-medium">Função</label>
             <select
               name="role"
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
             >
               <option value="staff">Funcionário</option>
               <option value="creche_admin">Admin de Creche</option>

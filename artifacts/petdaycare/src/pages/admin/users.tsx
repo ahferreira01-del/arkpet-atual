@@ -213,13 +213,13 @@ export default function AdminUsers() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome ou email..."
-            className="w-full h-11 pl-9 pr-4 rounded-xl border border-white/10 bg-black/20 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+            className="w-full h-11 pl-9 pr-4 rounded-xl border border-white/10 bg-black/20 text-base text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
           />
         </div>
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+          className="h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
         >
           <option value="all">Todos os papéis</option>
           <option value="master_admin">Master Admin</option>
@@ -409,7 +409,7 @@ export default function AdminUsers() {
               <select
                 value={createForm.crecheId}
                 onChange={(e) => setCreateForm((f) => ({ ...f, crecheId: e.target.value }))}
-                className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
               >
                 <option value="">Sem creche vinculada</option>
                 {creches?.map((c) => (

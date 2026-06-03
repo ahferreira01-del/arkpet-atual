@@ -367,7 +367,7 @@ export default function AdminCreches() {
                 <select
                   value={editForm.status}
                   onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                  className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
                 >
                   <option value="active">Ativa</option>
                   <option value="inactive">Inativa</option>
