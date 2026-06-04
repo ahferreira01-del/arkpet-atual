@@ -1,6 +1,7 @@
 - [Push notification navigation](push-notification-navigation.md) — SW resolveTargetPath() maps type→URL; ?b= and ?t= params for booking/task deep-link highlighting; bump CACHE_NAME on every SW change.
 - [Lib rebuild order](lib-rebuild-order.md) — after codegen or schema changes, both lib/db and lib/api-client-react must be rebuilt (tsc --build) before frontend TS checks pass.
 - [Chat tutor-centric refactor](chat-tutor-centric.md) — chat is tutor-centric (conversations per tutor), petId is an optional tag on messages; orphan messages excluded via isNotNull(tutorId).
+- [Billing intervals model](billing-intervals.md) — plan_prices table per plan×interval; discount math in lib/db/src/billing.ts; MUST run seed-stripe after price changes to create Stripe prices.
 - [Subscription grandfathering](subscription-grandfathering.md) — creches with no subscription row are intentionally ungated (no limit/block/banner); do NOT backfill default plans.
 - [Subscription sync & tenant isolation](subscription-lifecycle-and-tenant-isolation.md) — webhook lifecycle writes MUST be atomic CAS on last_stripe_event_at (order-safe); all /creches/:crecheId/* routes MUST enforce membership (master_admin exempt).
 - [Stripe sync enum collision](stripe-sync-enum-collision.md) — stripe-replit-sync migration's unqualified pg_type check collides with app enums; app's subscription_status renamed to creche_subscription_status.

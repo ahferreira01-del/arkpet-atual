@@ -656,6 +656,23 @@ export interface SendMessageRequest {
   mediaUrl?: string | null;
 }
 
+export type BillingInterval =
+  (typeof BillingInterval)[keyof typeof BillingInterval];
+
+export const BillingInterval = {
+  month: "month",
+  quarter: "quarter",
+  semester: "semester",
+  year: "year",
+} as const;
+
+export interface PlanPrice {
+  interval: BillingInterval;
+  priceBrl: number;
+  discountPct: number;
+  available: boolean;
+}
+
 export interface Plan {
   id: number;
   name: string;
@@ -665,6 +682,7 @@ export interface Plan {
   description?: string | null;
   isActive: boolean;
   createdAt?: string;
+  prices?: PlanPrice[];
 }
 
 export type SubscriptionWithPlanStatus =
@@ -683,6 +701,7 @@ export interface SubscriptionWithPlan {
   crecheId: number;
   planId: number;
   status: SubscriptionWithPlanStatus;
+  billingInterval?: BillingInterval | null;
   trialEndsAt?: string | null;
   currentPeriodEnd?: string | null;
   pastDueSince?: string | null;
@@ -693,6 +712,7 @@ export interface SubscriptionWithPlan {
 
 export interface CheckoutRequest {
   planId: number;
+  interval?: BillingInterval;
 }
 
 export interface CheckoutResponse {

@@ -14,6 +14,31 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck } from "lucide-react";
 
+type Interval = "month" | "quarter" | "semester" | "year";
+
+const INTERVALS: Interval[] = ["month", "quarter", "semester", "year"];
+
+const INTERVAL_LABELS: Record<Interval, string> = {
+  month: "Mensal",
+  quarter: "Trimestral",
+  semester: "Semestral",
+  year: "Anual",
+};
+
+const INTERVAL_SUFFIX: Record<Interval, string> = {
+  month: "/mês",
+  quarter: "/trimestre",
+  semester: "/semestre",
+  year: "/ano",
+};
+
+const INTERVAL_MONTHS: Record<Interval, number> = {
+  month: 1,
+  quarter: 3,
+  semester: 6,
+  year: 12,
+};
+
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   trial: { label: "Período de teste", className: "bg-blue-500/15 text-blue-300 border-blue-500/25" },
   active: { label: "Ativa", className: "bg-emerald-500/15 text-emerald-300 border-emerald-500/25" },
@@ -37,6 +62,8 @@ export default function Billing() {
   const { toast } = useToast();
   const isAdmin = user?.role === "creche_admin";
 
+  const [interval, setInterval] = React.useState<Interval>("month");
+
   const { data: plans, isLoading: plansLoading } = useGetBillingPlans();
   const { data: subscription, isLoading: subLoading } = useGetBillingSubscription();
 
@@ -54,7 +81,7 @@ export default function Billing() {
 
   const handleCheckout = (planId: number) => {
     checkoutMutation.mutate(
-      { data: { planId } },
+      { data: { planId, interval } },
       {
         onSuccess: (res) => {
           if (res.url) window.location.href = res.url;
@@ -94,6 +121,16 @@ export default function Billing() {
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.trial;
   const paidPlans = (plans ?? []).filter((p) => p.priceBrl > 0);
 
+  // Discount % per interval (uniform across plans) for the period toggle badges.
+  const discountByInterval = new Map<string, number>();
+  for (const plan of paidPlans) {
+    for (const price of plan.prices ?? []) {
+      if (price.discountPct > 0) discountByInterval.set(price.interval, price.discountPct);
+    }
+  }
+
+  const currentInterval = subscription?.billingInterval as Interval | null | undefined;
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl">
       <PageHeader
@@ -117,7 +154,11 @@ export default function Billing() {
               </div>
               <p className="text-sm text-muted-foreground">
                 {subscription?.plan && subscription.plan.priceBrl > 0
-                  ? `${formatBrl(subscription.plan.priceBrl)} / mês · até ${subscription.plan.petLimit} pets`
+                  ? `${formatBrl(subscription.plan.priceBrl)} / mês · até ${subscription.plan.petLimit} pets${
+                      currentInterval && currentInterval !== "month"
+                        ? ` · cobrança ${INTERVAL_LABELS[currentInterval].toLowerCase()}`
+                        : ""
+                    }`
                   : `Plano gratuito · até ${subscription?.plan?.petLimit ?? 0} pets`}
               </p>
               <p className="text-xs text-muted-foreground mt-2">
@@ -149,12 +190,57 @@ export default function Billing() {
 
       {/* Plan cards */}
       <div>
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
-          <Sparkles className="h-4 w-4" /> Planos disponíveis
-        </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+            <Sparkles className="h-4 w-4" /> Planos disponíveis
+          </h3>
+
+          {/* Billing period selector */}
+          <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
+            {INTERVALS.map((opt) => {
+              const discount = discountByInterval.get(opt);
+              const isActive = interval === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setInterval(opt)}
+                  className={cn(
+                    "relative px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow"
+                      : "text-muted-foreground hover:text-white",
+                  )}
+                >
+                  {INTERVAL_LABELS[opt]}
+                  {discount ? (
+                    <span
+                      className={cn(
+                        "ml-1.5 text-[10px] font-bold",
+                        isActive ? "text-primary-foreground/90" : "text-emerald-400",
+                      )}
+                    >
+                      −{discount}%
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {paidPlans.map((plan) => {
-            const isCurrent = plan.id === currentPlanId && status === "active";
+            const isCurrent =
+              plan.id === currentPlanId &&
+              status === "active" &&
+              (currentInterval ?? "month") === interval;
+
+            const price = (plan.prices ?? []).find((p) => p.interval === interval);
+            const periodPrice = price?.priceBrl ?? plan.priceBrl * INTERVAL_MONTHS[interval];
+            const isAvailable = interval === "month" ? true : price?.available ?? false;
+            const equivalentMonthly = Math.round(periodPrice / INTERVAL_MONTHS[interval]);
+
             return (
               <Card
                 key={plan.id}
@@ -172,9 +258,17 @@ export default function Billing() {
                       </span>
                     )}
                   </div>
-                  <div className="mb-4">
-                    <span className="text-2xl font-bold text-white">{formatBrl(plan.priceBrl)}</span>
-                    <span className="text-sm text-muted-foreground">/mês</span>
+                  <div className="mb-1">
+                    <span className="text-2xl font-bold text-white">{formatBrl(periodPrice)}</span>
+                    <span className="text-sm text-muted-foreground">{INTERVAL_SUFFIX[interval]}</span>
+                  </div>
+                  <div className="mb-4 h-5">
+                    {interval !== "month" ? (
+                      <span className="text-xs text-emerald-400">
+                        equivale a {formatBrl(equivalentMonthly)}/mês
+                        {price?.discountPct ? ` · economize ${price.discountPct}%` : ""}
+                      </span>
+                    ) : null}
                   </div>
                   <ul className="space-y-2 mb-6 flex-1">
                     <li className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -189,11 +283,19 @@ export default function Billing() {
                   <Button
                     className="w-full"
                     variant={isCurrent ? "ghost" : "default"}
-                    disabled={!isAdmin || isCurrent}
-                    isLoading={checkoutMutation.isPending && checkoutMutation.variables?.data.planId === plan.id}
+                    disabled={!isAdmin || isCurrent || !isAvailable}
+                    isLoading={
+                      checkoutMutation.isPending && checkoutMutation.variables?.data.planId === plan.id
+                    }
                     onClick={() => handleCheckout(plan.id)}
                   >
-                    {isCurrent ? "Plano atual" : status === "active" ? "Mudar para este plano" : "Assinar"}
+                    {isCurrent
+                      ? "Plano atual"
+                      : !isAvailable
+                        ? "Indisponível"
+                        : status === "active"
+                          ? "Mudar para este plano"
+                          : "Assinar"}
                   </Button>
                 </CardContent>
               </Card>

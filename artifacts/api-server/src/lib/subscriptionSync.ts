@@ -4,7 +4,8 @@
 // which is what gates access and limits. This module is the bridge: the webhook
 // remains the source of truth for those transitions.
 import { db } from "@workspace/db";
-import { subscriptionsTable, plansTable } from "@workspace/db/schema";
+import type { BillingInterval } from "@workspace/db";
+import { subscriptionsTable, plansTable, planPricesTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
 
 type AppStatus = "trial" | "active" | "past_due" | "suspended" | "cancelled";
@@ -68,14 +69,27 @@ async function findAppSubscription(opts: {
   return null;
 }
 
-async function resolvePlanIdByPrice(priceId?: string | null): Promise<number | undefined> {
-  if (!priceId) return undefined;
+// Resolves a Stripe price id to the app plan + billing interval it represents.
+// Prefers plan_prices (multi-interval); falls back to the legacy monthly price
+// stored on plans for older subscriptions.
+export async function resolvePlanByPrice(
+  priceId?: string | null,
+): Promise<{ planId: number; interval: BillingInterval } | null> {
+  if (!priceId) return null;
+  const [pp] = await db
+    .select({ planId: planPricesTable.planId, interval: planPricesTable.interval })
+    .from(planPricesTable)
+    .where(eq(planPricesTable.stripePriceId, priceId))
+    .limit(1);
+  if (pp) return { planId: pp.planId, interval: pp.interval as BillingInterval };
+
   const [plan] = await db
     .select({ id: plansTable.id })
     .from(plansTable)
     .where(eq(plansTable.stripePriceId, priceId))
     .limit(1);
-  return plan?.id;
+  if (plan) return { planId: plan.id, interval: "month" };
+  return null;
 }
 
 // Order-safe commit. Stripe does NOT guarantee ordered webhook delivery (and
@@ -129,8 +143,11 @@ async function handleSubscriptionEvent(type: string, sub: any, eventCreatedMs: n
     stripeCustomerId: customerId ?? appSub.stripeCustomerId,
   };
 
-  const planId = await resolvePlanIdByPrice(sub?.items?.data?.[0]?.price?.id);
-  if (planId) updates.planId = planId;
+  const resolved = await resolvePlanByPrice(sub?.items?.data?.[0]?.price?.id);
+  if (resolved) {
+    updates.planId = resolved.planId;
+    updates.billingInterval = resolved.interval;
+  }
 
   const periodEnd = readPeriodEnd(sub);
   if (periodEnd) updates.currentPeriodEnd = periodEnd;

@@ -1888,6 +1888,23 @@ components:
           nullable: true
       required: [tutorId, content]
 
+    BillingInterval:
+      type: string
+      enum: [month, quarter, semester, year]
+
+    PlanPrice:
+      type: object
+      properties:
+        interval:
+          $ref: "#/components/schemas/BillingInterval"
+        priceBrl:
+          type: integer
+        discountPct:
+          type: integer
+        available:
+          type: boolean
+      required: [interval, priceBrl, discountPct, available]
+
     Plan:
       type: object
       properties:
@@ -1910,6 +1927,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        prices:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanPrice"
       required: [id, name, petLimit, priceBrl, isActive]
 
     SubscriptionWithPlan:
@@ -1924,6 +1945,10 @@ components:
         status:
           type: string
           enum: [trial, active, past_due, suspended, cancelled]
+        billingInterval:
+          allOf:
+            - $ref: "#/components/schemas/BillingInterval"
+          nullable: true
         trialEndsAt:
           type: string
           format: date-time
@@ -1951,6 +1976,8 @@ components:
       properties:
         planId:
           type: integer
+        interval:
+          $ref: "#/components/schemas/BillingInterval"
       required: [planId]
 
     CheckoutResponse:

@@ -1121,6 +1121,16 @@ export const GetBillingPlansResponseItem = zod.object({
   description: zod.string().nullish(),
   isActive: zod.boolean(),
   createdAt: zod.date().optional(),
+  prices: zod
+    .array(
+      zod.object({
+        interval: zod.enum(["month", "quarter", "semester", "year"]),
+        priceBrl: zod.number(),
+        discountPct: zod.number(),
+        available: zod.boolean(),
+      }),
+    )
+    .optional(),
 });
 export const GetBillingPlansResponse = zod.array(GetBillingPlansResponseItem);
 
@@ -1132,6 +1142,7 @@ export const GetBillingSubscriptionResponse = zod.object({
   crecheId: zod.number(),
   planId: zod.number(),
   status: zod.enum(["trial", "active", "past_due", "suspended", "cancelled"]),
+  billingInterval: zod.enum(["month", "quarter", "semester", "year"]).nullish(),
   trialEndsAt: zod.date().nullish(),
   currentPeriodEnd: zod.date().nullish(),
   pastDueSince: zod.date().nullish(),
@@ -1146,6 +1157,16 @@ export const GetBillingSubscriptionResponse = zod.object({
     description: zod.string().nullish(),
     isActive: zod.boolean(),
     createdAt: zod.date().optional(),
+    prices: zod
+      .array(
+        zod.object({
+          interval: zod.enum(["month", "quarter", "semester", "year"]),
+          priceBrl: zod.number(),
+          discountPct: zod.number(),
+          available: zod.boolean(),
+        }),
+      )
+      .optional(),
   }),
 });
 
@@ -1154,6 +1175,7 @@ export const GetBillingSubscriptionResponse = zod.object({
  */
 export const CreateBillingCheckoutBody = zod.object({
   planId: zod.number(),
+  interval: zod.enum(["month", "quarter", "semester", "year"]).optional(),
 });
 
 export const CreateBillingCheckoutResponse = zod.object({

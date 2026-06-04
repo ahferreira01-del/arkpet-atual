@@ -1,10 +1,19 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { plansTable, subscriptionsTable, crechesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { BILLING_INTERVALS, type BillingInterval } from "@workspace/db";
+import { plansTable, planPricesTable, subscriptionsTable, crechesTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
+import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
 import { getAppBaseUrl } from "../lib/config.js";
+
+const INTERVAL_ORDER: Record<BillingInterval, number> = {
+  month: 0,
+  quarter: 1,
+  semester: 2,
+  year: 3,
+};
 
 const router = Router();
 
@@ -21,14 +30,44 @@ function readPeriodEnd(subscription: any): Date | null {
   return typeof ts === "number" ? new Date(ts * 1000) : null;
 }
 
-// GET /billing/plans — all active plans (paid plans expose a stripePriceId).
+// GET /billing/plans — all active plans, each with its per-interval prices.
+// `priceBrl` on the plan stays the monthly base; `prices` lists every interval
+// (with discount %) and whether it is purchasable (`available`).
 router.get("/plans", async (_req: AuthRequest, res) => {
   const plans = await db
     .select()
     .from(plansTable)
     .where(eq(plansTable.isActive, true))
     .orderBy(plansTable.priceBrl);
-  res.json(plans);
+
+  const prices = await db
+    .select()
+    .from(planPricesTable)
+    .where(eq(planPricesTable.isActive, true));
+
+  const byPlan = new Map<number, typeof prices>();
+  for (const p of prices) {
+    const arr = byPlan.get(p.planId) ?? [];
+    arr.push(p);
+    byPlan.set(p.planId, arr);
+  }
+
+  const result = plans.map((plan) => ({
+    ...plan,
+    prices: (byPlan.get(plan.id) ?? [])
+      .map((pp) => ({
+        interval: pp.interval,
+        priceBrl: pp.priceBrl,
+        discountPct: pp.discountPct,
+        available: pp.stripePriceId != null,
+      }))
+      .sort(
+        (a, b) =>
+          INTERVAL_ORDER[a.interval as BillingInterval] - INTERVAL_ORDER[b.interval as BillingInterval],
+      ),
+  }));
+
+  res.json(result);
 });
 
 // GET /billing/subscription — current creche subscription + its plan.
@@ -44,6 +83,7 @@ router.get("/subscription", async (req: AuthRequest, res) => {
       crecheId: subscriptionsTable.crecheId,
       planId: subscriptionsTable.planId,
       status: subscriptionsTable.status,
+      billingInterval: subscriptionsTable.billingInterval,
       trialEndsAt: subscriptionsTable.trialEndsAt,
       currentPeriodEnd: subscriptionsTable.currentPeriodEnd,
       pastDueSince: subscriptionsTable.pastDueSince,
@@ -85,13 +125,31 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
     return;
   }
 
+  const interval = (req.body?.interval ?? "month") as BillingInterval;
+  if (!BILLING_INTERVALS.includes(interval)) {
+    res.status(400).json({ error: "Período de cobrança inválido." });
+    return;
+  }
+
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
   if (!plan) {
     res.status(404).json({ error: "Plano não encontrado." });
     return;
   }
-  if (!plan.stripePriceId) {
-    res.status(400).json({ error: "Este plano não está disponível para assinatura paga." });
+
+  const [planPrice] = await db
+    .select()
+    .from(planPricesTable)
+    .where(and(eq(planPricesTable.planId, planId), eq(planPricesTable.interval, interval)))
+    .limit(1);
+
+  // Resolve the Stripe price for the chosen interval. For monthly, fall back to
+  // the legacy plans.stripePriceId so an incomplete plan_prices backfill never
+  // takes monthly checkout offline during rollout.
+  const priceId =
+    planPrice?.stripePriceId ?? (interval === "month" ? plan.stripePriceId : null);
+  if (!priceId) {
+    res.status(400).json({ error: "Este plano não está disponível para assinatura paga neste período." });
     return;
   }
 
@@ -128,11 +186,11 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
-    line_items: [{ price: plan.stripePriceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${baseUrl}/assinatura?cancelado=1`,
-    metadata: { crecheId: String(crecheId), planId: String(planId) },
-    subscription_data: { metadata: { crecheId: String(crecheId), planId: String(planId) } },
+    metadata: { crecheId: String(crecheId), planId: String(planId), interval },
+    subscription_data: { metadata: { crecheId: String(crecheId), planId: String(planId), interval } },
   });
 
   res.json({ url: session.url });
@@ -179,12 +237,8 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
     res.status(400).json({ error: "Não foi possível identificar o plano da sessão." });
     return;
   }
-  const [plan] = await db
-    .select()
-    .from(plansTable)
-    .where(eq(plansTable.stripePriceId, purchasedPriceId))
-    .limit(1);
-  if (!plan) {
+  const resolved = await resolvePlanByPrice(purchasedPriceId);
+  if (!resolved) {
     res.status(400).json({ error: "Plano correspondente não encontrado." });
     return;
   }
@@ -194,7 +248,8 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
   await db
     .update(subscriptionsTable)
     .set({
-      planId: plan.id,
+      planId: resolved.planId,
+      billingInterval: resolved.interval,
       status: "active",
       stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
       stripeSubscriptionId: stripeSubscription?.id ?? undefined,

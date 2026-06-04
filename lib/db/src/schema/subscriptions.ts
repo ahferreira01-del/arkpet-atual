@@ -1,6 +1,7 @@
 import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { billingIntervalEnum } from "./plans";
 
 export const subscriptionStatusEnum = pgEnum("creche_subscription_status", [
   "trial",
@@ -15,6 +16,7 @@ export const subscriptionsTable = pgTable("subscriptions", {
   crecheId: integer("creche_id").notNull().unique(),
   planId: integer("plan_id").notNull(),
   status: subscriptionStatusEnum("status").notNull().default("trial"),
+  billingInterval: billingIntervalEnum("billing_interval"),
   trialEndsAt: timestamp("trial_ends_at"),
   currentPeriodEnd: timestamp("current_period_end"),
   pastDueSince: timestamp("past_due_since"),
