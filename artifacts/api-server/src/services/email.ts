@@ -11,17 +11,13 @@ const ROLE_LABELS: Record<string, string> = {
   tutor: "Tutor",
 };
 
-// Get Resend client — checks env vars first, then Replit connector as fallback
+// Get Resend client — prefers Replit connector (managed key + domain),
+// falls back to RESEND_API_KEY env var when connector is unavailable.
+// The "from" address is always taken from RESEND_FROM_EMAIL if set.
 async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail: string } | null> {
-  // Primary: use env vars (RESEND_API_KEY + RESEND_FROM_EMAIL)
-  if (process.env.RESEND_API_KEY) {
-    return {
-      client: new Resend(process.env.RESEND_API_KEY),
-      fromEmail: process.env.RESEND_FROM_EMAIL || "ArkPet <noreply@arkpet.com.br>",
-    };
-  }
+  const fromEmailOverride = process.env.RESEND_FROM_EMAIL;
 
-  // Fallback: Replit connector
+  // Primary: Replit connector (managed API key, works without a custom domain)
   try {
     const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
     const xReplitToken = process.env.REPL_IDENTITY
@@ -30,29 +26,39 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
       ? "depl " + process.env.WEB_REPL_RENEWAL
       : null;
 
-    if (!hostname || !xReplitToken) return null;
+    if (hostname && xReplitToken) {
+      const resp = await fetch(
+        `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=resend`,
+        {
+          headers: {
+            Accept: "application/json",
+            "X-Replit-Token": xReplitToken,
+          },
+        }
+      );
+      const data = await resp.json() as any;
+      const settings = data.items?.[0]?.settings;
 
-    const resp = await fetch(
-      `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=resend`,
-      {
-        headers: {
-          Accept: "application/json",
-          "X-Replit-Token": xReplitToken,
-        },
+      if (settings?.api_key) {
+        return {
+          client: new Resend(settings.api_key),
+          fromEmail: fromEmailOverride || settings.from_email || "ArkPet <noreply@arkpet.com.br>",
+        };
       }
-    );
-    const data = await resp.json() as any;
-    const settings = data.items?.[0]?.settings;
-
-    if (!settings?.api_key) return null;
-
-    return {
-      client: new Resend(settings.api_key),
-      fromEmail: settings.from_email || "ArkPet <noreply@arkpet.com.br>",
-    };
+    }
   } catch {
-    return null;
+    // fall through to env var
   }
+
+  // Fallback: manual RESEND_API_KEY env var
+  if (process.env.RESEND_API_KEY) {
+    return {
+      client: new Resend(process.env.RESEND_API_KEY),
+      fromEmail: fromEmailOverride || "ArkPet <noreply@arkpet.com.br>",
+    };
+  }
+
+  return null;
 }
 
 interface WelcomeEmailParams {
