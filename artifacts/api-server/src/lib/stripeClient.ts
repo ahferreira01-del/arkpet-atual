@@ -31,7 +31,7 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
     signal: AbortSignal.timeout(10_000),
   });
 
-  const data = await response.json();
+  const data: any = await response.json();
   const settings = data.items?.[0]?.settings;
 
   if (!settings?.secret || !settings?.publishable) {

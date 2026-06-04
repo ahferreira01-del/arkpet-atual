@@ -539,7 +539,14 @@ export const ListBookingsParams = zod.object({
 
 export const ListBookingsQueryParams = zod.object({
   status: zod
-    .enum(["pending", "confirmed", "active", "completed", "cancelled"])
+    .enum([
+      "pending",
+      "confirmed",
+      "active",
+      "completed",
+      "cancelled",
+      "cancel_requested",
+    ])
     .optional(),
   type: zod.enum(["day_use", "lodging"]).optional(),
   date: zod.date().optional(),
@@ -559,6 +566,7 @@ export const ListBookingsResponseItem = zod.object({
     "active",
     "completed",
     "cancelled",
+    "cancel_requested",
   ]),
   startDate: zod.date(),
   endDate: zod.date().nullish(),
@@ -612,6 +620,7 @@ export const GetBookingResponse = zod.object({
     "active",
     "completed",
     "cancelled",
+    "cancel_requested",
   ]),
   startDate: zod.date(),
   endDate: zod.date().nullish(),
@@ -634,7 +643,14 @@ export const UpdateBookingParams = zod.object({
 
 export const UpdateBookingBody = zod.object({
   status: zod
-    .enum(["pending", "confirmed", "active", "completed", "cancelled"])
+    .enum([
+      "pending",
+      "confirmed",
+      "active",
+      "completed",
+      "cancelled",
+      "cancel_requested",
+    ])
     .optional(),
   notes: zod.string().nullish(),
   price: zod.number().nullish(),
@@ -654,6 +670,7 @@ export const UpdateBookingResponse = zod.object({
     "active",
     "completed",
     "cancelled",
+    "cancel_requested",
   ]),
   startDate: zod.date(),
   endDate: zod.date().nullish(),
@@ -688,6 +705,7 @@ export const CheckInResponse = zod.object({
     "active",
     "completed",
     "cancelled",
+    "cancel_requested",
   ]),
   startDate: zod.date(),
   endDate: zod.date().nullish(),
@@ -722,6 +740,7 @@ export const CheckOutResponse = zod.object({
     "active",
     "completed",
     "cancelled",
+    "cancel_requested",
   ]),
   startDate: zod.date(),
   endDate: zod.date().nullish(),

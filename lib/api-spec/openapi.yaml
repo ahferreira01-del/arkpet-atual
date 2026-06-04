@@ -483,7 +483,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [pending, confirmed, active, completed, cancelled]
+            enum: [pending, confirmed, active, completed, cancelled, cancel_requested]
         - name: type
           in: query
           schema:
@@ -1552,7 +1552,7 @@ components:
           enum: [day_use, lodging]
         status:
           type: string
-          enum: [pending, confirmed, active, completed, cancelled]
+          enum: [pending, confirmed, active, completed, cancelled, cancel_requested]
         startDate:
           type: string
           format: date
@@ -1621,7 +1621,7 @@ components:
       properties:
         status:
           type: string
-          enum: [pending, confirmed, active, completed, cancelled]
+          enum: [pending, confirmed, active, completed, cancelled, cancel_requested]
         notes:
           type: string
           nullable: true

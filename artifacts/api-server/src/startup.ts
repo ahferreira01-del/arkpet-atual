@@ -26,7 +26,7 @@ export async function initStripe() {
   try {
     const { runMigrations } = await import("stripe-replit-sync");
     console.log("[stripe] Inicializando schema...");
-    await runMigrations({ databaseUrl: process.env.DATABASE_URL!, schema: "stripe" });
+    await runMigrations({ databaseUrl: process.env.DATABASE_URL! });
 
     const stripeSync = await getStripeSync();
 
@@ -35,7 +35,7 @@ export async function initStripe() {
       const webhookResult = await stripeSync.findOrCreateManagedWebhook(
         `https://${domain}/api/stripe/webhook`,
       );
-      console.log("[stripe] Webhook:", webhookResult?.webhook?.url ?? "configurado");
+      console.log("[stripe] Webhook:", webhookResult?.url ?? "configurado");
     } else {
       console.warn("[stripe] REPLIT_DOMAINS ausente — webhook não configurado.");
     }

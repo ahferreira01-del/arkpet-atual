@@ -381,6 +381,7 @@ export const BookingStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
+  cancel_requested: "cancel_requested",
 } as const;
 
 export interface Booking {
@@ -431,6 +432,7 @@ export const UpdateBookingRequestStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
+  cancel_requested: "cancel_requested",
 } as const;
 
 export interface UpdateBookingRequest {
@@ -734,6 +736,7 @@ export const ListBookingsStatus = {
   active: "active",
   completed: "completed",
   cancelled: "cancelled",
+  cancel_requested: "cancel_requested",
 } as const;
 
 export type ListBookingsType =
