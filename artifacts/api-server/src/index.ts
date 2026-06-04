@@ -16,12 +16,16 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-initializeDatabase().then(async () => {
-  await initStripe();
+initializeDatabase().then(() => {
   startScheduler();
   startMensalidadeScheduler();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
+    // Stripe init (product/price seeding + sync) runs after the server is
+    // already serving requests so it never blocks the health check.
+    initStripe().catch((err) =>
+      console.error("[startup] Falha ao inicializar Stripe:", err),
+    );
   });
 }).catch((err) => {
   console.error("[startup] Falha na inicialização:", err);
