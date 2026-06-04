@@ -190,13 +190,13 @@ export default function Billing() {
 
       {/* Plan cards */}
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
             <Sparkles className="h-4 w-4" /> Planos disponíveis
           </h3>
 
           {/* Billing period selector */}
-          <div className="inline-flex items-center rounded-xl border border-white/10 bg-white/5 p-1">
+          <div className="flex items-center rounded-xl border border-white/10 bg-white/5 p-1 w-full sm:w-auto">
             {INTERVALS.map((opt) => {
               const discount = discountByInterval.get(opt);
               const isActive = interval === opt;
@@ -206,7 +206,7 @@ export default function Billing() {
                   type="button"
                   onClick={() => setInterval(opt)}
                   className={cn(
-                    "relative px-3 py-1.5 text-xs font-medium rounded-lg transition-all",
+                    "flex-1 sm:flex-none relative px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all text-center",
                     isActive
                       ? "bg-primary text-primary-foreground shadow"
                       : "text-muted-foreground hover:text-white",
@@ -216,7 +216,7 @@ export default function Billing() {
                   {discount ? (
                     <span
                       className={cn(
-                        "ml-1.5 text-[10px] font-bold",
+                        "ml-1 text-[10px] font-bold",
                         isActive ? "text-primary-foreground/90" : "text-emerald-400",
                       )}
                     >
