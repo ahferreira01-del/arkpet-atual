@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v15";
+const CACHE_NAME = "arkpet-v16";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -24,7 +24,18 @@ self.addEventListener("install", (event) => {
       return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
-  self.skipWaiting();
+  // NOTE: we intentionally do NOT call self.skipWaiting() here.
+  // The new SW stays in "waiting" until the user confirms via the in-app
+  // "Nova versão disponível → Atualizar" prompt, which posts SKIP_WAITING.
+});
+
+// ──────────────────────────────────────────────────────
+// Update flow — activate the waiting SW on demand
+// ──────────────────────────────────────────────────────
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 // ──────────────────────────────────────────────────────

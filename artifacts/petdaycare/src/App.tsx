@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "./hooks/use-auth";
 import { AppLayout } from "./components/layout/app-layout";
 import { PushPrompt } from "./components/push-prompt";
+import { UpdatePrompt } from "./components/update-prompt";
 import ChangePasswordPage from "./pages/change-password";
 
 import Login from "./pages/login";
@@ -99,6 +100,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <UpdatePrompt />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
             <ServiceWorkerBridge />
