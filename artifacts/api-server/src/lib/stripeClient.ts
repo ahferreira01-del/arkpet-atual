@@ -1,10 +1,12 @@
 // Stripe integration via Replit connector (managed credentials).
-// Credentials are fetched fresh from the Replit connection API on every call —
-// never cache the client, tokens rotate.
+// Falls back to STRIPE_SECRET_KEY / STRIPE_PUBLISHABLE_KEY env vars when the
+// connector is unavailable (e.g. production configured with direct keys).
+// Credentials are fetched fresh on every call — never cache the client.
 import Stripe from "stripe";
 import type { StripeSync } from "stripe-replit-sync";
 
 async function getCredentials(): Promise<{ publishableKey: string; secretKey: string }> {
+  // Try Replit connector first
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -12,33 +14,51 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
       ? "depl " + process.env.WEB_REPL_RENEWAL
       : null;
 
-  if (!hostname || !xReplitToken) {
-    throw new Error(
-      "Stripe não conectado: variáveis do Replit ausentes. Conecte o Stripe na aba Integrations.",
-    );
+  if (hostname && xReplitToken) {
+    try {
+      const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
+      const targetEnvironment = isProduction ? "production" : "development";
+
+      const url = new URL(`https://${hostname}/api/v2/connection`);
+      url.searchParams.set("include_secrets", "true");
+      url.searchParams.set("connector_names", "stripe");
+      url.searchParams.set("environment", targetEnvironment);
+
+      const response = await fetch(url.toString(), {
+        headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      const data: any = await response.json();
+      const settings = data.items?.[0]?.settings;
+
+      if (settings?.secret && settings?.publishable) {
+        return { publishableKey: settings.publishable, secretKey: settings.secret };
+      }
+
+      console.warn(
+        `[stripe] Conector Replit (${targetEnvironment}) sem chaves — tentando variáveis de ambiente...`,
+      );
+    } catch (err) {
+      console.warn(
+        "[stripe] Falha ao buscar credenciais pelo conector:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
-  const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
-  const targetEnvironment = isProduction ? "production" : "development";
+  // Fallback: direct env vars (useful for production test-mode override)
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
 
-  const url = new URL(`https://${hostname}/api/v2/connection`);
-  url.searchParams.set("include_secrets", "true");
-  url.searchParams.set("connector_names", "stripe");
-  url.searchParams.set("environment", targetEnvironment);
-
-  const response = await fetch(url.toString(), {
-    headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  const data: any = await response.json();
-  const settings = data.items?.[0]?.settings;
-
-  if (!settings?.secret || !settings?.publishable) {
-    throw new Error(`Conexão Stripe (${targetEnvironment}) não encontrada ou incompleta.`);
+  if (secretKey && publishableKey) {
+    return { publishableKey, secretKey };
   }
 
-  return { publishableKey: settings.publishable, secretKey: settings.secret };
+  throw new Error(
+    "Stripe não configurado: conecte o Stripe na aba Integrations ou defina " +
+      "STRIPE_SECRET_KEY e STRIPE_PUBLISHABLE_KEY nas variáveis de ambiente.",
+  );
 }
 
 // Server-side operations (secret key). Never cache the returned client.
