@@ -165,35 +165,49 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
 
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, crecheId)).limit(1);
 
-  const stripe = await getUncachableStripeClient();
+  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>>;
+  try {
+    stripe = await getUncachableStripeClient();
+  } catch (err: any) {
+    console.error("[billing] falha ao obter cliente Stripe:", err?.message ?? err);
+    res.status(500).json({ error: "Serviço de pagamento indisponível. Tente novamente." });
+    return;
+  }
 
   // Reuse the existing Stripe customer or create one for this creche (tenant).
   let customerId = subscription.stripeCustomerId;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      name: creche?.name ?? `Creche ${crecheId}`,
-      email: creche?.email ?? req.user?.email,
-      metadata: { crecheId: String(crecheId) },
+  try {
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        name: creche?.name ?? `Creche ${crecheId}`,
+        email: creche?.email ?? req.user?.email,
+        metadata: { crecheId: String(crecheId) },
+      });
+      customerId = customer.id;
+      await db
+        .update(subscriptionsTable)
+        .set({ stripeCustomerId: customerId })
+        .where(eq(subscriptionsTable.id, subscription.id));
+    }
+
+    const baseUrl = getAppBaseUrl();
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/assinatura?cancelado=1`,
+      metadata: { crecheId: String(crecheId), planId: String(planId), interval },
+      subscription_data: { metadata: { crecheId: String(crecheId), planId: String(planId), interval } },
     });
-    customerId = customer.id;
-    await db
-      .update(subscriptionsTable)
-      .set({ stripeCustomerId: customerId })
-      .where(eq(subscriptionsTable.id, subscription.id));
+
+    res.json({ url: session.url });
+  } catch (err: any) {
+    const stripeMsg = err?.raw?.message ?? err?.message ?? "Erro desconhecido";
+    const stripeCode = err?.raw?.code ?? err?.code ?? err?.statusCode ?? "?";
+    console.error(`[billing] Stripe checkout error (code=${stripeCode}):`, stripeMsg);
+    res.status(500).json({ error: `Erro ao criar sessão de pagamento: ${stripeMsg}` });
   }
-
-  const baseUrl = getAppBaseUrl();
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${baseUrl}/assinatura?cancelado=1`,
-    metadata: { crecheId: String(crecheId), planId: String(planId), interval },
-    subscription_data: { metadata: { crecheId: String(crecheId), planId: String(planId), interval } },
-  });
-
-  res.json({ url: session.url });
 });
 
 // POST /billing/confirm { sessionId } — called from the success page. Verifies
