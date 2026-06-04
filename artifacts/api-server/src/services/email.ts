@@ -11,13 +11,22 @@ const ROLE_LABELS: Record<string, string> = {
   tutor: "Tutor",
 };
 
-// Get Resend client — prefers Replit connector (managed key + domain),
-// falls back to RESEND_API_KEY env var when connector is unavailable.
-// The "from" address is always taken from RESEND_FROM_EMAIL if set.
+// Get Resend client.
+// Priority: RESEND_API_KEY env var (explicit, always correct) →
+//           Replit connector (managed, fallback when no explicit key set).
 async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail: string } | null> {
   const fromEmailOverride = process.env.RESEND_FROM_EMAIL;
 
-  // Primary: Replit connector (managed API key, works without a custom domain)
+  // Primary: explicit RESEND_API_KEY env var / secret
+  if (process.env.RESEND_API_KEY) {
+    console.log("[email] usando RESEND_API_KEY do env");
+    return {
+      client: new Resend(process.env.RESEND_API_KEY),
+      fromEmail: fromEmailOverride || "ArkPet <noreply@arkpet.com.br>",
+    };
+  }
+
+  // Fallback: Replit connector (works without a custom domain)
   try {
     const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
     const xReplitToken = process.env.REPL_IDENTITY
@@ -40,6 +49,7 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
       const settings = data.items?.[0]?.settings;
 
       if (settings?.api_key) {
+        console.log("[email] usando chave do conector Resend");
         return {
           client: new Resend(settings.api_key),
           fromEmail: fromEmailOverride || settings.from_email || "ArkPet <noreply@arkpet.com.br>",
@@ -47,17 +57,10 @@ async function getUncachableResendClient(): Promise<{ client: Resend; fromEmail:
       }
     }
   } catch {
-    // fall through to env var
+    // nenhum cliente disponível
   }
 
-  // Fallback: manual RESEND_API_KEY env var
-  if (process.env.RESEND_API_KEY) {
-    return {
-      client: new Resend(process.env.RESEND_API_KEY),
-      fromEmail: fromEmailOverride || "ArkPet <noreply@arkpet.com.br>",
-    };
-  }
-
+  console.warn("[email] Resend não configurado — email não será enviado.");
   return null;
 }
 
