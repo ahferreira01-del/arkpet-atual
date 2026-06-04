@@ -6,11 +6,14 @@ import {
   planPricesTable,
   BILLING_INTERVALS,
   INTERVAL_DISCOUNT_PCT,
+  INTERVAL_LABELS,
   computeIntervalPrice,
+  stripeRecurringFor,
+  type BillingInterval,
 } from "@workspace/db";
-import { eq, count } from "drizzle-orm";
+import { eq, and, count, isNull } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
-import { getStripeSync } from "./lib/stripeClient.js";
+import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
 
 const DEFAULT_PLANS = [
   { name: "Trial", petLimit: 10, priceBrl: 0, description: "Teste grátis por 10 dias" },
@@ -61,6 +64,85 @@ async function seedPlanPrices() {
   if (created > 0) console.log(`[startup] ${created} preços de plano (intervalos) criados.`);
 }
 
+// Syncs Stripe products + prices for every paid plan interval, backfilling
+// plan_prices.stripePriceId. Runs only when there are rows without a price ID
+// (new deploy or new intervals added). Idempotent and non-fatal.
+export async function seedStripePrices() {
+  const pending = await db
+    .select()
+    .from(planPricesTable)
+    .where(isNull(planPricesTable.stripePriceId));
+
+  if (pending.length === 0) {
+    console.log("[startup] Stripe: todos os preços já sincronizados.");
+    return;
+  }
+
+  console.log(`[startup] Stripe: ${pending.length} preço(s) sem ID — iniciando sincronização...`);
+
+  const stripe = await getUncachableStripeClient();
+  const plans = await db.select().from(plansTable);
+  const paidPlans = plans.filter((p) => p.priceBrl > 0);
+
+  for (const plan of paidPlans) {
+    // Find or create Stripe product
+    const search = await stripe.products.search({
+      query: `metadata['planId']:'${plan.id}' AND active:'true'`,
+    });
+    let product = search.data[0] ?? null;
+    if (!product) {
+      product = await stripe.products.create({
+        name: `ArkPet — ${plan.name}`,
+        description: plan.description ?? undefined,
+        metadata: { planId: String(plan.id), app: "arkpet" },
+      });
+    }
+
+    const planPrices = await db
+      .select()
+      .from(planPricesTable)
+      .where(and(eq(planPricesTable.planId, plan.id), isNull(planPricesTable.stripePriceId)));
+
+    for (const pp of planPrices) {
+      const interval = pp.interval as BillingInterval;
+      const recurring = stripeRecurringFor(interval);
+
+      // Reuse existing matching active price
+      const existing = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
+      let price = existing.data.find(
+        (p) =>
+          p.currency === "brl" &&
+          p.unit_amount === pp.priceBrl &&
+          p.recurring?.interval === recurring.interval &&
+          (p.recurring?.interval_count ?? 1) === recurring.interval_count,
+      ) ?? null;
+
+      if (!price) {
+        price = await stripe.prices.create({
+          product: product.id,
+          currency: "brl",
+          unit_amount: pp.priceBrl,
+          recurring,
+          metadata: { planId: String(plan.id), interval },
+        });
+      }
+
+      await db
+        .update(planPricesTable)
+        .set({ stripePriceId: price.id })
+        .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
+
+      if (interval === "month") {
+        await db.update(plansTable).set({ stripePriceId: price.id }).where(eq(plansTable.id, plan.id));
+      }
+
+      console.log(`[startup] Stripe: "${plan.name}" ${INTERVAL_LABELS[interval]} → ${price.id}`);
+    }
+  }
+
+  console.log("[startup] Stripe: sincronização de preços concluída.");
+}
+
 // Initializes Stripe: creates/updates the `stripe` schema, registers the managed
 // webhook, and backfills existing Stripe data. Non-fatal: if Stripe is not
 // connected the rest of the app must still boot.
@@ -81,6 +163,8 @@ export async function initStripe() {
     } else {
       console.warn("[stripe] REPLIT_DOMAINS ausente — webhook não configurado.");
     }
+
+    await seedStripePrices();
 
     stripeSync
       .syncBackfill()
