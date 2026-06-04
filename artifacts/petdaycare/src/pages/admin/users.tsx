@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Users, Mail, Building2, Search, UserCheck, UserX,
-  AlertCircle, Plus, Eye, EyeOff, KeyRound, Pencil,
+  AlertCircle, Plus, Eye, EyeOff, KeyRound, Pencil, RefreshCw, Copy, Check,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
@@ -106,6 +106,26 @@ export default function AdminUsers() {
   const [editRole, setEditRole] = useState<UserRole>("tutor");
   const [editPassword, setEditPassword] = useState("");
   const [showEditPassword, setShowEditPassword] = useState(false);
+  const [copiedTempPw, setCopiedTempPw] = useState(false);
+
+  const generateTempPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const symbols = "@#!";
+    let pw = "";
+    for (let i = 0; i < 7; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    pw += symbols[Math.floor(Math.random() * symbols.length)];
+    const arr = pw.split("").sort(() => Math.random() - 0.5);
+    setEditPassword(arr.join(""));
+    setShowEditPassword(true);
+    setCopiedTempPw(false);
+  };
+
+  const copyTempPassword = () => {
+    navigator.clipboard.writeText(editPassword).then(() => {
+      setCopiedTempPw(true);
+      setTimeout(() => setCopiedTempPw(false), 2000);
+    });
+  };
 
   const filtered = usersData?.filter((u) => {
     const matchSearch =
@@ -478,24 +498,52 @@ export default function AdminUsers() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <KeyRound className="h-4 w-4" /> Nova senha <span className="text-muted-foreground font-normal">(deixe em branco para não alterar)</span>
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <KeyRound className="h-4 w-4" /> Nova senha
+                  <span className="text-muted-foreground font-normal">(deixe em branco para não alterar)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={generateTempPassword}
+                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors font-medium"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Gerar temp.
+                </button>
+              </div>
               <div className="relative">
                 <Input
                   type={showEditPassword ? "text" : "password"}
                   placeholder="••••••••"
                   value={editPassword}
-                  onChange={(e) => setEditPassword(e.target.value)}
+                  onChange={(e) => { setEditPassword(e.target.value); setCopiedTempPw(false); }}
                 />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
-                  onClick={() => setShowEditPassword((v) => !v)}
-                >
-                  {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5">
+                  {editPassword && (
+                    <button
+                      type="button"
+                      onClick={copyTempPassword}
+                      className="p-1.5 text-muted-foreground hover:text-white transition-colors"
+                      title="Copiar senha"
+                    >
+                      {copiedTempPw ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="p-1.5 text-muted-foreground hover:text-white transition-colors"
+                    onClick={() => setShowEditPassword((v) => !v)}
+                  >
+                    {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
+              {editPassword && showEditPassword && (
+                <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  Copie e envie esta senha ao usuário (WhatsApp, etc.). Ele deverá trocá-la no próximo acesso.
+                </p>
+              )}
             </div>
 
             {(editUser as any).mustChangePassword && (
