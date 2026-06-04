@@ -147,6 +147,9 @@ export async function seedStripePrices() {
 // webhook, and backfills existing Stripe data. Non-fatal: if Stripe is not
 // connected the rest of the app must still boot.
 export async function initStripe() {
+  // Step 1: stripe-replit-sync (schema + webhook + backfill).
+  // May fail in production bundles if migration files are not resolved — that is
+  // acceptable; the app must still boot and payments must still work.
   try {
     const { runMigrations } = await import("stripe-replit-sync");
     console.log("[stripe] Inicializando schema...");
@@ -164,15 +167,24 @@ export async function initStripe() {
       console.warn("[stripe] REPLIT_DOMAINS ausente — webhook não configurado.");
     }
 
-    await seedStripePrices();
-
     stripeSync
       .syncBackfill()
       .then(() => console.log("[stripe] Dados sincronizados."))
       .catch((err) => console.error("[stripe] Falha ao sincronizar:", err));
   } catch (err) {
     console.warn(
-      "[stripe] Stripe não inicializado (integração pode não estar conectada):",
+      "[stripe] stripe-replit-sync não disponível (normal em produção bundled):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  // Step 2: seed Stripe products + prices for every plan interval.
+  // Runs independently of Step 1 so a bundle-path failure never blocks checkout.
+  try {
+    await seedStripePrices();
+  } catch (err) {
+    console.warn(
+      "[stripe] Falha ao sincronizar preços dos planos:",
       err instanceof Error ? err.message : err,
     );
   }
