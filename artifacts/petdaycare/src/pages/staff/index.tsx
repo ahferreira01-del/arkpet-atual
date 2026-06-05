@@ -14,6 +14,7 @@ import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { compressImage } from "@/lib/utils";
+import { todayBrazil } from "@/lib/date-utils";
 
 const priorityLabel: Record<string, string> = {
   high: "Alta",
@@ -279,7 +280,7 @@ export default function StaffDashboard() {
     return () => clearTimeout(timer);
   }, [highlightTaskId]);
 
-  const { data: tasks, isLoading } = useListTasks(crecheId);
+  const { data: tasks, isLoading } = useListTasks(crecheId, { date: todayBrazil() });
   const { data: pets } = useListPets(crecheId);
   const completeTaskMutation = useCompleteTask();
   const { toast } = useToast();

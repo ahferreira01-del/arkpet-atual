@@ -56,7 +56,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { parseUTC } from "@/lib/date-utils";
+import { parseUTC, todayBrazil } from "@/lib/date-utils";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -80,7 +80,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const { data: stats } = useGetCrecheStats(crecheId);
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
   const { data: bookings, isLoading: bookingsLoading } = useListBookings(crecheId);
-  const { data: tasks, isLoading: tasksLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus });
+  const { data: tasks, isLoading: tasksLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus, date: todayBrazil() });
   const { data: walks } = (useListWalks as any)(crecheId);
   const { data: staff } = useListCrecheStaff(crecheId);
 

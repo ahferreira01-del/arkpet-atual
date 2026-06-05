@@ -9,19 +9,32 @@ const notifiedTaskIds = new Set<number>();
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
-function makeTimeOnDate(todayStr: string, hours: number, minutes: number): Date {
-  const d = new Date(todayStr + "T00:00:00");
-  d.setHours(hours, minutes, 0, 0);
-  return d;
+/**
+ * Returns today's date string (YYYY-MM-DD) in Brasilia time (UTC-3, no DST
+ * since 2019). Always use this instead of new Date().toISOString().split("T")[0]
+ * which returns the UTC date — after 21h BRT the UTC date is already "tomorrow".
+ */
+function getBrazilDateStr(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+/**
+ * Builds a Date for a specific wall-clock time on a given Brazil date.
+ * Uses an explicit -03:00 offset so JS correctly converts to UTC internally.
+ */
+function makeTimeOnDate(brazilDateStr: string, hours: number, minutes: number): Date {
+  const hh = String(hours).padStart(2, "0");
+  const mm = String(minutes).padStart(2, "0");
+  return new Date(`${brazilDateStr}T${hh}:${mm}:00-03:00`);
 }
 
 // ─── Single-pet task generation (called on check-in) ─────────────────────────
 
 export async function generateTasksForPetToday(petId: number, crecheId: number) {
   try {
-    const todayStr = new Date().toISOString().split("T")[0];
-    const startOfDay = new Date(todayStr + "T00:00:00");
-    const endOfDay = new Date(todayStr + "T23:59:59");
+    const todayStr = getBrazilDateStr();
+    const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
+    const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
 
     const [pet] = await db.select({
       id: petsTable.id,
@@ -109,10 +122,9 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
 
 async function generateDailyTasks() {
   try {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const startOfDay = new Date(todayStr + "T00:00:00");
-    const endOfDay = new Date(todayStr + "T23:59:59");
+    const todayStr = getBrazilDateStr();
+    const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
+    const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
 
     // Only generate for pets that have a confirmed/active booking covering today
     const bookedRows = await db.select({ petId: bookingsTable.petId })
@@ -223,7 +235,10 @@ async function generateDailyTasks() {
 export function startScheduler() {
   generateDailyTasks();
 
-  cron.schedule("1 0 * * *", () => {
+  // 03:01 UTC = 00:01 BRT (Brasilia is UTC-3, no DST since 2019).
+  // Previously "1 0 * * *" fired at 21:01 BRT, creating tasks for "tomorrow"
+  // from the perspective of Brazil users.
+  cron.schedule("1 3 * * *", () => {
     generateDailyTasks();
   });
 

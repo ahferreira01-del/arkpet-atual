@@ -6,6 +6,16 @@ import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
+/** Today's date string and day boundaries in Brasilia time (UTC-3). */
+function brazilToday() {
+  const dateStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  return {
+    dateStr,
+    startOfDay: new Date(`${dateStr}T00:00:00-03:00`),
+    endOfDay: new Date(`${dateStr}T23:59:59-03:00`),
+  };
+}
+
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 router.use(requireCrecheMembership);
@@ -82,10 +92,13 @@ router.post("/", async (req: AuthRequest, res) => {
   res.status(201).json({ ...task, petName: null, assignedToName: null });
 });
 
-// Batch-complete all pending tasks for a specific pet
+// Batch-complete all pending tasks for a specific pet on today's date only.
+// We intentionally scope to today so that tasks pre-generated for future days
+// (e.g. a multi-day stay) are NOT marked done when the pet checks out today.
 router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const petId = parseInt(String(req.params.petId));
+  const { startOfDay, endOfDay } = brazilToday();
 
   const updated = await db.update(tasksTable).set({
     status: "completed",
@@ -97,6 +110,8 @@ router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
       eq(tasksTable.crecheId, crecheId),
       eq(tasksTable.petId, petId),
       eq(tasksTable.status, "pending"),
+      gte(tasksTable.scheduledFor, startOfDay),
+      lte(tasksTable.scheduledFor, endOfDay),
     )
   ).returning({ id: tasksTable.id });
 
