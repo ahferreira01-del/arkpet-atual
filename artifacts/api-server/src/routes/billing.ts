@@ -195,6 +195,9 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: priceId, quantity: 1 }],
+      // Card + Boleto are the payment methods supported for subscriptions in Brazil.
+      // PIX is one-time only (no recurring support in Stripe) so it is excluded here.
+      payment_method_types: ["card", "boleto"],
       success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/assinatura?cancelado=1`,
       metadata: { crecheId: String(crecheId), planId: String(planId), interval },
