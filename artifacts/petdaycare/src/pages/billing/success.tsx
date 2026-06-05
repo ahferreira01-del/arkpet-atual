@@ -4,13 +4,15 @@ import { useConfirmBillingCheckout } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, Clock } from "lucide-react";
+
+type State = "loading" | "success" | "pending" | "error";
 
 export default function BillingSuccess() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const confirmMutation = useConfirmBillingCheckout();
-  const [state, setState] = React.useState<"loading" | "success" | "error">("loading");
+  const [state, setState] = React.useState<State>("loading");
   const ranRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -26,9 +28,13 @@ export default function BillingSuccess() {
     confirmMutation.mutate(
       { data: { sessionId } },
       {
-        onSuccess: () => {
+        onSuccess: (res: any) => {
           queryClient.invalidateQueries();
-          setState("success");
+          if (res?.pending) {
+            setState("pending");
+          } else {
+            setState("success");
+          }
         },
         onError: () => setState("error"),
       },
@@ -50,13 +56,34 @@ export default function BillingSuccess() {
           {state === "success" && (
             <>
               <CheckCircle2 className="h-12 w-12 text-emerald-400 mx-auto mb-4" />
-              <h1 className="text-xl font-display font-semibold text-white mb-2">Assinatura ativada!</h1>
+              <h1 className="text-xl font-display font-semibold text-white mb-2">Plano ativado!</h1>
               <p className="text-sm text-muted-foreground mb-6">
-                Seu plano já está ativo. Obrigado por usar o ArkPet.
+                Seu plano já está ativo. Obrigado por usar o ArkPet!
               </p>
               <Button className="w-full" onClick={() => navigate("/assinatura")}>
                 Ver minha assinatura
               </Button>
+            </>
+          )}
+
+          {state === "pending" && (
+            <>
+              <Clock className="h-12 w-12 text-amber-400 mx-auto mb-4" />
+              <h1 className="text-xl font-display font-semibold text-white mb-2">Aguardando pagamento</h1>
+              <p className="text-sm text-muted-foreground mb-2">
+                Seu pagamento via <strong className="text-white">PIX ou Boleto</strong> ainda não foi confirmado.
+              </p>
+              <p className="text-sm text-muted-foreground mb-6">
+                Assim que o banco confirmar, seu plano será ativado automaticamente — normalmente em alguns minutos para PIX e em até 3 dias úteis para Boleto.
+              </p>
+              <div className="space-y-2">
+                <Button className="w-full" onClick={() => navigate("/assinatura")}>
+                  Ver minha assinatura
+                </Button>
+                <Button className="w-full" variant="ghost" onClick={() => window.location.reload()}>
+                  Verificar novamente
+                </Button>
+              </div>
             </>
           )}
 

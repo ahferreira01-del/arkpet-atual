@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { BILLING_INTERVALS, type BillingInterval } from "@workspace/db";
+import {
+  BILLING_INTERVALS,
+  INTERVAL_MONTHS,
+  INTERVAL_LABELS,
+  computeIntervalPrice,
+  type BillingInterval,
+} from "@workspace/db";
 import { plansTable, planPricesTable, subscriptionsTable, crechesTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
-import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
 import { getAppBaseUrl } from "../lib/config.js";
 
 const INTERVAL_ORDER: Record<BillingInterval, number> = {
@@ -19,20 +24,7 @@ const router = Router();
 
 router.use(authenticate);
 
-// Reads the subscription period end defensively: the Basil API moved
-// current_period_end onto subscription items, but older payloads keep it at the
-// top level.
-function readPeriodEnd(subscription: any): Date | null {
-  const ts =
-    subscription?.items?.data?.[0]?.current_period_end ??
-    subscription?.current_period_end ??
-    null;
-  return typeof ts === "number" ? new Date(ts * 1000) : null;
-}
-
 // GET /billing/plans — all active plans, each with its per-interval prices.
-// `priceBrl` on the plan stays the monthly base; `prices` lists every interval
-// (with discount %) and whether it is purchasable (`available`).
 router.get("/plans", async (_req: AuthRequest, res) => {
   const plans = await db
     .select()
@@ -59,7 +51,9 @@ router.get("/plans", async (_req: AuthRequest, res) => {
         interval: pp.interval,
         priceBrl: pp.priceBrl,
         discountPct: pp.discountPct,
-        available: pp.stripePriceId != null,
+        // In payment mode every interval is always purchasable (amount comes
+        // from the DB price or computed value — no Stripe price id needed).
+        available: true,
       }))
       .sort(
         (a, b) =>
@@ -110,8 +104,10 @@ router.get("/subscription", async (req: AuthRequest, res) => {
   res.json(row);
 });
 
-// POST /billing/checkout { planId } — create a Stripe Checkout session for the
-// selected plan. creche_admin only.
+// POST /billing/checkout { planId, interval } — create a Stripe Checkout
+// session using mode="payment" so card, Boleto and PIX are all supported.
+// The subscription lifecycle (period, expiry) is managed by this app; there is
+// no Stripe subscription object. creche_admin only.
 router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {
@@ -132,8 +128,8 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
   }
 
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
-  if (!plan) {
-    res.status(404).json({ error: "Plano não encontrado." });
+  if (!plan || plan.priceBrl === 0) {
+    res.status(404).json({ error: "Plano não encontrado ou gratuito." });
     return;
   }
 
@@ -143,15 +139,8 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
     .where(and(eq(planPricesTable.planId, planId), eq(planPricesTable.interval, interval)))
     .limit(1);
 
-  // Resolve the Stripe price for the chosen interval. For monthly, fall back to
-  // the legacy plans.stripePriceId so an incomplete plan_prices backfill never
-  // takes monthly checkout offline during rollout.
-  const priceId =
-    planPrice?.stripePriceId ?? (interval === "month" ? plan.stripePriceId : null);
-  if (!priceId) {
-    res.status(400).json({ error: "Este plano não está disponível para assinatura paga neste período." });
-    return;
-  }
+  // Amount in BRL cents for this plan + interval.
+  const unitAmount = planPrice?.priceBrl ?? computeIntervalPrice(plan.priceBrl, interval);
 
   const [subscription] = await db
     .select()
@@ -191,17 +180,43 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
     }
 
     const baseUrl = getAppBaseUrl();
+    const intervalLabel = INTERVAL_LABELS[interval];
+
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      // mode=payment supports card + Boleto + PIX. Subscription lifecycle is
+      // handled by this app (currentPeriodEnd) rather than Stripe subscriptions.
+      mode: "payment",
       customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      // Card + Boleto are the payment methods supported for subscriptions in Brazil.
-      // PIX is one-time only (no recurring support in Stripe) so it is excluded here.
-      payment_method_types: ["card", "boleto"],
+      line_items: [
+        {
+          price_data: {
+            currency: "brl",
+            unit_amount: unitAmount,
+            product_data: {
+              name: `ArkPet — Plano ${plan.name}`,
+              description: `${intervalLabel} · até ${plan.petLimit} pets`,
+              metadata: { planId: String(planId), interval },
+            },
+          },
+          quantity: 1,
+        },
+      ],
+      // card + boleto + pix — all three payment methods for Brazil.
+      payment_method_types: ["card", "boleto", "pix"],
+      payment_method_options: {
+        // PIX QR code valid for 24 h.
+        pix: { expires_after_seconds: 86400 },
+        // Boleto expires after 3 business days.
+        boleto: { expires_after_days: 3 },
+      },
       success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${baseUrl}/assinatura?cancelado=1`,
+      // Metadata is embedded in the session AND the payment intent so the
+      // webhook handler can activate the subscription for async PIX payments.
       metadata: { crecheId: String(crecheId), planId: String(planId), interval },
-      subscription_data: { metadata: { crecheId: String(crecheId), planId: String(planId), interval } },
+      payment_intent_data: {
+        metadata: { crecheId: String(crecheId), planId: String(planId), interval },
+      },
     });
 
     res.json({ url: session.url });
@@ -214,8 +229,10 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
 });
 
 // POST /billing/confirm { sessionId } — called from the success page. Verifies
-// the checkout session and flips the app subscription to active immediately for
-// good UX. The webhook remains the source of truth for lifecycle changes.
+// the checkout session and activates the subscription if the payment is
+// collected. For async methods (PIX, Boleto) payment_status may still be
+// "unpaid" when the customer lands here; in that case we return { pending: true }
+// and the webhook (payment_intent.succeeded) will activate when confirmed.
 router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {
@@ -231,7 +248,7 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
 
   const stripe = await getUncachableStripeClient();
   const session = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["subscription", "line_items"],
+    expand: ["line_items"],
   });
 
   // Tenant isolation: the session must belong to the caller's creche.
@@ -240,46 +257,67 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
     return;
   }
 
-  // Money gate: only activate once Stripe confirms the payment was actually
-  // collected. The webhook remains the source of truth for later lifecycle.
+  // PIX and Boleto are asynchronous: Stripe redirects to success_url before the
+  // payment is confirmed. Return { pending: true } so the UI can show a
+  // "waiting for payment" message. The webhook will activate when paid.
   if (session.payment_status !== "paid") {
-    res.status(402).json({ error: "Pagamento ainda não confirmado." });
+    res.json({ ok: true, pending: true });
     return;
   }
 
-  // Derive the plan from the price actually purchased — never trust the
-  // client-controllable metadata planId for what the customer is entitled to.
-  const purchasedPriceId = session.line_items?.data?.[0]?.price?.id;
-  if (!purchasedPriceId) {
-    res.status(400).json({ error: "Não foi possível identificar o plano da sessão." });
-    return;
-  }
-  const resolved = await resolvePlanByPrice(purchasedPriceId);
-  if (!resolved) {
-    res.status(400).json({ error: "Plano correspondente não encontrado." });
+  // Resolve plan + interval from session metadata (set server-side on checkout).
+  const planId = Number(session.metadata?.planId);
+  const interval = session.metadata?.interval as BillingInterval;
+
+  if (!planId || !BILLING_INTERVALS.includes(interval)) {
+    res.status(400).json({ error: "Metadados da sessão inválidos." });
     return;
   }
 
-  const stripeSubscription = session.subscription as any;
+  // Verify the plan still exists (also acts as an existence check).
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
+  if (!plan) {
+    res.status(400).json({ error: "Plano não encontrado." });
+    return;
+  }
+
+  // Security: verify the paid amount matches what we'd charge for this plan+interval.
+  const [planPrice] = await db
+    .select()
+    .from(planPricesTable)
+    .where(and(eq(planPricesTable.planId, planId), eq(planPricesTable.interval, interval)))
+    .limit(1);
+
+  const expectedAmount = planPrice?.priceBrl ?? computeIntervalPrice(plan.priceBrl, interval);
+  const paidAmount = session.amount_total ?? 0;
+  if (paidAmount !== expectedAmount) {
+    console.error(`[billing] Amount mismatch: paid=${paidAmount} expected=${expectedAmount} plan=${planId} interval=${interval}`);
+    res.status(400).json({ error: "Valor pago não corresponde ao plano selecionado." });
+    return;
+  }
+
+  // Calculate the access period end from today + interval months.
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
 
   await db
     .update(subscriptionsTable)
     .set({
-      planId: resolved.planId,
-      billingInterval: resolved.interval,
+      planId,
+      billingInterval: interval,
       status: "active",
       stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-      stripeSubscriptionId: stripeSubscription?.id ?? undefined,
-      currentPeriodEnd: stripeSubscription ? readPeriodEnd(stripeSubscription) : undefined,
+      stripeSubscriptionId: undefined, // payment mode: no Stripe subscription
+      currentPeriodEnd: periodEnd,
       pastDueSince: null,
     })
     .where(eq(subscriptionsTable.crecheId, crecheId));
 
-  res.json({ ok: true });
+  res.json({ ok: true, pending: false });
 });
 
 // POST /billing/portal — open the Stripe billing portal for self-service
-// management (cancel, update payment method). creche_admin only.
+// management (payment methods, receipts). creche_admin only.
 router.post("/portal", requireRole("creche_admin"), async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {

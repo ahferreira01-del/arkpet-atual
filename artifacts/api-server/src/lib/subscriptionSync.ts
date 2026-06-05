@@ -4,7 +4,7 @@
 // which is what gates access and limits. This module is the bridge: the webhook
 // remains the source of truth for those transitions.
 import { db } from "@workspace/db";
-import type { BillingInterval } from "@workspace/db";
+import { BILLING_INTERVALS, INTERVAL_MONTHS, type BillingInterval } from "@workspace/db";
 import { subscriptionsTable, plansTable, planPricesTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
 
@@ -189,6 +189,40 @@ async function handleInvoicePaid(invoice: any, eventCreatedMs: number): Promise<
   await commit(appSub, eventCreatedMs, updates);
 }
 
+// Handles payment_intent.succeeded for PIX and Boleto (mode=payment checkout).
+// Reads crecheId / planId / interval from the payment intent metadata set by
+// the checkout endpoint and activates the subscription for the contracted period.
+async function handlePaymentIntentSucceeded(pi: any, eventCreatedMs: number): Promise<void> {
+  const meta = pi?.metadata ?? {};
+  const crecheId = Number(meta.crecheId);
+  const planId = Number(meta.planId);
+  const interval = meta.interval as BillingInterval;
+
+  // If metadata is missing this is not an ArkPet PIX/Boleto payment — skip.
+  if (!crecheId || !planId || !BILLING_INTERVALS.includes(interval)) return;
+
+  const appSub = await findAppSubscription({ crecheId });
+  if (!appSub) return;
+
+  // Calculate the access window: today + interval months.
+  const periodEnd = new Date();
+  periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+
+  const customerId = typeof pi?.customer === "string" ? pi.customer : null;
+
+  await commit(appSub, eventCreatedMs, {
+    planId,
+    billingInterval: interval,
+    status: "active",
+    stripeCustomerId: customerId ?? appSub.stripeCustomerId,
+    stripeSubscriptionId: null, // payment mode: no Stripe subscription
+    currentPeriodEnd: periodEnd,
+    pastDueSince: null,
+  });
+
+  console.log(`[billing] PIX/Boleto ativado: creche=${crecheId} plano=${planId} intervalo=${interval} até=${periodEnd.toISOString()}`);
+}
+
 // Applies a single (already signature-verified) Stripe event to the app's
 // subscription state. Idempotent and order-safe. Throws on DB failure so the
 // webhook returns non-2xx and Stripe retries.
@@ -204,5 +238,7 @@ export async function applyStripeEvent(event: any): Promise<void> {
     await handleInvoiceFailed(obj, eventCreatedMs);
   } else if (type === "invoice.paid" || type === "invoice.payment_succeeded") {
     await handleInvoicePaid(obj, eventCreatedMs);
+  } else if (type === "payment_intent.succeeded") {
+    await handlePaymentIntentSucceeded(obj, eventCreatedMs);
   }
 }
