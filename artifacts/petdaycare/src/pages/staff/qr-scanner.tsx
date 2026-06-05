@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
+import { resolvePhotoUrl } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -207,7 +208,7 @@ export default function QrScanner() {
                 )}
                 {petInfo.photoUrl ? (
                   <img
-                    src={petInfo.photoUrl}
+                    src={resolvePhotoUrl(petInfo.photoUrl)!}
                     alt={petInfo.name}
                     className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/30 mx-auto"
                   />
@@ -240,7 +241,7 @@ export default function QrScanner() {
                   <CheckCircle2 className="h-8 w-8 text-emerald-400" />
                 </div>
                 {petInfo.photoUrl ? (
-                  <img src={petInfo.photoUrl} alt={petInfo.name} className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/40 mx-auto" />
+                  <img src={resolvePhotoUrl(petInfo.photoUrl)!} alt={petInfo.name} className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/40 mx-auto" />
                 ) : (
                   <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/40 flex items-center justify-center mx-auto">
                     <Dog className="h-10 w-10 text-white/30" />

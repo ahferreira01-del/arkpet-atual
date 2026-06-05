@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { resolvePhotoUrl } from "@/lib/utils";
 import { useListPets, useCreatePet, useGetBillingSubscription, PetSpecies, PetGender } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch, useLocation } from "wouter";
@@ -203,7 +204,7 @@ export default function PetsDirectory() {
                 <CardContent className="p-0 flex flex-col h-full">
                   <div className="h-32 bg-gradient-to-br from-primary/20 to-accent/20 relative overflow-hidden flex-shrink-0">
                     {pet.photoUrl ? (
-                      <img src={pet.photoUrl} alt={pet.name} className="w-full h-full object-cover" />
+                      <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <Dog className="h-12 w-12 text-white/30" />

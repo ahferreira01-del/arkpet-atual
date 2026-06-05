@@ -43,6 +43,19 @@ export async function compressImage(file: File, maxWidth = 1080, quality = 0.82)
   });
 }
 
+/**
+ * Resolve a pet/booking photo URL.
+ * - data: URIs (legacy base64) → returned as-is
+ * - /objects/ paths (Object Storage) → prefixed with /api/storage
+ * - null/undefined → null
+ */
+export function resolvePhotoUrl(photoUrl: string | null | undefined): string | null {
+  if (!photoUrl) return null;
+  if (photoUrl.startsWith("data:")) return photoUrl;
+  if (photoUrl.startsWith("/objects/")) return `/api/storage${photoUrl}`;
+  return photoUrl;
+}
+
 export function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

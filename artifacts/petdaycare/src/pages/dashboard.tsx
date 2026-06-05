@@ -57,6 +57,7 @@ import { ptBR } from "date-fns/locale";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { parseUTC, todayBrazil } from "@/lib/date-utils";
+import { resolvePhotoUrl } from "@/lib/utils";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -285,7 +286,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
                               {pet.photoUrl ? (
-                                <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
+                                <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
                               ) : (
                                 <div className="h-full w-full flex items-center justify-center">
                                   <Dog className="h-5 w-5 text-white/60" />

@@ -13,7 +13,8 @@ import {
   useListWalks,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { compressImage } from "@/lib/utils";
+import { compressImage, resolvePhotoUrl } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,28 @@ import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import QRCode from "qrcode";
+
+async function requestPetPhotoUpload(
+  file: File,
+  token: string,
+): Promise<{ uploadURL: string; objectPath: string }> {
+  const res = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "image/jpeg" }),
+  });
+  if (!res.ok) throw new Error("Não foi possível iniciar o upload. Verifique sua conexão.");
+  return res.json();
+}
+
+async function uploadFileToStorage(uploadURL: string, file: File): Promise<void> {
+  const res = await fetch(uploadURL, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type || "image/jpeg" },
+  });
+  if (!res.ok) throw new Error("Erro ao enviar a foto. Tente novamente.");
+}
 
 export default function PetDetail({ id }: { id: number }) {
   const { user } = useAuth();
@@ -40,6 +63,7 @@ export default function PetDetail({ id }: { id: number }) {
   const [qrModalOpen, setQrModalOpen] = useState(false);
   const [onTheWayOpen, setOnTheWayOpen] = useState(false);
   const [eta, setEta] = useState("15");
+  const { toast } = useToast();
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -48,19 +72,29 @@ export default function PetDetail({ id }: { id: number }) {
     if (!file) return;
     setUploadingPhoto(true);
     try {
-      const dataUrl = await compressImage(file, 400, 0.85);
+      const token = localStorage.getItem("auth_token") ?? "";
+      const { uploadURL, objectPath } = await requestPetPhotoUpload(file, token);
+      await uploadFileToStorage(uploadURL, file);
       updatePetMutation.mutate(
-        { crecheId, petId: id, data: { photoUrl: dataUrl } },
+        { crecheId, petId: id, data: { photoUrl: objectPath } },
         {
           onSuccess: () => { queryClient.invalidateQueries(); },
+          onError: () => {
+            toast({ title: "Erro ao salvar foto", description: "Tente novamente.", variant: "destructive" });
+          },
           onSettled: () => { setUploadingPhoto(false); },
         }
       );
-    } catch {
+    } catch (err: any) {
       setUploadingPhoto(false);
+      toast({
+        title: "Erro ao enviar foto",
+        description: err?.message ?? "Não foi possível fazer o upload. Tente novamente.",
+        variant: "destructive",
+      });
     }
     if (photoInputRef.current) photoInputRef.current.value = "";
-  }, [crecheId, id, updatePetMutation, queryClient]);
+  }, [crecheId, id, updatePetMutation, queryClient, toast]);
 
   const onTheWayMutation = useMutation({
     mutationFn: async ({ bookingId, type, etaMinutes }: { bookingId: number; type: string; etaMinutes: number }) => {
@@ -125,7 +159,7 @@ export default function PetDetail({ id }: { id: number }) {
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
             </div>
           ) : pet.photoUrl ? (
-            <img src={pet.photoUrl} alt={pet.name} className="h-full w-full object-cover" />
+            <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
           ) : (
             <div className="h-full w-full flex items-center justify-center bg-white/5">
               <Dog className="h-16 w-16 text-white/30" />
