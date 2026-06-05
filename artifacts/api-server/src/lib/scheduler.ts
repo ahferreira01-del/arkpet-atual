@@ -126,11 +126,15 @@ async function generateDailyTasks() {
     const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
     const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
 
-    // Only generate for pets that have a confirmed/active booking covering today
+    // Only generate tasks for pets that are ALREADY checked in (booking = "active").
+    // Pets with "confirmed" bookings haven't arrived yet — their tasks are generated
+    // on-demand via generateTasksForPetToday() when they check in.
+    // This prevents tarefas from appearing for pets of the same tutor that are
+    // booked but not yet at the creche.
     const bookedRows = await db.select({ petId: bookingsTable.petId })
       .from(bookingsTable)
       .where(and(
-        inArray(bookingsTable.status, ["confirmed", "active"] as any),
+        eq(bookingsTable.status, "active"),
         lte(bookingsTable.startDate, todayStr),
         or(isNull(bookingsTable.endDate), gte(bookingsTable.endDate, todayStr)),
       ));
@@ -138,6 +142,7 @@ async function generateDailyTasks() {
     const bookedPetIds = [...new Set(bookedRows.map((r) => r.petId))];
     if (!bookedPetIds.length) return;
 
+    // Double-check with isCheckedIn flag on the pet itself.
     const pets = await db.select({
       id: petsTable.id,
       name: petsTable.name,
@@ -145,7 +150,11 @@ async function generateDailyTasks() {
       feedingSchedule: petsTable.feedingSchedule,
       walkSchedule: petsTable.walkSchedule,
     }).from(petsTable)
-      .where(and(eq(petsTable.status, "active"), inArray(petsTable.id, bookedPetIds)));
+      .where(and(
+        eq(petsTable.status, "active"),
+        eq(petsTable.isCheckedIn, true),
+        inArray(petsTable.id, bookedPetIds),
+      ));
 
     if (!pets.length) return;
 
