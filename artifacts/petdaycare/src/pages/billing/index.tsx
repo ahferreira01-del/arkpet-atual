@@ -12,9 +12,10 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck } from "lucide-react";
+import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap } from "lucide-react";
 
 type Interval = "month" | "quarter" | "semester" | "year";
+type PaymentMode = "subscription" | "payment";
 
 const INTERVALS: Interval[] = ["month", "quarter", "semester", "year"];
 
@@ -63,6 +64,7 @@ export default function Billing() {
   const isAdmin = user?.role === "creche_admin";
 
   const [interval, setInterval] = React.useState<Interval>("month");
+  const [paymentMode, setPaymentMode] = React.useState<PaymentMode>("subscription");
 
   const { data: plans, isLoading: plansLoading } = useGetBillingPlans();
   const { data: subscription, isLoading: subLoading } = useGetBillingSubscription();
@@ -81,7 +83,7 @@ export default function Billing() {
 
   const handleCheckout = (planId: number) => {
     checkoutMutation.mutate(
-      { data: { planId, interval } },
+      { data: { planId, interval, paymentMode } as any },
       {
         onSuccess: (res) => {
           if (res.url) window.location.href = res.url;
@@ -121,7 +123,6 @@ export default function Billing() {
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.trial;
   const paidPlans = (plans ?? []).filter((p) => p.priceBrl > 0);
 
-  // Discount % per interval (uniform across plans) for the period toggle badges.
   const discountByInterval = new Map<string, number>();
   for (const plan of paidPlans) {
     for (const price of plan.prices ?? []) {
@@ -165,7 +166,7 @@ export default function Billing() {
                 {status === "trial"
                   ? `Teste termina em ${formatDate(subscription?.trialEndsAt)}`
                   : status === "active"
-                    ? `Próxima cobrança em ${formatDate(subscription?.currentPeriodEnd)}`
+                    ? `Válido até ${formatDate(subscription?.currentPeriodEnd)}`
                     : status === "past_due"
                       ? `Pendente desde ${formatDate(subscription?.pastDueSince)}`
                       : ""}
@@ -190,6 +191,7 @@ export default function Billing() {
 
       {/* Plan cards */}
       <div>
+        {/* Header row: title + interval selector */}
         <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
             <Sparkles className="h-4 w-4" /> Planos disponíveis
@@ -214,12 +216,7 @@ export default function Billing() {
                 >
                   {INTERVAL_LABELS[opt]}
                   {discount ? (
-                    <span
-                      className={cn(
-                        "ml-1 text-[10px] font-bold",
-                        isActive ? "text-primary-foreground/90" : "text-emerald-400",
-                      )}
-                    >
+                    <span className={cn("ml-1 text-[10px] font-bold", isActive ? "text-primary-foreground/90" : "text-emerald-400")}>
                       −{discount}%
                     </span>
                   ) : null}
@@ -227,6 +224,71 @@ export default function Billing() {
               );
             })}
           </div>
+        </div>
+
+        {/* Payment method selector */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-5">
+          <button
+            type="button"
+            onClick={() => setPaymentMode("subscription")}
+            className={cn(
+              "flex-1 flex items-start gap-3 p-4 rounded-xl border transition-all text-left",
+              paymentMode === "subscription"
+                ? "border-primary/50 bg-primary/10 shadow-[0_0_16px_rgba(139,92,246,0.12)]"
+                : "border-white/10 bg-white/5 hover:border-white/20",
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+              paymentMode === "subscription" ? "bg-primary/20 text-primary" : "bg-white/10 text-muted-foreground",
+            )}>
+              <RefreshCw className="h-4 w-4" />
+            </div>
+            <div>
+              <p className={cn("text-sm font-semibold", paymentMode === "subscription" ? "text-white" : "text-muted-foreground")}>
+                Cartão de crédito
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Cobrança automática · sem precisar renovar</p>
+            </div>
+            {paymentMode === "subscription" && (
+              <div className="ml-auto flex-shrink-0">
+                <div className="h-4 w-4 rounded-full border-2 border-primary bg-primary/80 flex items-center justify-center">
+                  <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                </div>
+              </div>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setPaymentMode("payment")}
+            className={cn(
+              "flex-1 flex items-start gap-3 p-4 rounded-xl border transition-all text-left",
+              paymentMode === "payment"
+                ? "border-amber-500/50 bg-amber-500/10 shadow-[0_0_16px_rgba(245,158,11,0.10)]"
+                : "border-white/10 bg-white/5 hover:border-white/20",
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
+              paymentMode === "payment" ? "bg-amber-500/20 text-amber-400" : "bg-white/10 text-muted-foreground",
+            )}>
+              <Zap className="h-4 w-4" />
+            </div>
+            <div>
+              <p className={cn("text-sm font-semibold", paymentMode === "payment" ? "text-white" : "text-muted-foreground")}>
+                PIX · Boleto · Cartão avulso
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">Pague uma vez · renove manualmente ao vencer</p>
+            </div>
+            {paymentMode === "payment" && (
+              <div className="ml-auto flex-shrink-0">
+                <div className="h-4 w-4 rounded-full border-2 border-amber-400 bg-amber-400/80 flex items-center justify-center">
+                  <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                </div>
+              </div>
+            )}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -238,8 +300,21 @@ export default function Billing() {
 
             const price = (plan.prices ?? []).find((p) => p.interval === interval);
             const periodPrice = price?.priceBrl ?? plan.priceBrl * INTERVAL_MONTHS[interval];
-            const isAvailable = interval === "month" ? true : price?.available ?? false;
+            // Subscription mode needs a Stripe price id; payment mode is always available.
+            const isAvailable = paymentMode === "payment"
+              ? true
+              : (interval === "month" ? true : price?.available ?? false);
             const equivalentMonthly = Math.round(periodPrice / INTERVAL_MONTHS[interval]);
+
+            const buttonLabel = isCurrent
+              ? "Plano atual"
+              : !isAvailable
+                ? "Indisponível"
+                : status === "active"
+                  ? "Mudar para este plano"
+                  : paymentMode === "payment"
+                    ? "Pagar agora"
+                    : "Assinar";
 
             return (
               <Card
@@ -285,17 +360,11 @@ export default function Billing() {
                     variant={isCurrent ? "ghost" : "default"}
                     disabled={!isAdmin || isCurrent || !isAvailable}
                     isLoading={
-                      checkoutMutation.isPending && checkoutMutation.variables?.data.planId === plan.id
+                      checkoutMutation.isPending && (checkoutMutation.variables?.data as any)?.planId === plan.id
                     }
                     onClick={() => handleCheckout(plan.id)}
                   >
-                    {isCurrent
-                      ? "Plano atual"
-                      : !isAvailable
-                        ? "Indisponível"
-                        : status === "active"
-                          ? "Mudar para este plano"
-                          : "Assinar"}
+                    {buttonLabel}
                   </Button>
                 </CardContent>
               </Card>
