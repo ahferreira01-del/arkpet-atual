@@ -28,6 +28,24 @@ function makeTimeOnDate(brazilDateStr: string, hours: number, minutes: number): 
   return new Date(`${brazilDateStr}T${hh}:${mm}:00-03:00`);
 }
 
+/**
+ * Returns the hour and minute of a stored UTC Date in Brasilia time.
+ * IMPORTANT: Always use this instead of d.getHours()/d.getMinutes() for
+ * deduplication. Tasks are stored as UTC; the server timezone is UTC; so
+ * getHours() returns UTC hours, not BRT hours — causing dedup to miss matches
+ * and create one duplicate per server restart.
+ */
+function getBRTHourMinute(date: Date): { h: number; m: number } {
+  const str = date.toLocaleTimeString("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const [h, m] = str.split(":").map(Number);
+  return { h, m };
+}
+
 // ─── Single-pet task generation (called on check-in) ─────────────────────────
 
 export async function generateTasksForPetToday(petId: number, crecheId: number) {
@@ -72,11 +90,16 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
     const alreadyExists = (type: string, h: number, m: number) =>
       existingTasks.some((t) => {
         if (t.type !== type) return false;
-        const d = new Date(t.scheduledFor);
-        return d.getHours() === h && d.getMinutes() === m;
+        const { h: taskH, m: taskM } = getBRTHourMinute(new Date(t.scheduledFor));
+        return taskH === h && taskM === m;
       });
 
     const newTasks: (typeof tasksTable.$inferInsert)[] = [];
+    // Track what we're already adding in this batch so duplicates inside
+    // the schedule itself (e.g. two identical walk entries) are skipped.
+    const batchKeys = new Set<string>();
+    const inBatch = (type: string, h: number, m: number) => batchKeys.has(`${type}:${h}:${m}`);
+    const markBatch = (type: string, h: number, m: number) => batchKeys.add(`${type}:${h}:${m}`);
 
     const feeding: Array<{ time: string; amount?: string; notes?: string }> =
       Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
@@ -84,7 +107,8 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
       if (!f.time) continue;
       const [h, m] = f.time.split(":").map(Number);
       if (isNaN(h) || isNaN(m)) continue;
-      if (alreadyExists("feeding", h, m)) continue;
+      if (alreadyExists("feeding", h, m) || inBatch("feeding", h, m)) continue;
+      markBatch("feeding", h, m);
       const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
       newTasks.push({ crecheId, petId, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
     }
@@ -95,7 +119,8 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
       if (!w.time) continue;
       const [h, m] = w.time.split(":").map(Number);
       if (isNaN(h) || isNaN(m)) continue;
-      if (alreadyExists("walk", h, m)) continue;
+      if (alreadyExists("walk", h, m) || inBatch("walk", h, m)) continue;
+      markBatch("walk", h, m);
       newTasks.push({ crecheId, petId, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
     }
 
@@ -104,7 +129,8 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
       for (const time of times) {
         const [h, m] = time.split(":").map(Number);
         if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists("medication", h, m)) continue;
+        if (alreadyExists("medication", h, m) || inBatch("medication", h, m)) continue;
+        markBatch("medication", h, m);
         newTasks.push({ crecheId, petId, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
       }
     }
@@ -193,11 +219,18 @@ async function generateDailyTasks() {
     const alreadyExists = (petId: number, type: string, hours: number, minutes: number) =>
       existingTasks.some((t) => {
         if (t.petId !== petId || t.type !== type) return false;
-        const d = new Date(t.scheduledFor);
-        return d.getHours() === hours && d.getMinutes() === minutes;
+        const { h: taskH, m: taskM } = getBRTHourMinute(new Date(t.scheduledFor));
+        return taskH === hours && taskM === minutes;
       });
 
     const newTasks: (typeof tasksTable.$inferInsert)[] = [];
+    // Track tasks already queued in this batch (key = petId:type:h:m) so that
+    // duplicate entries in feedingSchedule/walkSchedule don't produce duplicates.
+    const batchKeys = new Set<string>();
+    const inBatch = (petId: number, type: string, h: number, m: number) =>
+      batchKeys.has(`${petId}:${type}:${h}:${m}`);
+    const markBatch = (petId: number, type: string, h: number, m: number) =>
+      batchKeys.add(`${petId}:${type}:${h}:${m}`);
 
     for (const pet of pets) {
       const feeding: Array<{ time: string; amount?: string; notes?: string }> =
@@ -206,7 +239,8 @@ async function generateDailyTasks() {
         if (!f.time) continue;
         const [h, m] = f.time.split(":").map(Number);
         if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists(pet.id, "feeding", h, m)) continue;
+        if (alreadyExists(pet.id, "feeding", h, m) || inBatch(pet.id, "feeding", h, m)) continue;
+        markBatch(pet.id, "feeding", h, m);
         const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
         newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
       }
@@ -217,7 +251,8 @@ async function generateDailyTasks() {
         if (!w.time) continue;
         const [h, m] = w.time.split(":").map(Number);
         if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists(pet.id, "walk", h, m)) continue;
+        if (alreadyExists(pet.id, "walk", h, m) || inBatch(pet.id, "walk", h, m)) continue;
+        markBatch(pet.id, "walk", h, m);
         newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
       }
 
@@ -226,7 +261,8 @@ async function generateDailyTasks() {
         for (const time of times) {
           const [h, m] = time.split(":").map(Number);
           if (isNaN(h) || isNaN(m)) continue;
-          if (alreadyExists(pet.id, "medication", h, m)) continue;
+          if (alreadyExists(pet.id, "medication", h, m) || inBatch(pet.id, "medication", h, m)) continue;
+          markBatch(pet.id, "medication", h, m);
           newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
         }
       }
