@@ -277,7 +277,32 @@ async function generateDailyTasks() {
   }
 }
 
+/**
+ * Remove tarefas duplicadas do banco — mantém apenas a de menor ID
+ * para cada combinação (pet_id, type, scheduled_for).
+ * Executado uma vez no startup; inofensivo se não há duplicatas.
+ */
+async function deduplicateTasks() {
+  try {
+    const result = await db.execute(`
+      DELETE FROM tasks
+      WHERE id NOT IN (
+        SELECT MIN(id)
+        FROM tasks
+        GROUP BY pet_id, type, scheduled_for
+      )
+    `);
+    const count = (result as any).rowCount ?? 0;
+    if (count > 0) {
+      console.log(`[scheduler] Limpeza: ${count} tarefa(s) duplicada(s) removida(s).`);
+    }
+  } catch (err) {
+    console.error("[scheduler] Erro ao deduplicar tarefas:", err);
+  }
+}
+
 export function startScheduler() {
+  deduplicateTasks();
   generateDailyTasks();
 
   // 03:01 UTC = 00:01 BRT (Brasilia is UTC-3, no DST since 2019).
