@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable, bookingsTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull } from "drizzle-orm";
-import { sendPushToUser } from "./push.js";
+import { sendPushToUser, sendPushToRole } from "./push.js";
 
 const notifiedTaskIds = new Set<number>();
 
@@ -375,27 +375,75 @@ export function startScheduler() {
 
 async function sendMensalidadeReminders() {
   try {
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + 3);
-    const targetDay = futureDate.getDate();
-
+    // Busca todos os tutores ativos com data de vencimento configurada,
+    // incluindo o crecheId para notificar o admin da creche também.
     const tutors = await db
-      .select({ id: usersTable.id, name: usersTable.name, mensalidadeDia: usersTable.mensalidadeDia })
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        crecheId: usersTable.crecheId,
+        mensalidadeDia: usersTable.mensalidadeDia,
+      })
       .from(usersTable)
       .where(and(eq(usersTable.role, "tutor"), eq(usersTable.isActive, true), isNotNull(usersTable.mensalidadeDia)));
 
-    const dueToday = tutors.filter((t) => t.mensalidadeDia === targetDay);
-    if (!dueToday.length) return;
+    if (!tutors.length) return;
 
-    console.log(`[scheduler] Sending mensalidade reminders to ${dueToday.length} tutor(s) (due day ${targetDay})`);
+    // Dispara lembretes em 4 momentos: 7 dias antes, 3 dias antes,
+    // 1 dia antes e no próprio dia de vencimento.
+    const INTERVALS_DAYS = [7, 3, 1, 0];
 
-    for (const tutor of dueToday) {
-      await sendPushToUser(tutor.id, {
-        title: "📅 Mensalidade vencendo em breve",
-        body: `Sua mensalidade vence em 3 dias (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`,
-        tag: `mensalidade-${tutor.id}-${targetDay}`,
-        data: { type: "mensalidade" },
-      }).catch(() => {});
+    for (const daysAhead of INTERVALS_DAYS) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + daysAhead);
+      const targetDay = futureDate.getDate();
+
+      const matching = tutors.filter(
+        (t) => t.mensalidadeDia === targetDay && t.crecheId != null,
+      );
+      if (!matching.length) continue;
+
+      console.log(
+        `[scheduler] Mensalidade: ${matching.length} tutor(s) com vencimento ` +
+        `${daysAhead === 0 ? "HOJE" : `em ${daysAhead} dia(s)`} (dia ${targetDay})`,
+      );
+
+      const daysLabel =
+        daysAhead === 0 ? "HOJE" :
+        daysAhead === 1 ? "amanhã" :
+        `em ${daysAhead} dias`;
+
+      for (const tutor of matching) {
+        // ── Notificação para o TUTOR ────────────────────────────────────
+        const tutorTitle = daysAhead === 0
+          ? "⚠️ Mensalidade vence hoje!"
+          : "📅 Lembrete de mensalidade";
+        const tutorBody = daysAhead === 0
+          ? `Sua mensalidade vence HOJE (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`
+          : `Sua mensalidade vence ${daysLabel} (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`;
+
+        await sendPushToUser(tutor.id, {
+          title: tutorTitle,
+          body: tutorBody,
+          tag: `mensalidade-tutor-${tutor.id}-d${daysAhead}`,
+          data: { type: "mensalidade" },
+        }).catch(() => {});
+
+        // ── Notificação para o ADMIN da creche ──────────────────────────
+        const adminTitle = daysAhead === 0
+          ? "⚠️ Mensalidade vence hoje"
+          : "📅 Mensalidade de tutor";
+        const adminBody = daysAhead === 0
+          ? `A mensalidade de ${tutor.name} vence HOJE (dia ${tutor.mensalidadeDia}).`
+          : `A mensalidade de ${tutor.name} vence ${daysLabel} (dia ${tutor.mensalidadeDia}).`;
+
+        await sendPushToRole(tutor.crecheId!, "creche_admin", {
+          title: adminTitle,
+          body: adminBody,
+          tag: `mensalidade-creche-${tutor.id}-d${daysAhead}`,
+          data: { type: "mensalidade", tutorId: tutor.id },
+        }).catch(() => {});
+      }
     }
   } catch (err) {
     console.error("[scheduler] mensalidade reminder error:", err);
