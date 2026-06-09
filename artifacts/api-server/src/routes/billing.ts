@@ -14,6 +14,23 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
 import { getAppBaseUrl } from "../lib/config.js";
+import { sensitiveLimiter } from "../middlewares/rateLimit.js";
+
+// Validates a redirect URL supplied by the client. Accepts only http/https URLs
+// whose origin matches the app's own base URL or the request's Origin header.
+// Rejects javascript:, data:, and any other potentially dangerous schemes.
+function isSafeRedirectUrl(url: string, requestOrigin?: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    const appOrigin = new URL(getAppBaseUrl()).origin;
+    if (parsed.origin === appOrigin) return true;
+    if (requestOrigin && parsed.origin === requestOrigin) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 const INTERVAL_ORDER: Record<BillingInterval, number> = {
   month: 0,
@@ -145,8 +162,8 @@ router.get("/subscription", async (req: AuthRequest, res) => {
 //   Uses mode="payment" + price_data. The subscription period is calculated by
 //   this app (today + interval months). The customer must renew manually.
 //
-// creche_admin only.
-router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+// creche_admin only. Rate-limited to prevent Stripe session spam.
+router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {
     res.status(400).json({ error: "Usuário não está associado a uma creche." });
@@ -172,15 +189,27 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
   }
 
   // Frontend passes its own origin so the redirect works both in dev and production.
-  const clientSuccessUrl = typeof req.body?.successUrl === "string" ? req.body.successUrl : null;
-  const clientCancelUrl = typeof req.body?.cancelUrl === "string" ? req.body.cancelUrl : null;
+  // Validate that client-supplied URLs are same-origin (prevents open-redirect abuse).
+  const requestOrigin = req.headers.origin as string | undefined;
+  const rawSuccessUrl = typeof req.body?.successUrl === "string" ? req.body.successUrl : null;
+  const rawCancelUrl = typeof req.body?.cancelUrl === "string" ? req.body.cancelUrl : null;
   const baseUrl = getAppBaseUrl();
-  const successUrl = clientSuccessUrl ?? `${baseUrl}/assinatura/sucesso`;
-  const cancelUrl = clientCancelUrl ?? `${baseUrl}/assinatura?cancelado=1`;
+  const successUrl =
+    rawSuccessUrl && isSafeRedirectUrl(rawSuccessUrl, requestOrigin)
+      ? rawSuccessUrl
+      : `${baseUrl}/assinatura/sucesso`;
+  const cancelUrl =
+    rawCancelUrl && isSafeRedirectUrl(rawCancelUrl, requestOrigin)
+      ? rawCancelUrl
+      : `${baseUrl}/assinatura?cancelado=1`;
 
-  const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
+  const [plan] = await db
+    .select()
+    .from(plansTable)
+    .where(and(eq(plansTable.id, planId), eq(plansTable.isActive, true)))
+    .limit(1);
   if (!plan || plan.priceBrl === 0) {
-    res.status(404).json({ error: "Plano não encontrado ou gratuito." });
+    res.status(404).json({ error: "Plano não encontrado, inativo ou gratuito." });
     return;
   }
 
@@ -223,11 +252,16 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
   let customerId = subscription.stripeCustomerId;
   try {
     if (!customerId) {
-      const customer = await stripe.customers.create({
-        name: creche?.name ?? `Creche ${crecheId}`,
-        email: creche?.email ?? req.user?.email,
-        metadata: { crecheId: String(crecheId) },
-      });
+      // Idempotency key tied to the creche prevents duplicate customers if the
+      // endpoint is called concurrently (e.g. double-click, retry in flight).
+      const customer = await stripe.customers.create(
+        {
+          name: creche?.name ?? `Creche ${crecheId}`,
+          email: creche?.email ?? req.user?.email,
+          metadata: { crecheId: String(crecheId) },
+        },
+        { idempotencyKey: `creche-customer-${crecheId}` },
+      );
       customerId = customer.id;
       await db
         .update(subscriptionsTable)
@@ -235,7 +269,6 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
         .where(eq(subscriptionsTable.id, subscription.id));
     }
 
-    const baseUrl = getAppBaseUrl();
     const unitAmount = planPrice?.priceBrl ?? computeIntervalPrice(plan.priceBrl, interval);
     const priceId = planPrice?.stripePriceId ?? (interval === "month" ? plan.stripePriceId : null);
 

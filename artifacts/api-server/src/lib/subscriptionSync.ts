@@ -8,6 +8,34 @@ import { BILLING_INTERVALS, INTERVAL_MONTHS, type BillingInterval } from "@works
 import { subscriptionsTable, plansTable, planPricesTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
 
+// Shared downgrade detection: returns true if planId is cheaper than the
+// creche's currently active plan and the current paid period has not yet ended.
+async function isDowngradeScenario(
+  appSub: AppSub,
+  newPlanId: number,
+): Promise<{ isDowngrade: boolean; currentPlan: { priceBrl: number } | null }> {
+  const [currentPlan] = await db
+    .select({ priceBrl: plansTable.priceBrl })
+    .from(plansTable)
+    .where(eq(plansTable.id, appSub.planId))
+    .limit(1);
+
+  const now = new Date();
+  const hasActivePeriod =
+    appSub.status === "active" &&
+    appSub.currentPeriodEnd != null &&
+    appSub.currentPeriodEnd > now;
+
+  const [newPlan] = await db
+    .select({ priceBrl: plansTable.priceBrl })
+    .from(plansTable)
+    .where(eq(plansTable.id, newPlanId))
+    .limit(1);
+
+  const isDowngrade = hasActivePeriod && !!newPlan && newPlan.priceBrl < (currentPlan?.priceBrl ?? 0);
+  return { isDowngrade, currentPlan: currentPlan ?? null };
+}
+
 type AppStatus = "trial" | "active" | "past_due" | "suspended" | "cancelled";
 type AppSub = typeof subscriptionsTable.$inferSelect;
 
@@ -192,6 +220,12 @@ async function handleInvoicePaid(invoice: any, eventCreatedMs: number): Promise<
 // Handles payment_intent.succeeded for PIX and Boleto (mode=payment checkout).
 // Reads crecheId / planId / interval from the payment intent metadata set by
 // the checkout endpoint and activates the subscription for the contracted period.
+//
+// Applies the same downgrade scheduling logic as POST /billing/confirm: if the
+// new plan is cheaper and the current period is still running, the switch is
+// scheduled for when the current period ends instead of applied immediately.
+// This prevents a webhook arriving after a scheduled downgrade from overwriting
+// the still-active (more expensive) plan prematurely.
 async function handlePaymentIntentSucceeded(pi: any, eventCreatedMs: number): Promise<void> {
   const meta = pi?.metadata ?? {};
   const crecheId = Number(meta.crecheId);
@@ -204,23 +238,45 @@ async function handlePaymentIntentSucceeded(pi: any, eventCreatedMs: number): Pr
   const appSub = await findAppSubscription({ crecheId });
   if (!appSub) return;
 
-  // Calculate the access window: today + interval months.
-  const periodEnd = new Date();
-  periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
-
   const customerId = typeof pi?.customer === "string" ? pi.customer : null;
 
-  await commit(appSub, eventCreatedMs, {
-    planId,
-    billingInterval: interval,
-    status: "active",
-    stripeCustomerId: customerId ?? appSub.stripeCustomerId,
-    stripeSubscriptionId: null, // payment mode: no Stripe subscription
-    currentPeriodEnd: periodEnd,
-    pastDueSince: null,
-  });
+  // Detect downgrade: if the new plan is cheaper and the current period still
+  // has time left, schedule the change instead of applying immediately.
+  const { isDowngrade } = await isDowngradeScenario(appSub, planId);
 
-  console.log(`[billing] PIX/Boleto ativado: creche=${crecheId} plano=${planId} intervalo=${interval} até=${periodEnd.toISOString()}`);
+  if (isDowngrade) {
+    // Keep the current (higher) plan active; queue the cheaper plan.
+    const scheduledPeriodEnd = new Date(appSub.currentPeriodEnd!);
+    scheduledPeriodEnd.setMonth(scheduledPeriodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+
+    await commit(appSub, eventCreatedMs, {
+      scheduledPlanId: planId,
+      scheduledBillingInterval: interval,
+      scheduledPeriodEnd,
+      stripeCustomerId: customerId ?? appSub.stripeCustomerId,
+    });
+
+    console.log(`[billing] PIX/Boleto downgrade agendado: creche=${crecheId} plano=${planId} intervalo=${interval} a partir de ${appSub.currentPeriodEnd!.toISOString()}`);
+  } else {
+    // Upgrade or first activation — calculate access window and apply now.
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+
+    await commit(appSub, eventCreatedMs, {
+      planId,
+      billingInterval: interval,
+      status: "active",
+      stripeCustomerId: customerId ?? appSub.stripeCustomerId,
+      stripeSubscriptionId: null, // payment mode: no Stripe subscription
+      currentPeriodEnd: periodEnd,
+      pastDueSince: null,
+      scheduledPlanId: null,
+      scheduledBillingInterval: null,
+      scheduledPeriodEnd: null,
+    });
+
+    console.log(`[billing] PIX/Boleto ativado: creche=${crecheId} plano=${planId} intervalo=${interval} até=${periodEnd.toISOString()}`);
+  }
 }
 
 // Applies a single (already signature-verified) Stripe event to the app's
