@@ -91,9 +91,10 @@ router.put("/:userId", async (req: AuthRequest, res) => {
   const isAdmin = req.user?.role === "master_admin" || req.user?.role === "creche_admin";
   if (!isSelf && !isAdmin) { res.status(403).json({ error: "Sem permissão" }); return; }
 
-  const { name, avatarUrl, role, isActive, crecheId, newPassword } = req.body;
+  const { name, email, avatarUrl, role, isActive, crecheId, newPassword } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
+  if (email !== undefined) updates.email = email;
   if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
   if (newPassword !== undefined) {
     updates.passwordHash = hashPassword(newPassword);
