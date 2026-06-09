@@ -88,16 +88,17 @@ export default function Billing() {
 
   const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
-  // True when the customer already has an active recurring subscription with a saved card.
-  // In this case, clicking a plan opens the card-selection dialog instead of going straight to checkout.
-  const hasActiveSavedCard =
-    paymentMode === "subscription" &&
-    subscription?.status === "active" &&
-    !!subscription?.stripeSubscriptionId;
+  // True whenever the subscription has a Stripe subscription (saved card on file),
+  // regardless of which payment mode tab is currently selected.
+  const subHasSavedCard =
+    subscription?.status === "active" && !!subscription?.stripeSubscriptionId;
+
+  // True when clicking a plan should open the card-selection dialog (subscription mode + saved card).
+  const hasActiveSavedCard = paymentMode === "subscription" && subHasSavedCard;
 
   const { data: savedCardData } = useQuery({
     queryKey: ["billing-saved-card", subscription?.stripeSubscriptionId],
-    enabled: hasActiveSavedCard,
+    enabled: subHasSavedCard,
     queryFn: async () => {
       const r = await fetch(`${apiBase}/api/billing/saved-card`, { credentials: "include" });
       if (!r.ok) return { savedCard: null };
@@ -243,6 +244,28 @@ export default function Billing() {
                       ? `Pendente desde ${formatDate(subscription?.pastDueSince)}`
                       : ""}
               </p>
+
+              {/* Saved card display */}
+              {savedCard && (
+                <div className="flex items-center gap-2 mt-2">
+                  <CreditCard className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  <span className="text-xs text-muted-foreground capitalize">
+                    {savedCard.brand} •••• {savedCard.last4}
+                    <span className="text-white/30 mx-1">·</span>
+                    val. {String(savedCard.expMonth).padStart(2, "0")}/{savedCard.expYear}
+                  </span>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handlePortal}
+                      disabled={portalMutation.isPending}
+                      className="text-xs text-primary hover:text-primary/80 underline underline-offset-2 transition-colors disabled:opacity-50"
+                    >
+                      Trocar cartão
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Scheduled plan change banner */}
               {(subscription as any)?.scheduledPlanId && (subscription as any)?.scheduledPlanInfo?.name && (
