@@ -347,7 +347,10 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
 
       await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
         items: [{ id: existingItemId, price: priceId }],
-        proration_behavior: "create_prorations",
+        // always_invoice: creates and immediately charges a proration invoice on the
+        // saved card. "create_prorations" only queues the amount for the next cycle —
+        // the payment would never arrive until the renewal date.
+        proration_behavior: "always_invoice",
         metadata: { crecheId: String(crecheId), planId: String(planId), interval },
       } as any);
 
