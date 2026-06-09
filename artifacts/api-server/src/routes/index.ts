@@ -12,8 +12,10 @@ import walksRouter from "./walks.js";
 import storageRouter from "./storage.js";
 import tutorTimelineRouter from "./tutor-timeline.js";
 import billingRouter from "./billing.js";
+import adminWipeRouter from "./admin-wipe.js";
 const router = Router();
 
+router.use(adminWipeRouter);
 router.use(healthRouter);
 router.use(storageRouter);
 router.use("/auth", authRouter);
