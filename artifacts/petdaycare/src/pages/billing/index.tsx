@@ -114,7 +114,16 @@ export default function Billing() {
         } as any,
       },
       {
-        onSuccess: (res) => {
+        onSuccess: (res: any) => {
+          if (res.directUpgrade) {
+            // Plano trocado via cartão salvo — sem redirect ao Stripe.
+            queryClient.invalidateQueries();
+            toast({
+              title: "Plano atualizado!",
+              description: "O novo plano foi aplicado usando o cartão salvo. A diferença será cobrada proporcionalmente.",
+            });
+            return;
+          }
           if (res.url) window.location.href = res.url;
         },
         onError: (err: any) => {

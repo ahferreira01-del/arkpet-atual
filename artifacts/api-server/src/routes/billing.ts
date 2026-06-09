@@ -272,10 +272,64 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
     const unitAmount = planPrice?.priceBrl ?? computeIntervalPrice(plan.priceBrl, interval);
     const priceId = planPrice?.stripePriceId ?? (interval === "month" ? plan.stripePriceId : null);
 
+    // ── DIRECT UPGRADE via saved card ────────────────────────────────────────
+    // If the customer already has an active Stripe subscription and is choosing
+    // subscription mode with a valid price ID, update the subscription directly
+    // instead of redirecting to Stripe Checkout. This reuses the saved card
+    // transparently — no checkout redirect needed. Stripe applies proration
+    // automatically (charges/credits the difference for the current period).
+    if (
+      paymentMode === "subscription" &&
+      priceId &&
+      subscription.stripeSubscriptionId &&
+      subscription.status === "active"
+    ) {
+      const stripeSub = await stripe.subscriptions.retrieve(
+        subscription.stripeSubscriptionId,
+        { expand: ["items"] } as any,
+      ) as any;
+
+      const existingItemId = stripeSub?.items?.data?.[0]?.id;
+      if (!existingItemId) {
+        res.status(400).json({ error: "Assinatura Stripe não encontrada. Tente via checkout." });
+        return;
+      }
+
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        items: [{ id: existingItemId, price: priceId }],
+        proration_behavior: "create_prorations",
+        metadata: { crecheId: String(crecheId), planId: String(planId), interval },
+      } as any);
+
+      // Optimistically update the DB now; the webhook will confirm/correct later.
+      const updatedStripeSub = await stripe.subscriptions.retrieve(
+        subscription.stripeSubscriptionId,
+      ) as any;
+      const newPeriodEnd = readPeriodEnd(updatedStripeSub);
+
+      await db
+        .update(subscriptionsTable)
+        .set({
+          planId,
+          billingInterval: interval,
+          status: "active",
+          pastDueSince: null,
+          scheduledPlanId: null,
+          scheduledBillingInterval: null,
+          scheduledPeriodEnd: null,
+          ...(newPeriodEnd ? { currentPeriodEnd: newPeriodEnd } : {}),
+        })
+        .where(eq(subscriptionsTable.crecheId, crecheId));
+
+      console.log(`[billing] Direct upgrade via cartão salvo: crecheId=${crecheId} planId=${planId} interval=${interval}`);
+      res.json({ directUpgrade: true });
+      return;
+    }
+
     let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
 
     if (paymentMode === "subscription") {
-      // ── CARTÃO RECORRENTE ────────────────────────────────────────────────
+      // ── CARTÃO RECORRENTE (novo cliente / primeiro checkout) ─────────────
       // Stripe manages the recurring billing automatically. The customer only
       // needs to enter card details once; charges happen every period.
       session = await stripe.checkout.sessions.create({
