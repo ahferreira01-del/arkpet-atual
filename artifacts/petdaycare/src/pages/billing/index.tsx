@@ -6,7 +6,7 @@ import {
   useCreateBillingCheckout,
   useCreateBillingPortal,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,16 @@ import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Interval = "month" | "quarter" | "semester" | "year";
 type PaymentMode = "subscription" | "payment";
@@ -73,7 +83,31 @@ export default function Billing() {
   const checkoutMutation = useCreateBillingCheckout();
   const portalMutation = useCreateBillingPortal();
   const [cancelingSchedule, setCancelingSchedule] = React.useState(false);
+  const [pendingPlanId, setPendingPlanId] = React.useState<number | null>(null);
   const queryClient = useQueryClient();
+
+  const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+  // True when the customer already has an active recurring subscription with a saved card.
+  // In this case, clicking a plan opens the card-selection dialog instead of going straight to checkout.
+  const hasActiveSavedCard =
+    paymentMode === "subscription" &&
+    subscription?.status === "active" &&
+    !!subscription?.stripeSubscriptionId;
+
+  const { data: savedCardData } = useQuery({
+    queryKey: ["billing-saved-card", subscription?.stripeSubscriptionId],
+    enabled: hasActiveSavedCard,
+    queryFn: async () => {
+      const r = await fetch(`${apiBase}/api/billing/saved-card`, { credentials: "include" });
+      if (!r.ok) return { savedCard: null };
+      return r.json() as Promise<{
+        savedCard: { brand: string; last4: string; expMonth: number; expYear: number } | null;
+      }>;
+    },
+    staleTime: 300_000,
+  });
+  const savedCard = savedCardData?.savedCard ?? null;
 
   const handleCancelScheduled = async () => {
     setCancelingSchedule(true);
@@ -101,7 +135,7 @@ export default function Billing() {
     }
   }, [location, toast]);
 
-  const handleCheckout = (planId: number) => {
+  const handleCheckout = (planId: number, forceNewCard = false) => {
     const base = window.location.origin + (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
     checkoutMutation.mutate(
       {
@@ -109,6 +143,7 @@ export default function Billing() {
           planId,
           interval,
           paymentMode,
+          forceNewCard: forceNewCard || undefined,
           successUrl: `${base}/assinatura/sucesso`,
           cancelUrl: `${base}/assinatura?cancelado=1`,
         } as any,
@@ -116,7 +151,6 @@ export default function Billing() {
       {
         onSuccess: (res: any) => {
           if (res.directUpgrade) {
-            // Plano trocado via cartão salvo — sem redirect ao Stripe.
             queryClient.invalidateQueries();
             toast({
               title: "Plano atualizado!",
@@ -474,7 +508,13 @@ export default function Billing() {
                     isLoading={
                       checkoutMutation.isPending && (checkoutMutation.variables?.data as any)?.planId === plan.id
                     }
-                    onClick={() => handleCheckout(plan.id)}
+                    onClick={() => {
+                      if (hasActiveSavedCard) {
+                        setPendingPlanId(plan.id);
+                      } else {
+                        handleCheckout(plan.id);
+                      }
+                    }}
                   >
                     {buttonLabel}
                   </Button>
@@ -484,6 +524,58 @@ export default function Billing() {
           })}
         </div>
       </div>
+
+      {/* Diálogo de seleção de cartão — exibido quando o cliente já tem assinatura ativa */}
+      <AlertDialog
+        open={pendingPlanId !== null && hasActiveSavedCard}
+        onOpenChange={(open) => !open && setPendingPlanId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Como deseja pagar?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {savedCard ? (
+                <>
+                  Você tem um cartão salvo:{" "}
+                  <span className="font-medium text-white capitalize">{savedCard.brand}</span>{" "}
+                  •••• {savedCard.last4} (val.{" "}
+                  {String(savedCard.expMonth).padStart(2, "0")}/{savedCard.expYear}).
+                </>
+              ) : (
+                "Você tem um método de pagamento salvo nessa assinatura."
+              )}{" "}
+              Deseja usá-lo ou informar um novo cartão?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingPlanId(null)}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const id = pendingPlanId!;
+                setPendingPlanId(null);
+                handleCheckout(id, true);
+              }}
+            >
+              Usar outro cartão
+            </Button>
+            <AlertDialogAction
+              onClick={() => {
+                const id = pendingPlanId!;
+                setPendingPlanId(null);
+                handleCheckout(id);
+              }}
+            >
+              {savedCard
+                ? `Usar ${savedCard.brand.charAt(0).toUpperCase() + savedCard.brand.slice(1)} •••• ${savedCard.last4}`
+                : "Usar cartão salvo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

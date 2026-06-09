@@ -152,6 +152,51 @@ router.get("/subscription", async (req: AuthRequest, res) => {
   res.json({ ...row, petCount: petCountRow?.total ?? 0 });
 });
 
+// GET /billing/saved-card — returns the card (brand + last4) saved on the active Stripe
+// subscription for this creche, or null if none. Used to show the card in the plan-change
+// dialog so the user can choose to reuse it or enter a different one.
+router.get("/saved-card", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const [sub] = await db
+    .select({ stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.crecheId, crecheId))
+    .limit(1);
+
+  if (!sub?.stripeSubscriptionId) {
+    res.json({ savedCard: null });
+    return;
+  }
+
+  try {
+    const stripe = await getUncachableStripeClient();
+    const stripeSub = await stripe.subscriptions.retrieve(
+      sub.stripeSubscriptionId,
+      { expand: ["default_payment_method"] } as any,
+    ) as any;
+    const pm = stripeSub.default_payment_method;
+    if (pm?.card) {
+      res.json({
+        savedCard: {
+          brand: (pm.card.brand as string) ?? "card",
+          last4: pm.card.last4 as string,
+          expMonth: pm.card.exp_month as number,
+          expYear: pm.card.exp_year as number,
+        },
+      });
+      return;
+    }
+  } catch (err: any) {
+    console.warn("[billing] Não foi possível buscar cartão salvo:", err?.message ?? err);
+  }
+  res.json({ savedCard: null });
+});
+
 // POST /billing/checkout { planId, interval, paymentMode }
 //
 // paymentMode="subscription" (default) — card-only, Stripe manages recurring.
@@ -187,6 +232,10 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
     res.status(400).json({ error: "paymentMode inválido." });
     return;
   }
+
+  // When true, skips the direct-upgrade path and forces a full Stripe Checkout session,
+  // allowing the user to enter a different card even if they already have one on file.
+  const forceNewCard = req.body?.forceNewCard === true;
 
   // Frontend passes its own origin so the redirect works both in dev and production.
   // Validate that client-supplied URLs are same-origin (prevents open-redirect abuse).
@@ -281,6 +330,7 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
     if (
       paymentMode === "subscription" &&
       priceId &&
+      !forceNewCard &&
       subscription.stripeSubscriptionId &&
       subscription.status === "active"
     ) {
@@ -457,6 +507,18 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
       return;
     }
     const stripeSubscription = session.subscription as any;
+    const newStripeSubId: string | null = stripeSubscription?.id ?? null;
+
+    // Fetch the old stripeSubscriptionId before overwriting so we can cancel the
+    // previous Stripe subscription if the user chose to pay with a different card
+    // (forceNewCard=true creates a brand-new subscription that replaces the old one).
+    const [prevSub] = await db
+      .select({ stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId })
+      .from(subscriptionsTable)
+      .where(eq(subscriptionsTable.crecheId, crecheId))
+      .limit(1);
+    const oldStripeSubId = prevSub?.stripeSubscriptionId ?? null;
+
     await db
       .update(subscriptionsTable)
       .set({
@@ -464,11 +526,21 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
         billingInterval: resolved.interval,
         status: "active",
         stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-        stripeSubscriptionId: stripeSubscription?.id ?? undefined,
+        stripeSubscriptionId: newStripeSubId ?? undefined,
         currentPeriodEnd: stripeSubscription ? readPeriodEnd(stripeSubscription) : undefined,
         pastDueSince: null,
       })
       .where(eq(subscriptionsTable.crecheId, crecheId));
+
+    // Cancel the old subscription in Stripe when a new one replaced it.
+    if (oldStripeSubId && newStripeSubId && oldStripeSubId !== newStripeSubId) {
+      try {
+        await stripe.subscriptions.cancel(oldStripeSubId);
+        console.log(`[billing] Assinatura anterior cancelada: ${oldStripeSubId} → substituída por ${newStripeSubId}`);
+      } catch (cancelErr: any) {
+        console.warn(`[billing] Falha ao cancelar sub anterior ${oldStripeSubId}:`, cancelErr?.message ?? cancelErr);
+      }
+    }
   } else {
     // ── PIX / BOLETO / CARTÃO AVULSO ────────────────────────────────────
     const planId = Number(session.metadata?.planId);
