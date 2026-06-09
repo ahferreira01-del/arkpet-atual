@@ -8,7 +8,8 @@ import {
   type BillingInterval,
 } from "@workspace/db";
 import { plansTable, planPricesTable, subscriptionsTable, crechesTable, petsTable } from "@workspace/db/schema";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, isNotNull, lte } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
@@ -75,13 +76,16 @@ router.get("/plans", async (_req: AuthRequest, res) => {
   res.json(result);
 });
 
-// GET /billing/subscription — current creche subscription + its plan.
+// GET /billing/subscription — current creche subscription + its plan + scheduled plan.
 router.get("/subscription", async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {
     res.status(400).json({ error: "Usuário não está associado a uma creche." });
     return;
   }
+
+  const scheduledPlan = alias(plansTable, "scheduled_plan");
+
   const [row] = await db
     .select({
       id: subscriptionsTable.id,
@@ -94,6 +98,9 @@ router.get("/subscription", async (req: AuthRequest, res) => {
       pastDueSince: subscriptionsTable.pastDueSince,
       stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId,
       stripeCustomerId: subscriptionsTable.stripeCustomerId,
+      scheduledPlanId: subscriptionsTable.scheduledPlanId,
+      scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
+      scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
       plan: {
         id: plansTable.id,
         name: plansTable.name,
@@ -102,9 +109,16 @@ router.get("/subscription", async (req: AuthRequest, res) => {
         description: plansTable.description,
         stripePriceId: plansTable.stripePriceId,
       },
+      scheduledPlanInfo: {
+        id: scheduledPlan.id,
+        name: scheduledPlan.name,
+        petLimit: scheduledPlan.petLimit,
+        priceBrl: scheduledPlan.priceBrl,
+      },
     })
     .from(subscriptionsTable)
     .innerJoin(plansTable, eq(subscriptionsTable.planId, plansTable.id))
+    .leftJoin(scheduledPlan, eq(subscriptionsTable.scheduledPlanId, scheduledPlan.id))
     .where(eq(subscriptionsTable.crecheId, crecheId))
     .limit(1);
 
@@ -394,23 +408,86 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
       res.status(400).json({ error: "Valor pago não corresponde ao plano selecionado." });
       return;
     }
-    const periodEnd = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
-    await db
-      .update(subscriptionsTable)
-      .set({
-        planId,
-        billingInterval: interval,
-        status: "active",
-        stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-        stripeSubscriptionId: undefined,
-        currentPeriodEnd: periodEnd,
-        pastDueSince: null,
+    // Determine whether this is a downgrade while an active period still has time left.
+    // If so, schedule the change for when the current period ends instead of switching now.
+    const [currentSub] = await db
+      .select({
+        status: subscriptionsTable.status,
+        currentPeriodEnd: subscriptionsTable.currentPeriodEnd,
+        planId: subscriptionsTable.planId,
       })
-      .where(eq(subscriptionsTable.crecheId, crecheId));
+      .from(subscriptionsTable)
+      .where(eq(subscriptionsTable.crecheId, crecheId))
+      .limit(1);
+
+    const [currentPlan] = await db
+      .select({ priceBrl: plansTable.priceBrl })
+      .from(plansTable)
+      .where(eq(plansTable.id, currentSub?.planId ?? 0))
+      .limit(1);
+
+    const now = new Date();
+    const hasActivePeriod =
+      currentSub?.status === "active" &&
+      currentSub.currentPeriodEnd != null &&
+      currentSub.currentPeriodEnd > now;
+    const isDowngrade = hasActivePeriod && plan.priceBrl < (currentPlan?.priceBrl ?? 0);
+
+    if (isDowngrade) {
+      // Keep current (higher) plan active; queue the cheaper plan for when it expires.
+      // The new period starts from currentPeriodEnd and lasts interval months.
+      const scheduledPeriodEnd = new Date(currentSub!.currentPeriodEnd!);
+      scheduledPeriodEnd.setMonth(scheduledPeriodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+
+      await db
+        .update(subscriptionsTable)
+        .set({
+          scheduledPlanId: planId,
+          scheduledBillingInterval: interval,
+          scheduledPeriodEnd,
+          stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
+        })
+        .where(eq(subscriptionsTable.crecheId, crecheId));
+
+      console.log(`[billing] Downgrade agendado para crecheId=${crecheId}: planId=${planId} a partir de ${currentSub!.currentPeriodEnd!.toISOString()}`);
+    } else {
+      // Upgrade or first activation — apply immediately and clear any pending schedule.
+      const periodEnd = new Date();
+      periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+
+      await db
+        .update(subscriptionsTable)
+        .set({
+          planId,
+          billingInterval: interval,
+          status: "active",
+          stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
+          stripeSubscriptionId: undefined,
+          currentPeriodEnd: periodEnd,
+          pastDueSince: null,
+          scheduledPlanId: null,
+          scheduledBillingInterval: null,
+          scheduledPeriodEnd: null,
+        })
+        .where(eq(subscriptionsTable.crecheId, crecheId));
+    }
   }
 
   res.json({ ok: true, pending: false });
+});
+
+// DELETE /billing/scheduled — cancel a pending plan change.
+router.delete("/scheduled", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+  await db
+    .update(subscriptionsTable)
+    .set({ scheduledPlanId: null, scheduledBillingInterval: null, scheduledPeriodEnd: null })
+    .where(eq(subscriptionsTable.crecheId, crecheId));
+  res.json({ ok: true });
 });
 
 // POST /billing/portal — Stripe billing portal for self-service management.

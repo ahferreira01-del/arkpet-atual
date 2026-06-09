@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable, bookingsTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
@@ -456,4 +456,62 @@ export function startMensalidadeScheduler() {
     await sendMensalidadeReminders();
   });
   console.log("[scheduler] Mensalidade reminder scheduler started.");
+}
+
+// ─── Scheduled plan changes ───────────────────────────────────────────────────
+// Runs daily at 03:00 BRT. For every subscription whose currentPeriodEnd has
+// passed and has a pending scheduledPlanId, applies the queued plan change.
+
+async function applyScheduledPlanChanges() {
+  try {
+    const now = new Date();
+    const pending = await db
+      .select({
+        id: subscriptionsTable.id,
+        crecheId: subscriptionsTable.crecheId,
+        scheduledPlanId: subscriptionsTable.scheduledPlanId,
+        scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
+        scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
+      })
+      .from(subscriptionsTable)
+      .where(
+        and(
+          isNotNull(subscriptionsTable.scheduledPlanId),
+          lte(subscriptionsTable.currentPeriodEnd, now),
+        ),
+      );
+
+    if (!pending.length) return;
+    console.log(`[scheduler] Aplicando ${pending.length} mudança(s) de plano agendada(s)...`);
+
+    for (const sub of pending) {
+      await db
+        .update(subscriptionsTable)
+        .set({
+          planId: sub.scheduledPlanId!,
+          billingInterval: sub.scheduledBillingInterval,
+          currentPeriodEnd: sub.scheduledPeriodEnd,
+          scheduledPlanId: null,
+          scheduledBillingInterval: null,
+          scheduledPeriodEnd: null,
+          status: "active",
+          pastDueSince: null,
+        })
+        .where(eq(subscriptionsTable.id, sub.id));
+
+      console.log(`[scheduler] Plano aplicado para crecheId=${sub.crecheId}: planId=${sub.scheduledPlanId}`);
+    }
+  } catch (err) {
+    console.error("[scheduler] erro ao aplicar planos agendados:", err);
+  }
+}
+
+export function startScheduledPlanChangeApplicator() {
+  cron.schedule("0 6 * * *", async () => {
+    console.log("[scheduler] Verificando mudanças de plano agendadas...");
+    await applyScheduledPlanChanges();
+  });
+  // Also apply on startup in case the server was down when a change was due.
+  applyScheduledPlanChanges();
+  console.log("[scheduler] Scheduled plan change applicator started.");
 }

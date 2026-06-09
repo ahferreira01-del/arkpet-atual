@@ -26,6 +26,14 @@ export const subscriptionsTable = pgTable("subscriptions", {
   // discard out-of-order (stale) webhook deliveries.
   lastStripeEventAt: timestamp("last_stripe_event_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Downgrade scheduling: when a user pays for a cheaper plan while still
+  // inside an active period, the change is queued here and applied by the
+  // scheduler when currentPeriodEnd is reached.
+  scheduledPlanId: integer("scheduled_plan_id"),
+  scheduledBillingInterval: billingIntervalEnum("scheduled_billing_interval"),
+  // The new period end calculated from the point when the scheduled plan starts
+  // (i.e. currentPeriodEnd + intervalMonths of the scheduled plan).
+  scheduledPeriodEnd: timestamp("scheduled_period_end"),
 });
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true });

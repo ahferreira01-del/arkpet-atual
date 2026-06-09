@@ -6,13 +6,14 @@ import {
   useCreateBillingCheckout,
   useCreateBillingPortal,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap } from "lucide-react";
+import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X } from "lucide-react";
 
 type Interval = "month" | "quarter" | "semester" | "year";
 type PaymentMode = "subscription" | "payment";
@@ -71,6 +72,25 @@ export default function Billing() {
 
   const checkoutMutation = useCreateBillingCheckout();
   const portalMutation = useCreateBillingPortal();
+  const [cancelingSchedule, setCancelingSchedule] = React.useState(false);
+  const queryClient = useQueryClient();
+
+  const handleCancelScheduled = async () => {
+    setCancelingSchedule(true);
+    try {
+      const res = await fetch(
+        (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "") + "/api/billing/scheduled",
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Falha ao cancelar agendamento.");
+      queryClient.invalidateQueries();
+      toast({ title: "Agendamento cancelado", description: "O plano atual continuará normalmente." });
+    } catch {
+      toast({ title: "Erro ao cancelar", variant: "destructive" });
+    } finally {
+      setCancelingSchedule(false);
+    }
+  };
 
   React.useEffect(() => {
     if (location.includes("cancelado")) {
@@ -180,6 +200,37 @@ export default function Billing() {
                       ? `Pendente desde ${formatDate(subscription?.pastDueSince)}`
                       : ""}
               </p>
+
+              {/* Scheduled plan change banner */}
+              {(subscription as any)?.scheduledPlanId && (subscription as any)?.scheduledPlanInfo?.name && (
+                <div className="mt-3 flex items-start justify-between gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
+                  <div className="flex items-start gap-2">
+                    <CalendarClock className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs font-medium text-amber-300">Mudança agendada</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        A partir de {formatDate((subscription as any).currentPeriodEnd)}, muda para{" "}
+                        <span className="text-white font-medium">{(subscription as any).scheduledPlanInfo.name}</span>
+                        {" "}· até {(subscription as any).scheduledPlanInfo.petLimit === 999999 ? "ilimitado" : `${(subscription as any).scheduledPlanInfo.petLimit} pets`}
+                        {(subscription as any).scheduledPeriodEnd
+                          ? ` · válido até ${formatDate((subscription as any).scheduledPeriodEnd)}`
+                          : ""}
+                      </p>
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleCancelScheduled}
+                      disabled={cancelingSchedule}
+                      className="flex-shrink-0 text-muted-foreground hover:text-white transition-colors"
+                      title="Cancelar agendamento"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Pet usage bar */}
               {subscription?.plan && (() => {
@@ -331,6 +382,8 @@ export default function Billing() {
               status === "active" &&
               (currentInterval ?? "month") === interval;
 
+            const isScheduled = (subscription as any)?.scheduledPlanId === plan.id;
+
             const price = (plan.prices ?? []).find((p) => p.interval === interval);
             const periodPrice = price?.priceBrl ?? plan.priceBrl * INTERVAL_MONTHS[interval];
             // Subscription mode needs a Stripe price id; payment mode is always available.
@@ -339,22 +392,34 @@ export default function Billing() {
               : (interval === "month" ? true : price?.available ?? false);
             const equivalentMonthly = Math.round(periodPrice / INTERVAL_MONTHS[interval]);
 
+            // Is this a downgrade compared to the current active plan?
+            const currentPlanPrice = (subscription as any)?.plan?.priceBrl ?? 0;
+            const hasActivePeriod = status === "active" && subscription?.currentPeriodEnd && new Date(subscription.currentPeriodEnd) > new Date();
+            const wouldBeDowngrade = hasActivePeriod && plan.priceBrl < currentPlanPrice;
+            const scheduledFromDate = subscription?.currentPeriodEnd ? formatDate(subscription.currentPeriodEnd) : "";
+
             const buttonLabel = isCurrent
               ? "Plano atual"
-              : !isAvailable
-                ? "Indisponível"
-                : status === "active"
-                  ? "Mudar para este plano"
-                  : paymentMode === "payment"
-                    ? "Pagar agora"
-                    : "Assinar";
+              : isScheduled
+                ? "Agendado ✓"
+                : !isAvailable
+                  ? "Indisponível"
+                  : status === "active" && wouldBeDowngrade
+                    ? `Agendar para ${scheduledFromDate}`
+                    : status === "active"
+                      ? "Atualizar agora"
+                      : paymentMode === "payment"
+                        ? "Pagar agora"
+                        : "Assinar";
 
             return (
               <Card
                 key={plan.id}
                 className={cn(
                   "transition-all duration-200",
-                  isCurrent ? "border-primary/40 shadow-[0_0_20px_rgba(139,92,246,0.12)]" : "hover:border-white/20",
+                  isCurrent ? "border-primary/40 shadow-[0_0_20px_rgba(139,92,246,0.12)]"
+                  : isScheduled ? "border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.10)]"
+                  : "hover:border-white/20",
                 )}
               >
                 <CardContent className="p-6 flex flex-col h-full">
@@ -363,6 +428,11 @@ export default function Billing() {
                     {isCurrent && (
                       <span className="text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/15 px-2 py-0.5 rounded-full">
                         Atual
+                      </span>
+                    )}
+                    {isScheduled && !isCurrent && (
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full">
+                        Agendado
                       </span>
                     )}
                   </div>
