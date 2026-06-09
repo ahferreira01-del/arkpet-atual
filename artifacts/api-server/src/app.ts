@@ -19,16 +19,30 @@ app.set("trust proxy", 1);
 app.use(helmet({ contentSecurityPolicy: false }));
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-// Allow requests only from the app's own origin (dev Replit domain or the
-// APP_URL set in production). The Stripe webhook and any same-origin requests
-// use raw Buffer / no-CORS paths and are unaffected.
+// Allow requests from all Replit-managed domains for this repl (dev preview,
+// production .replit.app, and any custom domain configured by the user), plus
+// an explicit APP_URL if set. REPLIT_DOMAINS is a comma-separated list of all
+// public hostnames Replit assigns to the repl — it covers both dev and prod.
 const allowedOrigins = (() => {
   const origins = new Set<string>();
-  try { origins.add(new URL(getAppBaseUrl()).origin); } catch {}
-  // Also allow the bare Replit dev domain in case the port suffix differs.
+
+  // APP_URL takes priority (custom production domain).
+  if (process.env.APP_URL) {
+    try { origins.add(new URL(process.env.APP_URL).origin); } catch {}
+  }
+
+  // REPLIT_DOMAINS covers all Replit-managed hostnames (dev + prod).
+  // Format: "foo.replit.dev,foo.replit.app" or a single value.
+  const replitDomains = process.env.REPLIT_DOMAINS ?? "";
+  for (const host of replitDomains.split(",").map((h) => h.trim()).filter(Boolean)) {
+    origins.add(`https://${host}`);
+  }
+
+  // Explicit dev domain fallback for local dev where REPLIT_DOMAINS may differ.
   if (process.env.REPLIT_DEV_DOMAIN) {
     origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
   }
+
   return [...origins];
 })();
 
@@ -40,6 +54,7 @@ app.use(
       if (allowedOrigins.some((o) => origin === o || origin.startsWith(o))) {
         return cb(null, true);
       }
+      console.warn(`[cors] origin bloqueado: ${origin} — permitidos: ${allowedOrigins.join(", ")}`);
       cb(new Error(`CORS: origin '${origin}' não permitido.`));
     },
     credentials: true,
