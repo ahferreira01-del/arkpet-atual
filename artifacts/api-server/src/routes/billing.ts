@@ -7,8 +7,8 @@ import {
   computeIntervalPrice,
   type BillingInterval,
 } from "@workspace/db";
-import { plansTable, planPricesTable, subscriptionsTable, crechesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { plansTable, planPricesTable, subscriptionsTable, crechesTable, petsTable } from "@workspace/db/schema";
+import { eq, and, count } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
@@ -112,7 +112,13 @@ router.get("/subscription", async (req: AuthRequest, res) => {
     res.status(404).json({ error: "Assinatura não encontrada." });
     return;
   }
-  res.json(row);
+
+  const [petCountRow] = await db
+    .select({ total: count() })
+    .from(petsTable)
+    .where(eq(petsTable.crecheId, crecheId));
+
+  res.json({ ...row, petCount: petCountRow?.total ?? 0 });
 });
 
 // POST /billing/checkout { planId, interval, paymentMode }
@@ -150,6 +156,13 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
     res.status(400).json({ error: "paymentMode inválido." });
     return;
   }
+
+  // Frontend passes its own origin so the redirect works both in dev and production.
+  const clientSuccessUrl = typeof req.body?.successUrl === "string" ? req.body.successUrl : null;
+  const clientCancelUrl = typeof req.body?.cancelUrl === "string" ? req.body.cancelUrl : null;
+  const baseUrl = getAppBaseUrl();
+  const successUrl = clientSuccessUrl ?? `${baseUrl}/assinatura/sucesso`;
+  const cancelUrl = clientCancelUrl ?? `${baseUrl}/assinatura?cancelado=1`;
 
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, planId)).limit(1);
   if (!plan || plan.priceBrl === 0) {
@@ -223,8 +236,8 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
         customer: customerId,
         line_items: [{ price: priceId!, quantity: 1 }],
         payment_method_types: ["card"],
-        success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/assinatura?cancelado=1`,
+        success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl,
         metadata: { crecheId: String(crecheId), planId: String(planId), interval, paymentMode },
         subscription_data: {
           metadata: { crecheId: String(crecheId), planId: String(planId), interval },
@@ -256,8 +269,8 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
           pix: { expires_after_seconds: 86400 },   // 24 h
           boleto: { expires_after_days: 3 },
         },
-        success_url: `${baseUrl}/assinatura/sucesso?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/assinatura?cancelado=1`,
+        success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl,
         metadata: { crecheId: String(crecheId), planId: String(planId), interval, paymentMode },
         payment_intent_data: {
           metadata: { crecheId: String(crecheId), planId: String(planId), interval },

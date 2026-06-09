@@ -82,8 +82,17 @@ export default function Billing() {
   }, [location, toast]);
 
   const handleCheckout = (planId: number) => {
+    const base = window.location.origin + (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
     checkoutMutation.mutate(
-      { data: { planId, interval, paymentMode } as any },
+      {
+        data: {
+          planId,
+          interval,
+          paymentMode,
+          successUrl: `${base}/assinatura/sucesso`,
+          cancelUrl: `${base}/assinatura?cancelado=1`,
+        } as any,
+      },
       {
         onSuccess: (res) => {
           if (res.url) window.location.href = res.url;
@@ -171,6 +180,30 @@ export default function Billing() {
                       ? `Pendente desde ${formatDate(subscription?.pastDueSince)}`
                       : ""}
               </p>
+
+              {/* Pet usage bar */}
+              {subscription?.plan && (() => {
+                const petCount = (subscription as any).petCount ?? 0;
+                const petLimit = subscription.plan.petLimit ?? 0;
+                const pct = petLimit > 0 ? Math.min(100, Math.round((petCount / petLimit) * 100)) : 0;
+                const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-500";
+                return (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted-foreground">Pets cadastrados</span>
+                      <span className="text-xs font-medium text-white">
+                        {petCount} / {petLimit === 999999 ? "∞" : petLimit}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-white/10">
+                      <div
+                        className={`h-1.5 rounded-full transition-all ${barColor}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {isAdmin && subscription?.stripeCustomerId && (
