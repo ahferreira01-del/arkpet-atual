@@ -247,35 +247,58 @@ router.post("/checkout", requireRole("creche_admin"), async (req: AuthRequest, r
       // ── PIX / BOLETO / CARTÃO AVULSO ────────────────────────────────────
       // One-time payment. The subscription period (today + interval months) is
       // managed by this app. The customer must renew manually when it expires.
-      session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        customer: customerId,
-        line_items: [
-          {
-            price_data: {
-              currency: "brl",
-              unit_amount: unitAmount,
-              product_data: {
-                name: `ArkPet — Plano ${plan.name}`,
-                description: `${INTERVAL_LABELS[interval]} · até ${plan.petLimit} pets`,
-                metadata: { planId: String(planId), interval },
-              },
+      const paymentLineItems = [
+        {
+          price_data: {
+            currency: "brl",
+            unit_amount: unitAmount,
+            product_data: {
+              name: `ArkPet — Plano ${plan.name}`,
+              description: `${INTERVAL_LABELS[interval]} · até ${plan.petLimit} pets`,
+              metadata: { planId: String(planId), interval },
             },
-            quantity: 1,
           },
-        ],
-        payment_method_types: ["pix", "boleto", "card"],
-        payment_method_options: {
-          pix: { expires_after_seconds: 86400 },   // 24 h
-          boleto: { expires_after_days: 3 },
+          quantity: 1,
         },
-        success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: cancelUrl,
-        metadata: { crecheId: String(crecheId), planId: String(planId), interval, paymentMode },
-        payment_intent_data: {
-          metadata: { crecheId: String(crecheId), planId: String(planId), interval },
-        },
-      });
+      ];
+      const paymentMeta = { crecheId: String(crecheId), planId: String(planId), interval, paymentMode };
+
+      // Try PIX + Boleto + Card first; fall back to Boleto + Card if PIX is
+      // not enabled on this Stripe account (common in test/sandbox environments).
+      try {
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          customer: customerId,
+          line_items: paymentLineItems,
+          payment_method_types: ["pix", "boleto", "card"],
+          payment_method_options: {
+            pix: { expires_after_seconds: 86400 },
+            boleto: { expires_after_days: 3 },
+          },
+          success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: cancelUrl,
+          metadata: paymentMeta,
+          payment_intent_data: { metadata: paymentMeta },
+        });
+      } catch (pixErr: any) {
+        const msg: string = pixErr?.raw?.message ?? pixErr?.message ?? "";
+        if (msg.toLowerCase().includes("pix")) {
+          console.warn("[billing] PIX não disponível nesta conta Stripe — tentando Boleto + Card.");
+          session = await stripe.checkout.sessions.create({
+            mode: "payment",
+            customer: customerId,
+            line_items: paymentLineItems,
+            payment_method_types: ["boleto", "card"],
+            payment_method_options: { boleto: { expires_after_days: 3 } },
+            success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: cancelUrl,
+            metadata: paymentMeta,
+            payment_intent_data: { metadata: paymentMeta },
+          });
+        } else {
+          throw pixErr;
+        }
+      }
     }
 
     res.json({ url: session.url });
