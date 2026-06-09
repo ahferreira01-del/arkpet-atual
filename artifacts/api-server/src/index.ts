@@ -1,6 +1,6 @@
 import app from "./app";
 import { initializeDatabase, initStripe } from "./startup.js";
-import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator } from "./lib/scheduler.js";
+import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender } from "./lib/scheduler.js";
 
 const rawPort = process.env["PORT"];
 
@@ -20,6 +20,7 @@ initializeDatabase().then(() => {
   startScheduler();
   startMensalidadeScheduler();
   startScheduledPlanChangeApplicator();
+  startPastDueSuspender();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     // Stripe init (product/price seeding + sync) runs after the server is

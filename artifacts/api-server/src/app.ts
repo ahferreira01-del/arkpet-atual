@@ -1,7 +1,9 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import router from "./routes";
 import { WebhookHandlers } from "./lib/webhookHandlers.js";
+import { getAppBaseUrl } from "./lib/config.js";
 
 const app: Express = express();
 
@@ -9,7 +11,40 @@ const app: Express = express();
 // express-rate-limit can read the real client IP from X-Forwarded-For.
 app.set("trust proxy", 1);
 
-app.use(cors());
+// ── Security headers ─────────────────────────────────────────────────────────
+// helmet sets safe defaults: X-Content-Type-Options, X-Frame-Options,
+// Strict-Transport-Security, Referrer-Policy, etc.
+// contentSecurityPolicy is disabled because the API serves only JSON; CSP is
+// handled by the Vite PWA (which has its own meta tags).
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// ── CORS ─────────────────────────────────────────────────────────────────────
+// Allow requests only from the app's own origin (dev Replit domain or the
+// APP_URL set in production). The Stripe webhook and any same-origin requests
+// use raw Buffer / no-CORS paths and are unaffected.
+const allowedOrigins = (() => {
+  const origins = new Set<string>();
+  try { origins.add(new URL(getAppBaseUrl()).origin); } catch {}
+  // Also allow the bare Replit dev domain in case the port suffix differs.
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+  }
+  return [...origins];
+})();
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // Allow requests with no Origin header (curl, server-to-server, Postman).
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.some((o) => origin === o || origin.startsWith(o))) {
+        return cb(null, true);
+      }
+      cb(new Error(`CORS: origin '${origin}' não permitido.`));
+    },
+    credentials: true,
+  }),
+);
 
 // Stripe webhook MUST be registered before express.json(): stripe-replit-sync
 // needs the raw request body (Buffer) to verify the signature.

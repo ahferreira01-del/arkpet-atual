@@ -515,3 +515,48 @@ export function startScheduledPlanChangeApplicator() {
   applyScheduledPlanChanges();
   console.log("[scheduler] Scheduled plan change applicator started.");
 }
+
+// ─── Auto-suspend past_due ────────────────────────────────────────────────────
+
+const PAST_DUE_GRACE_DAYS = 7;
+
+async function suspendOverduePastDueSubscriptions(): Promise<void> {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - PAST_DUE_GRACE_DAYS);
+
+    const overdue = await db
+      .select({ id: subscriptionsTable.id, crecheId: subscriptionsTable.crecheId })
+      .from(subscriptionsTable)
+      .where(
+        and(
+          eq(subscriptionsTable.status, "past_due"),
+          isNotNull(subscriptionsTable.pastDueSince),
+          lte(subscriptionsTable.pastDueSince, cutoff),
+        ),
+      );
+
+    if (!overdue.length) return;
+    console.log(`[scheduler] Suspendendo ${overdue.length} assinatura(s) com mais de ${PAST_DUE_GRACE_DAYS} dias em atraso...`);
+
+    for (const sub of overdue) {
+      await db
+        .update(subscriptionsTable)
+        .set({ status: "suspended" })
+        .where(eq(subscriptionsTable.id, sub.id));
+      console.log(`[scheduler] Assinatura suspensa: crecheId=${sub.crecheId}`);
+    }
+  } catch (err) {
+    console.error("[scheduler] erro ao suspender assinaturas em atraso:", err);
+  }
+}
+
+export function startPastDueSuspender() {
+  // Runs daily at 07:00 BRT (after the plan-change applicator at 06:00).
+  cron.schedule("0 7 * * *", async () => {
+    console.log("[scheduler] Verificando assinaturas em atraso para suspensão...");
+    await suspendOverduePastDueSubscriptions();
+  });
+  suspendOverduePastDueSubscriptions();
+  console.log(`[scheduler] Past-due suspender iniciado (graça: ${PAST_DUE_GRACE_DAYS} dias).`);
+}
