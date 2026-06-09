@@ -64,28 +64,21 @@ async function seedPlanPrices() {
   if (created > 0) console.log(`[startup] ${created} preços de plano (intervalos) criados.`);
 }
 
-// Syncs Stripe products + prices for every paid plan interval, backfilling
-// plan_prices.stripePriceId. Runs only when there are rows without a price ID
-// (new deploy or new intervals added). Idempotent and non-fatal.
+// Syncs Stripe products + prices for every paid plan interval.
+// Always runs a full match-by-value sync (currency + amount + interval) so that
+// stale or wrong price IDs in the DB are corrected automatically — even in
+// production where the DB may have IDs from a different Stripe account/mode.
 export async function seedStripePrices() {
-  const pending = await db
-    .select()
-    .from(planPricesTable)
-    .where(isNull(planPricesTable.stripePriceId));
-
-  if (pending.length === 0) {
-    console.log("[startup] Stripe: todos os preços já sincronizados.");
-    return;
-  }
-
-  console.log(`[startup] Stripe: ${pending.length} preço(s) sem ID — iniciando sincronização...`);
-
   const stripe = await getUncachableStripeClient();
   const plans = await db.select().from(plansTable);
   const paidPlans = plans.filter((p) => p.priceBrl > 0);
 
+  if (paidPlans.length === 0) return;
+
+  let updated = 0;
+
   for (const plan of paidPlans) {
-    // Find or create Stripe product
+    // Find or create Stripe product for this plan.
     const search = await stripe.products.search({
       query: `metadata['planId']:'${plan.id}' AND active:'true'`,
     });
@@ -101,15 +94,17 @@ export async function seedStripePrices() {
     const planPrices = await db
       .select()
       .from(planPricesTable)
-      .where(and(eq(planPricesTable.planId, plan.id), isNull(planPricesTable.stripePriceId)));
+      .where(eq(planPricesTable.planId, plan.id));
+
+    // List all active prices for this product once (avoids N+1 calls).
+    const activePrices = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
 
     for (const pp of planPrices) {
       const interval = pp.interval as BillingInterval;
       const recurring = stripeRecurringFor(interval);
 
-      // Reuse existing matching active price
-      const existing = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
-      let price = existing.data.find(
+      // Match by currency + amount + recurrence — ignores whatever ID is stored.
+      let price = activePrices.data.find(
         (p) =>
           p.currency === "brl" &&
           p.unit_amount === pp.priceBrl &&
@@ -127,20 +122,28 @@ export async function seedStripePrices() {
         });
       }
 
-      await db
-        .update(planPricesTable)
-        .set({ stripePriceId: price.id })
-        .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
+      // Update DB only when the stored ID differs (avoids unnecessary writes).
+      if (pp.stripePriceId !== price.id) {
+        await db
+          .update(planPricesTable)
+          .set({ stripePriceId: price.id })
+          .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
 
-      if (interval === "month") {
-        await db.update(plansTable).set({ stripePriceId: price.id }).where(eq(plansTable.id, plan.id));
+        if (interval === "month") {
+          await db.update(plansTable).set({ stripePriceId: price.id }).where(eq(plansTable.id, plan.id));
+        }
+
+        console.log(`[startup] Stripe: corrigido "${plan.name}" ${INTERVAL_LABELS[interval]} → ${price.id}`);
+        updated++;
       }
-
-      console.log(`[startup] Stripe: "${plan.name}" ${INTERVAL_LABELS[interval]} → ${price.id}`);
     }
   }
 
-  console.log("[startup] Stripe: sincronização de preços concluída.");
+  if (updated > 0) {
+    console.log(`[startup] Stripe: ${updated} preço(s) sincronizado(s).`);
+  } else {
+    console.log("[startup] Stripe: todos os preços já sincronizados.");
+  }
 }
 
 // Initializes Stripe: creates/updates the `stripe` schema, registers the managed
