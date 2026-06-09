@@ -213,12 +213,13 @@ export async function initializeDatabase() {
   const masterPassword = process.env.MASTER_ADMIN_PASSWORD ?? "ArkPet@2024!";
   const masterName = process.env.MASTER_ADMIN_NAME ?? "Master Admin";
 
+  const usingCustomPassword = !!process.env.MASTER_ADMIN_PASSWORD;
   await db.insert(usersTable).values({
     name: masterName,
     email: masterEmail,
     passwordHash: hashPassword(masterPassword),
     role: "master_admin",
-    mustChangePassword: true,
+    mustChangePassword: !usingCustomPassword,
     isActive: true,
   });
 

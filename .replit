@@ -43,3 +43,6 @@ PASSWORD_SALT = "pet_daycare_salt"
 
 [userenv.production]
 PASSWORD_SALT = "e291003a802680c2022dd7c4fc6adc7b"
+MASTER_ADMIN_EMAIL = "ahferreira01@gmail.com"
+MASTER_ADMIN_NAME = "Anderson Ferreira"
+MASTER_ADMIN_PASSWORD = "@618033Arc*#"
