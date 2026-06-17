@@ -35,10 +35,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setTimeout(() => setLocation("/"), 100);
         toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       },
-      onError: () => {
+      onError: (err: any) => {
+        const msg =
+          err?.response?.data?.error ||
+          err?.message ||
+          "Email ou senha inválidos.";
         toast({
           title: "Falha no login",
-          description: "Email ou senha inválidos.",
+          description: msg,
           variant: "destructive"
         });
       }

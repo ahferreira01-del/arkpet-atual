@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 // Limits login/credential-verification attempts per IP to slow brute force.
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: 20,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Muitas tentativas. Tente novamente em alguns minutos." },
