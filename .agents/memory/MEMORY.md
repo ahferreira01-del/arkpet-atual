@@ -8,3 +8,4 @@
 - [Billing confirm trust boundary](billing-confirm-trust-boundary.md) — /billing/confirm must check crecheId + payment_status==="paid" + derive plan from purchased price, never metadata.planId.
 - [DB conventions & API dev quirks](db-and-api-dev-quirks.md) — no FK constraints anywhere; test API at localhost:8080 (not DEV_DOMAIN/api); drizzle-kit push prompts on constraints (use psql); known pre-existing issues.
 - [Auth session & reset](auth-session-and-reset.md) — stateless tokens revoked via users.password_changed_at vs token issuedAt; reset token single-use = atomic UPDATE...WHERE used_at IS NULL RETURNING.
+- [Email normalization on auth](email-normalization-auth.md) — login MUST normalize email (trim+lowercase) to match register's normalization, or mobile keyboard auto-capitalization silently breaks login.

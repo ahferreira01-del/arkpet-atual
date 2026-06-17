@@ -21,9 +21,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     res.status(400).json({ error: "Email and password required" });
     return;
   }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
   if (!user || !verifyPassword(password, user.passwordHash)) {
-    res.status(401).json({ error: "Invalid credentials" });
+    res.status(401).json({ error: "E-mail ou senha inválidos." });
     return;
   }
   if (!user.isActive) {

@@ -15,7 +15,7 @@ export default function Login() {
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setIsSubmitting(true);
-    login({ data: { email, password } });
+    login({ data: { email: email.trim().toLowerCase(), password } });
     setTimeout(() => setIsSubmitting(false), 1000);
   };
 
@@ -47,6 +47,11 @@ export default function Login() {
                 <Input
                   id="email"
                   type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="email"
                   placeholder="admin@creche.com.br"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
