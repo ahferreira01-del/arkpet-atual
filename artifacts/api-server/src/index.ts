@@ -2,6 +2,17 @@ import app from "./app";
 import { initializeDatabase, initStripe } from "./startup.js";
 import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender } from "./lib/scheduler.js";
 
+// Process-level backstop: a stray rejected promise or thrown error in async
+// code (e.g. a transient DB/network hiccup) must NEVER silently crash the API
+// and take every user's login down. Log it and keep serving; real bugs still
+// surface in logs without an outage.
+process.on("unhandledRejection", (reason) => {
+  console.error("[process] unhandledRejection (kept alive):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[process] uncaughtException (kept alive):", err);
+});
+
 const rawPort = process.env["PORT"];
 
 if (!rawPort) {

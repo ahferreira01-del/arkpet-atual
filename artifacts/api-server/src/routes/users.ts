@@ -51,14 +51,15 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
     res.status(403).json({ error: "Admins de creche só podem criar staff e tutores" });
     return;
   }
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
   if (existing) {
     res.status(409).json({ error: "Email já está em uso" });
     return;
   }
   const assignedCrecheId = req.user?.role === "creche_admin" ? req.user.crecheId : (crecheId ?? null);
   const [user] = await db.insert(usersTable).values({
-    name, email,
+    name, email: normalizedEmail,
     passwordHash: hashPassword(password),
     role, crecheId: assignedCrecheId,
     mustChangePassword: true,
@@ -94,7 +95,7 @@ router.put("/:userId", async (req: AuthRequest, res) => {
   const { name, email, avatarUrl, role, isActive, crecheId, newPassword } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
-  if (email !== undefined) updates.email = email;
+  if (email !== undefined) updates.email = String(email).trim().toLowerCase();
   if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
   if (newPassword !== undefined) {
     updates.passwordHash = hashPassword(newPassword);

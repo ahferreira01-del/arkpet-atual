@@ -61,14 +61,15 @@ router.post("/register", authenticate, requireRole("master_admin"), async (req, 
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
   if (existing) {
     res.status(409).json({ error: "Email already registered" });
     return;
   }
   const [user] = await db.insert(usersTable).values({
     name,
-    email,
+    email: normalizedEmail,
     passwordHash: hashPassword(password),
     role,
     crecheId: crecheId ?? null,

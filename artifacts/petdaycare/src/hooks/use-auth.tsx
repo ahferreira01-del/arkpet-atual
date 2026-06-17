@@ -36,17 +36,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       },
       onError: (err: any) => {
-        const serverMsg = err?.data?.error ?? err?.data?.message;
         const status = err?.status;
+        const rawData = err?.data;
+        const serverMsg =
+          rawData && typeof rawData === "object"
+            ? (rawData.error ?? rawData.message)
+            : undefined;
         let msg: string;
         if (status === 429) {
           msg = "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+        } else if (status === 401) {
+          msg = serverMsg || "E-mail ou senha inválidos.";
+        } else if (status === 403) {
+          msg = serverMsg || "Acesso negado.";
+        } else if (!status || status === 404 || status === 502 || status === 503 || status >= 500) {
+          // No status = network/connection failure; 404/5xx with HTML body =
+          // deployment is down or restarting. Never dump raw HTML to the user.
+          msg = "Servidor temporariamente indisponível. Aguarde alguns instantes e tente novamente.";
         } else if (serverMsg) {
           msg = serverMsg;
-        } else if (err?.message) {
-          msg = err.message;
         } else {
-          msg = "Email ou senha inválidos.";
+          msg = "Não foi possível entrar. Tente novamente.";
         }
         toast({
           title: "Falha no login",
