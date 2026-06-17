@@ -36,10 +36,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
       },
       onError: (err: any) => {
-        const msg =
-          err?.response?.data?.error ||
-          err?.message ||
-          "Email ou senha inválidos.";
+        const serverMsg = err?.data?.error ?? err?.data?.message;
+        const status = err?.status;
+        let msg: string;
+        if (status === 429) {
+          msg = "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+        } else if (serverMsg) {
+          msg = serverMsg;
+        } else if (err?.message) {
+          msg = err.message;
+        } else {
+          msg = "Email ou senha inválidos.";
+        }
         toast({
           title: "Falha no login",
           description: msg,
