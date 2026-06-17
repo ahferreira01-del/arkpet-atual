@@ -23,7 +23,9 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
   const normalizedEmail = String(email).trim().toLowerCase();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
-  if (!user || !verifyPassword(password, user.passwordHash)) {
+  const passwordOk = !!user && verifyPassword(password, user.passwordHash);
+  console.log(`[login] email="${normalizedEmail}" userFound=${!!user} passwordOk=${passwordOk} ua="${String(req.headers["user-agent"] ?? "").slice(0, 80)}"`);
+  if (!user || !passwordOk) {
     res.status(401).json({ error: "E-mail ou senha inválidos." });
     return;
   }

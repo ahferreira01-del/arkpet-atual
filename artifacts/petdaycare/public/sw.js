@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v17";
+const CACHE_NAME = "arkpet-v18";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -24,9 +24,10 @@ self.addEventListener("install", (event) => {
       return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
-  // NOTE: we intentionally do NOT call self.skipWaiting() here.
-  // The new SW stays in "waiting" until the user confirms via the in-app
-  // "Nova versão disponível → Atualizar" prompt, which posts SKIP_WAITING.
+  // Force immediate activation — the new SW takes over without waiting for
+  // user confirmation. This ensures mobile PWA installs always run the latest
+  // frontend code and don't get stuck on a stale cached version.
+  self.skipWaiting();
 });
 
 // ──────────────────────────────────────────────────────
