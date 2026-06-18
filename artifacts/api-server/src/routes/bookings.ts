@@ -184,7 +184,6 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
   }).where(and(eq(bookingsTable.crecheId, crecheId), eq(bookingsTable.id, bookingId))).returning();
 
   const enriched = await getBookingWithNames(booking);
-  const typeLabel = type === "drop_off" ? "levar" : "buscar";
   const etaText = etaMinutes ? ` (aprox. ${etaMinutes} min)` : "";
   const petName = enriched.petName ?? "um pet";
   const senderName = req.user.name ?? "Alguém";
@@ -193,22 +192,24 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
     // Tutor está a caminho → avisar creche (admins e staff)
     sendPushToRole(crecheId, "creche_admin", {
       title: `🚗 Tutor a caminho — ${petName}`,
-      body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
+      body: `${senderName} está vindo com ${petName}${etaText}.`,
       tag: `on-the-way-${booking.id}`,
       data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
     }).catch(() => {});
     sendPushToRole(crecheId, "staff", {
       title: `🚗 Tutor a caminho — ${petName}`,
-      body: `${senderName} está vindo ${typeLabel} ${petName}${etaText}.`,
+      body: `${senderName} está vindo com ${petName}${etaText}.`,
       tag: `on-the-way-${booking.id}`,
       data: { type: "booking", bookingId: booking.id, petId: booking.petId, crecheId },
     }).catch(() => {});
   } else {
     // Creche (admin/staff) está a caminho → avisar tutor
+    // type "drop_off" = creche vai buscar o pet na casa do tutor; "pickup" = creche vai levar o pet de volta
+    const crecheTypeLabel = type === "drop_off" ? "buscar" : "levar";
     if (booking.tutorId) {
       sendPushToUser(booking.tutorId, {
         title: `🚗 Creche a caminho — ${petName}`,
-        body: `A creche está vindo ${typeLabel} ${petName}${etaText}.`,
+        body: `A creche está vindo ${crecheTypeLabel} ${petName}${etaText}.`,
         tag: `on-the-way-${booking.id}`,
         data: { type: "booking", bookingId: booking.id, petId: booking.petId },
       }).catch(() => {});
