@@ -205,7 +205,7 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
   } else {
     // Creche (admin/staff) está a caminho → avisar tutor
     // type "drop_off" = creche vai buscar o pet na casa do tutor; "pickup" = creche vai levar o pet de volta
-    const crecheTypeLabel = type === "drop_off" ? "buscar" : "levar";
+    const crecheTypeLabel = type === "drop_off" ? "buscar" : "trazer";
     if (booking.tutorId) {
       sendPushToUser(booking.tutorId, {
         title: `🚗 Creche a caminho — ${petName}`,
