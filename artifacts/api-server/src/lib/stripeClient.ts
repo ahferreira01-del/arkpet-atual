@@ -26,7 +26,7 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
 
       const response = await fetch(url.toString(), {
         headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(3_000),
       });
 
       const data: any = await response.json();

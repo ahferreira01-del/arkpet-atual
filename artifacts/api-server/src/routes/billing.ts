@@ -334,49 +334,94 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
       subscription.stripeSubscriptionId &&
       subscription.status === "active"
     ) {
-      const stripeSub = await stripe.subscriptions.retrieve(
-        subscription.stripeSubscriptionId,
-        { expand: ["items"] } as any,
-      ) as any;
-
-      const existingItemId = stripeSub?.items?.data?.[0]?.id;
-      if (!existingItemId) {
-        res.status(400).json({ error: "Assinatura Stripe não encontrada. Tente via checkout." });
-        return;
+      let stripeSub: any;
+      try {
+        stripeSub = await stripe.subscriptions.retrieve(
+          subscription.stripeSubscriptionId,
+          { expand: ["items"] } as any,
+        );
+      } catch (retrieveErr: any) {
+        // Subscription may have been cancelled externally (e.g. user previously paid
+        // via PIX and the old card sub was already cancelled). Fall through to a full
+        // Stripe Checkout session instead of hard-erroring.
+        const retrieveStatus = retrieveErr?.statusCode ?? retrieveErr?.raw?.statusCode;
+        console.warn(
+          `[billing] Não foi possível recuperar assinatura Stripe ${subscription.stripeSubscriptionId} ` +
+          `(HTTP ${retrieveStatus ?? "?"}) — iniciando novo checkout. Erro: ${retrieveErr?.message ?? retrieveErr}`,
+        );
+        // Clear the stale subscription ID so the next request doesn't try again.
+        await db
+          .update(subscriptionsTable)
+          .set({ stripeSubscriptionId: null })
+          .where(eq(subscriptionsTable.crecheId, crecheId));
+        // Fall through to the regular Stripe Checkout session below.
+        // eslint-disable-next-line no-fallthrough
       }
 
-      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-        items: [{ id: existingItemId, price: priceId }],
-        // always_invoice: creates and immediately charges a proration invoice on the
-        // saved card. "create_prorations" only queues the amount for the next cycle —
-        // the payment would never arrive until the renewal date.
-        proration_behavior: "always_invoice",
-        metadata: { crecheId: String(crecheId), planId: String(planId), interval },
-      } as any);
+      if (stripeSub) {
+        // Subscription still exists: verify it's upgradeable (status != canceled).
+        if (stripeSub.status === "canceled" || stripeSub.status === "incomplete_expired") {
+          console.warn(`[billing] Assinatura ${subscription.stripeSubscriptionId} está ${stripeSub.status} — iniciando novo checkout.`);
+          await db
+            .update(subscriptionsTable)
+            .set({ stripeSubscriptionId: null })
+            .where(eq(subscriptionsTable.crecheId, crecheId));
+          // Fall through to Checkout below (stripeSub = undefined would re-enter the block,
+          // so we explicitly redirect here to avoid confusion).
+          // Do nothing — let the code below create a new session.
+        } else {
+          const existingItemId = stripeSub?.items?.data?.[0]?.id;
+          if (!existingItemId) {
+            res.status(400).json({ error: "Assinatura Stripe sem itens. Tente via checkout." });
+            return;
+          }
 
-      // Optimistically update the DB now; the webhook will confirm/correct later.
-      const updatedStripeSub = await stripe.subscriptions.retrieve(
-        subscription.stripeSubscriptionId,
-      ) as any;
-      const newPeriodEnd = readPeriodEnd(updatedStripeSub);
+          try {
+            await stripe.subscriptions.update(subscription.stripeSubscriptionId!, {
+              items: [{ id: existingItemId, price: priceId }],
+              // always_invoice: creates and immediately charges a proration invoice on the
+              // saved card. "create_prorations" only queues the amount for the next cycle —
+              // the payment would never arrive until the renewal date.
+              proration_behavior: "always_invoice",
+              metadata: { crecheId: String(crecheId), planId: String(planId), interval },
+            } as any);
+          } catch (updateErr: any) {
+            const stripeMsg = updateErr?.raw?.message ?? updateErr?.message ?? "Erro desconhecido";
+            console.error(`[billing] Falha ao atualizar assinatura Stripe para crecheId=${crecheId}: ${stripeMsg}`);
+            res.status(500).json({ error: `Não foi possível atualizar o plano: ${stripeMsg}` });
+            return;
+          }
 
-      await db
-        .update(subscriptionsTable)
-        .set({
-          planId,
-          billingInterval: interval,
-          status: "active",
-          pastDueSince: null,
-          scheduledPlanId: null,
-          scheduledBillingInterval: null,
-          scheduledPeriodEnd: null,
-          ...(newPeriodEnd ? { currentPeriodEnd: newPeriodEnd } : {}),
-        })
-        .where(eq(subscriptionsTable.crecheId, crecheId));
+          // Optimistically update the DB now; the webhook will confirm/correct later.
+          let newPeriodEnd: Date | null = null;
+          try {
+            const updatedStripeSub = await stripe.subscriptions.retrieve(
+              subscription.stripeSubscriptionId!,
+            ) as any;
+            newPeriodEnd = readPeriodEnd(updatedStripeSub);
+          } catch {
+            // Non-fatal: webhook will sync the period end.
+          }
 
-      console.log(`[billing] Direct upgrade via cartão salvo: crecheId=${crecheId} planId=${planId} interval=${interval}`);
-      res.json({ directUpgrade: true });
-      return;
+          await db
+            .update(subscriptionsTable)
+            .set({
+              planId,
+              billingInterval: interval,
+              status: "active",
+              pastDueSince: null,
+              scheduledPlanId: null,
+              scheduledBillingInterval: null,
+              scheduledPeriodEnd: null,
+              ...(newPeriodEnd ? { currentPeriodEnd: newPeriodEnd } : {}),
+            })
+            .where(eq(subscriptionsTable.crecheId, crecheId));
+
+          console.log(`[billing] Direct upgrade via cartão salvo: crecheId=${crecheId} planId=${planId} interval=${interval}`);
+          res.json({ directUpgrade: true });
+          return;
+        }
+      }
     }
 
     let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>;
@@ -479,10 +524,29 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
     return;
   }
 
-  const stripe = await getUncachableStripeClient();
-  const session = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["subscription", "line_items"],
-  });
+  let stripe: Awaited<ReturnType<typeof getUncachableStripeClient>>;
+  try {
+    stripe = await getUncachableStripeClient();
+  } catch (err: any) {
+    console.error("[billing/confirm] falha ao obter cliente Stripe:", err?.message ?? err);
+    res.status(500).json({ error: "Serviço de pagamento indisponível. Tente novamente." });
+    return;
+  }
+
+  let session: Awaited<ReturnType<typeof stripe.checkout.sessions.retrieve>>;
+  try {
+    session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["subscription", "line_items"],
+    });
+  } catch (err: any) {
+    const stripeCode = err?.statusCode ?? err?.raw?.statusCode ?? "?";
+    const stripeMsg = err?.raw?.message ?? err?.message ?? "Erro desconhecido";
+    console.error(`[billing/confirm] Falha ao recuperar sessão ${sessionId} (HTTP ${stripeCode}): ${stripeMsg}`);
+    // Return a soft error — the payment may still have gone through.
+    // The webhook will activate the subscription if it was successful.
+    res.status(400).json({ error: `Não foi possível verificar a sessão de pagamento: ${stripeMsg}` });
+    return;
+  }
 
   if (String(session.metadata?.crecheId) !== String(crecheId)) {
     res.status(403).json({ error: "Sessão não pertence a esta creche." });
@@ -624,7 +688,7 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
           billingInterval: interval,
           status: "active",
           stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-          stripeSubscriptionId: undefined,
+          stripeSubscriptionId: null, // PIX/Boleto: no Stripe subscription; must be null (not undefined) so Drizzle clears the field
           currentPeriodEnd: periodEnd,
           pastDueSince: null,
           scheduledPlanId: null,
