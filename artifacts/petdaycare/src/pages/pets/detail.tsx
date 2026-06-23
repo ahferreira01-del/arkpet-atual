@@ -24,6 +24,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink, Trash2, Package } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
+import { parseLocalDate } from "@/lib/date-utils";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import QRCode from "qrcode";
@@ -712,7 +713,7 @@ function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; pet
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Data de Nascimento</p>
-              <p className="font-medium text-white">{pet.birthDate ? format(new Date(pet.birthDate), "dd/MM/yyyy") : "Desconhecida"}</p>
+              <p className="font-medium text-white">{pet.birthDate ? format(parseLocalDate(pet.birthDate), "dd/MM/yyyy") : "Desconhecida"}</p>
             </div>
             <div>
               <p className="text-muted-foreground mb-1">Cor</p>
@@ -960,13 +961,13 @@ function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
                           <span className="text-xs text-primary flex items-center gap-0.5"><Camera className="h-3 w-3" /> foto</span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground">Aplicada: {format(new Date(v.appliedDate), "dd/MM/yyyy")}</p>
+                      <p className="text-xs text-muted-foreground">Aplicada: {format(parseLocalDate(v.appliedDate), "dd/MM/yyyy")}</p>
                       {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
                     </div>
                     {v.nextDueDate && (
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs text-muted-foreground">Próxima</p>
-                        <p className="text-sm font-medium text-amber-400">{format(new Date(v.nextDueDate), "dd/MM/yyyy")}</p>
+                        <p className="text-sm font-medium text-amber-400">{format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}</p>
                       </div>
                     )}
                   </div>

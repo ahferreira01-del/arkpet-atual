@@ -56,7 +56,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { parseUTC, todayBrazil } from "@/lib/date-utils";
+import { parseUTC, todayBrazil, parseLocalDate } from "@/lib/date-utils";
 import { resolvePhotoUrl } from "@/lib/utils";
 
 export default function Dashboard() {
@@ -232,8 +232,8 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                             <div className="min-w-0">
                               <p className="font-semibold text-white text-sm truncate">{b.petName}</p>
                               <p className="text-xs text-muted-foreground">
-                                {bookingTypeLabel[b.type] || b.type} · {format(new Date(b.startDate), "dd/MM", { locale: ptBR })}
-                                {b.endDate && ` → ${format(new Date(b.endDate), "dd/MM", { locale: ptBR })}`}
+                                {bookingTypeLabel[b.type] || b.type} · {format(parseLocalDate(b.startDate), "dd/MM", { locale: ptBR })}
+                                {b.endDate && ` → ${format(parseLocalDate(b.endDate), "dd/MM", { locale: ptBR })}`}
                               </p>
                             </div>
                           </div>

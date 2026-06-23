@@ -20,3 +20,21 @@ export function parseUTC(dateStr: string | null | undefined): Date {
   }
   return new Date(dateStr + "Z");
 }
+
+/**
+ * Parses a date-only string (YYYY-MM-DD) as local time.
+ *
+ * new Date("2026-06-24") is treated as UTC midnight by the JS spec, which in
+ * Brazil (UTC-3) renders as June 23 at 21:00 — one day behind. Appending
+ * "T00:00:00" (no Z) forces the browser to parse it as local midnight instead.
+ *
+ * Use this for any PostgreSQL `date` column (startDate, endDate, birthDate,
+ * appliedDate, nextDueDate, etc.). For `timestamp` columns use parseUTC().
+ */
+export function parseLocalDate(dateStr: string | null | undefined): Date {
+  if (!dateStr) return new Date(NaN);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + "T00:00:00");
+  }
+  return new Date(dateStr);
+}

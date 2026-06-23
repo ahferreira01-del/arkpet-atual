@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package, CheckCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
+import { parseLocalDate } from "@/lib/date-utils";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
@@ -537,8 +538,8 @@ export default function Bookings() {
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {format(new Date(booking.startDate), "dd/MM/yyyy")}
-                      {booking.endDate && ` → ${format(new Date(booking.endDate), "dd/MM/yyyy")}`}
+                      {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
+                      {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
                     </div>
                     {/* Row 3: action buttons */}
                     <div className="flex gap-2 flex-wrap">
@@ -668,9 +669,9 @@ export default function Bookings() {
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-muted-foreground">
-                          {format(new Date(booking.startDate), "dd/MM/yyyy")}
+                          {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
                           {booking.endDate && (
-                            <span> → {format(new Date(booking.endDate), "dd/MM/yyyy")}</span>
+                            <span> → {format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}</span>
                           )}
                           {booking.checkInTime && (
                             <p className="text-xs text-emerald-400 mt-0.5">
@@ -908,7 +909,7 @@ export default function Bookings() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Início</span>
-                <span className="font-medium text-white">{format(new Date(editBooking.startDate), "dd/MM/yyyy")}</span>
+                <span className="font-medium text-white">{format(parseLocalDate(editBooking.startDate), "dd/MM/yyyy")}</span>
               </div>
             </div>
             <div className="space-y-2">
