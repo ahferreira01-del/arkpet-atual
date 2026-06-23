@@ -462,42 +462,23 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
       ];
       const paymentMeta = { crecheId: String(crecheId), planId: String(planId), interval, paymentMode };
 
-      // Try PIX + Boleto + Card first; fall back to Boleto + Card if PIX is
-      // not enabled on this Stripe account (common in test/sandbox environments).
-      try {
-        session = await stripe.checkout.sessions.create({
-          mode: "payment",
-          customer: customerId,
-          line_items: paymentLineItems,
-          payment_method_types: ["pix", "boleto", "card"],
-          payment_method_options: {
-            pix: { expires_after_seconds: 86400 },
-            boleto: { expires_after_days: 3 },
-          },
-          success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url: cancelUrl,
-          metadata: paymentMeta,
-          payment_intent_data: { metadata: paymentMeta },
-        });
-      } catch (pixErr: any) {
-        const msg: string = pixErr?.raw?.message ?? pixErr?.message ?? "";
-        if (msg.toLowerCase().includes("pix")) {
-          console.warn("[billing] PIX não disponível nesta conta Stripe — tentando Boleto + Card.");
-          session = await stripe.checkout.sessions.create({
-            mode: "payment",
-            customer: customerId,
-            line_items: paymentLineItems,
-            payment_method_types: ["boleto", "card"],
-            payment_method_options: { boleto: { expires_after_days: 3 } },
-            success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: cancelUrl,
-            metadata: paymentMeta,
-            payment_intent_data: { metadata: paymentMeta },
-          });
-        } else {
-          throw pixErr;
-        }
-      }
+      // Use automatic_payment_methods so o Stripe exibe os métodos disponíveis
+      // na conta (Boleto, Cartão e PIX quando liberado pelo Stripe).
+      // Não é preciso listar explicitamente — o Stripe decide com base no que
+      // está ativo na conta. PIX aparecerá automaticamente quando aprovado.
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        customer: customerId,
+        line_items: paymentLineItems,
+        automatic_payment_methods: { enabled: true },
+        payment_method_options: {
+          boleto: { expires_after_days: 3 },
+        },
+        success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl,
+        metadata: paymentMeta,
+        payment_intent_data: { metadata: paymentMeta },
+      } as any);
     }
 
     res.json({ url: session.url });
