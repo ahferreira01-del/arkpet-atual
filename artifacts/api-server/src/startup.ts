@@ -4,6 +4,7 @@ import {
   crechesTable,
   plansTable,
   planPricesTable,
+  subscriptionsTable,
   BILLING_INTERVALS,
   INTERVAL_DISCOUNT_PCT,
   INTERVAL_LABELS,
@@ -193,12 +194,54 @@ export async function initStripe() {
   }
 }
 
+// ── Migração pontual: trial para Quintal Pet (creche_id=17) ─────────────────
+// Criada via master_admin → sem subscription row → sem trial nem acesso a planos.
+// Esta função insere o trial retroativo uma única vez. Idempotente.
+async function migrateQuintalPetTrial() {
+  const existing = await db
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.crecheId, 17));
+
+  if (existing.length > 0) {
+    console.log("[startup] Quintal Pet: trial já existe, nada a fazer.");
+    return;
+  }
+
+  // Busca o plano Trial (id=1)
+  const [trialPlan] = await db
+    .select({ id: plansTable.id })
+    .from(plansTable)
+    .where(eq(plansTable.name, "Trial"));
+
+  if (!trialPlan) {
+    console.warn("[startup] Quintal Pet: plano Trial não encontrado, migração pulada.");
+    return;
+  }
+
+  // Trial de 10 dias a partir da data de criação da creche (2026-06-18)
+  const crecheCreatedAt = new Date("2026-06-18T14:26:57.944Z");
+  const trialEndsAt = new Date(crecheCreatedAt.getTime() + 10 * 24 * 60 * 60 * 1000);
+
+  await db.insert(subscriptionsTable).values({
+    crecheId: 17,
+    planId: trialPlan.id,
+    status: "trial",
+    trialEndsAt,
+  });
+
+  console.log(`[startup] Quintal Pet: trial inserido — expira em ${trialEndsAt.toISOString()}`);
+}
+
 export async function initializeDatabase() {
   await seedPlans();
 
   if (process.env.NODE_ENV !== "production") return;
 
   console.log("[startup] Verificando banco de dados de produção...");
+
+  // Migrações pontuais
+  await migrateQuintalPetTrial();
 
   const [{ total }] = await db.select({ total: count() }).from(usersTable);
 
