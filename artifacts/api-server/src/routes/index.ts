@@ -29,4 +29,12 @@ router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);
 
+// ── Versão do app ────────────────────────────────────────────────────────────
+// Deve ser bumped junto com CACHE_NAME em public/sw.js a cada deploy que
+// quebre compatibilidade com clientes antigos.
+export const APP_VERSION = "arkpet-v19";
+router.get("/version", (_req, res) => {
+  res.json({ version: APP_VERSION });
+});
+
 export default router;

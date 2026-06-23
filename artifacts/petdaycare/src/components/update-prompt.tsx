@@ -1,49 +1,64 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw, X } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
-// Shows a "Nova versão disponível → Atualizar" banner whenever a new service
-// worker has been installed and is waiting to take over. Clicking "Atualizar"
-// tells the waiting SW to skipWaiting; once it takes control we reload the page
-// so the user immediately runs the new version.
+const CURRENT_VERSION_KEY = "arkpet-app-version";
+const VERSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutos
+
+// Busca a versão atual do servidor.
+async function fetchServerVersion(): Promise<string | null> {
+  try {
+    const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+    const res = await fetch(`${base}/api/version`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Tela bloqueante obrigatória de atualização. Aparece quando:
+//  1. O Service Worker detecta um novo SW instalado (SW nativo), ou
+//  2. A versão da API é diferente da versão salva no localStorage.
+// Não tem botão de fechar — o usuário DEVE atualizar para continuar.
 export function UpdatePrompt() {
-  const [visible, setVisible] = useState(false);
+  const [blocked, setBlocked] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const waitingRef = useRef<ServiceWorker | null>(null);
+  const waitingSwRef = useRef<ServiceWorker | null>(null);
   const reloadedRef = useRef(false);
 
+  // ── Service Worker: detecta novo SW instalado ────────────────────────────
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
     let reg: ServiceWorkerRegistration | null = null;
 
-    const promote = (sw: ServiceWorker | null | undefined) => {
-      if (!sw) return;
-      waitingRef.current = sw;
-      setVisible(true);
+    const triggerBlock = (sw?: ServiceWorker | null) => {
+      if (sw) waitingSwRef.current = sw;
+      setBlocked(true);
     };
 
     navigator.serviceWorker.ready.then((registration) => {
       reg = registration;
 
-      // An update was already downloaded while the app was closed.
+      // Já havia um SW em espera quando o app abriu.
       if (registration.waiting && navigator.serviceWorker.controller) {
-        promote(registration.waiting);
+        triggerBlock(registration.waiting);
       }
 
-      // A new update is found while the app is open.
+      // Novo SW encontrado enquanto o app está aberto.
       registration.addEventListener("updatefound", () => {
         const installing = registration.installing;
         if (!installing) return;
         installing.addEventListener("statechange", () => {
-          // Only prompt for real updates (controller exists), never first install.
           if (installing.state === "installed" && navigator.serviceWorker.controller) {
-            promote(registration.waiting);
+            triggerBlock(registration.waiting);
           }
         });
       });
     });
 
-    // When the new SW takes control, reload once to run the fresh version.
+    // Quando o novo SW assume o controle, recarrega a página.
     const onControllerChange = () => {
       if (reloadedRef.current) return;
       reloadedRef.current = true;
@@ -51,7 +66,7 @@ export function UpdatePrompt() {
     };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 
-    // Proactively check for new releases on long-lived sessions and on refocus.
+    // Verifica update ao focar a janela / voltar do segundo plano.
     const checkForUpdate = () => reg?.update().catch(() => {});
     const interval = window.setInterval(checkForUpdate, 60 * 60 * 1000);
     const onFocus = () => checkForUpdate();
@@ -64,12 +79,57 @@ export function UpdatePrompt() {
     };
   }, []);
 
+  // ── Versão da API: detecção de mudança via polling ───────────────────────
+  useEffect(() => {
+    let active = true;
+
+    const check = async () => {
+      const serverVersion = await fetchServerVersion();
+      if (!serverVersion || !active) return;
+
+      const stored = localStorage.getItem(CURRENT_VERSION_KEY);
+
+      if (!stored) {
+        // Primeira vez — apenas salva.
+        localStorage.setItem(CURRENT_VERSION_KEY, serverVersion);
+        return;
+      }
+
+      if (stored !== serverVersion) {
+        // Versão mudou → bloqueia.
+        setBlocked(true);
+      }
+    };
+
+    // Checa ao iniciar.
+    check();
+
+    // Checa a cada 5 minutos.
+    const interval = window.setInterval(check, VERSION_CHECK_INTERVAL);
+
+    // Checa quando o app volta do segundo plano.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  // ── Ação de atualizar ────────────────────────────────────────────────────
   const handleUpdate = () => {
-    const sw = waitingRef.current;
     setUpdating(true);
+    // Limpa versão salva para que após o reload ela seja re-registrada.
+    localStorage.removeItem(CURRENT_VERSION_KEY);
+
+    const sw = waitingSwRef.current;
     if (sw) {
       sw.postMessage({ type: "SKIP_WAITING" });
-      // Fallback reload in case controllerchange doesn't fire.
+      // Fallback: se o controllerchange não disparar em 3s, recarrega mesmo assim.
       window.setTimeout(() => {
         if (!reloadedRef.current) window.location.reload();
       }, 3000);
@@ -78,45 +138,37 @@ export function UpdatePrompt() {
     }
   };
 
-  if (!visible) return null;
+  if (!blocked) return null;
 
   return (
-    <div
-      className="fixed inset-x-0 z-[60] flex justify-center px-4"
-      style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
-    >
-      <div className="w-full max-w-sm glass-panel rounded-2xl border border-primary/20 shadow-[0_8px_32px_rgba(139,92,246,0.25)] px-4 py-3 flex items-center gap-3 animate-in slide-in-from-top-4 fade-in duration-300">
-        {/* Icon */}
-        <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
-          <RefreshCw className="h-4 w-4 text-primary" />
-        </div>
-
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white leading-tight">Nova versão disponível</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
-            Atualize para ter as últimas melhorias.
-          </p>
-        </div>
-
-        {/* Actions */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <button
-            onClick={handleUpdate}
-            disabled={updating}
-            className="text-xs font-semibold text-white bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
-          >
-            {updating ? "..." : "Atualizar"}
-          </button>
-          <button
-            onClick={() => setVisible(false)}
-            className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Agora não"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background/95 backdrop-blur-md px-6">
+      {/* Ícone */}
+      <div className="h-20 w-20 rounded-3xl bg-primary/20 flex items-center justify-center mb-6 shadow-lg">
+        <RefreshCw className="h-10 w-10 text-primary animate-spin" style={{ animationDuration: "3s" }} />
       </div>
+
+      {/* Título */}
+      <h1 className="text-2xl font-bold text-white text-center mb-2">
+        Nova versão disponível
+      </h1>
+
+      {/* Descrição */}
+      <p className="text-muted-foreground text-center text-sm mb-8 max-w-xs leading-relaxed">
+        Uma atualização do ArkPet está disponível. Atualize agora para continuar usando o app com todas as melhorias e correções.
+      </p>
+
+      {/* Botão — único, sem opção de fechar */}
+      <button
+        onClick={handleUpdate}
+        disabled={updating}
+        className="w-full max-w-xs bg-primary hover:bg-primary/90 text-white font-semibold py-4 rounded-2xl transition-colors disabled:opacity-60 text-base shadow-lg shadow-primary/30"
+      >
+        {updating ? "Atualizando..." : "Atualizar agora"}
+      </button>
+
+      <p className="text-xs text-muted-foreground mt-4 text-center">
+        É necessário atualizar para continuar usando o ArkPet.
+      </p>
     </div>
   );
 }
