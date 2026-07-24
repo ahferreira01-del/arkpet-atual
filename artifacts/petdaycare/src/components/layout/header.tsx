@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { UserProfile } from "@workspace/api-client-react";
 import { Search, Download, Dog, LogOut, ChevronDown } from "lucide-react";
-import { Input } from "../ui/input";
+import { QuickCheckIn } from "../quick-checkin";
 import { Button } from "../ui/button";
 import { usePWA } from "@/hooks/use-pwa";
 import { useAuth } from "@/hooks/use-auth";
@@ -41,85 +41,43 @@ export function Header({ user }: HeaderProps) {
   }, [menuOpen]);
 
   return (
-    <header className="h-16 md:h-20 border-b border-white/5 bg-background/50 backdrop-blur-xl z-20 flex items-center justify-between px-4 md:px-6 lg:px-8 sticky top-0">
-      {/* Mobile: ArkPet logo | Desktop: greeting */}
+    <header className="h-20 bg-background z-20 flex md:hidden items-center justify-between px-4 sticky top-0">
       <div className="flex items-center gap-3">
-        <div className="flex md:hidden items-center gap-2.5">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_14px_rgba(139,92,246,0.4)]">
-            <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" style={{ height: 22, width: 22 }} />
-          </div>
-          <span className="font-display font-bold text-lg text-white">ArkPet</span>
+        <div className="h-12 w-12 rounded-full bg-white flex items-center justify-center overflow-hidden">
+          <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 object-contain" />
         </div>
-
-        <div className="hidden md:block">
-          <h1 className="text-2xl font-display font-semibold text-white tracking-tight">
-            {getGreeting()}, {user.name.split(" ")[0]}!
-          </h1>
-          {user.crecheId && user.role !== "tutor" && (
-            <p className="text-sm text-primary font-medium flex items-center gap-2 mt-0.5">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-              </span>
-              Unidade Ativa
-            </p>
-          )}
+        <div className="flex flex-col">
+          <span className="font-display font-bold text-[22px] leading-none text-white tracking-tight">Ark Pet</span>
+          <span className="text-[13px] text-gray-400 mt-1">Gestão que conecta.</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3">
-        <div className="hidden md:block w-56">
-          <Input
-            icon={<Search className="h-4 w-4" />}
-            placeholder="Buscar pets, reservas..."
-            className="rounded-full bg-white/5 border-white/5 focus-visible:ring-1"
-          />
-        </div>
-
-        {canInstall && (
-          <Button
-            onClick={install}
-            variant="outline"
-            size="sm"
-            className="hidden sm:flex items-center gap-2 border-primary/30 text-primary hover:bg-primary/10 rounded-full px-4"
-          >
-            <Download className="h-4 w-4" />
-            Instalar App
-          </Button>
-        )}
-
-        {/* Avatar initials + dropdown menu */}
+      <div className="flex items-center gap-4">
+        <button className="text-gray-400 hover:text-white transition-colors">
+          <Search className="h-6 w-6" />
+        </button>
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="flex items-center gap-1.5 rounded-full focus:outline-none group"
-            aria-label="Menu do perfil"
+            className="text-gray-400 hover:text-white transition-colors"
           >
-            <div className="h-9 w-9 md:h-10 md:w-10 rounded-full bg-gradient-to-br from-primary/50 to-accent/50 border border-white/10 flex items-center justify-center text-white font-bold text-sm shadow-[0_0_10px_rgba(139,92,246,0.2)] transition-all group-hover:border-primary/50">
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-            <ChevronDown
-              className={`h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 hidden md:block ${menuOpen ? "rotate-180" : ""}`}
-            />
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
           </button>
+          <span className="absolute -top-1 -right-1 h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center leading-none">
+            3
+          </span>
 
-          {/* Dropdown */}
+          {/* Dropdown Logout */}
           {menuOpen && (
-            <div className="absolute right-0 top-[calc(100%+10px)] z-50 w-56 glass-panel rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] border border-white/10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-              {/* User info */}
-              <div className="px-4 py-3 border-b border-white/10">
+            <div className="absolute right-0 top-[calc(100%+15px)] z-50 w-56 bg-card rounded-2xl shadow-xl border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="px-4 py-3 border-b border-white/5">
                 <p className="text-sm font-semibold text-white truncate">{user.name}</p>
                 <p className="text-xs text-primary mt-0.5">{ROLE_LABELS[user.role] || user.role}</p>
-                {user.email && (
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{user.email}</p>
-                )}
               </div>
-
-              {/* Logout */}
               <div className="p-2">
                 <button
                   onClick={() => { setMenuOpen(false); logout(); }}
-                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-150"
+                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white transition-all duration-150"
                 >
                   <LogOut className="h-4 w-4" />
                   Sair da conta

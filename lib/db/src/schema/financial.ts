@@ -1,0 +1,329 @@
+import { pgTable, serial, integer, numeric, varchar, timestamp, date, boolean, pgEnum, text, check, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import { crechesTable } from "./creches";
+import { usersTable } from "./users";
+import { bookingsTable } from "./bookings";
+
+// Enums
+export const invoiceStatusEnum = pgEnum("invoice_status", ["pending", "awaiting_confirmation", "paid", "overdue", "voided", "refunded"]);
+export const transactionTypeEnum = pgEnum("transaction_type", ["income", "expense"]);
+export const paymentMethodEnum = pgEnum("payment_method", ["stripe", "pix", "cash", "credit_card", "bank_slip", "credits"]);
+export const itemTypeEnum = pgEnum("item_type", ["service", "product", "package"]);
+export const auditActionEnum = pgEnum("audit_action", [
+  "invoice_create", 
+  "invoice_void", 
+  "invoice_refund", 
+  "payment_receipt_upload", 
+  "payment_approve", 
+  "manual_payment_register", 
+  "stock_adjustment", 
+  "credits_purchase", 
+  "credits_deduct",
+  "sensitive_data_read", // Log de leitura para LGPD
+  "tutor_anonymize"      // Log de deleção/anonimização para LGPD
+]);
+
+// 1. Catálogo de Serviços e Produtos (Preços e Estoque)
+export const catalogueItemsTable = pgTable("catalogue_items", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: itemTypeEnum("type").notNull(), // 'service' ou 'product'
+  basePrice: numeric("base_price", { precision: 10, scale: 2 }).notNull(),
+  
+  // Preços dinâmicos baseados no porte do pet (aplicável a serviços)
+  priceSmall: numeric("price_small", { precision: 10, scale: 2 }),
+  priceMedium: numeric("price_medium", { precision: 10, scale: 2 }),
+  priceLarge: numeric("price_large", { precision: 10, scale: 2 }),
+  costPrice: numeric("cost_price", { precision: 10, scale: 2 }),
+  
+  // Controle de Estoque (aplicável a produtos)
+  stockQuantity: integer("stock_quantity").default(0).notNull(),
+  minStockAlert: integer("min_stock_alert").default(5).notNull(),
+  trackStock: boolean("track_stock").default(false).notNull(),
+  
+  creditsAmount: integer("credits_amount"),
+  maxPetsPerDay: integer("max_pets_per_day").default(1).notNull(),
+  
+  description: text("description"),
+  category: varchar("category", { length: 100 }),
+  sku: varchar("sku", { length: 50 }),
+  barcode: varchar("barcode", { length: 255 }),
+  mediaUrls: jsonb("media_urls").default('[]'),
+  
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  barcodeIdx: uniqueIndex("barcode_creche_idx").on(table.crecheId, table.barcode),
+}));
+
+export const catalogueItemsRelations = relations(catalogueItemsTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [catalogueItemsTable.crecheId],
+    references: [crechesTable.id],
+  }),
+}));
+
+// 2. Consumo de Adicionais e Produtos nas Reservas
+export const bookingConsumablesTable = pgTable("booking_consumables", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  itemId: integer("item_id").notNull(), // Referência a catalogueItemsTable
+  quantity: integer("quantity").default(1).notNull(),
+  chargedPrice: numeric("charged_price", { precision: 10, scale: 2 }).notNull(), // Preço capturado no momento do consumo
+  addedBy: integer("added_by").notNull(), // Referência a usersTable (Staff)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const bookingConsumablesRelations = relations(bookingConsumablesTable, ({ one }) => ({
+  booking: one(bookingsTable, {
+    fields: [bookingConsumablesTable.bookingId],
+    references: [bookingsTable.id],
+  }),
+  item: one(catalogueItemsTable, {
+    fields: [bookingConsumablesTable.itemId],
+    references: [catalogueItemsTable.id],
+  }),
+  addedByUser: one(usersTable, {
+    fields: [bookingConsumablesTable.addedBy],
+    references: [usersTable.id],
+  }),
+}));
+
+// 3. Pacotes de Créditos dos Tutores (Mensalidades / Diárias Pré-pagas)
+export const tutorCreditsTable = pgTable("tutor_credits", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  tutorId: integer("tutor_id").notNull(), // Referência ao tutor (usersTable)
+  totalCredits: integer("total_credits").notNull(), // Total comprado
+  usedCredits: integer("used_credits").default(0).notNull(), // Consumido
+  maxPetsPerDay: integer("max_pets_per_day").default(1).notNull(),
+  expirationDate: date("expiration_date"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  checkUsedCreditsZero: check("check_used_credits_zero", sql`${table.usedCredits} >= 0`),
+  checkUsedCreditsMax: check("check_used_credits_max", sql`${table.usedCredits} <= ${table.totalCredits}`)
+}));
+
+export const tutorCreditsRelations = relations(tutorCreditsTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [tutorCreditsTable.crecheId],
+    references: [crechesTable.id],
+  }),
+  tutor: one(usersTable, {
+    fields: [tutorCreditsTable.tutorId],
+    references: [usersTable.id],
+  }),
+}));
+
+// Tabela de ligação: rastreia de qual pacote a reserva consumiu o crédito
+export const bookingCreditsTable = pgTable("booking_credits", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(), // não colocamos fk direta p/ bookings pra evitar ciclo ou adicionamos? 
+  tutorCreditId: integer("tutor_credit_id").notNull().references(() => tutorCreditsTable.id),
+  creditsConsumed: integer("credits_consumed").notNull(),
+  consumedDate: date("consumed_date"), // Rastreia para qual dia a diária/carona foi consumida
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  restoredAt: timestamp("restored_at"), // Quando a reserva foi cancelada e os créditos estornados
+});
+
+export const bookingCreditsRelations = relations(bookingCreditsTable, ({ one }) => ({
+  tutorCredit: one(tutorCreditsTable, {
+    fields: [bookingCreditsTable.tutorCreditId],
+    references: [tutorCreditsTable.id],
+  }),
+}));
+
+// 4. Cabeçalho de Faturas (Contas a Receber)
+export const invoicesTable = pgTable("invoices", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  tutorId: integer("tutor_id"),
+  bookingId: integer("booking_id"), // Pode ser nulo se for fatura avulsa ou venda direta
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  discount: numeric("discount", { precision: 10, scale: 2 }).default("0.00"),
+  dueDate: date("due_date").notNull(),
+  status: invoiceStatusEnum("status").default("pending").notNull(),
+  creditsReleased: boolean("credits_released").default(false).notNull(),
+  paymentMethod: paymentMethodEnum("payment_method"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  receiptPhotoPath: varchar("receipt_photo_path", { length: 500 }), // Caminho privado no storage (não URL pública)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const invoicesRelations = relations(invoicesTable, ({ one, many }) => ({
+  creche: one(crechesTable, {
+    fields: [invoicesTable.crecheId],
+    references: [crechesTable.id],
+  }),
+  tutor: one(usersTable, {
+    fields: [invoicesTable.tutorId],
+    references: [usersTable.id],
+  }),
+  booking: one(bookingsTable, {
+    fields: [invoicesTable.bookingId],
+    references: [bookingsTable.id],
+  }),
+  items: many(invoiceItemsTable),
+}));
+
+// 5. Detalhes dos Itens da Fatura (Itemização)
+export const invoiceItemsTable = pgTable("invoice_items", {
+  id: serial("id").primaryKey(),
+  invoiceId: integer("invoice_id").notNull(),
+  description: varchar("description", { length: 255 }).notNull(), // Ex: "Diária Daycare", "Banho Porte G", "Ração BarkBox"
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+});
+
+export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({
+  invoice: one(invoicesTable, {
+    fields: [invoiceItemsTable.invoiceId],
+    references: [invoicesTable.id],
+  }),
+}));
+
+// 6. Contas a Pagar (Despesas da Creche)
+export const expensesTable = pgTable("expenses", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  description: varchar("description", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull(), // Ex: 'aluguel', 'salário', 'limpeza'
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  dueDate: date("due_date").notNull(),
+  paidDate: date("paid_date"),
+  isPaid: boolean("is_paid").default(false).notNull(),
+  supplier: varchar("supplier", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const expensesRelations = relations(expensesTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [expensesTable.crecheId],
+    references: [crechesTable.id],
+  }),
+}));
+
+// 7. Fluxo de Caixa (Transações Consolidadas)
+export const transactionsTable = pgTable("transactions", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  invoiceId: integer("invoice_id"),
+  expenseId: integer("expense_id"),
+  type: transactionTypeEnum("type").notNull(), // 'income' ou 'expense'
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  transactionDate: date("transaction_date").notNull(),
+  paymentMethod: paymentMethodEnum("payment_method").notNull(),
+  description: varchar("description", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const transactionsRelations = relations(transactionsTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [transactionsTable.crecheId],
+    references: [crechesTable.id],
+  }),
+  invoice: one(invoicesTable, {
+    fields: [transactionsTable.invoiceId],
+    references: [invoicesTable.id],
+  }),
+  expense: one(expensesTable, {
+    fields: [transactionsTable.expenseId],
+    references: [expensesTable.id],
+  }),
+}));
+
+// 8. Registro de Auditoria Financeira
+export const financialAuditLogsTable = pgTable("financial_audit_logs", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  userId: integer("user_id").notNull(), // Quem executou a ação
+  action: auditActionEnum("action").notNull(),
+  referenceId: integer("reference_id").notNull(), // ID do recurso alterado
+  referenceType: varchar("reference_type", { length: 100 }).notNull(), // Ex: 'invoices', 'expenses', 'catalogue_items'
+  details: text("details").notNull(), // Histórico textual
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const financialAuditLogsRelations = relations(financialAuditLogsTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [financialAuditLogsTable.crecheId],
+    references: [crechesTable.id],
+  }),
+  user: one(usersTable, {
+    fields: [financialAuditLogsTable.userId],
+    references: [usersTable.id],
+  }),
+}));
+
+// --- E-Commerce & Pet Shop (Logistics & Orders) ---
+
+export const orderStatusEnum = pgEnum("order_status", [
+  "pending_payment", 
+  "paid", 
+  "preparing", 
+  "ready_for_pickup", 
+  "delivering", 
+  "delivered", 
+  "cancelled"
+]);
+
+export const deliveryMethodEnum = pgEnum("delivery_method", ["pickup", "delivery"]);
+
+export const stockTransactionTypeEnum = pgEnum("stock_transaction_type", ["in", "out", "adjustment"]);
+
+export const catalogueStockTransactionsTable = pgTable("catalogue_stock_transactions", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull(),
+  crecheId: integer("creche_id").notNull(),
+  type: stockTransactionTypeEnum("type").notNull(),
+  quantity: integer("quantity").notNull(),
+  reason: varchar("reason", { length: 255 }).notNull(),
+  userId: integer("user_id"), // Admin/Staff who made the change
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const ordersTable = pgTable("orders", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  tutorId: integer("tutor_id").notNull(),
+  invoiceId: integer("invoice_id"), // Link to financial invoice
+  status: orderStatusEnum("status").default("pending_payment").notNull(),
+  deliveryMethod: deliveryMethodEnum("delivery_method").notNull(),
+  deliveryAddress: text("delivery_address"), // Full address string
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).default("0").notNull(),
+  subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
+  total: numeric("total", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const orderItemsTable = pgTable("order_items", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull(),
+  catalogueItemId: integer("catalogue_item_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: numeric("total_price", { precision: 10, scale: 2 }).notNull(),
+});
+
+export const ecomRelations = relations(ordersTable, ({ one, many }) => ({
+  creche: one(crechesTable, { fields: [ordersTable.crecheId], references: [crechesTable.id] }),
+  tutor: one(usersTable, { fields: [ordersTable.tutorId], references: [usersTable.id] }),
+  invoice: one(invoicesTable, { fields: [ordersTable.invoiceId], references: [invoicesTable.id] }),
+  items: many(orderItemsTable),
+}));
+
+export const orderItemsRelations = relations(orderItemsTable, ({ one }) => ({
+  order: one(ordersTable, { fields: [orderItemsTable.orderId], references: [ordersTable.id] }),
+  item: one(catalogueItemsTable, { fields: [orderItemsTable.catalogueItemId], references: [catalogueItemsTable.id] }),
+}));
+
+export const stockTransactionsRelations = relations(catalogueStockTransactionsTable, ({ one }) => ({
+  item: one(catalogueItemsTable, { fields: [catalogueStockTransactionsTable.itemId], references: [catalogueItemsTable.id] }),
+  creche: one(crechesTable, { fields: [catalogueStockTransactionsTable.crecheId], references: [crechesTable.id] }),
+  user: one(usersTable, { fields: [catalogueStockTransactionsTable.userId], references: [usersTable.id] }),
+}));
+
+

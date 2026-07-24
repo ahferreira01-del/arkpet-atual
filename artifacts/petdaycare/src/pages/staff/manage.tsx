@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useListCrecheStaff, useAddStaffMember } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -230,16 +231,16 @@ export default function ManageStaff() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header */}
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <h1 className="text-3xl font-display font-bold text-white">Gestão de Equipe</h1>
-          <p className="text-muted-foreground mt-1">Gerencie os membros da sua equipe.</p>
-        </div>
-        <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
-          <Plus className="mr-2 h-4 w-4" /> Adicionar
-        </Button>
-      </div>
+      <PageHeader
+        title="Gestão de Equipe"
+        description="Gerencie os membros da sua equipe."
+        icon={Users}
+        action={
+          <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
+            <Plus className="mr-2 h-4 w-4" /> Adicionar
+          </Button>
+        }
+      />
 
       {/* Stats — glassmorphism horizontal */}
       <div className="grid grid-cols-3 gap-3">

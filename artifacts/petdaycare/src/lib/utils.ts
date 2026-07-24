@@ -18,7 +18,7 @@ export async function compressImage(file: File, maxWidth = 1080, quality = 0.82)
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    return canvas.toDataURL("image/jpeg", quality);
+    return canvas.toDataURL("image/webp", quality);
   }
 
   // Legacy fallback (older browsers)
@@ -33,7 +33,7 @@ export async function compressImage(file: File, maxWidth = 1080, quality = 0.82)
         canvas.height = Math.round(img.height * ratio);
         const ctx = canvas.getContext("2d")!;
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        resolve(canvas.toDataURL("image/webp", quality));
       };
       img.onerror = reject;
       img.src = ev.target!.result as string;

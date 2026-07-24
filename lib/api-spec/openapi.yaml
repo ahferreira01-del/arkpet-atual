@@ -668,22 +668,16 @@ paths:
               schema:
                 $ref: "#/components/schemas/Task"
 
-  /creches/{crecheId}/pets/{petId}/timeline:
+  /creches/{crecheId}/feed:
     get:
-      operationId: listTimeline
-      tags: [timeline]
+      operationId: listFeed
+      tags: [feed]
       parameters:
         - $ref: "#/components/parameters/CrecheId"
-        - $ref: "#/components/parameters/PetId"
-        - name: date
-          in: query
-          schema:
-            type: string
-            format: date
-      summary: Get pet timeline
+      summary: Get feed
       responses:
         "200":
-          description: Timeline events
+          description: Feed events
           content:
             application/json:
               schema:
@@ -691,12 +685,11 @@ paths:
                 items:
                   $ref: "#/components/schemas/TimelineEvent"
     post:
-      operationId: addTimelineEvent
-      tags: [timeline]
+      operationId: addFeedPost
+      tags: [feed]
       parameters:
         - $ref: "#/components/parameters/CrecheId"
-        - $ref: "#/components/parameters/PetId"
-      summary: Add timeline event
+      summary: Add feed post
       requestBody:
         required: true
         content:
@@ -709,7 +702,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TimelineEvent"
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  event:
+                    $ref: "#/components/schemas/TimelineEvent"
 
   /creches/{crecheId}/pets/{petId}/walks:
     get:

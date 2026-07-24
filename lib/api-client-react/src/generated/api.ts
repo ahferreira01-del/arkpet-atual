@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AddFeedPost201,
   AddStaffRequest,
   AdministerMedicationRequest,
   AuthResponse,
@@ -42,7 +43,6 @@ import type {
   ListMessagesParams,
   ListPetsParams,
   ListTasksParams,
-  ListTimelineParams,
   ListWalksParams,
   LoginRequest,
   Medication,
@@ -3014,64 +3014,34 @@ export const useCompleteTask = <
 };
 
 /**
- * @summary Get pet timeline
+ * @summary Get feed
  */
-export const getListTimelineUrl = (
-  crecheId: number,
-  petId: number,
-  params?: ListTimelineParams,
-) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/creches/${crecheId}/pets/${petId}/timeline?${stringifiedParams}`
-    : `/api/creches/${crecheId}/pets/${petId}/timeline`;
+export const getListFeedUrl = (crecheId: number) => {
+  return `/api/creches/${crecheId}/feed`;
 };
 
-export const listTimeline = async (
+export const listFeed = async (
   crecheId: number,
-  petId: number,
-  params?: ListTimelineParams,
   options?: RequestInit,
 ): Promise<TimelineEvent[]> => {
-  return customFetch<TimelineEvent[]>(
-    getListTimelineUrl(crecheId, petId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
+  return customFetch<TimelineEvent[]>(getListFeedUrl(crecheId), {
+    ...options,
+    method: "GET",
+  });
 };
 
-export const getListTimelineQueryKey = (
-  crecheId: number,
-  petId: number,
-  params?: ListTimelineParams,
-) => {
-  return [
-    `/api/creches/${crecheId}/pets/${petId}/timeline`,
-    ...(params ? [params] : []),
-  ] as const;
+export const getListFeedQueryKey = (crecheId: number) => {
+  return [`/api/creches/${crecheId}/feed`] as const;
 };
 
-export const getListTimelineQueryOptions = <
-  TData = Awaited<ReturnType<typeof listTimeline>>,
+export const getListFeedQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFeed>>,
   TError = ErrorType<unknown>,
 >(
   crecheId: number,
-  petId: number,
-  params?: ListTimelineParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listTimeline>>,
+      Awaited<ReturnType<typeof listFeed>>,
       TError,
       TData
     >;
@@ -3080,56 +3050,46 @@ export const getListTimelineQueryOptions = <
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey =
-    queryOptions?.queryKey ?? getListTimelineQueryKey(crecheId, petId, params);
+  const queryKey = queryOptions?.queryKey ?? getListFeedQueryKey(crecheId);
 
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTimeline>>> = ({
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listFeed>>> = ({
     signal,
-  }) => listTimeline(crecheId, petId, params, { signal, ...requestOptions });
+  }) => listFeed(crecheId, { signal, ...requestOptions });
 
   return {
     queryKey,
     queryFn,
-    enabled: !!(crecheId && petId),
+    enabled: !!crecheId,
     ...queryOptions,
-  } as UseQueryOptions<
-    Awaited<ReturnType<typeof listTimeline>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
+  } as UseQueryOptions<Awaited<ReturnType<typeof listFeed>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
 };
 
-export type ListTimelineQueryResult = NonNullable<
-  Awaited<ReturnType<typeof listTimeline>>
+export type ListFeedQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFeed>>
 >;
-export type ListTimelineQueryError = ErrorType<unknown>;
+export type ListFeedQueryError = ErrorType<unknown>;
 
 /**
- * @summary Get pet timeline
+ * @summary Get feed
  */
 
-export function useListTimeline<
-  TData = Awaited<ReturnType<typeof listTimeline>>,
+export function useListFeed<
+  TData = Awaited<ReturnType<typeof listFeed>>,
   TError = ErrorType<unknown>,
 >(
   crecheId: number,
-  petId: number,
-  params?: ListTimelineParams,
   options?: {
     query?: UseQueryOptions<
-      Awaited<ReturnType<typeof listTimeline>>,
+      Awaited<ReturnType<typeof listFeed>>,
       TError,
       TData
     >;
     request?: SecondParameter<typeof customFetch>;
   },
 ): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListTimelineQueryOptions(
-    crecheId,
-    petId,
-    params,
-    options,
-  );
+  const queryOptions = getListFeedQueryOptions(crecheId, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -3139,19 +3099,18 @@ export function useListTimeline<
 }
 
 /**
- * @summary Add timeline event
+ * @summary Add feed post
  */
-export const getAddTimelineEventUrl = (crecheId: number, petId: number) => {
-  return `/api/creches/${crecheId}/pets/${petId}/timeline`;
+export const getAddFeedPostUrl = (crecheId: number) => {
+  return `/api/creches/${crecheId}/feed`;
 };
 
-export const addTimelineEvent = async (
+export const addFeedPost = async (
   crecheId: number,
-  petId: number,
   createTimelineEventRequest: CreateTimelineEventRequest,
   options?: RequestInit,
-): Promise<TimelineEvent> => {
-  return customFetch<TimelineEvent>(getAddTimelineEventUrl(crecheId, petId), {
+): Promise<AddFeedPost201> => {
+  return customFetch<AddFeedPost201>(getAddFeedPostUrl(crecheId), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -3159,32 +3118,24 @@ export const addTimelineEvent = async (
   });
 };
 
-export const getAddTimelineEventMutationOptions = <
+export const getAddFeedPostMutationOptions = <
   TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof addTimelineEvent>>,
+    Awaited<ReturnType<typeof addFeedPost>>,
     TError,
-    {
-      crecheId: number;
-      petId: number;
-      data: BodyType<CreateTimelineEventRequest>;
-    },
+    { crecheId: number; data: BodyType<CreateTimelineEventRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationOptions<
-  Awaited<ReturnType<typeof addTimelineEvent>>,
+  Awaited<ReturnType<typeof addFeedPost>>,
   TError,
-  {
-    crecheId: number;
-    petId: number;
-    data: BodyType<CreateTimelineEventRequest>;
-  },
+  { crecheId: number; data: BodyType<CreateTimelineEventRequest> },
   TContext
 > => {
-  const mutationKey = ["addTimelineEvent"];
+  const mutationKey = ["addFeedPost"];
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation &&
       "mutationKey" in options.mutation &&
@@ -3194,56 +3145,44 @@ export const getAddTimelineEventMutationOptions = <
     : { mutation: { mutationKey }, request: undefined };
 
   const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof addTimelineEvent>>,
-    {
-      crecheId: number;
-      petId: number;
-      data: BodyType<CreateTimelineEventRequest>;
-    }
+    Awaited<ReturnType<typeof addFeedPost>>,
+    { crecheId: number; data: BodyType<CreateTimelineEventRequest> }
   > = (props) => {
-    const { crecheId, petId, data } = props ?? {};
+    const { crecheId, data } = props ?? {};
 
-    return addTimelineEvent(crecheId, petId, data, requestOptions);
+    return addFeedPost(crecheId, data, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
 };
 
-export type AddTimelineEventMutationResult = NonNullable<
-  Awaited<ReturnType<typeof addTimelineEvent>>
+export type AddFeedPostMutationResult = NonNullable<
+  Awaited<ReturnType<typeof addFeedPost>>
 >;
-export type AddTimelineEventMutationBody = BodyType<CreateTimelineEventRequest>;
-export type AddTimelineEventMutationError = ErrorType<unknown>;
+export type AddFeedPostMutationBody = BodyType<CreateTimelineEventRequest>;
+export type AddFeedPostMutationError = ErrorType<unknown>;
 
 /**
- * @summary Add timeline event
+ * @summary Add feed post
  */
-export const useAddTimelineEvent = <
+export const useAddFeedPost = <
   TError = ErrorType<unknown>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof addTimelineEvent>>,
+    Awaited<ReturnType<typeof addFeedPost>>,
     TError,
-    {
-      crecheId: number;
-      petId: number;
-      data: BodyType<CreateTimelineEventRequest>;
-    },
+    { crecheId: number; data: BodyType<CreateTimelineEventRequest> },
     TContext
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseMutationResult<
-  Awaited<ReturnType<typeof addTimelineEvent>>,
+  Awaited<ReturnType<typeof addFeedPost>>,
   TError,
-  {
-    crecheId: number;
-    petId: number;
-    data: BodyType<CreateTimelineEventRequest>;
-  },
+  { crecheId: number; data: BodyType<CreateTimelineEventRequest> },
   TContext
 > => {
-  return useMutation(getAddTimelineEventMutationOptions(options));
+  return useMutation(getAddFeedPostMutationOptions(options));
 };
 
 /**

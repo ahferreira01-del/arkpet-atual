@@ -5,7 +5,7 @@ import { usePush } from "@/hooks/use-push";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon } from "lucide-react";
+import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon, PackageOpen, CircleDollarSign } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -18,38 +18,47 @@ export default function Settings() {
   const { data: creche, isLoading } = useGetCreche(crecheId);
   const updateMutation = useUpdateCreche();
   const [saved, setSaved] = useState(false);
-  const { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
-  const [testingPush, setTestingPush] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
-  const handleTestPush = async () => {
-    setTestingPush(true);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setUploadingLogo(true);
     try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`${import.meta.env.BASE_URL}api/push/test`, {
+      const res = await fetch("/api/storage/uploads/request-url", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
       });
-      if (!res.ok) {
-        let msg = "";
-        try { msg = (await res.json())?.error ?? ""; } catch {}
-        throw new Error(msg || `HTTP ${res.status}`);
-      }
-      toast({
-        title: "Teste enviado ✓",
-        description: "Você deve receber uma notificação em segundos. Se nada aparecer, verifique as permissões do navegador.",
+      if (!res.ok) throw new Error("Erro ao gerar link de upload");
+      const { uploadURL, objectPath } = await res.json();
+      
+      const uploadRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
       });
-    } catch (e: any) {
-      console.error("[push test]", e);
-      toast({
-        title: "Falha no teste",
-        description: e?.message ?? "Não foi possível enviar o teste.",
-        variant: "destructive",
+      if (!uploadRes.ok) throw new Error("Erro ao fazer upload do arquivo");
+      
+      updateMutation.mutate({
+        crecheId,
+        data: { logoUrl: `/api/storage/public-objects/${objectPath}` }
+      }, {
+        onSuccess: () => queryClient.invalidateQueries()
       });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
-      setTimeout(() => setTestingPush(false), 1500);
+      setUploadingLogo(false);
     }
   };
+
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -62,6 +71,10 @@ export default function Settings() {
           address: formData.get("address") as string,
           phone: formData.get("phone") as string,
           maxCapacity: Number(formData.get("maxCapacity")),
+          deliveryType: formData.get("deliveryType") as "fixed" | "on_demand",
+          deliveryFee: (Number(formData.get("deliveryFee")) * 100).toString(),
+          pixKey: formData.get("pixKey") as string,
+          pixName: formData.get("pixName") as string,
         },
       },
       {
@@ -84,141 +97,48 @@ export default function Settings() {
         icon={SettingsIcon}
       />
 
-      {/* Push Notifications Card */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/10">
-            <div className={cn(
-              "h-10 w-10 rounded-xl flex items-center justify-center transition-all duration-300",
-              isSubscribed ? "bg-primary/20" : "bg-white/5"
-            )}>
-              {isSubscribed ? (
-                <BellRing className="h-5 w-5 text-primary animate-pulse" />
-              ) : (
-                <Bell className="h-5 w-5 text-muted-foreground" />
-              )}
-            </div>
-            <div>
-              <h2 className="text-lg font-display font-semibold text-white">Notificações Push</h2>
-              <p className="text-xs text-muted-foreground">Receba alertas mesmo com o app fechado</p>
-            </div>
-          </div>
-
-          {isIosWithoutPwa ? (
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm text-blue-300">
-              <BellOff className="h-5 w-5 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium mb-1">Adicione o app à tela inicial</p>
-                <p className="text-xs opacity-80">No iPhone/iPad, as notificações só funcionam quando o ArkPet está instalado como app. Toque em <strong>Compartilhar</strong> e depois em <strong>"Adicionar à Tela de Início"</strong>, depois abra o app de lá.</p>
-              </div>
-            </div>
-          ) : !isSupported ? (
-            <div className="flex items-center gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
-              <BellOff className="h-5 w-5 flex-shrink-0" />
-              <p>Seu navegador não suporta notificações push. Use Chrome no Android ou Safari no iOS 16.4+ (via tela inicial).</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Status indicator */}
-              <div className={cn(
-                "flex items-center justify-between p-4 rounded-xl border transition-all duration-300",
-                isSubscribed
-                  ? "bg-primary/5 border-primary/20"
-                  : "bg-white/3 border-white/10"
-              )}>
-                <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "h-2.5 w-2.5 rounded-full transition-all duration-300",
-                    isSubscribed ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" : "bg-muted-foreground/40"
-                  )} />
-                  <div>
-                    <p className="text-sm font-medium text-white">
-                      {isSubscribed ? "Notificações ativadas" : "Notificações desativadas"}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {permission === "denied"
-                        ? "Permissão bloqueada — altere nas configurações do navegador"
-                        : isSubscribed
-                        ? "Este dispositivo receberá alertas em tempo real"
-                        : "Ative para receber alertas de reservas, tarefas e mensagens"}
-                    </p>
-                  </div>
-                </div>
-                {permission !== "denied" && (
-                  <Button
-                    variant={isSubscribed ? "ghost" : "default"}
-                    size="sm"
-                    onClick={isSubscribed ? unsubscribe : subscribe}
-                    isLoading={pushLoading}
-                    className={cn(
-                      "ml-4 shrink-0",
-                      isSubscribed && "hover:bg-destructive/10 hover:text-destructive"
-                    )}
-                  >
-                    {isSubscribed ? "Desativar" : "Ativar"}
-                  </Button>
-                )}
-              </div>
-
-              {isSubscribed && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleTestPush}
-                  isLoading={testingPush}
-                  className="w-full justify-center"
-                >
-                  <BellRing className="mr-2 h-4 w-4" /> Enviar notificação de teste
-                </Button>
-              )}
-
-              {/* Android battery optimization warning */}
-              {isSubscribed && /android/i.test(navigator.userAgent) && (
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/8 border border-amber-500/15 text-xs text-amber-300/80">
-                  <span className="flex-shrink-0 mt-0.5">⚡</span>
-                  <p>
-                    <span className="font-medium text-amber-300">Dica Android:</span> para garantir o recebimento mesmo com o app fechado, vá em{" "}
-                    <span className="font-medium">Configurações → Aplicativos → Chrome → Bateria</span>{" "}
-                    e selecione <span className="font-medium">"Sem restrições"</span>.
-                  </p>
-                </div>
-              )}
-
-              {/* What you'll get */}
-              {!isSubscribed && permission !== "denied" && (
-                <div className="grid grid-cols-1 gap-2">
-                  {[
-                    { icon: "🐾", label: "Check-in e check-out do seu pet" },
-                    { icon: "📅", label: "Confirmação e mudanças de reserva" },
-                    { icon: "📋", label: "Tarefas atribuídas a você" },
-                    { icon: "💬", label: "Novas mensagens no chat" },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/3 text-sm text-muted-foreground">
-                      <span>{item.icon}</span>
-                      <span>{item.label}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Creche Info */}
       {user?.role !== "tutor" && (
         <Card>
           <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-6 pb-4 border-b border-white/10">
-              <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
-                <Building2 className="h-5 w-5 text-primary" />
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center overflow-hidden">
+                  {creche?.logoUrl ? (
+                    <img src={creche.logoUrl} alt="Logo da Creche" className="h-full w-full object-cover" />
+                  ) : (
+                    <Building2 className="h-5 w-5 text-primary" />
+                  )}
+                </div>
+                <div>
+                  <h2 className="text-lg font-display font-semibold text-white">Dados da Creche</h2>
+                  {user?.role === "staff" && (
+                    <p className="text-xs text-muted-foreground">Apenas visualização</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <h2 className="text-lg font-display font-semibold text-white">Dados da Creche</h2>
-                {user?.role === "staff" && (
-                  <p className="text-xs text-muted-foreground">Apenas visualização</p>
-                )}
-              </div>
+              
+              {user?.role !== "staff" && (
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleLogoUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fileInputRef.current?.click()}
+                    isLoading={uploadingLogo}
+                  >
+                    Alterar Logo
+                  </Button>
+                </div>
+              )}
             </div>
 
             {user?.role === "staff" ? (
@@ -237,7 +157,7 @@ export default function Settings() {
                     <p className="font-medium text-white">{creche?.address || "—"}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="flex items-start gap-3 py-3">
                     <Phone className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div>
@@ -252,6 +172,26 @@ export default function Settings() {
                       <p className="font-medium text-white">{creche?.maxCapacity || "—"} pets</p>
                     </div>
                   </div>
+                </div>
+                
+                {/* Loja / Delivery */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3 py-3">
+                    <PackageOpen className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-0.5">Tipo de Frete</p>
+                      <p className="font-medium text-white">{creche?.deliveryType === 'on_demand' ? "Sob Consulta" : "Taxa Fixa"}</p>
+                    </div>
+                  </div>
+                  {creche?.deliveryType === 'fixed' && (
+                    <div className="flex items-start gap-3 py-3">
+                      <CircleDollarSign className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-muted-foreground text-xs mb-0.5">Taxa de Frete</p>
+                        <p className="font-medium text-white">R$ {(Number(creche?.deliveryFee || 0) / 100).toFixed(2).replace('.', ',')}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -270,7 +210,7 @@ export default function Settings() {
                   <Input name="address" defaultValue={creche?.address || ""} placeholder="Rua das Flores, 123 - São Paulo" />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium flex items-center gap-2">
                       <Phone className="h-4 w-4 text-muted-foreground" /> Telefone
@@ -282,6 +222,38 @@ export default function Settings() {
                       <Users className="h-4 w-4 text-muted-foreground" /> Capacidade
                     </label>
                     <Input name="maxCapacity" type="number" min={1} max={200} defaultValue={creche?.maxCapacity || 15} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <PackageOpen className="h-4 w-4 text-muted-foreground" /> Tipo de Frete (Loja)
+                    </label>
+                    <select name="deliveryType" defaultValue={creche?.deliveryType || "fixed"} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                      <option value="fixed">Taxa Fixa</option>
+                      <option value="on_demand">Sob Consulta</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium flex items-center gap-2">
+                      <CircleDollarSign className="h-4 w-4 text-muted-foreground" /> Valor da Taxa (R$)
+                    </label>
+                    <Input name="deliveryFee" type="number" step="0.01" min={0} defaultValue={((Number(creche?.deliveryFee) || 0) / 100).toFixed(2)} />
+                  </div>
+                </div>
+
+                <div className="pt-4 pb-2 border-t border-white/10 mt-6">
+                  <h3 className="text-sm font-semibold text-white mb-4">Configurações de Recebimento (Pix)</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">Chave Pix</label>
+                      <Input name="pixKey" defaultValue={creche?.pixKey || ""} placeholder="CPF, CNPJ, Email ou Celular" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-muted-foreground">Nome do Favorecido</label>
+                      <Input name="pixName" defaultValue={creche?.pixName || ""} placeholder="Nome registrado na conta" />
+                    </div>
                   </div>
                 </div>
 
@@ -310,7 +282,7 @@ export default function Settings() {
             </div>
             <h2 className="text-lg font-display font-semibold text-white">Minha Conta</h2>
           </div>
-          <div className="grid grid-cols-2 gap-6 text-sm mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm mb-6">
             <div>
               <p className="text-muted-foreground mb-1">Nome</p>
               <p className="font-medium text-white">{user?.name}</p>
@@ -332,14 +304,41 @@ export default function Settings() {
           </div>
 
           {/* Logout button — prominent on mobile */}
-          <div className="pt-4 border-t border-white/10">
+          <div className="pt-4 border-t border-white/10 space-y-3">
             <button
               onClick={logout}
-              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 font-medium text-sm transition-all duration-200 active:scale-[0.98]"
+              className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-white/10 bg-white/5 text-white hover:bg-white/10 font-medium text-sm transition-all duration-200 active:scale-[0.98]"
             >
               <LogOut className="h-4 w-4" />
               Sair da conta
             </button>
+            
+            {user?.role === "tutor" && (
+              <button
+                onClick={async () => {
+                  if (confirm("⚠️ TEM CERTEZA? Esta ação é irreversível. Seus dados pessoais serão apagados e seu acesso será permanentemente revogado. Suas faturas pagas continuarão nos registros da creche.")) {
+                    try {
+                      const token = localStorage.getItem("auth_token");
+                      const res = await fetch(`/api/users/${user.id}/anonymize`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${token}` }
+                      });
+                      if (!res.ok) {
+                        const errorData = await res.json().catch(() => ({}));
+                        throw new Error(errorData.error || "Erro ao excluir conta");
+                      }
+                      logout();
+                    } catch (err: any) {
+                      toast({ title: "Erro ao excluir conta", description: err.message, variant: "destructive" });
+                    }
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 hover:text-red-300 font-medium text-sm transition-all duration-200 active:scale-[0.98]"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Excluir Meus Dados (LGPD)
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>

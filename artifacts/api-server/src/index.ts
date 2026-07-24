@@ -1,6 +1,6 @@
 import app from "./app";
 import { initializeDatabase, initStripe } from "./startup.js";
-import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender } from "./lib/scheduler.js";
+import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender, startReceiptCleanupJob } from "./lib/scheduler.js";
 
 // Process-level backstop: a stray rejected promise or thrown error in async
 // code (e.g. a transient DB/network hiccup) must NEVER silently crash the API
@@ -21,6 +21,13 @@ if (!rawPort) {
   );
 }
 
+if (!process.env.ENCRYPTION_KEY) {
+  throw new Error(
+    'ENCRYPTION_KEY não definida nos Secrets. ' +
+    'O servidor não pode iniciar sem ela.'
+  );
+}
+
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
@@ -32,6 +39,7 @@ initializeDatabase().then(() => {
   startMensalidadeScheduler();
   startScheduledPlanChangeApplicator();
   startPastDueSuspender();
+  startReceiptCleanupJob();
   app.listen(port, () => {
     console.log(`Server listening on port ${port}`);
     // Stripe init (product/price seeding + sync) runs after the server is

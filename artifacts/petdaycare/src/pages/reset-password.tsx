@@ -18,7 +18,7 @@ export default function ResetPassword() {
   const mutation = useResetPassword({
     mutation: {
       onSuccess: () => setDone(true),
-      onError: (err: any) => setError(err?.message || "Não foi possível redefinir a senha."),
+      onError: (err: Error) => setError(err?.message || "Não foi possível redefinir a senha."),
     },
   });
 

@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
+import { usersTable, financialAuditLogsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { hashPassword } from "../lib/auth.js";
+import { encrypt, decrypt } from "../lib/crypto.js";
+import { logFinancialAudit } from "../services/audit.js";
 
 const router = Router();
 router.use(authenticate);
@@ -42,7 +44,7 @@ router.get("/", requireRole("master_admin"), async (_req, res) => {
 
 // POST create user (master_admin or creche_admin)
 router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const { name, email, password, role, crecheId } = req.body;
+  const { name, email, password, role, crecheId, cpf, phone } = req.body;
   if (!name || !email || !password || !role) {
     res.status(400).json({ error: "name, email, password e role são obrigatórios" });
     return;
@@ -64,6 +66,8 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
     role, crecheId: assignedCrecheId,
     mustChangePassword: true,
     isActive: true,
+    cpf: cpf ? encrypt(cpf) : null,
+    phone: phone ? encrypt(phone) : null,
   }).returning();
   res.status(201).json({
     id: user.id, name: user.name, email: user.email, role: user.role,
@@ -80,8 +84,21 @@ router.get("/:userId", async (req: AuthRequest, res) => {
     role: usersTable.role, crecheId: usersTable.crecheId, avatarUrl: usersTable.avatarUrl,
     isActive: usersTable.isActive, mustChangePassword: usersTable.mustChangePassword,
     createdAt: usersTable.createdAt,
+    cpf: usersTable.cpf, phone: usersTable.phone
   }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) { res.status(404).json({ error: "Usuário não encontrado" }); return; }
+
+  const isSelf = req.user?.id === userId;
+  const isAdmin = req.user?.role === "master_admin" || req.user?.role === "creche_admin";
+  
+  if (isSelf || isAdmin) {
+    user.cpf = user.cpf ? decrypt(user.cpf) : null;
+    user.phone = user.phone ? decrypt(user.phone) : null;
+  } else {
+    user.cpf = null;
+    user.phone = null;
+  }
+
   res.json(user);
 });
 
@@ -92,11 +109,13 @@ router.put("/:userId", async (req: AuthRequest, res) => {
   const isAdmin = req.user?.role === "master_admin" || req.user?.role === "creche_admin";
   if (!isSelf && !isAdmin) { res.status(403).json({ error: "Sem permissão" }); return; }
 
-  const { name, email, avatarUrl, role, isActive, crecheId, newPassword } = req.body;
+  const { name, email, avatarUrl, role, isActive, crecheId, newPassword, cpf, phone } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (email !== undefined) updates.email = String(email).trim().toLowerCase();
   if (avatarUrl !== undefined) updates.avatarUrl = avatarUrl;
+  if (cpf !== undefined) updates.cpf = cpf ? encrypt(cpf) : null;
+  if (phone !== undefined) updates.phone = phone ? encrypt(phone) : null;
   if (newPassword !== undefined) {
     updates.passwordHash = hashPassword(newPassword);
     updates.mustChangePassword = false;
@@ -120,6 +139,55 @@ router.delete("/:userId", requireRole("master_admin", "creche_admin"), async (re
   const userId = parseInt(String(req.params.userId));
   await db.update(usersTable).set({ isActive: false }).where(eq(usersTable.id, userId));
   res.json({ message: "Usuário desativado" });
+});
+
+// POST anonymize tutor (LGPD)
+router.post("/:tutorId/anonymize", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const tutorId = parseInt(String(req.params.tutorId));
+  const crecheId = req.user!.crecheId;
+  
+  if (!crecheId) {
+    res.status(400).json({ error: "Admin sem creche associada" });
+    return;
+  }
+
+  const [tutor] = await db.select().from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
+  if (!tutor) {
+    res.status(404).json({ error: "Tutor não encontrado" });
+    return;
+  }
+
+  if (tutor.crecheId !== crecheId) {
+    res.status(403).json({ error: "Sem permissão para anonimizar este tutor" });
+    return;
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.update(usersTable)
+        .set({
+          name: `Tutor Anonimizado #${tutorId}`,
+          email: `anonimizado_${tutorId}@arkpet.internal`,
+          cpf: null,
+          phone: null,
+          avatarUrl: null,
+        })
+        .where(eq(usersTable.id, tutorId));
+
+      await logFinancialAudit({
+        crecheId,
+        userId: req.user!.id,
+        action: 'tutor_anonymize',
+        referenceId: tutorId,
+        referenceType: 'users',
+        details: `Dados pessoais do tutor #${tutorId} anonimizados por solicitação LGPD. Registros financeiros preservados.`
+      }, tx);
+    });
+
+    res.json({ success: true, message: "Dados anonimizados com sucesso" });
+  } catch (err: any) {
+    res.status(500).json({ error: "Erro ao anonimizar tutor: " + err.message });
+  }
 });
 
 export default router;

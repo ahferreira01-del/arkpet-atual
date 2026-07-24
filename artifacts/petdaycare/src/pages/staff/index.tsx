@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { useListTasks, useCompleteTask, useListPets, useAddTimelineEvent } from "@workspace/api-client-react";
+import { useListTasks, useCompleteTask, useListPets, useAddFeedPost } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -62,7 +62,7 @@ function TaskCompleteModal({
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const completeTaskMutation = useCompleteTask();
-  const addEventMutation = useAddTimelineEvent();
+  const addEventMutation = useAddFeedPost();
 
   const defaultType = taskTypeToEventType[task.type] || "note";
   const [selectedType, setSelectedType] = useState(defaultType);
@@ -153,7 +153,7 @@ function TaskCompleteModal({
       title={`Concluir: ${task.title}`}
       description={task.petName ? `Publicar atualização na linha do tempo de ${task.petName}` : ""}
     >
-      <form onSubmit={handlePublishAndComplete} className="space-y-5 mt-4">
+      <form onSubmit={handlePublishAndComplete} className="space-y-4 mt-4">
         {/* Task info banner */}
         <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
           <span className="text-2xl">{eventTypes.find(e => e.value === defaultType)?.emoji || "📋"}</span>
@@ -192,7 +192,7 @@ function TaskCompleteModal({
 
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-white/10">
-              <img src={preview} alt="Preview" className="w-full max-h-52 object-cover" />
+              <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
               <button
                 type="button"
                 onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
@@ -210,7 +210,7 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
               >
                 <ImageIcon className="h-5 w-5" />
                 <span className="text-xs">Galeria</span>
@@ -218,7 +218,7 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => document.getElementById("task-camera-input")?.click()}
-                className="h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
               >
                 <Camera className="h-5 w-5" />
                 <span className="text-xs">Câmera</span>
@@ -258,7 +258,7 @@ function TaskCompleteModal({
   );
 }
 
-export default function StaffDashboard() {
+export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
@@ -281,7 +281,8 @@ export default function StaffDashboard() {
   }, [highlightTaskId]);
 
   const { data: tasks, isLoading } = useListTasks(crecheId, { date: todayBrazil() });
-  const { data: pets } = useListPets(crecheId);
+  const { data: petsResponse } = useListPets(crecheId);
+  const pets = (petsResponse as any)?.items;
   const completeTaskMutation = useCompleteTask();
   const { toast } = useToast();
 
@@ -318,21 +319,23 @@ export default function StaffDashboard() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto">
-      <PageHeader
-        title="Tarefas do Dia"
-        description={format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-        icon={ClipboardList}
-        action={
-          <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-            <Users className="h-4 w-4" />
-            {presentCount} pet{presentCount !== 1 ? "s" : ""} presente{presentCount !== 1 ? "s" : ""}
-          </div>
-        }
-      />
+    <div className={hideHeader ? "space-y-6" : "space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto"}>
+      {!hideHeader && (
+        <PageHeader
+          title="Tarefas do Dia"
+          description={format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+          icon={ClipboardList}
+          action={
+            <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+              <Users className="h-4 w-4" />
+              {presentCount} pet{presentCount !== 1 ? "s" : ""} presente{presentCount !== 1 ? "s" : ""}
+            </div>
+          }
+        />
+      )}
 
       {/* Filter toggle */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setOnlyPresent(true)}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -358,7 +361,7 @@ export default function StaffDashboard() {
       </div>
 
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <h2 className="text-xl font-display font-semibold mb-6 flex items-center gap-2">
             <CircleDashed className="text-amber-400" /> Pendentes ({pendingTasks.length})
           </h2>
@@ -371,7 +374,7 @@ export default function StaffDashboard() {
                 <div
                   key={task.id}
                   id={`task-${task.id}`}
-                  className={`p-4 rounded-xl bg-white/5 border flex items-center justify-between hover:bg-white/10 transition-all group ${
+                  className={`p-4 rounded-xl bg-white/5 border flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/10 transition-all group ${
                     task.petId && checkedInPetIds.has(task.petId)
                       ? "border-emerald-500/20"
                       : "border-white/10"
@@ -396,7 +399,7 @@ export default function StaffDashboard() {
                       <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{task.description}</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="flex items-center justify-between sm:justify-end gap-3 flex-shrink-0">
                     <Badge variant={task.priority === "high" ? "destructive" : "secondary"}>
                       {priorityLabel[task.priority] || task.priority}
                     </Badge>
@@ -405,7 +408,7 @@ export default function StaffDashboard() {
                       variant="glass"
                       size="sm"
                       isLoading={completeTaskMutation.isPending && !taskToComplete}
-                      className="group-hover:bg-primary group-hover:text-white group-hover:border-primary border-white/20 transition-all"
+                      className="group-hover:bg-primary group-hover:text-white group-hover:border-primary border-white/20 transition-all w-full sm:w-auto"
                     >
                       Concluir
                     </Button>

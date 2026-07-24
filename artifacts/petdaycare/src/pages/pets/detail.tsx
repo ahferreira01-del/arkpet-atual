@@ -1,33 +1,28 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   useGetPet,
-  useListVaccines,
-  useListMedications,
-  useListTimeline,
   useUpdatePet,
-  useAddVaccine,
-  useAddMedication,
-  useAddTimelineEvent,
   useListBookings,
   useCheckIn,
-  useListWalks,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { compressImage, resolvePhotoUrl } from "@/lib/utils";
+import { resolvePhotoUrl } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useTutorInvoices } from "@/hooks/use-financial";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Syringe, Activity, Clock, Plus, AlertCircle, LogIn, Camera, ImageIcon, X, Sparkles, QrCode, UtensilsCrossed, Footprints, Download, Navigation, Car, ExternalLink, Trash2, Package } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
-import { parseLocalDate } from "@/lib/date-utils";
-import { ptBR } from "date-fns/locale";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { Dog, Syringe, Activity, Clock, AlertCircle, LogIn, Camera, QrCode, UtensilsCrossed, Navigation, Car } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import QRCode from "qrcode";
+
+import { OverviewTab } from "./components/overview-tab";
+import { PlanTab } from "./components/plan-tab";
+import { QrTab } from "./components/qr-tab";
+import { MedicalTab } from "./components/medical-tab";
+
 
 async function requestPetPhotoUpload(
   file: File,
@@ -51,14 +46,23 @@ async function uploadFileToStorage(uploadURL: string, file: File): Promise<void>
   if (!res.ok) throw new Error("Erro ao enviar a foto. Tente novamente.");
 }
 
+const speciesMap: Record<string, string> = { dog: 'Cachorro', cat: 'Gato', bird: 'Pássaro', other: 'Outro' };
+const genderMap: Record<string, string> = { male: "Macho", female: "Fêmea", unknown: "Desconhecido" };
+const temperamentMap: Record<string, string> = { calm: "Calmo", playful: "Brincalhão", aggressive: "Agressivo", shy: "Tímido", sociable: "Sociável" };
+
 export default function PetDetail({ id }: { id: number }) {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
 
   const { data: pet, isLoading } = useGetPet(crecheId, id);
-  const { data: bookings } = useListBookings(crecheId);
+  const { data: bookingsResponse } = useListBookings(crecheId);
+  const bookings = (bookingsResponse as any)?.items;
   const updatePetMutation = useUpdatePet();
+  const { data: tutorInvoicesData } = useTutorInvoices(crecheId, pet?.tutorId);
+  const tutorInvoices = Array.isArray(tutorInvoicesData) 
+    ? tutorInvoicesData 
+    : (tutorInvoicesData as any)?.data ?? (tutorInvoicesData as any)?.items ?? [];
 
   const [editOpen, setEditOpen] = useState(false);
   const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -121,6 +125,7 @@ export default function PetDetail({ id }: { id: number }) {
         data: {
           name: fd.get("name") as string,
           breed: (fd.get("breed") as string) || null,
+          birthDate: (fd.get("birthDate") as string) || null,
           weight: fd.get("weight") ? Number(fd.get("weight")) : null,
           color: (fd.get("color") as string) || null,
           allergies: (fd.get("allergies") as string) || null,
@@ -141,10 +146,20 @@ export default function PetDetail({ id }: { id: number }) {
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando perfil do pet...</div>;
   if (!pet) return <div className="p-8 text-center text-destructive">Pet não encontrado.</div>;
 
-  const confirmedBooking = bookings?.find((b) => b.petId === id && b.status === "confirmed");
+  const safeBookings = Array.isArray(bookings)
+    ? bookings
+    : (bookings as any)?.data ?? (bookings as any)?.bookings ?? [];
+  const confirmedBooking = safeBookings.find((b: any) => b.petId === id && b.status === "confirmed");
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-white/10">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        </Button>
+        <span className="text-sm text-muted-foreground font-medium">Voltar</span>
+      </div>
+
       {/* Header */}
       <div className="glass-panel rounded-3xl p-6 md:p-8 flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">
         <div className="absolute right-0 top-0 w-1/3 h-full bg-gradient-to-l from-primary/20 to-transparent pointer-events-none" />
@@ -190,14 +205,27 @@ export default function PetDetail({ id }: { id: number }) {
             ) : (
               <Badge variant="secondary" className="w-max mx-auto md:mx-0">Em casa</Badge>
             )}
+            {user?.role !== "tutor" && tutorInvoices?.some((inv: any) => inv.status === "overdue") && (
+              <Badge variant="destructive" className="w-max mx-auto md:mx-0">Inadimplente</Badge>
+            )}
+            {user?.role !== "tutor" && tutorInvoices && !tutorInvoices.some((inv: any) => inv.status === "overdue") && (
+              <Badge variant="success" className="w-max mx-auto md:mx-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Adimplente</Badge>
+            )}
           </div>
           <p className="text-lg text-muted-foreground capitalize mb-4">
-            {pet.breed || pet.species} • {pet.gender} • {pet.weight ? `${pet.weight} kg` : "Peso desconhecido"}
+            {pet.breed || speciesMap[pet.species] || pet.species} • {genderMap[pet.gender] || pet.gender} • {pet.weight ? `${pet.weight} kg` : "Peso desconhecido"}
           </p>
+          <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-2">
+            {pet.weight && (
+              <Badge className="bg-white/10 text-white hover:bg-white/20">
+                Porte {pet.weight < 10 ? "Pequeno" : pet.weight < 25 ? "Médio" : "Grande"}
+              </Badge>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2 justify-center md:justify-start">
             {pet.temperament && (
               <Badge variant="outline" className="capitalize bg-white/5">
-                <Activity className="w-3 h-3 mr-1" /> {pet.temperament}
+                <Activity className="w-3 h-3 mr-1" /> {temperamentMap[pet.temperament] || pet.temperament}
               </Badge>
             )}
             {pet.allergies && (
@@ -216,10 +244,10 @@ export default function PetDetail({ id }: { id: number }) {
           </div>
         </div>
 
-        <div className="flex gap-2 z-10 w-full md:w-auto flex-wrap justify-center md:justify-end">
+        <div className="hidden md:flex gap-2 z-10 w-auto flex-wrap justify-end ml-auto">
           <Button variant="glass" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2">
             <QrCode className="h-4 w-4" />
-            <span className="hidden sm:inline">QR Code</span>
+            <span>QR Code</span>
           </Button>
           {confirmedBooking && (
             <Button
@@ -229,12 +257,11 @@ export default function PetDetail({ id }: { id: number }) {
               onClick={() => setOnTheWayOpen(true)}
             >
               <Navigation className="h-4 w-4" />
-              <span className="hidden sm:inline">A Caminho</span>
+              <span>A Caminho</span>
             </Button>
           )}
           <Button variant="glass" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
-            <span className="sm:hidden">✏️</span>
-            <span className="hidden sm:inline">Editar Perfil</span>
+            <span>Editar Perfil</span>
           </Button>
           {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
             <CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} />
@@ -288,9 +315,9 @@ export default function PetDetail({ id }: { id: number }) {
       </Modal>
 
       {/* Edit Modal */}
-      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title="Editar Perfil do Pet">
+      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title="Editar Perfil do Pet" className="max-w-2xl">
         <form onSubmit={handleEditProfile} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Nome</label>
               <Input name="name" defaultValue={pet.name} required />
@@ -298,6 +325,10 @@ export default function PetDetail({ id }: { id: number }) {
             <div className="space-y-2">
               <label className="text-sm font-medium">Raça</label>
               <Input name="breed" defaultValue={pet.breed || ""} placeholder="Golden Retriever" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nascimento</label>
+              <Input name="birthDate" type="date" defaultValue={pet.birthDate ? pet.birthDate.split('T')[0] : ""} className="h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -343,17 +374,68 @@ export default function PetDetail({ id }: { id: number }) {
         </form>
       </Modal>
 
-      {/* Tabs */}
-      <Tabs
-        defaultTab="overview"
-        tabs={[
-          { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
-          { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
-          { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
-          { id: "timeline", label: "Linha do Tempo", icon: <Clock className="h-4 w-4" />, content: <TimelineTab crecheId={crecheId} petId={id} /> },
-          { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
-        ]}
-      />
+      {/* Desktop Tabs */}
+      <div className="hidden md:block">
+        <Tabs
+          defaultTab="overview"
+          tabs={[
+            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
+            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
+            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
+
+            { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
+          ]}
+        />
+      </div>
+
+      {/* Mobile Accordion */}
+      <div className="md:hidden pb-4">
+        <Accordion type="single" collapsible defaultValue="overview" className="w-full space-y-3">
+          {[
+            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
+            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
+            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
+
+            { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
+          ].map((tab) => (
+            <AccordionItem key={tab.id} value={tab.id} className="border border-white/10 bg-black/20 rounded-2xl overflow-hidden shadow-sm">
+              <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-white/5 transition-colors">
+                <div className="flex items-center gap-3 text-white text-base">
+                  {tab.icon && <div className="text-muted-foreground">{tab.icon}</div>}
+                  <span className="font-semibold">{tab.label}</span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4 pb-5 pt-2">
+                {tab.content}
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </div>
+
+      {/* Mobile Sticky Action Bar */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background/90 backdrop-blur-xl border-t border-white/10 z-50 flex gap-2 overflow-x-auto scrollbar-hide shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+        <Button variant="secondary" onClick={() => setQrModalOpen(true)} className="gap-2 flex-1 whitespace-nowrap bg-white/5 border border-white/10 text-white">
+          <QrCode className="h-4 w-4" />
+          <span>QR Code</span>
+        </Button>
+        {confirmedBooking && (
+          <Button
+            variant="outline"
+            className="gap-2 flex-1 whitespace-nowrap border-blue-500/30 text-blue-400 bg-blue-500/10"
+            onClick={() => setOnTheWayOpen(true)}
+          >
+            <Navigation className="h-4 w-4" />
+            <span>A Caminho</span>
+          </Button>
+        )}
+        <Button variant="secondary" onClick={() => setEditOpen(true)} className="gap-2 flex-1 whitespace-nowrap bg-white/5 border border-white/10 text-white">
+          <span>Editar Perfil</span>
+        </Button>
+        {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
+          <div className="flex-1 min-w-[120px]"><CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} /></div>
+        )}
+      </div>
     </div>
   );
 }
@@ -378,1161 +460,3 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
   );
 }
 
-function QrTab({ pet }: { pet: any }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!pet?.qrToken || !canvasRef.current) return;
-    QRCode.toCanvas(canvasRef.current, pet.qrToken, {
-      width: 280,
-      margin: 3,
-      color: { dark: "#000000", light: "#ffffff" },
-    });
-    QRCode.toDataURL(pet.qrToken, {
-      width: 600,
-      margin: 2,
-      color: { dark: "#000000", light: "#ffffff" },
-    }).then(setQrDataUrl);
-  }, [pet?.qrToken]);
-
-  if (!pet?.qrToken) {
-    return (
-      <div className="max-w-sm mx-auto text-center py-12 text-muted-foreground">
-        <QrCode className="h-12 w-12 mx-auto mb-4 opacity-30" />
-        <p>QR Code não disponível para este pet.</p>
-      </div>
-    );
-  }
-
-  const handleDownload = () => {
-    if (!qrDataUrl) return;
-    const a = document.createElement("a");
-    a.href = qrDataUrl;
-    a.download = `qr-${pet.name.toLowerCase().replace(/\s/g, "-")}.png`;
-    a.click();
-  };
-
-  return (
-    <div className="max-w-sm mx-auto">
-      <Card>
-        <CardContent className="p-8 flex flex-col items-center gap-6">
-          <div>
-            <h3 className="text-xl font-display font-semibold text-white text-center">{pet.name}</h3>
-            <p className="text-sm text-muted-foreground text-center mt-1">QR Code de Identificação</p>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-white shadow-[0_0_30px_rgba(139,92,246,0.3)]">
-            <canvas ref={canvasRef} className="rounded-lg block" />
-          </div>
-
-          <div className="w-full space-y-3">
-            <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Token de Identificação</p>
-              <p className="text-xs font-mono text-primary break-all">{pet.qrToken}</p>
-            </div>
-            <Button className="w-full" variant="outline" onClick={handleDownload} disabled={!qrDataUrl}>
-              <Download className="mr-2 h-4 w-4" /> Baixar QR Code
-            </Button>
-            <p className="text-xs text-muted-foreground text-center">
-              Imprima e fixe na coleira do pet. A staff pode escanear para identificação rápida.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: number }) {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const updatePetMutation = useUpdatePet();
-  const canEdit = user?.role !== "tutor";
-
-  const [saved, setSaved] = useState(false);
-
-  const defaultFeedingSchedule = [
-    { time: "08:00", amount: "1 xícara", notes: "" },
-    { time: "18:00", amount: "1 xícara", notes: "" },
-  ];
-  const defaultWalkSchedule = [
-    { time: "07:00", durationMinutes: 30, notes: "" },
-    { time: "17:00", durationMinutes: 30, notes: "" },
-  ];
-
-  const feedingSchedule: Array<{ time: string; amount: string; notes?: string }> =
-    pet?.feedingSchedule && Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule : defaultFeedingSchedule;
-  const walkSchedule: Array<{ time: string; durationMinutes: number; notes?: string }> =
-    pet?.walkSchedule && Array.isArray(pet.walkSchedule) ? pet.walkSchedule : defaultWalkSchedule;
-
-  const [editFeeding, setEditFeeding] = useState<Array<{ time: string; amount: string; foodName: string; notes: string }>>(
-    feedingSchedule.map((f) => ({ ...f, foodName: (f as any).foodName || "", notes: f.notes || "" }))
-  );
-  const [editWalk, setEditWalk] = useState<Array<{ time: string; durationMinutes: number; notes: string }>>(
-    walkSchedule.map((w) => ({ ...w, notes: w.notes || "" }))
-  );
-
-  const handleSave = () => {
-    updatePetMutation.mutate(
-      {
-        crecheId,
-        petId,
-        data: {
-          feedingSchedule: editFeeding,
-          walkSchedule: editWalk,
-        } as any,
-      },
-      {
-        onSuccess: () => {
-          setSaved(true);
-          queryClient.invalidateQueries();
-          setTimeout(() => setSaved(false), 3000);
-        },
-      }
-    );
-  };
-
-  return (
-    <div className="space-y-6 max-w-2xl mx-auto">
-      {/* Feeding Schedule */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                <UtensilsCrossed className="h-4 w-4 text-orange-400" />
-              </div>
-              <h3 className="text-lg font-display font-semibold text-white">Alimentação</h3>
-            </div>
-            {canEdit && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditFeeding([...editFeeding, { time: "12:00", amount: "", foodName: "", notes: "" }])}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Adicionar
-              </Button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {editFeeding.map((item, i) => (
-              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
-                <div className="flex-1 grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Horário</label>
-                    <Input
-                      type="time"
-                      value={item.time}
-                      onChange={(e) => {
-                        const copy = [...editFeeding];
-                        copy[i] = { ...copy[i], time: e.target.value };
-                        setEditFeeding(copy);
-                      }}
-                      disabled={!canEdit}
-                      className="h-9 text-base"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Quantidade</label>
-                    <Input
-                      value={item.amount}
-                      onChange={(e) => {
-                        const copy = [...editFeeding];
-                        copy[i] = { ...copy[i], amount: e.target.value };
-                        setEditFeeding(copy);
-                      }}
-                      disabled={!canEdit}
-                      placeholder="Ex: 1 xícara"
-                      className="h-9 text-base"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs text-muted-foreground">Nome da ração</label>
-                    <Input
-                      value={(item as any).foodName || ""}
-                      onChange={(e) => {
-                        const copy = [...editFeeding];
-                        copy[i] = { ...copy[i], foodName: e.target.value };
-                        setEditFeeding(copy);
-                      }}
-                      disabled={!canEdit}
-                      placeholder="Ex: Royal Canin Medium Adult"
-                      className="h-9 text-base"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs text-muted-foreground">Observações</label>
-                    <Input
-                      value={item.notes}
-                      onChange={(e) => {
-                        const copy = [...editFeeding];
-                        copy[i] = { ...copy[i], notes: e.target.value };
-                        setEditFeeding(copy);
-                      }}
-                      disabled={!canEdit}
-                      placeholder="Ex: evitar ração com frango"
-                      className="h-9 text-base"
-                    />
-                  </div>
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setEditFeeding(editFeeding.filter((_, j) => j !== i))}
-                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-            {editFeeding.length === 0 && (
-              <div className="text-center py-6 text-muted-foreground text-sm">Nenhum horário de alimentação configurado.</div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Walk Schedule */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-green-500/20 flex items-center justify-center">
-                <Footprints className="h-4 w-4 text-green-400" />
-              </div>
-              <h3 className="text-lg font-display font-semibold text-white">Passeios</h3>
-            </div>
-            {canEdit && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditWalk([...editWalk, { time: "12:00", durationMinutes: 30, notes: "" }])}
-              >
-                <Plus className="h-4 w-4 mr-1" /> Adicionar
-              </Button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {editWalk.map((item, i) => (
-              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
-                <div className="flex-1 grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Horário</label>
-                    <Input
-                      type="time"
-                      value={item.time}
-                      onChange={(e) => {
-                        const copy = [...editWalk];
-                        copy[i] = { ...copy[i], time: e.target.value };
-                        setEditWalk(copy);
-                      }}
-                      disabled={!canEdit}
-                      className="h-9 text-base"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Duração (min)</label>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={180}
-                      value={item.durationMinutes}
-                      onChange={(e) => {
-                        const copy = [...editWalk];
-                        copy[i] = { ...copy[i], durationMinutes: Number(e.target.value) };
-                        setEditWalk(copy);
-                      }}
-                      disabled={!canEdit}
-                      className="h-9 text-base"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-1">
-                    <label className="text-xs text-muted-foreground">Notas</label>
-                    <Input
-                      value={item.notes}
-                      onChange={(e) => {
-                        const copy = [...editWalk];
-                        copy[i] = { ...copy[i], notes: e.target.value };
-                        setEditWalk(copy);
-                      }}
-                      disabled={!canEdit}
-                      placeholder="Ex: evitar sol forte"
-                      className="h-9 text-base"
-                    />
-                  </div>
-                </div>
-                {canEdit && (
-                  <button
-                    type="button"
-                    onClick={() => setEditWalk(editWalk.filter((_, j) => j !== i))}
-                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ))}
-            {editWalk.length === 0 && (
-              <div className="text-center py-6 text-muted-foreground text-sm">Nenhum horário de passeio configurado.</div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {canEdit && (
-        <div className="flex items-center gap-4">
-          <Button onClick={handleSave} isLoading={updatePetMutation.isPending}>
-            Salvar Plano
-          </Button>
-          {saved && (
-            <p className="text-sm text-emerald-400">✓ Plano salvo com sucesso</p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: number }) {
-  const { data: walks } = useListWalks(crecheId, petId);
-  const recentWalks = walks?.slice(0, 4) ?? [];
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      <Card>
-        <CardContent className="p-6 space-y-5">
-          <h3 className="text-lg font-display font-semibold border-b border-white/10 pb-2">Informações Gerais</h3>
-          <div className="grid grid-cols-2 gap-y-4 text-sm">
-            <div>
-              <p className="text-muted-foreground mb-1">Tutor</p>
-              <p className="font-medium text-white">{pet.tutorName || "Sem tutor"}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-1">Data de Nascimento</p>
-              <p className="font-medium text-white">{pet.birthDate ? format(parseLocalDate(pet.birthDate), "dd/MM/yyyy") : "Desconhecida"}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-1">Cor</p>
-              <p className="font-medium text-white capitalize">{pet.color || "—"}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground mb-1">Status</p>
-              <p className="font-medium text-white capitalize">{pet.status}</p>
-            </div>
-          </div>
-          {pet.allergies && (
-            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-              <p className="text-sm font-medium text-red-400 mb-1">⚠ Alergias</p>
-              <p className="text-sm text-muted-foreground">{pet.allergies}</p>
-            </div>
-          )}
-          {pet.specialNeeds && (
-            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
-              <p className="text-sm font-medium text-amber-400 mb-1">⚠ Necessidades Especiais</p>
-              <p className="text-sm text-muted-foreground">{pet.specialNeeds}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-lg font-display font-semibold border-b border-white/10 pb-2 mb-4">Alimentação</h3>
-          {Array.isArray(pet.feedingSchedule) && pet.feedingSchedule.length > 0 ? (
-            <div className="space-y-2.5 text-sm">
-              {pet.feedingSchedule.map((item: any, i: number) => (
-                <div key={i} className="p-3 rounded-xl bg-white/5 border border-white/5">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-white">🕐 {item.time}</span>
-                    <span className="text-primary font-medium">{item.amount}</span>
-                  </div>
-                  {item.foodName && (
-                    <p className="text-xs text-muted-foreground">🍽️ {item.foodName}</p>
-                  )}
-                  {item.notes && (
-                    <p className="text-xs text-muted-foreground mt-0.5">📝 {item.notes}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground py-4 text-center">Nenhum horário de alimentação configurado.</div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Foto dos Itens Pessoais — último check-in */}
-      {pet.lastCheckinPhotoUrl && (
-        <Card className="md:col-span-2">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
-              <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-                <Package className="h-5 w-5 text-amber-400" />
-                Itens Pessoais
-              </h3>
-              <span className="text-xs text-muted-foreground">Foto do último check-in</span>
-            </div>
-            <div className="rounded-xl overflow-hidden border border-white/10 max-w-sm">
-              <img
-                src={`/api/storage${pet.lastCheckinPhotoUrl}`}
-                alt="Itens pessoais registrados no check-in"
-                className="w-full object-cover"
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Últimos Passeios — full width */}
-      <Card className="md:col-span-2">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
-            <h3 className="text-lg font-display font-semibold flex items-center gap-2">
-              <Footprints className="h-5 w-5 text-primary" />
-              Últimos Passeios
-            </h3>
-            {recentWalks.length > 0 && (
-              <Badge variant="secondary" className="text-xs">{walks?.length ?? 0} total</Badge>
-            )}
-          </div>
-          {recentWalks.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {recentWalks.map((walk: any) => {
-                const isCompleted = walk.status === "completed" || !!walk.endTime;
-                const durationMs = walk.endTime && walk.startTime
-                  ? new Date(walk.endTime).getTime() - new Date(walk.startTime).getTime()
-                  : walk.durationMinutes
-                  ? walk.durationMinutes * 60000
-                  : null;
-                const durationMin = durationMs != null ? Math.round(durationMs / 60000) : null;
-                return (
-                  <div key={walk.id} className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <Footprints className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">
-                          {walk.staffName || "Funcionário"}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {walk.startTime && !isNaN(new Date(walk.startTime).getTime())
-                            ? format(new Date(walk.startTime), "dd/MM/yy HH:mm", { locale: ptBR })
-                            : "—"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <Badge variant={isCompleted ? "success" : "secondary"} className="text-xs">
-                        {isCompleted ? "Concluído" : "Em andamento"}
-                      </Badge>
-                      {durationMin != null && (
-                        <p className="text-xs text-muted-foreground mt-1">{durationMin} min</p>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-sm text-muted-foreground py-4 text-center">Nenhum passeio registrado para este pet.</div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
-  const queryClient = useQueryClient();
-  const { data: vaccines } = useListVaccines(crecheId, petId);
-  const { data: medications } = useListMedications(crecheId, petId);
-  const addVaccineMutation = useAddVaccine();
-  const addMedMutation = useAddMedication();
-
-  const [vaccineOpen, setVaccineOpen] = useState(false);
-  const [medOpen, setMedOpen] = useState(false);
-  const [vaccinePhoto, setVaccinePhoto] = useState<string | null>(null);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const vaccinePhotoRef = useRef<HTMLInputElement>(null);
-
-  const handleVaccinePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { alert("Foto deve ter no máximo 10MB"); return; }
-    try {
-      const compressed = await compressImage(file, 1200, 0.85);
-      setVaccinePhoto(compressed);
-    } catch {
-      alert("Não foi possível processar a imagem.");
-    }
-  };
-
-  const handleAddVaccine = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    addVaccineMutation.mutate(
-      {
-        crecheId,
-        petId,
-        data: {
-          name: fd.get("name") as string,
-          appliedDate: fd.get("appliedDate") as string,
-          nextDueDate: (fd.get("nextDueDate") as string) || null,
-          veterinarian: (fd.get("veterinarian") as string) || null,
-          notes: (fd.get("notes") as string) || null,
-          receiptUrl: vaccinePhoto || null,
-        },
-      },
-      {
-        onSuccess: () => {
-          setVaccineOpen(false);
-          setVaccinePhoto(null);
-          queryClient.invalidateQueries();
-        },
-      }
-    );
-  };
-
-  const handleAddMed = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const timesRaw = fd.get("times") as string;
-    addMedMutation.mutate(
-      {
-        crecheId,
-        petId,
-        data: {
-          name: fd.get("name") as string,
-          dosage: fd.get("dosage") as string,
-          frequency: fd.get("frequency") as string,
-          startDate: fd.get("startDate") as string,
-          endDate: (fd.get("endDate") as string) || null,
-          times: timesRaw ? timesRaw.split(",").map((t) => t.trim()) : [],
-          notes: (fd.get("notes") as string) || null,
-        },
-      },
-      {
-        onSuccess: () => {
-          setMedOpen(false);
-          queryClient.invalidateQueries();
-        },
-      }
-    );
-  };
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Vaccines */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
-            <h3 className="text-lg font-display font-semibold">Vacinas</h3>
-            <Button variant="outline" size="sm" onClick={() => setVaccineOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" /> Adicionar
-            </Button>
-          </div>
-          {vaccines?.length ? (
-            <div className="space-y-3">
-              {vaccines.map((v) => (
-                <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
-                  {v.receiptUrl && (
-                    <button
-                      type="button"
-                      className="w-full block"
-                      onClick={() => setLightboxUrl(v.receiptUrl!)}
-                    >
-                      <img
-                        src={v.receiptUrl}
-                        alt="Carteirinha"
-                        className="w-full h-28 object-cover border-b border-white/10 hover:opacity-90 transition-opacity"
-                      />
-                    </button>
-                  )}
-                  <div className="p-3 flex justify-between items-center gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-white">{v.name}</p>
-                        {v.receiptUrl && (
-                          <span className="text-xs text-primary flex items-center gap-0.5"><Camera className="h-3 w-3" /> foto</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">Aplicada: {format(parseLocalDate(v.appliedDate), "dd/MM/yyyy")}</p>
-                      {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
-                    </div>
-                    {v.nextDueDate && (
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-muted-foreground">Próxima</p>
-                        <p className="text-sm font-medium text-amber-400">{format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon={Syringe} title="Sem vacinas" description="Nenhum registro de vacina encontrado." />
-          )}
-          {/* Lightbox */}
-          {lightboxUrl && (
-            <div
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={() => setLightboxUrl(null)}
-            >
-              <div className="relative max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm"
-                  onClick={() => setLightboxUrl(null)}
-                >
-                  ✕ Fechar
-                </button>
-                <img src={lightboxUrl} alt="Carteirinha de vacina" className="w-full rounded-2xl shadow-2xl" />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Medications */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
-            <h3 className="text-lg font-display font-semibold">Medicamentos</h3>
-            <Button variant="outline" size="sm" onClick={() => setMedOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" /> Adicionar
-            </Button>
-          </div>
-          {medications?.length ? (
-            <div className="space-y-3">
-              {medications.map((m) => (
-                <div key={m.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
-                  <div className="flex justify-between items-start mb-1">
-                    <p className="font-medium text-white">{m.name}</p>
-                    <Badge variant={m.isActive ? "success" : "secondary"}>{m.isActive ? "Ativo" : "Inativo"}</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{m.dosage} • {m.frequency}</p>
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {m.times?.map((t: string) => (
-                      <Badge key={t} variant="outline" className="bg-black/40 text-xs">{t}</Badge>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon={Activity} title="Sem medicamentos" description="Nenhum medicamento registrado." />
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Add Vaccine Modal */}
-      <Modal isOpen={vaccineOpen} onClose={() => { setVaccineOpen(false); setVaccinePhoto(null); }} title="Adicionar Vacina">
-        <form onSubmit={handleAddVaccine} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Nome da Vacina</label>
-            <Input name="name" required placeholder="V8, Raiva, Giárdia..." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Data de Aplicação</label>
-              <Input name="appliedDate" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Próxima Dose</label>
-              <Input name="nextDueDate" type="date" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Veterinário</label>
-            <Input name="veterinarian" placeholder="Dr. Silva" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Observações</label>
-            <Input name="notes" placeholder="Notas adicionais..." />
-          </div>
-          {/* Vaccine photo / certificate */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Foto da Carteirinha</label>
-            <input
-              type="file"
-              ref={vaccinePhotoRef}
-              onChange={handleVaccinePhotoChange}
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-            />
-            {vaccinePhoto ? (
-              <div className="relative rounded-xl overflow-hidden border border-white/10">
-                <img src={vaccinePhoto} alt="Carteirinha" className="w-full h-32 object-cover" />
-                <button
-                  type="button"
-                  onClick={() => setVaccinePhoto(null)}
-                  className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-                <div className="absolute bottom-2 left-2 text-xs text-white/70 bg-black/50 px-2 py-0.5 rounded-full">
-                  foto selecionada
-                </div>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => vaccinePhotoRef.current?.click()}
-              >
-                <Camera className="mr-2 h-4 w-4" /> Tirar foto ou escolher arquivo
-              </Button>
-            )}
-          </div>
-          <div className="pt-2 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => { setVaccineOpen(false); setVaccinePhoto(null); }}>Cancelar</Button>
-            <Button type="submit" isLoading={addVaccineMutation.isPending}>Salvar Vacina</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Add Medication Modal */}
-      <Modal isOpen={medOpen} onClose={() => setMedOpen(false)} title="Adicionar Medicamento">
-        <form onSubmit={handleAddMed} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Nome</label>
-            <Input name="name" required placeholder="Frontline, Heartgard..." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Dosagem</label>
-              <Input name="dosage" required placeholder="10mg" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Frequência</label>
-              <Input name="frequency" required placeholder="Diário" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Início</label>
-              <Input name="startDate" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Fim</label>
-              <Input name="endDate" type="date" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Horários (separados por vírgula)</label>
-            <Input name="times" placeholder="08:00, 20:00" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Observações</label>
-            <Input name="notes" placeholder="Dar com alimento..." />
-          </div>
-          <div className="pt-4 flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setMedOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={addMedMutation.isPending}>Salvar Medicamento</Button>
-          </div>
-        </form>
-      </Modal>
-    </div>
-  );
-}
-
-const EVENT_META: Record<string, { emoji: string; label: string; color: string }> = {
-  photo:      { emoji: "📸", label: "Foto",         color: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
-  video:      { emoji: "🎥", label: "Vídeo",        color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  note:       { emoji: "📝", label: "Nota",         color: "bg-white/10 text-white/70 border-white/10" },
-  play:       { emoji: "🎾", label: "Brincadeira",  color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
-  walk:       { emoji: "🦮", label: "Passeio",      color: "bg-green-500/20 text-green-300 border-green-500/30" },
-  feeding:    { emoji: "🍽️", label: "Alimentação", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
-  medication: { emoji: "💊", label: "Medicação",    color: "bg-red-500/20 text-red-300 border-red-500/30" },
-  health:     { emoji: "🏥", label: "Saúde",        color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
-  check_in:   { emoji: "✅", label: "Check-in",     color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
-  check_out:  { emoji: "🏠", label: "Check-out",    color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
-};
-
-function getInitials(name: string) {
-  return (name || "?").split(" ").slice(0, 2).map((n) => n[0]).join("").toUpperCase();
-}
-
-const AVATAR_COLORS = [
-  "bg-violet-600","bg-blue-600","bg-emerald-600","bg-orange-600","bg-pink-600","bg-cyan-600",
-];
-function avatarColor(name: string) {
-  let h = 0;
-  for (const c of name || "") h = (h * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[h];
-}
-
-function PawHeart({ liked, count }: { liked: boolean; count: number }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <svg viewBox="0 0 24 24" className={`h-5 w-5 transition-all duration-200 ${liked ? "scale-110" : "scale-100"}`} xmlns="http://www.w3.org/2000/svg">
-        <path
-          d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-          fill={liked ? "#f43f5e" : "none"}
-          stroke={liked ? "#f43f5e" : "currentColor"}
-          strokeWidth={liked ? 0 : 1.5}
-        />
-        <ellipse cx="12" cy="13.8" rx="1.7" ry="1.2" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
-        <circle cx="10" cy="11.6" r="0.65" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
-        <circle cx="14" cy="11.6" r="0.65" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
-        <circle cx="8.7" cy="12.9" r="0.6" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
-        <circle cx="15.3" cy="12.9" r="0.6" fill={liked ? "white" : "currentColor"} opacity={liked ? 0.9 : 0.5} />
-      </svg>
-      {count > 0 && <span className={`text-xs font-medium ${liked ? "text-rose-400" : "text-muted-foreground"}`}>{count}</span>}
-    </span>
-  );
-}
-
-function FeedCard({ event, crecheId, petId, user, onDeleted }: {
-  event: any;
-  crecheId: number;
-  petId: number;
-  user: any;
-  onDeleted: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState<boolean>(event.isLikedByUser ?? false);
-  const [likeCount, setLikeCount] = useState<number>(event.likeCount ?? 0);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const meta = EVENT_META[event.type] || { emoji: "📌", label: event.type, color: "bg-white/10 text-white border-white/10" };
-  const date = new Date(event.createdAt);
-  const relTime = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
-  const token = localStorage.getItem("auth_token");
-
-  const canDelete = user?.role === "creche_admin" || user?.role === "staff";
-  const canLike = true;
-
-  const handleLike = async () => {
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikeCount((c) => newLiked ? c + 1 : Math.max(0, c - 1));
-    try {
-      await fetch(`/api/creches/${crecheId}/pets/${petId}/timeline/${event.id}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    } catch {
-      setLiked(!newLiked);
-      setLikeCount((c) => newLiked ? Math.max(0, c - 1) : c + 1);
-    }
-  };
-
-  const handleDelete = async () => {
-    try {
-      await fetch(`/api/creches/${crecheId}/pets/${petId}/timeline/${event.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      onDeleted();
-    } catch {}
-    setConfirmDelete(false);
-  };
-
-  return (
-    <div className="glass-panel rounded-2xl overflow-hidden border border-white/8 shadow-[0_4px_32px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-2 duration-400">
-      {/* Photo */}
-      {event.mediaUrl && (
-        <div className="w-full bg-black/40 max-h-[520px] overflow-hidden">
-          <img
-            src={event.mediaUrl}
-            alt="Foto do evento"
-            className="w-full object-cover max-h-[520px]"
-            loading="lazy"
-          />
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="p-4 space-y-3">
-        {/* Author row */}
-        <div className="flex items-center gap-3">
-          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${avatarColor(event.authorName || "")}`}>
-            {getInitials(event.authorName || "?")}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white leading-tight truncate">{event.authorName || "Staff"}</p>
-            <p className="text-xs text-muted-foreground">{relTime}</p>
-          </div>
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${meta.color} flex-shrink-0`}>
-            {meta.emoji} {meta.label}
-          </span>
-        </div>
-
-        {/* Caption */}
-        {event.content && (
-          <div className="text-sm text-gray-200 leading-relaxed">
-            {event.content.length > 180 && !expanded ? (
-              <>
-                {event.content.slice(0, 180)}…{" "}
-                <button onClick={() => setExpanded(true)} className="text-primary font-medium hover:underline">ver mais</button>
-              </>
-            ) : (
-              event.content
-            )}
-          </div>
-        )}
-
-        {/* Footer: date + actions */}
-        <div className="flex items-center justify-between pt-1">
-          <p className="text-xs text-white/30">{format(date, "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}</p>
-          <div className="flex items-center gap-2">
-            {/* Like button */}
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-all ${liked ? "text-rose-400 bg-rose-500/10" : "text-muted-foreground hover:text-rose-400 hover:bg-rose-500/10"}`}
-              title="Curtir"
-            >
-              <PawHeart liked={liked} count={likeCount} />
-            </button>
-            {/* Delete button (admin/staff only) */}
-            {canDelete && (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-all"
-                title="Apagar publicação"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Delete confirm overlay */}
-      {confirmDelete && (
-        <div className="px-4 pb-4">
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between gap-3">
-            <p className="text-xs text-red-300">Apagar esta publicação permanentemente?</p>
-            <div className="flex gap-2 flex-shrink-0">
-              <button onClick={() => setConfirmDelete(false)} className="text-xs text-muted-foreground hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition-all">Cancelar</button>
-              <button onClick={handleDelete} className="text-xs text-red-400 font-medium px-2 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/30 transition-all">Apagar</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TimelineTab({ crecheId, petId }: { crecheId: number; petId: number }) {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  const { data: timeline } = useListTimeline(crecheId, petId);
-  const addEventMutation = useAddTimelineEvent();
-  const [postOpen, setPostOpen] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [compressing, setCompressing] = useState(false);
-  const [selectedType, setSelectedType] = useState("photo");
-  const fileRef = useRef<HTMLInputElement>(null);
-  const mediaDataRef = useRef<string | null>(null);
-
-  const canPost = user?.role !== "tutor";
-
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCompressing(true);
-    try {
-      const data = await compressImage(file);
-      mediaDataRef.current = data;
-      setPreview(data);
-    } catch {
-      mediaDataRef.current = null;
-      setPreview(null);
-    } finally {
-      setCompressing(false);
-    }
-  }, []);
-
-  const handlePost = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    addEventMutation.mutate(
-      {
-        crecheId,
-        petId,
-        data: {
-          type: selectedType as any,
-          content: (fd.get("content") as string) || null,
-          mediaUrl: mediaDataRef.current || null,
-          mediaType: mediaDataRef.current ? "photo" : undefined,
-        },
-      },
-      {
-        onSuccess: () => {
-          setPostOpen(false);
-          setPreview(null);
-          mediaDataRef.current = null;
-          setSelectedType("photo");
-          queryClient.invalidateQueries();
-        },
-      }
-    );
-  };
-
-  const closeModal = () => {
-    setPostOpen(false);
-    setPreview(null);
-    mediaDataRef.current = null;
-    setSelectedType("photo");
-  };
-
-  const eventTypes = [
-    { value: "photo", emoji: "📸", label: "Foto" },
-    { value: "note", emoji: "📝", label: "Nota" },
-    { value: "play", emoji: "🎾", label: "Brincadeira" },
-    { value: "walk", emoji: "🦮", label: "Passeio" },
-    { value: "feeding", emoji: "🍽️", label: "Alimentação" },
-    { value: "medication", emoji: "💊", label: "Medicação" },
-    { value: "health", emoji: "🏥", label: "Saúde" },
-  ];
-
-  return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      {/* Compose bar (staff/admin only) */}
-      {canPost && (
-        <button
-          onClick={() => setPostOpen(true)}
-          className="w-full glass-panel rounded-2xl p-4 flex items-center gap-4 border border-white/8 hover:border-primary/40 hover:bg-white/5 transition-all text-left group"
-        >
-          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 group-hover:bg-primary/30 transition-colors">
-            <Camera className="h-5 w-5 text-primary" />
-          </div>
-          <span className="text-muted-foreground text-sm flex-1">Publicar uma atualização sobre este pet...</span>
-          <div className="flex items-center gap-1 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-            <Sparkles className="h-4 w-4" />
-          </div>
-        </button>
-      )}
-
-      {/* Feed */}
-      {timeline?.length ? (
-        <div className="space-y-5">
-          {timeline.map((event) => (
-            <FeedCard
-              key={event.id}
-              event={event}
-              crecheId={crecheId}
-              petId={petId}
-              user={user}
-              onDeleted={() => queryClient.invalidateQueries({ queryKey: ["timeline", crecheId, petId] })}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={ImageIcon}
-          title="Nenhuma publicação ainda"
-          description={canPost ? "Publique a primeira foto ou atualização do pet." : "A equipe ainda não publicou nenhuma atualização."}
-          action={canPost ? { label: "Publicar Primeira Foto", onClick: () => setPostOpen(true) } : undefined}
-        />
-      )}
-
-      {/* Compose Modal */}
-      <Modal isOpen={postOpen} onClose={closeModal} title="Nova Publicação">
-        <form onSubmit={handlePost} className="space-y-5">
-          {/* Type chips */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Tipo de Evento</label>
-            <div className="flex flex-wrap gap-2">
-              {eventTypes.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => setSelectedType(t.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    selectedType === t.value
-                      ? "bg-primary text-white border-primary shadow-[0_0_12px_rgba(139,92,246,0.5)]"
-                      : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"
-                  }`}
-                >
-                  {t.emoji} {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Photo upload */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Foto (opcional)</label>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {/* Hidden camera-capture input */}
-            <input
-              id="camera-capture-input"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-            {preview ? (
-              <div className="relative rounded-xl overflow-hidden border border-white/10">
-                <img src={preview} alt="Preview" className="w-full max-h-64 object-cover" />
-                <button
-                  type="button"
-                  onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
-                  className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
-                >
-                  <X className="h-4 w-4 text-white" />
-                </button>
-              </div>
-            ) : compressing ? (
-              <div className="w-full h-28 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center">
-                <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="h-24 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
-                >
-                  <ImageIcon className="h-6 w-6" />
-                  <span className="text-xs">Galeria</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => document.getElementById("camera-capture-input")?.click()}
-                  className="h-24 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-2 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
-                >
-                  <Camera className="h-6 w-6" />
-                  <span className="text-xs">Câmera</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Caption */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Legenda</label>
-            <textarea
-              name="content"
-              rows={4}
-              placeholder="Escreva uma legenda para este momento especial..."
-              className="flex w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md resize-none placeholder:text-muted-foreground"
-            />
-          </div>
-
-          <div className="flex justify-end gap-3 pt-1">
-            <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
-            <Button type="submit" isLoading={addEventMutation.isPending} className="shadow-[0_0_16px_rgba(139,92,246,0.4)]">
-              <Sparkles className="h-4 w-4 mr-2" /> Publicar
-            </Button>
-          </div>
-        </form>
-      </Modal>
-    </div>
-  );
-}

@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { TutorSmartIndicators } from "@/components/financial/smart-indicators";
 
 function useTutors(crecheId: number) {
   const token = localStorage.getItem("auth_token");
@@ -80,7 +81,8 @@ function useTutorPets(crecheId: number, tutorId: number | null) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error("Erro ao carregar pets");
-      return r.json();
+      const data = await r.json();
+      return Array.isArray(data) ? data : ((data as any).items || []);
     },
     enabled: !!tutorId,
   });
@@ -122,7 +124,7 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
             description: `${pet.name} foi ${newStatus === "inactive" ? "desativado" : "reativado"} com sucesso.`,
           });
         },
-        onError: (err: any) => {
+        onError: (err: Error) => {
           toast({ title: "Erro", description: err.message, variant: "destructive" });
         },
       }
@@ -135,7 +137,9 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
       onClose={onClose}
       title={`Pets de ${tutor.name}`}
       description={`${tutor.email} · ${tutor.petCount ?? 0} pet${tutor.petCount !== 1 ? "s" : ""} cadastrado${tutor.petCount !== 1 ? "s" : ""}`}
+      className="max-w-2xl"
     >
+      <TutorSmartIndicators crecheId={crecheId} tutorId={tutor.id} />
       <div className="mt-4 space-y-3">
         {isLoading ? (
           <div className="py-8 text-center text-muted-foreground text-sm">Carregando pets...</div>
@@ -157,7 +161,7 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
               {/* Avatar */}
               <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-primary/20 flex items-center justify-center">
                 {pet.photoUrl ? (
-                  <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
+                  <img loading="lazy" src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
                 ) : (
                   <Dog className="h-5 w-5 text-primary" />
                 )}
@@ -267,7 +271,7 @@ export default function TutorsPage() {
             description: `${tutor.name} foi ${tutor.isActive ? "desativado" : "ativado"} com sucesso.`,
           });
         },
-        onError: (err: any) => {
+        onError: (err: Error) => {
           toast({ title: "Erro", description: err.message, variant: "destructive" });
         },
       }

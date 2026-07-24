@@ -4,6 +4,7 @@
 import Stripe from "stripe";
 import { getStripeSync, getStripeSecretKey } from "./stripeClient.js";
 import { applyStripeEvent } from "./subscriptionSync.js";
+import { applyFinancialStripeEvent } from "./financialSync.js";
 
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -57,5 +58,6 @@ export class WebhookHandlers {
     // Apply the lifecycle transition to the app subscription.
     // Errors propagate so the route returns non-2xx and Stripe retries.
     await applyStripeEvent(event);
+    await applyFinancialStripeEvent(event);
   }
 }

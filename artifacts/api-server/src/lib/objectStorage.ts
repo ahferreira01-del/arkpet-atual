@@ -128,6 +128,16 @@ export class ObjectStorageService {
     });
   }
 
+  async getSignedReadURL(objectPath: string, ttlSec: number = 300): Promise<string> {
+    const { bucketName, objectName } = parseObjectPath(objectPath);
+    return signObjectURL({
+      bucketName,
+      objectName,
+      method: "GET",
+      ttlSec,
+    });
+  }
+
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
@@ -203,6 +213,13 @@ export class ObjectStorageService {
       objectFile,
       requestedPermission: requestedPermission ?? ObjectPermission.READ,
     });
+  }
+
+  async deleteObject(file: File): Promise<void> {
+    const [exists] = await file.exists();
+    if (exists) {
+      await file.delete();
+    }
   }
 }
 

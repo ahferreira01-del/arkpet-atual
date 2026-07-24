@@ -28,7 +28,7 @@ function useCreecheWalks(crecheId: number) {
   });
 }
 
-export default function Walks() {
+export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
@@ -36,7 +36,8 @@ export default function Walks() {
   const [selectedPetId, setSelectedPetId] = useState<number>(0);
 
   const { data: walks, isLoading } = useCreecheWalks(crecheId);
-  const { data: pets } = useListPets(crecheId);
+  const { data: petsResponse } = useListPets(crecheId);
+  const pets = (petsResponse as any)?.items;
 
   const startMutation = useMutation({
     mutationFn: async (petId: number) => {
@@ -81,18 +82,29 @@ export default function Walks() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto">
-      <PageHeader
-        title="Passeios"
-        description="Registre e acompanhe os passeios dos pets."
-        icon={Footprints}
-        action={
-          <Button onClick={() => setIsModalOpen(true)}>
+    <div className={hideHeader ? "space-y-6 max-w-3xl mx-auto" : "space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto"}>
+      {!hideHeader && (
+        <PageHeader
+          title="Passeios"
+          description="Registre e acompanhe os passeios dos pets."
+          icon={Footprints}
+          action={
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Play className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Iniciar Passeio</span>
+            </Button>
+          }
+        />
+      )}
+      {hideHeader && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={() => setIsModalOpen(true)} className="w-full sm:w-auto">
             <Play className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">Iniciar Passeio</span>
+            <span className="inline sm:hidden ml-2">Iniciar Passeio</span>
           </Button>
-        }
-      />
+        </div>
+      )}
 
       {/* Active walks */}
       {activeWalks.length > 0 && (

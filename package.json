@@ -3,17 +3,36 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
+    "preinstall": "echo Use pnpm instead",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run tests/integration",
+    "test:security": "vitest run tests/security",
+    "test:e2e": "playwright test tests/e2e",
+    "test:all": "vitest run && playwright test",
+    "test:coverage": "vitest run --coverage"
   },
   "private": true,
   "devDependencies": {
+    "@esbuild/win32-x64": "^0.27.3",
+    "@playwright/test": "^1.61.1",
+    "@types/supertest": "^7.2.0",
+    "@workspace/api-server": "workspace:*",
+    "@workspace/db": "workspace:*",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "catalog:",
     "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
+    "supertest": "^7.2.2",
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.62.2",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.1",
+    "lightningcss-win32-x64-msvc": "^1.32.0",
     "stripe": "^22.2.0",
     "stripe-replit-sync": "^1.0.0"
   }

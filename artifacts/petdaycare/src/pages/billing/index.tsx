@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X } from "lucide-react";
+import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,7 +161,7 @@ export default function Billing() {
           }
           if (res.url) window.location.href = res.url;
         },
-        onError: (err: any) => {
+        onError: (err: Error) => {
           toast({
             title: "Não foi possível iniciar o checkout",
             description: err?.message ?? "Tente novamente em instantes.",
@@ -177,7 +177,7 @@ export default function Billing() {
       onSuccess: (res) => {
         if (res.url) window.location.href = res.url;
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         toast({
           title: "Não foi possível abrir o portal",
           description: err?.message ?? "Tente novamente em instantes.",
@@ -214,28 +214,25 @@ export default function Billing() {
       />
 
       {/* Current subscription summary */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <h2 className="text-lg font-display font-semibold text-white">
-                  {subscription?.plan?.name ?? "—"}
-                </h2>
-                <span className={cn("text-xs font-medium px-2.5 py-1 rounded-full border", statusInfo.className)}>
-                  {statusInfo.label}
+      <Card className="bg-[#16171a] border-0 rounded-[24px]">
+        <CardContent className="p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="h-[60px] w-[60px] rounded-full bg-[#1e2417] border border-[#84a93a]/20 flex items-center justify-center shrink-0">
+               <CalendarClock className="h-6 w-6 text-[#84a93a]" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className={cn("text-[11px] font-semibold px-2.5 py-0.5 rounded-full border", statusInfo.className)}>
+                  • {statusInfo.label}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground">
-                {subscription?.plan && subscription.plan.priceBrl > 0
-                  ? `${formatBrl(subscription.plan.priceBrl)} / mês · até ${subscription.plan.petLimit} pets${
-                      currentInterval && currentInterval !== "month"
-                        ? ` · cobrança ${INTERVAL_LABELS[currentInterval].toLowerCase()}`
-                        : ""
-                    }`
-                  : `Plano gratuito · até ${subscription?.plan?.petLimit ?? 0} pets`}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
+              <h2 className="text-lg font-display font-bold text-white flex items-center gap-2">
+                {subscription?.plan?.name ?? "Plano gratuito"}
+                <span className="text-[13px] font-medium text-gray-400 font-sans">
+                  · até {subscription?.plan?.petLimit ?? 0} pets
+                </span>
+              </h2>
+              <p className="text-[13px] text-gray-400 flex items-center gap-1">
                 {status === "trial"
                   ? `Teste termina em ${formatDate(subscription?.trialEndsAt)}`
                   : status === "active"
@@ -244,90 +241,18 @@ export default function Billing() {
                       ? `Pendente desde ${formatDate(subscription?.pastDueSince)}`
                       : ""}
               </p>
-
-              {/* Saved card display */}
-              {savedCard && (
-                <div className="flex items-center gap-2 mt-2">
-                  <CreditCard className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs text-muted-foreground capitalize">
-                    {savedCard.brand} •••• {savedCard.last4}
-                    <span className="text-white/30 mx-1">·</span>
-                    val. {String(savedCard.expMonth).padStart(2, "0")}/{savedCard.expYear}
-                  </span>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={handlePortal}
-                      disabled={portalMutation.isPending}
-                      className="text-xs text-primary hover:text-primary/80 underline underline-offset-2 transition-colors disabled:opacity-50"
-                    >
-                      Trocar cartão
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Scheduled plan change banner */}
-              {(subscription as any)?.scheduledPlanId && (subscription as any)?.scheduledPlanInfo?.name && (
-                <div className="mt-3 flex items-start justify-between gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
-                  <div className="flex items-start gap-2">
-                    <CalendarClock className="h-4 w-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs font-medium text-amber-300">Mudança agendada</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        A partir de {formatDate((subscription as any).currentPeriodEnd)}, muda para{" "}
-                        <span className="text-white font-medium">{(subscription as any).scheduledPlanInfo.name}</span>
-                        {" "}· até {(subscription as any).scheduledPlanInfo.petLimit === 999999 ? "ilimitado" : `${(subscription as any).scheduledPlanInfo.petLimit} pets`}
-                        {(subscription as any).scheduledPeriodEnd
-                          ? ` · válido até ${formatDate((subscription as any).scheduledPeriodEnd)}`
-                          : ""}
-                      </p>
-                    </div>
-                  </div>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={handleCancelScheduled}
-                      disabled={cancelingSchedule}
-                      className="flex-shrink-0 text-muted-foreground hover:text-white transition-colors"
-                      title="Cancelar agendamento"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Pet usage bar */}
-              {subscription?.plan && (() => {
-                const petCount = (subscription as any).petCount ?? 0;
-                const petLimit = subscription.plan.petLimit ?? 0;
-                const pct = petLimit > 0 ? Math.min(100, Math.round((petCount / petLimit) * 100)) : 0;
-                const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-500";
-                return (
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-muted-foreground">Pets cadastrados</span>
-                      <span className="text-xs font-medium text-white">
-                        {petCount} / {petLimit === 999999 ? "∞" : petLimit}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-white/10">
-                      <div
-                        className={`h-1.5 rounded-full transition-all ${barColor}`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
+          </div>
 
-            {isAdmin && subscription?.stripeCustomerId && (
-              <Button variant="ghost" onClick={handlePortal} isLoading={portalMutation.isPending}>
-                <ExternalLink className="mr-2 h-4 w-4" /> Gerenciar pagamento
-              </Button>
-            )}
+          <div className="hidden md:flex shrink-0">
+             {/* Illustration placeholder to match the clipboard with paw in the image */}
+             <div className="h-24 w-28 bg-[#1e2417] rounded-xl flex items-center justify-center border border-[#84a93a]/10 relative overflow-hidden">
+                <Sparkles className="absolute top-2 left-2 h-4 w-4 text-[#84a93a] opacity-50" />
+                <FileText className="h-12 w-12 text-[#84a93a]/40" />
+                <div className="absolute -bottom-2 -right-2 h-10 w-10 bg-[#84a93a] rounded-full flex items-center justify-center">
+                   <Dog className="h-5 w-5 text-white" />
+                </div>
+             </div>
           </div>
         </CardContent>
       </Card>
@@ -348,20 +273,21 @@ export default function Billing() {
           </h3>
 
           {/* Billing period selector */}
-          <div className="flex items-center rounded-xl border border-white/10 bg-white/5 p-1 w-full sm:w-auto">
-            {INTERVALS.map((opt) => {
-              const discount = discountByInterval.get(opt);
-              const isActive = interval === opt;
-              return (
+          <div className="w-full sm:w-auto">
+            <div className="grid grid-cols-2 sm:flex sm:flex-row items-center bg-[#16171a] p-1.5 rounded-2xl sm:rounded-full gap-1">
+              {INTERVALS.map((opt) => {
+                const discount = discountByInterval.get(opt);
+                const isActive = interval === opt;
+                return (
                 <button
                   key={opt}
                   type="button"
                   onClick={() => setInterval(opt)}
                   className={cn(
-                    "flex-1 sm:flex-none relative px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all text-center",
+                    "relative px-2 sm:px-4 py-2 text-[12px] sm:text-[13px] font-medium rounded-xl sm:rounded-full transition-all text-center flex-1",
                     isActive
-                      ? "bg-primary text-primary-foreground shadow"
-                      : "text-muted-foreground hover:text-white",
+                      ? "bg-[#2d3b1f] text-[#84a93a]"
+                      : "text-gray-400 hover:text-white",
                   )}
                 >
                   {INTERVAL_LABELS[opt]}
@@ -375,6 +301,7 @@ export default function Billing() {
             })}
           </div>
         </div>
+      </div>
 
         {/* Payment method selector */}
         <div className="flex flex-col sm:flex-row gap-3 mb-5">
@@ -382,62 +309,66 @@ export default function Billing() {
             type="button"
             onClick={() => setPaymentMode("subscription")}
             className={cn(
-              "flex-1 flex items-start gap-3 p-4 rounded-xl border transition-all text-left",
+              "flex-1 flex items-center gap-4 p-5 rounded-[20px] border transition-all text-left",
               paymentMode === "subscription"
-                ? "border-primary/50 bg-primary/10 shadow-[0_0_16px_rgba(139,92,246,0.12)]"
-                : "border-white/10 bg-white/5 hover:border-white/20",
+                ? "border-[#84a93a]/30 bg-[#16171a] shadow-none"
+                : "border-transparent bg-[#16171a] opacity-80 hover:opacity-100",
             )}
           >
             <div className={cn(
-              "mt-0.5 h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
-              paymentMode === "subscription" ? "bg-primary/20 text-primary" : "bg-white/10 text-muted-foreground",
+              "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
+              paymentMode === "subscription" ? "bg-transparent text-[#84a93a]" : "bg-transparent text-gray-400",
             )}>
-              <RefreshCw className="h-4 w-4" />
+              <CreditCard className="h-6 w-6 stroke-[1.5px]" />
             </div>
-            <div>
-              <p className={cn("text-sm font-semibold", paymentMode === "subscription" ? "text-white" : "text-muted-foreground")}>
+            <div className="flex-1">
+              <p className={cn("text-[15px] font-semibold", paymentMode === "subscription" ? "text-white" : "text-gray-300")}>
                 Cartão de crédito
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Cobrança automática · sem precisar renovar</p>
+              <p className="text-[12px] text-gray-500 mt-0.5 font-medium">Cobrança automática · sem precisar renovar</p>
             </div>
-            {paymentMode === "subscription" && (
-              <div className="ml-auto flex-shrink-0">
-                <div className="h-4 w-4 rounded-full border-2 border-primary bg-primary/80 flex items-center justify-center">
-                  <div className="h-1.5 w-1.5 rounded-full bg-white" />
-                </div>
-              </div>
-            )}
+            <div className="flex-shrink-0">
+               {paymentMode === "subscription" ? (
+                  <div className="h-5 w-5 rounded-full border-2 border-[#84a93a] flex items-center justify-center">
+                    <div className="h-2.5 w-2.5 rounded-full bg-[#84a93a]" />
+                  </div>
+               ) : (
+                  <div className="h-5 w-5 rounded-full border-2 border-gray-600" />
+               )}
+            </div>
           </button>
 
           <button
             type="button"
             onClick={() => setPaymentMode("payment")}
             className={cn(
-              "flex-1 flex items-start gap-3 p-4 rounded-xl border transition-all text-left",
+              "flex-1 flex items-center gap-4 p-5 rounded-[20px] border transition-all text-left",
               paymentMode === "payment"
-                ? "border-amber-500/50 bg-amber-500/10 shadow-[0_0_16px_rgba(245,158,11,0.10)]"
-                : "border-white/10 bg-white/5 hover:border-white/20",
+                ? "border-[#84a93a]/30 bg-[#16171a] shadow-none"
+                : "border-transparent bg-[#16171a] opacity-80 hover:opacity-100",
             )}
           >
             <div className={cn(
-              "mt-0.5 h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0",
-              paymentMode === "payment" ? "bg-amber-500/20 text-amber-400" : "bg-white/10 text-muted-foreground",
+              "h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0",
+              paymentMode === "payment" ? "bg-transparent text-[#84a93a]" : "bg-transparent text-gray-400",
             )}>
-              <Zap className="h-4 w-4" />
+              <QrCode className="h-6 w-6 stroke-[1.5px]" />
             </div>
-            <div>
-              <p className={cn("text-sm font-semibold", paymentMode === "payment" ? "text-white" : "text-muted-foreground")}>
+            <div className="flex-1">
+              <p className={cn("text-[15px] font-semibold", paymentMode === "payment" ? "text-white" : "text-gray-300")}>
                 PIX · Boleto · Cartão avulso
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">Pague uma vez · renove manualmente ao vencer</p>
+              <p className="text-[12px] text-gray-500 mt-0.5 font-medium">Pague uma vez · renove manualmente ao vencer</p>
             </div>
-            {paymentMode === "payment" && (
-              <div className="ml-auto flex-shrink-0">
-                <div className="h-4 w-4 rounded-full border-2 border-amber-400 bg-amber-400/80 flex items-center justify-center">
-                  <div className="h-1.5 w-1.5 rounded-full bg-white" />
-                </div>
-              </div>
-            )}
+            <div className="flex-shrink-0">
+               {paymentMode === "payment" ? (
+                  <div className="h-5 w-5 rounded-full border-2 border-[#84a93a] flex items-center justify-center">
+                    <div className="h-2.5 w-2.5 rounded-full bg-[#84a93a]" />
+                  </div>
+               ) : (
+                  <div className="h-5 w-5 rounded-full border-2 border-gray-600" />
+               )}
+            </div>
           </button>
         </div>
 
@@ -482,8 +413,8 @@ export default function Billing() {
               <Card
                 key={plan.id}
                 className={cn(
-                  "transition-all duration-200",
-                  isCurrent ? "border-primary/40 shadow-[0_0_20px_rgba(139,92,246,0.12)]"
+                  "transition-all duration-200 border-0 bg-[#16171a] rounded-[24px]",
+                  isCurrent ? "shadow-[0_0_20px_rgba(132,169,80,0.10)]"
                   : isScheduled ? "border-amber-500/40 shadow-[0_0_20px_rgba(245,158,11,0.10)]"
                   : "hover:border-white/20",
                 )}
@@ -503,44 +434,67 @@ export default function Billing() {
                     )}
                   </div>
                   <div className="mb-1">
-                    <span className="text-2xl font-bold text-white">{formatBrl(periodPrice)}</span>
-                    <span className="text-sm text-muted-foreground">{INTERVAL_SUFFIX[interval]}</span>
+                    {plan.name.toLowerCase() === "enterprise" ? (
+                      <span className="text-2xl font-bold text-white">Sob medida</span>
+                    ) : (
+                      <>
+                        <span className="text-2xl font-bold text-white">{formatBrl(periodPrice)}</span>
+                        <span className="text-sm text-muted-foreground">{INTERVAL_SUFFIX[interval]}</span>
+                      </>
+                    )}
                   </div>
                   <div className="mb-4 h-5">
-                    {interval !== "month" ? (
+                    {plan.name.toLowerCase() !== "enterprise" && interval !== "month" ? (
                       <span className="text-xs text-emerald-400">
                         equivale a {formatBrl(equivalentMonthly)}/mês
                         {price?.discountPct ? ` · economize ${price.discountPct}%` : ""}
                       </span>
                     ) : null}
                   </div>
-                  <ul className="space-y-2 mb-6 flex-1">
-                    <li className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" /> Até {plan.petLimit} pets
-                    </li>
-                    {plan.description && (
+                  {plan.name.toLowerCase() === "enterprise" ? (
+                    <div className="mb-6 flex-1 flex flex-col justify-center">
+                      <p className="text-[13px] text-muted-foreground leading-relaxed">
+                        Caso os planos padrões não atendam a demanda da sua creche, o plano Enterprise é construído de forma totalmente customizada para a sua operação.
+                      </p>
+                    </div>
+                  ) : (
+                    <ul className="space-y-2 mb-6 flex-1">
                       <li className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" /> {plan.description}
+                        <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" /> Até {plan.petLimit} pets
                       </li>
-                    )}
-                  </ul>
-                  <Button
-                    className="w-full"
-                    variant={isCurrent ? "ghost" : "default"}
-                    disabled={!isAdmin || isCurrent || !isAvailable}
-                    isLoading={
-                      checkoutMutation.isPending && (checkoutMutation.variables?.data as any)?.planId === plan.id
-                    }
-                    onClick={() => {
-                      if (hasActiveSavedCard) {
-                        setPendingPlanId(plan.id);
-                      } else {
-                        handleCheckout(plan.id);
+                      {plan.description && (
+                        <li className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Check className="h-4 w-4 text-emerald-400 flex-shrink-0" /> {plan.description}
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                  {plan.name.toLowerCase() === "enterprise" ? (
+                    <Button
+                      className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white border-0 h-12 rounded-xl text-[15px]"
+                      onClick={() => window.open('https://wa.me/551631870294?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20plano%20Enterprise%20sob%20medida.', '_blank')}
+                    >
+                      Falar no WhatsApp
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full bg-[#3a4d2b] hover:bg-[#2d3a21] text-white border-0 h-12 rounded-xl text-[15px]"
+                      variant={isCurrent ? "ghost" : "default"}
+                      disabled={!isAdmin || isCurrent || !isAvailable}
+                      isLoading={
+                        checkoutMutation.isPending && (checkoutMutation.variables?.data as any)?.planId === plan.id
                       }
-                    }}
-                  >
-                    {buttonLabel}
-                  </Button>
+                      onClick={() => {
+                        if (hasActiveSavedCard) {
+                          setPendingPlanId(plan.id);
+                        } else {
+                          handleCheckout(plan.id);
+                        }
+                      }}
+                    >
+                      {buttonLabel}
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             );

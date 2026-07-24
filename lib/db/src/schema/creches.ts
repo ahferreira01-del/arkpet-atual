@@ -1,8 +1,9 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, boolean, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const crecheStatusEnum = pgEnum("creche_status", ["active", "inactive"]);
+export const crecheDeliveryTypeEnum = pgEnum("creche_delivery_type", ["fixed", "on_demand"]);
 
 export const crechesTable = pgTable("creches", {
   id: serial("id").primaryKey(),
@@ -15,6 +16,16 @@ export const crechesTable = pgTable("creches", {
   logoUrl: text("logo_url"),
   status: crecheStatusEnum("status").notNull().default("active"),
   adminId: integer("admin_id"),
+  auditEnabled: boolean("audit_enabled").notNull().default(true),
+  
+  // Delivery Settings
+  deliveryType: crecheDeliveryTypeEnum("delivery_type").default("fixed").notNull(),
+  deliveryFee: numeric("delivery_fee", { precision: 10, scale: 2 }).default("0").notNull(),
+  
+  // Payment Config
+  pixKey: text("pix_key"),
+  pixName: text("pix_name"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

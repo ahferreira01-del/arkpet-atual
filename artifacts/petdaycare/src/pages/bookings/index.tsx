@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useListBookings, useCreateBooking, useUpdateBooking, useCheckIn, useCheckOut, useListPets, useListTasks } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useSearch } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DateFilterPopover } from "@/components/ui/date-filter-popover";
+import { resolvePhotoUrl, formatCurrency } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -12,9 +14,25 @@ import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, Chevron
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/date-utils";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
+import { AddConsumableModal } from "@/components/bookings/add-consumable-modal";
+
+function useTutors(crecheId: number, enabled: boolean) {
+  const token = localStorage.getItem("auth_token");
+  return useQuery<any[]>({
+    queryKey: ["tutors-full", crecheId],
+    enabled,
+    queryFn: async () => {
+      const r = await fetch(`/api/creches/${crecheId}/tutors/manage`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+}
 
 type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled" | "cancel_requested";
 type BookingType = "day_use" | "lodging" | "banho" | "hospedagem_banho" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
@@ -48,7 +66,7 @@ const statusLabel: Record<string, string> = {
   completed: "Concluída",
   cancelled: "Cancelada",
   cancel_requested: "Cancelamento Solicitado",
-  all: "Todas",
+  all: "Todos os status",
 };
 
 function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | null; onChange: (id: number | null) => void }) {
@@ -68,13 +86,13 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
   const selected = pets.find((p) => p.id === value);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative flex-1 min-w-0">
       <button
         type="button"
         onClick={() => { setOpen((v) => !v); setSearch(""); }}
-        className="flex items-center gap-2 pl-3 pr-2 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white hover:bg-white/10 transition-all min-w-[180px] max-w-[260px]"
+        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-full bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
       >
-        <span className="flex-1 text-left truncate">
+        <span className="text-left truncate">
           {selected ? `🐾 ${selected.name}` : "Todos os pets"}
         </span>
         {selected ? (
@@ -88,7 +106,7 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
       </button>
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
           <div className="p-2 border-b border-white/10">
             <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
               <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
@@ -124,6 +142,127 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
               </button>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: number | null; onChange: (id: number | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = tutors?.filter((t) => t.name.toLowerCase().includes(search.toLowerCase())) || [];
+  const selected = tutors?.find((t) => t.id === value);
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-[200px]">
+      <button
+        type="button"
+        onClick={() => { setOpen((v) => !v); setSearch(""); }}
+        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-xl bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
+      >
+        <span className="text-left truncate">
+          {selected ? `👤 ${selected.name}` : "Todos os tutores"}
+        </span>
+        {selected ? (
+          <X
+            className="h-3.5 w-3.5 text-muted-foreground hover:text-white flex-shrink-0"
+            onClick={(e) => { e.stopPropagation(); onChange(null); setOpen(false); }}
+          />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-white/10">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
+              <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar tutor..."
+                className="bg-transparent border-none text-sm text-white placeholder:text-muted-foreground focus:outline-none w-full"
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1">
+            <button
+              type="button"
+              onClick={() => { onChange(null); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 ${value === null ? "text-white font-medium" : "text-muted-foreground"}`}
+            >
+              Todos os tutores
+            </button>
+            {filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { onChange(t.id); setOpen(false); }}
+                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 truncate flex justify-between items-center ${value === t.id ? "text-primary font-medium" : "text-white"}`}
+              >
+                {t.name}
+                {value === t.id && <CheckCircle className="h-3 w-3" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusCombobox({ statuses, counts, value, onChange }: { statuses: string[]; counts: Record<string, number>; value: string; onChange: (s: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-full bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
+      >
+        <span className="text-left truncate">
+          {statusLabel[value] || value}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden py-1">
+          {statuses.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { onChange(s); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2 ${value === s ? "text-primary font-medium" : "text-white hover:text-white"}`}
+            >
+              <span className="truncate">{s === "all" ? "Todos" : (statusLabel[s] || s)}</span>
+              <span className="text-xs opacity-70 ml-1">({counts[s] || 0})</span>
+              {value === s && <span className="ml-auto text-xs text-primary">✓</span>}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -195,29 +334,42 @@ export default function Bookings() {
   const searchStr = useSearch();
   const urlParams = new URLSearchParams(searchStr);
   const highlightBookingId = urlParams.get("b") ? parseInt(urlParams.get("b")!) : null;
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [, setLocation] = useLocation();
   const [editBooking, setEditBooking] = useState<any | null>(null);
   // When navigating from a notification with a specific booking, show all statuses so it's visible
   const [statusFilter, setStatusFilter] = useState<string>(() => {
     if (highlightBookingId) return "all";
     return urlParams.get("status") || "all";
   });
+  const [tutorFilter, setTutorFilter] = useState<number | null>(null);
   const [petFilter, setPetFilter] = useState<number | null>(null);
+  const [startDateFilter, setStartDateFilter] = useState<string>("");
+  const [endDateFilter, setEndDateFilter] = useState<string>("");
   const [onTheWayBooking, setOnTheWayBooking] = useState<any | null>(null);
   const [eta, setEta] = useState("15");
   const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
+  const [consumableBooking, setConsumableBooking] = useState<any | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
   const [personalItemsBooking, setPersonalItemsBooking] = useState<any | null>(null);
   const [bookingPersonalItems, setBookingPersonalItems] = useState<Record<number, { hasItems: boolean; photoUrl: string | null }>>({});
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
-  const { data: bookings, isLoading } = useListBookings(crecheId, undefined, {
+  const { data: bookingsResponse, isLoading } = useListBookings(crecheId, {
+    tutorId: tutorFilter || undefined,
+    petId: petFilter || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+    date: startDateFilter || undefined,
+    pageSize: 1000 // Get all for the report view
+  } as any, {
     query: {
       refetchInterval: 20_000,
       refetchOnWindowFocus: true,
     } as any,
   });
-  const { data: pets } = useListPets(crecheId);
+  const { data: petsResponse } = useListPets(crecheId);
+  const { data: tutors } = useTutors(crecheId, !isTutor);
+  const pets = (petsResponse as any)?.items || (Array.isArray(petsResponse) ? petsResponse : []);
+  const bookings = (bookingsResponse as any)?.items || (Array.isArray(bookingsResponse) ? bookingsResponse : []);
   const { data: allTasks } = useListTasks(crecheId);
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
@@ -256,45 +408,41 @@ export default function Bookings() {
     return myPetIds.includes(b.petId);
   }) : bookings;
 
-  const filteredByStatus = statusFilter === "all" ? myBookings : myBookings?.filter((b) => b.status === statusFilter);
-  const filtered = petFilter ? filteredByStatus?.filter((b) => b.petId === petFilter) : filteredByStatus;
+  // We only do date filtering here if the user selected endDateFilter, 
+  // since startDateFilter is already sent to the backend.
+  // We also don't need petFilter/tutorFilter/statusFilter because they are sent to backend,
+  // except maybe if the UI isn't perfectly synced yet. It's safer to keep local filtering as a fallback.
+  const bookingsFilteredByDate = myBookings.filter((b: any) => {
+    if (startDateFilter && b.startDate < startDateFilter) return false;
+    if (endDateFilter && b.startDate > endDateFilter) return false;
+    if (petFilter && b.petId !== petFilter) return false;
+    if (tutorFilter && b.tutorId !== tutorFilter) return false;
+    return true;
+  });
 
-  const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!selectedPetIds.length) {
-      toast({ title: "Selecione pelo menos um pet", variant: "destructive" });
-      return;
-    }
-    const fd = new FormData(e.currentTarget);
-    const type = ((fd.get("type") as string) || "day_use") as any;
-    const startDate = fd.get("startDate") as string;
-    const endDate = (fd.get("endDate") as string) || undefined;
-    const notes = (fd.get("notes") as string) || undefined;
-    try {
-      await Promise.all(
-        selectedPetIds.map((petId) =>
-          createMutation.mutateAsync({
-            crecheId,
-            data: { petId, type, startDate, endDate, notes } as any,
-          })
-        )
-      );
-      setIsCreateOpen(false);
-      setSelectedPetIds([]);
-      queryClient.invalidateQueries();
-      const count = selectedPetIds.length;
-      toast({
-        title: count === 1 ? "Reserva criada!" : `${count} reservas criadas!`,
-        description: "Aguardando confirmação da creche.",
-      });
-    } catch (err: any) {
-      toast({
-        title: "Não foi possível criar a reserva",
-        description: err?.data?.message ?? "Tente novamente em instantes.",
-        variant: "destructive",
-      });
-    }
+  const baseForStatus = bookingsFilteredByDate;
+  
+  const statusCounts: Record<string, number> = {
+    all: baseForStatus.length,
+    pending: 0,
+    confirmed: 0,
+    active: 0,
+    completed: 0,
+    cancelled: 0,
+    cancel_requested: 0,
   };
+  
+  baseForStatus.forEach((b: any) => {
+    if (statusCounts[b.status] !== undefined) {
+      statusCounts[b.status]++;
+    } else {
+      statusCounts[b.status] = 1;
+    }
+  });
+
+  const filtered = statusFilter === "all" ? baseForStatus : baseForStatus.filter((b: any) => b.status === statusFilter);
+
+
 
   const statusSuccessMessages: Partial<Record<BookingStatus, string>> = {
     confirmed: "Reserva confirmada com sucesso!",
@@ -430,12 +578,6 @@ export default function Bookings() {
         title="Reservas"
         description={isTutor ? "Suas reservas na creche." : "Gerencie day use e hospedagens."}
         icon={Calendar}
-        action={
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Nova Reserva</span>
-          </Button>
-        }
       />
 
       {/* Recovery banner: pets stuck as present without an active booking */}
@@ -464,37 +606,38 @@ export default function Bookings() {
         </div>
       )}
 
-      {/* Pet filter combobox */}
-      {pets && pets.length > 0 && !isTutor && (
-        <PetCombobox
-          pets={pets}
-          value={petFilter}
-          onChange={setPetFilter}
-        />
-      )}
-
-      {/* Status filter tabs - horizontal scroll on mobile */}
-      <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar -mx-1 px-1">
-        {["all", "pending", "confirmed", "active", "completed", "cancelled"].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              statusFilter === s
-                ? "bg-primary/20 text-primary border border-primary/30"
-                : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
-            }`}
-          >
-            {statusLabel[s] || s}
-            {s !== "all" && (
-              <span className="ml-1 text-xs opacity-70">
-                ({myBookings?.filter((b) => b.status === s).length || 0})
-              </span>
+      {/* Filters */}
+      <div className="flex flex-col gap-3 w-full mb-2">
+        {!isTutor && (
+          <Button onClick={() => setLocation("/bookings/new")} className="bg-[#a3d84b] text-[#1a1a2e] hover:bg-[#92c73a] shrink-0 w-full sm:w-auto h-10 rounded-xl">
+            <Plus className="h-5 w-5 mr-2" /> Nova Reserva
+          </Button>
+        )}
+        
+        <div className="flex flex-col sm:flex-row gap-2 w-full">
+          <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
+            <DateFilterPopover
+              start={startDateFilter || ""}
+              end={endDateFilter || ""}
+              onChangeStart={setStartDateFilter}
+              onChangeEnd={setEndDateFilter}
+            />
+            <StatusCombobox
+              statuses={["all", "pending", "confirmed", "active", "completed", "cancelled"]}
+              counts={statusCounts}
+              value={statusFilter}
+              onChange={setStatusFilter}
+            />
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:flex-[2]">
+            {!isTutor && tutors && (
+              <TutorCombobox tutors={tutors} value={tutorFilter} onChange={setTutorFilter} />
             )}
-          </button>
-        ))}
+            <PetCombobox pets={pets || []} value={petFilter} onChange={setPetFilter} />
+          </div>
+        </div>
       </div>
-
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -507,140 +650,170 @@ export default function Bookings() {
                   <div
                     key={booking.id}
                     id={`booking-${booking.id}`}
-                    className={`p-4 space-y-3 transition-colors ${highlightBookingId === booking.id ? "bg-violet-500/8 ring-1 ring-inset ring-violet-400/30" : ""}`}
+                    className={`p-5 space-y-4 transition-colors ${highlightBookingId === booking.id ? "bg-violet-500/8 ring-1 ring-inset ring-violet-400/30" : ""}`}
                   >
-                    {/* Row 1: pet name + tutor */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-white">{booking.petName}</p>
-                        {!isTutor && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
+                    {/* ── CONCEPT A LAYOUT ── */}
+                    {/* Row 1: Pet Name (Left) + Badges (Right) */}
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <h3 className="text-xl font-bold text-white leading-none">{booking.petName}</h3>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors px-2 py-0.5 text-[10px] h-6">
+                          {statusLabel[booking.status] || booking.status}
+                        </Badge>
+                        <Badge variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors px-2 py-0.5 text-[10px] h-6">
+                          {bookingTypeLabel[booking.type] || booking.type}
+                        </Badge>
+                        {(booking as any).onTheWayAt && booking.status !== "completed" && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 flex items-center gap-1 flex-shrink-0 border border-blue-500/20 h-6">
+                            <Car className="h-3 w-3" /> A caminho
+                          </span>
                         )}
                       </div>
-                      {(booking as any).onTheWayAt && booking.status !== "completed" && (
-                        <span className="text-xs text-blue-400 flex items-center gap-0.5 flex-shrink-0">
-                          <Car className="h-3 w-3" /> A caminho
-                        </span>
+                    </div>
+
+                    {/* Row 2: Tutor */}
+                    {!isTutor && (
+                      <p className="text-sm text-muted-foreground mb-3">{booking.tutorName || "—"}</p>
+                    )}
+
+                    {/* Row 3: Dates and Times */}
+                    <div className="flex flex-col gap-1.5 mb-4">
+                      <div className="text-sm text-muted-foreground font-medium">
+                        {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
+                        {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
+                      </div>
+                      {(booking.checkInTime || (booking as any).checkOutTime) && (
+                        <div className="flex items-center gap-3">
+                          {booking.checkInTime && (
+                            <span className="text-sm text-emerald-400 font-medium flex items-center gap-1">
+                              <CheckCircle className="h-3.5 w-3.5" /> In: {format(new Date(booking.checkInTime), "HH:mm")}
+                            </span>
+                          )}
+                          {(booking as any).checkOutTime && (
+                            <span className="text-sm text-amber-500 font-medium flex items-center gap-1">
+                              <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
-                    {/* Row 2: status + type + dates */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="text-xs">
-                        {statusLabel[booking.status] || booking.status}
-                      </Badge>
-                      <Badge variant="outline" className="bg-white/5 text-xs">
-                        {bookingTypeLabel[booking.type] || booking.type}
-                      </Badge>
-                      {booking.checkInTime && (
-                        <span className="text-xs text-emerald-400">
-                          ✓ {format(new Date(booking.checkInTime), "HH:mm")}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
-                      {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
-                    </div>
-                    {/* Row 3: action buttons */}
-                    <div className="flex gap-2 flex-wrap">
+
+                    {/* Row 4: Horizontal Action Buttons */}
+                    <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
                       {(booking.status === "confirmed" || booking.status === "active") && (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs"
+                          className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 font-medium bg-transparent"
                           onClick={() => setOnTheWayBooking(booking)}
                         >
-                          <Navigation className="mr-1 h-3 w-3" /> A caminho
+                          <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
                         </Button>
                       )}
-                      {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 text-xs"
-                          onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
-                          isLoading={updateMutation.isPending}
-                        >
-                          Solicitar Cancelamento
-                        </Button>
-                      )}
-                      {!isTutor && (
-                        <>
-                          {booking.status === "cancel_requested" && (
-                            <>
+                        {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 font-medium bg-transparent"
+                            onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
+                            isLoading={updateMutation.isPending}
+                          >
+                            Solicitar Cancelamento
+                          </Button>
+                        )}
+                        {!isTutor && (
+                          <>
+                            {booking.status === "cancel_requested" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 font-medium bg-transparent"
+                                  onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                  isLoading={updateMutation.isPending}
+                                >
+                                  Aprovar Cancel.
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-medium bg-transparent"
+                                  onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                                  isLoading={updateMutation.isPending}
+                                >
+                                  Recusar
+                                </Button>
+                              </>
+                            )}
+                            {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 text-xs"
-                                onClick={() => handleStatusUpdate(booking.id, "cancelled")}
-                                isLoading={updateMutation.isPending}
+                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-medium bg-transparent"
+                                onClick={() => handleCheckIn(booking)}
+                                isLoading={checkInMutation.isPending}
                               >
-                                Aprovar Cancel.
+                                <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
                               </Button>
+                            )}
+                            {booking.status === "confirmed" && isPetPresent(booking.petId) && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs"
+                                className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 font-medium bg-transparent"
+                                onClick={() => handleCompleteService(booking)}
+                                isLoading={completeServiceMutation.isPending}
+                              >
+                                <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                              </Button>
+                            )}
+                            {booking.status === "active" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-amber-500/40 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400 font-medium bg-transparent"
+                                  onClick={() => handleCheckOut(booking)}
+                                  isLoading={checkOutMutation.isPending}
+                                >
+                                  <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
+                                  onClick={() => setConsumableBooking(booking)}
+                                >
+                                  <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
+                                </Button>
+                              </>
+                            )}
+                            {booking.status === "pending" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
                                 onClick={() => handleStatusUpdate(booking.id, "confirmed")}
                                 isLoading={updateMutation.isPending}
                               >
-                                Recusar
+                                Confirmar
                               </Button>
-                            </>
-                          )}
-                          {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs"
-                              onClick={() => handleCheckIn(booking)}
-                              isLoading={checkInMutation.isPending}
+                            )}
+                            
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="text-white hover:bg-white/10 font-semibold px-4 ml-auto sm:ml-0" 
+                              onClick={() => setEditBooking(booking)}
                             >
-                              <LogIn className="mr-1 h-3 w-3" /> Check-in
+                              Editar
                             </Button>
-                          )}
-                          {booking.status === "confirmed" && isPetPresent(booking.petId) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 text-xs"
-                              onClick={() => handleCompleteService(booking)}
-                              isLoading={completeServiceMutation.isPending}
-                            >
-                              <CheckCircle className="mr-1 h-3 w-3" /> Concluir Serviço
-                            </Button>
-                          )}
-                          {booking.status === "active" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs"
-                              onClick={() => handleCheckOut(booking)}
-                              isLoading={checkOutMutation.isPending}
-                            >
-                              <LogOut className="mr-1 h-3 w-3" /> Check-out
-                            </Button>
-                          )}
-                          {booking.status === "pending" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs"
-                              onClick={() => handleStatusUpdate(booking.id, "confirmed")}
-                              isLoading={updateMutation.isPending}
-                            >
-                              Confirmar
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditBooking(booking)}>
-                            Editar
-                          </Button>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
 
               {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
               <div className="hidden md:block overflow-x-auto custom-scrollbar">
@@ -676,6 +849,11 @@ export default function Bookings() {
                           {booking.checkInTime && (
                             <p className="text-xs text-emerald-400 mt-0.5">
                               Check-in: {format(new Date(booking.checkInTime), "HH:mm")}
+                            </p>
+                          )}
+                          {(booking as any).checkOutTime && (
+                            <p className="text-xs text-amber-500 mt-0.5">
+                              Check-out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
                             </p>
                           )}
                         </td>
@@ -759,15 +937,25 @@ export default function Bookings() {
                                   </Button>
                                 )}
                                 {booking.status === "active" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                                    onClick={() => handleCheckOut(booking)}
-                                    isLoading={checkOutMutation.isPending}
-                                  >
-                                    <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                                      onClick={() => handleCheckOut(booking)}
+                                      isLoading={checkOutMutation.isPending}
+                                    >
+                                      <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                      onClick={() => setConsumableBooking(booking)}
+                                    >
+                                      <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
+                                    </Button>
+                                  </div>
                                 )}
                                 {booking.status === "pending" && (
                                   <Button
@@ -797,104 +985,12 @@ export default function Bookings() {
               icon={Calendar}
               title="Nenhuma reserva encontrada"
               description={statusFilter !== "all" ? `Nenhuma reserva com status "${statusLabel[statusFilter] || statusFilter}".` : isTutor ? "Agende uma visita para seu pet." : "Crie a primeira reserva."}
-              action={statusFilter === "all" ? { label: "Nova Reserva", onClick: () => setIsCreateOpen(true) } : undefined}
+              action={statusFilter === "all" ? { label: "Nova Reserva", onClick: () => setLocation("/bookings/new") } : undefined}
             />
           )}
         </CardContent>
       </Card>
 
-      {/* Create Modal */}
-      <Modal isOpen={isCreateOpen} onClose={() => { setIsCreateOpen(false); setSelectedPetIds([]); }} title="Nova Reserva">
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Pets <span className="text-muted-foreground text-xs">(selecione um ou mais)</span>
-            </label>
-            {!pets?.length ? (
-              <p className="text-xs text-muted-foreground py-2">Nenhum pet disponível.</p>
-            ) : (
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {(isTutor ? pets?.filter((p) => p.tutorId === user?.id) : pets)?.map((p) => {
-                  const checked = selectedPetIds.includes(p.id);
-                  return (
-                    <label
-                      key={p.id}
-                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                        checked
-                          ? "border-primary/50 bg-primary/10"
-                          : "border-white/10 bg-white/5 hover:bg-white/8"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="accent-primary w-4 h-4 flex-shrink-0"
-                        checked={checked}
-                        onChange={() =>
-                          setSelectedPetIds((ids) =>
-                            ids.includes(p.id) ? ids.filter((i) => i !== p.id) : [...ids, p.id]
-                          )
-                        }
-                      />
-                      <span className="text-sm text-white font-medium">{p.name}</span>
-                      {(p.breed || p.species) && (
-                        <span className="text-xs text-muted-foreground ml-auto">{p.breed || p.species}</span>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-            {selectedPetIds.length > 1 && (
-              <p className="text-xs text-primary/80 font-medium">
-                {selectedPetIds.length} pets selecionados — será criada uma reserva para cada.
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Tipo de Estadia</label>
-            <select
-              name="type"
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
-            >
-              <option value="day_use">Day Use (volta no mesmo dia)</option>
-              <option value="lodging">Hospedagem (pernoite)</option>
-              <option value="banho">Banho</option>
-              <option value="hospedagem_banho">Hospedagem + Banho</option>
-              <option value="visita">Visita (avaliação ou consulta)</option>
-              <option value="pacote_4dias">Pacote 4 Dias</option>
-              <option value="pacote_8dias">Pacote 8 Dias</option>
-              <option value="pacote_20dias">Pacote 20 Dias</option>
-              <option value="visita_taxi">Visita + Táxi</option>
-              <option value="creche_taxi">Creche + Táxi</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Data de Entrada</label>
-              <Input name="startDate" type="date" required defaultValue={format(new Date(), "yyyy-MM-dd")} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Data de Saída</label>
-              <Input name="endDate" type="date" />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Observações</label>
-            <Input name="notes" placeholder="Ex: meu pet precisa de atenção especial..." />
-          </div>
-          {isTutor && (
-            <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
-              Sua reserva ficará pendente até ser confirmada pela creche.
-            </div>
-          )}
-          <div className="modal-sticky-footer flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsCreateOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={createMutation.isPending}>Solicitar Reserva</Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Edit Modal — Staff/Admin only */}
       {editBooking && !isTutor && (
         <Modal isOpen={!!editBooking} onClose={() => setEditBooking(null)} title="Editar Reserva">
           <div className="space-y-4">
@@ -951,6 +1047,16 @@ export default function Bookings() {
             queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
             toast({ title: "Check-in realizado!" });
           }}
+        />
+      )}
+
+      {consumableBooking && (
+        <AddConsumableModal
+          isOpen={!!consumableBooking}
+          onClose={() => setConsumableBooking(null)}
+          bookingId={consumableBooking.id}
+          crecheId={crecheId}
+          petName={consumableBooking.petName}
         />
       )}
 

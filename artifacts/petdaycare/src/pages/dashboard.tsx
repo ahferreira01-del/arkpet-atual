@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useListTasks,
@@ -58,6 +58,39 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { parseUTC, todayBrazil, parseLocalDate } from "@/lib/date-utils";
 import { resolvePhotoUrl } from "@/lib/utils";
+import { usePush } from "@/hooks/use-push";
+
+// ─── Componente de Prompt de Notificação ──────────────────────────────────────
+function NotificationPrompt() {
+  const { isSupported, permission, isSubscribed, isLoading, subscribe } = usePush();
+  const [dismissed, setDismissed] = useState(false);
+
+  if (!isSupported || permission !== "default" || isSubscribed || dismissed) {
+    return null;
+  }
+
+  return (
+    <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4">
+      <div className="flex items-start sm:items-center gap-3">
+        <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center shrink-0 mt-1 sm:mt-0">
+          <Bell className="h-5 w-5 text-primary animate-pulse" />
+        </div>
+        <div className="flex-1">
+          <h3 className="text-sm font-semibold text-white">Ative as Notificações</h3>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Receba alertas de reservas, check-in e mensagens em tempo real.</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+        <Button variant="ghost" size="sm" onClick={() => setDismissed(true)} className="text-muted-foreground hover:text-white">
+          Agora não
+        </Button>
+        <Button size="sm" onClick={subscribe} isLoading={isLoading} className="bg-primary hover:bg-primary/90 text-white">
+          Ativar
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -92,9 +125,12 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = user?.name?.split(" ")[0] || "Admin";
 
-  const checkedIn = pets?.filter((p) => p.isCheckedIn) || [];
-  const checkedInIds = new Set(checkedIn.map((p) => p.id).filter((id): id is number => id != null));
-  const pendingBookings = bookings?.filter((b) => b.status === "pending") || [];
+  const petsArray = Array.isArray(pets) ? pets : (pets as any)?.items || [];
+  const bookingsArray = Array.isArray(bookings) ? bookings : (bookings as any)?.items || [];
+
+  const checkedIn = petsArray.filter((p: any) => p.isCheckedIn) || [];
+  const checkedInIds = new Set(checkedIn.map((p: any) => p.id).filter((id: any): id is number => id != null));
+  const pendingBookings = bookingsArray.filter((b: any) => b.status === "pending") || [];
   const activeWalks = (walks || []).filter((w: any) => w.status === "in_progress");
   const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));
   const todayTasks = activeTasks.slice(0, 4);
@@ -447,9 +483,10 @@ function StaffDashboard({ user }: { user: any }) {
     const id = setInterval(() => queryClient.invalidateQueries(), 20_000);
     return () => clearInterval(id);
   }, [queryClient]);
-  const checkedIn = pets?.filter((p) => p.isCheckedIn) || [];
-  const checkedInIds = new Set(checkedIn.map((p) => p.id).filter((id): id is number => id != null));
-  const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));
+  const petsArray = Array.isArray(pets) ? pets : (pets as any)?.items || [];
+  const checkedIn = petsArray.filter((p: any) => p.isCheckedIn) || [];
+  const checkedInIds = new Set(checkedIn.map((p: any) => p.id).filter((id: any): id is number => id != null));
+  const activeTasks = (tasks || []).filter((t: any) => t.petId != null && checkedInIds.has(t.petId));
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 
@@ -593,8 +630,8 @@ function TutorDashboard({ user }: { user: any }) {
   const { data: pets } = useListPets(crecheId);
   const { data: timeline, isLoading: timelineLoading, refetch } = useTutorTimeline(crecheId, user.id);
 
-  const myPets = pets || [];
-  const checkedInPets = myPets.filter((p) => p.isCheckedIn);
+  const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
+  const checkedInPets = myPets.filter((p: any) => p.isCheckedIn);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const events = timeline || [];
@@ -610,6 +647,7 @@ function TutorDashboard({ user }: { user: any }) {
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
+      <NotificationPrompt />
 
       {/* ── Greeting ── */}
       <div className="flex items-start justify-between gap-4">
@@ -714,7 +752,7 @@ function TutorDashboard({ user }: { user: any }) {
                 color: "text-muted-foreground bg-white/5 border-white/10",
               };
               return (
-                <div key={ev.id} className="glass-panel rounded-2xl overflow-hidden">
+                <div key={`${ev.id}-${ev.petId}`} className="glass-panel rounded-2xl overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
                     {/* Pet avatar */}

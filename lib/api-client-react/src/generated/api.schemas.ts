@@ -782,8 +782,9 @@ export const ListTasksStatus = {
   skipped: "skipped",
 } as const;
 
-export type ListTimelineParams = {
-  date?: string;
+export type AddFeedPost201 = {
+  ok?: boolean;
+  event?: TimelineEvent;
 };
 
 export type ListWalksParams = {

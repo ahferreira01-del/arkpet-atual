@@ -1,4 +1,4 @@
-# LuxePets — Pet Daycare SaaS
+# ArkPet — Pet Daycare SaaS
 
 ## Overview
 
@@ -12,6 +12,7 @@ A full-stack multi-tenant SaaS platform for managing pet daycare centers (creche
 - **Walks in pet overview**: OverviewTab shows "Últimos Passeios" section with last 4 walks (duration, staff, status)
 - **Notification routing**: service worker `notificationclick` now routes to `/pets/:id`, `/chat?pet=id`, `/bookings`, `/staff` based on notification type + petId
 - **Bookings mobile card**: status badge now appears before type badge in mobile card view
+- **Financial Module (July 2026)**: Added `tutor_credits` for prepaid daycare packages. Rebuilt invoice checkout to store detailed consumable items (joining `catalogueItemsTable` for explicit names) instead of generic IDs. Fixed `expenses/:id/pay` schema mismatch to correctly record `expenseId` and handle `req.body.paymentMethod` safely. Added "Detalhes" modal in tutor invoice view.
 
 ## Stack
 

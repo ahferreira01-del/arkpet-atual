@@ -11,7 +11,15 @@ import pushRouter from "./push.js";
 import walksRouter from "./walks.js";
 import storageRouter from "./storage.js";
 import tutorTimelineRouter from "./tutor-timeline.js";
+import feedRouter from "./feed.js";
 import billingRouter from "./billing.js";
+import financialRouter from "./financial.js";
+import financialAnalyticsRouter from "./financial-analytics.js";
+import financialSearchRouter from "./financial-search.js";
+import financialReportsRouter from "./financial-reports.js";
+import medicalRouter from "./medical.js";
+import ordersRouter from "./orders.js";
+
 const router = Router();
 
 router.use(healthRouter);
@@ -24,7 +32,15 @@ router.use("/creches/:crecheId/tasks", tasksRouter);
 router.use("/creches/:crecheId/chat", chatRouter);
 router.use("/creches/:crecheId/walks", walksRouter);
 router.use("/creches/:crecheId/pets/:petId/walks", walksRouter);
+
 router.use("/creches/:crecheId/tutor-timeline", tutorTimelineRouter);
+router.use("/creches/:crecheId/feed", feedRouter);
+router.use("/creches/:crecheId/financial", financialRouter);
+router.use("/creches/:crecheId/financial", financialAnalyticsRouter);
+router.use("/creches/:crecheId/financial", financialSearchRouter);
+router.use("/creches/:crecheId/financial", financialReportsRouter);
+router.use("/creches/:crecheId/medical", medicalRouter);
+router.use("/creches/:crecheId/orders", ordersRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);

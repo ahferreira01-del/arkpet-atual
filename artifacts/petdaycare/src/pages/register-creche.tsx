@@ -34,7 +34,7 @@ export default function RegisterCreche() {
         toast({ title: "Creche criada!", description: "Bem-vindo(a) ao ArkPet. Seu teste grátis começou." });
         setTimeout(() => setLocation("/"), 100);
       },
-      onError: (err: any) => {
+      onError: (err: Error) => {
         const msg = err?.message || "Não foi possível concluir o cadastro.";
         setError(msg);
       },

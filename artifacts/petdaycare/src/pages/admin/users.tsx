@@ -181,7 +181,7 @@ export default function AdminUsers() {
         setCreateForm({ name: "", email: "", password: "", role: isMaster ? "creche_admin" : "tutor", crecheId: isMaster ? "" : String(crecheId) });
         setCreateError("");
       },
-      onError: (err: any) => setCreateError(err.message || "Erro ao criar usuário"),
+      onError: (err: Error) => setCreateError(err.message || "Erro ao criar usuário"),
     });
   };
 

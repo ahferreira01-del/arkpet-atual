@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
     };
   }, [isOpen]);
 
-  return (
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
         <>
@@ -103,4 +104,6 @@ export function Modal({ isOpen, onClose, title, description, children, className
       )}
     </AnimatePresence>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : null;
 }

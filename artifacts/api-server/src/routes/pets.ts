@@ -56,7 +56,7 @@ router.get("/", async (req: AuthRequest, res) => {
     .leftJoin(usersTable, eq(petsTable.tutorId, usersTable.id))
     .where(and(...conditions));
 
-  res.json(pets);
+  res.json({ items: pets, total: pets.length });
 });
 
 router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthRequest, res) => {
@@ -219,103 +219,6 @@ router.post("/:petId/medications/:medicationId/administer", async (req: AuthRequ
   res.json(med);
 });
 
-router.get("/:petId/timeline", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const userId = req.user?.id ?? 0;
-  const { db: dbConn } = await import("@workspace/db");
-  const { timelineEventsTable, timelineLikesTable } = await import("@workspace/db/schema");
-  const events = await dbConn.select({
-    id: timelineEventsTable.id,
-    crecheId: timelineEventsTable.crecheId,
-    petId: timelineEventsTable.petId,
-    authorId: timelineEventsTable.authorId,
-    authorName: usersTable.name,
-    type: timelineEventsTable.type,
-    content: timelineEventsTable.content,
-    mediaUrl: timelineEventsTable.mediaUrl,
-    mediaType: timelineEventsTable.mediaType,
-    createdAt: timelineEventsTable.createdAt,
-    likeCount: sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${timelineEventsTable.id})::int`,
-    isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${timelineEventsTable.id} AND user_id = ${userId})`,
-  })
-    .from(timelineEventsTable)
-    .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
-    .where(and(eq(timelineEventsTable.crecheId, crecheId), eq(timelineEventsTable.petId, petId)))
-    .orderBy(sql`${timelineEventsTable.createdAt} DESC`);
-  res.json(events);
-});
-
-router.delete("/:petId/timeline/:eventId", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const eventId = parseInt(String(req.params.eventId));
-  const { db: dbConn } = await import("@workspace/db");
-  const { timelineEventsTable } = await import("@workspace/db/schema");
-  await dbConn.delete(timelineEventsTable).where(
-    and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId))
-  );
-  res.json({ ok: true });
-});
-
-router.post("/:petId/timeline/:eventId/like", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const eventId = parseInt(String(req.params.eventId));
-  const userId = req.user.id;
-  const { db: dbConn } = await import("@workspace/db");
-  const { timelineLikesTable } = await import("@workspace/db/schema");
-  const existing = await dbConn.select().from(timelineLikesTable)
-    .where(and(eq(timelineLikesTable.eventId, eventId), eq(timelineLikesTable.userId, userId)))
-    .limit(1);
-  if (existing.length > 0) {
-    await dbConn.delete(timelineLikesTable)
-      .where(and(eq(timelineLikesTable.eventId, eventId), eq(timelineLikesTable.userId, userId)));
-    res.json({ liked: false });
-  } else {
-    await dbConn.insert(timelineLikesTable).values({ eventId, userId });
-    res.json({ liked: true });
-  }
-});
-
-router.post("/:petId/timeline", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const { db: dbConn } = await import("@workspace/db");
-  const { timelineEventsTable } = await import("@workspace/db/schema");
-  const { type, content, mediaUrl, mediaType } = req.body;
-  const [event] = await dbConn.insert(timelineEventsTable).values({
-    crecheId, petId, authorId: req.user.id, type, content, mediaUrl, mediaType,
-  }).returning();
-
-  const pet = await dbConn.select().from(petsTable).where(eq(petsTable.id, petId)).limit(1);
-  if (pet[0]?.tutorId) {
-    const { sendPushToUser } = await import("../lib/push.js");
-    const typeLabels: Record<string, string> = {
-      photo: "📸 Nova foto",
-      note: "📝 Nova nota",
-      play: "🎾 Momento de brincadeira",
-      walk: "🦮 Passeio",
-      feeding: "🍽️ Alimentação",
-      medication: "💊 Medicação",
-      health: "🏥 Saúde",
-      check_in: "✅ Check-in",
-      check_out: "🏠 Check-out",
-      video: "🎥 Novo vídeo",
-    };
-    const label = typeLabels[type] || "📌 Novo evento";
-    const petName = pet[0].name;
-    const caption = content ? ` "${content.slice(0, 60)}${content.length > 60 ? "…" : ""}"` : "";
-    await sendPushToUser(pet[0].tutorId, {
-      title: `${petName} na creche`,
-      body: `${label}${caption}`,
-      data: { type: "timeline", petId },
-    }).catch(() => {});
-  }
-
-  res.status(201).json({ ...event, authorName: req.user.name });
-});
 
 router.get("/:petId/walks", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));

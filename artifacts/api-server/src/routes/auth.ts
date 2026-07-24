@@ -4,6 +4,7 @@ import { usersTable, crechesTable, subscriptionsTable, plansTable } from "@works
 import { eq, and, gt, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { hashPassword, verifyPassword, generateToken, needsRehash } from "../lib/auth.js";
+import { encrypt } from "../lib/crypto.js";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { sendSelfSignupWelcomeEmail, sendPasswordResetEmail } from "../services/email.js";
 import { passwordResetTokensTable } from "@workspace/db/schema";
@@ -58,7 +59,7 @@ router.post("/login", loginLimiter, async (req, res) => {
 });
 
 router.post("/register", authenticate, requireRole("master_admin"), async (req, res) => {
-  const { name, email, password, role, crecheId } = req.body;
+  const { name, email, password, role, crecheId, cpf, phone } = req.body;
   if (!name || !email || !password || !role) {
     res.status(400).json({ error: "Missing required fields" });
     return;
@@ -75,6 +76,8 @@ router.post("/register", authenticate, requireRole("master_admin"), async (req, 
     passwordHash: hashPassword(password),
     role,
     crecheId: crecheId ?? null,
+    cpf: cpf ? encrypt(cpf) : null,
+    phone: phone ? encrypt(phone) : null,
   }).returning();
   const token = generateToken(user.id, user.role);
   res.status(201).json({
@@ -92,7 +95,7 @@ router.post("/register", authenticate, requireRole("master_admin"), async (req, 
 });
 
 router.post("/register-creche", sensitiveLimiter, async (req, res) => {
-  const { name, email, password, crecheName, crechePhone, crecheAddress } = req.body;
+  const { name, email, password, crecheName, crechePhone, crecheAddress, cpf, phone } = req.body;
 
   if (!name?.trim() || !email?.trim() || !password || !crecheName?.trim()) {
     res.status(400).json({ error: "Preencha nome, e-mail, senha e nome da creche." });
@@ -131,6 +134,8 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
         role: "creche_admin",
         mustChangePassword: false,
         isActive: true,
+        cpf: cpf ? encrypt(cpf) : null,
+        phone: phone ? encrypt(phone) : null,
       }).returning();
 
       const [creche] = await tx.insert(crechesTable).values({

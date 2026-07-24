@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { timelineEventsTable, petsTable, usersTable } from "@workspace/db/schema";
+import { timelineEventsTable, timelineEventPetsTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
@@ -35,7 +35,7 @@ router.get("/", async (req: AuthRequest, res) => {
   const events = await db
     .select({
       id: timelineEventsTable.id,
-      petId: timelineEventsTable.petId,
+      petId: petsTable.id,
       petName: petsTable.name,
       petPhotoUrl: petsTable.photoUrl,
       authorId: timelineEventsTable.authorId,
@@ -50,9 +50,13 @@ router.get("/", async (req: AuthRequest, res) => {
     })
     .from(timelineEventsTable)
     .innerJoin(
+      timelineEventPetsTable,
+      eq(timelineEventPetsTable.eventId, timelineEventsTable.id)
+    )
+    .innerJoin(
       petsTable,
       and(
-        eq(timelineEventsTable.petId, petsTable.id),
+        eq(timelineEventPetsTable.petId, petsTable.id),
         eq(petsTable.tutorId, tutorId)
       )
     )

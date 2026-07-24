@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum, date, boolean, real, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, date, boolean, real, jsonb, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -25,8 +25,14 @@ export const bookingsTable = pgTable("bookings", {
   onTheWayAt: timestamp("on_the_way_at"),
   hasPersonalItems: boolean("has_personal_items"),
   personalItemsPhotoUrl: text("personal_items_photo_url"),
+  packageMaxPets: integer("package_max_pets"), // Limite do pacote selecionado no agendamento
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("bookings_creche_date_idx").on(t.crecheId, t.startDate),
+  index("bookings_pet_idx").on(t.petId),
+  index("bookings_tutor_idx").on(t.tutorId),
+  index("bookings_status_idx").on(t.status)
+]);
 
 export const insertBookingSchema = createInsertSchema(bookingsTable).omit({ id: true, createdAt: true });
 export type InsertBooking = z.infer<typeof insertBookingSchema>;

@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum , index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -21,7 +21,11 @@ export const tasksTable = pgTable("tasks", {
   notes: text("notes"),
   priority: taskPriorityEnum("priority").notNull().default("medium"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [
+  index("tasks_creche_idx").on(t.crecheId),
+  index("tasks_pet_idx").on(t.petId),
+  index("tasks_status_idx").on(t.status)
+]);
 
 export const insertTaskSchema = createInsertSchema(tasksTable).omit({ id: true, createdAt: true });
 export type InsertTask = z.infer<typeof insertTaskSchema>;

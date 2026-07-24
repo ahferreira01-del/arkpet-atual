@@ -859,18 +859,13 @@ export const CompleteTaskResponse = zod.object({
 });
 
 /**
- * @summary Get pet timeline
+ * @summary Get feed
  */
-export const ListTimelineParams = zod.object({
+export const ListFeedParams = zod.object({
   crecheId: zod.coerce.number(),
-  petId: zod.coerce.number(),
 });
 
-export const ListTimelineQueryParams = zod.object({
-  date: zod.date().optional(),
-});
-
-export const ListTimelineResponseItem = zod.object({
+export const ListFeedResponseItem = zod.object({
   id: zod.number(),
   crecheId: zod.number(),
   petId: zod.number(),
@@ -893,17 +888,16 @@ export const ListTimelineResponseItem = zod.object({
   mediaType: zod.enum(["photo", "video"]).nullish(),
   createdAt: zod.date(),
 });
-export const ListTimelineResponse = zod.array(ListTimelineResponseItem);
+export const ListFeedResponse = zod.array(ListFeedResponseItem);
 
 /**
- * @summary Add timeline event
+ * @summary Add feed post
  */
-export const AddTimelineEventParams = zod.object({
+export const AddFeedPostParams = zod.object({
   crecheId: zod.coerce.number(),
-  petId: zod.coerce.number(),
 });
 
-export const AddTimelineEventBody = zod.object({
+export const AddFeedPostBody = zod.object({
   type: zod.enum([
     "check_in",
     "check_out",

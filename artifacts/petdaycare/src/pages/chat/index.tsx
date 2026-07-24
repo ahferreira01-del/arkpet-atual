@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Send, MessageSquare, ArrowLeft, Dog, Search, ChevronUp, X } from "lucide-react";
+import { Send, MessageSquare, ArrowLeft, Dog, Search, ChevronUp, X, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -67,34 +67,41 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-3 rounded-xl flex items-center gap-3 transition-all ${
+      className={`w-full text-left p-4 rounded-[20px] flex items-center gap-4 transition-all mb-2 ${
         isActive
-          ? "bg-primary/15 border border-primary/25"
-          : "hover:bg-white/5 border border-transparent"
+          ? "bg-[#16171a] border border-[#84a93a]/30"
+          : "bg-[#16171a] border border-white/5 hover:border-white/10 opacity-80 hover:opacity-100"
       }`}
     >
-      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-violet-500/30 to-purple-600/30 border border-white/10 flex items-center justify-center text-sm font-bold text-white">
-        {avatarInitials(conv.tutorName)}
+      <div className="relative shrink-0">
+         <div className="w-12 h-12 rounded-full bg-[#1e2417] border border-[#84a93a]/20 flex items-center justify-center text-[15px] font-bold text-[#84a93a]">
+           {avatarInitials(conv.tutorName)}
+         </div>
+         <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-[#16171a] rounded-full flex items-center justify-center">
+            <div className="h-2.5 w-2.5 bg-emerald-500 rounded-full" />
+         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className={`text-sm font-semibold truncate ${isActive ? "text-primary" : "text-white"}`}>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <p className={`text-[15px] font-semibold truncate ${isActive ? "text-white" : "text-gray-300"}`}>
             {conv.tutorName}
           </p>
           {conv.lastAt && (
-            <span className="text-[11px] text-muted-foreground flex-shrink-0">
+            <span className="text-[12px] font-medium text-gray-500 shrink-0">
               {relativeTime(conv.lastAt)}
             </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+        <p className="text-[13px] text-gray-400 truncate">
           {conv.lastMessage ?? petList}
         </p>
       </div>
-      {conv.unread > 0 && (
-        <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center shadow-[0_0_10px_rgba(139,92,246,0.5)]">
+      {conv.unread > 0 ? (
+        <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#84a93a] text-white text-[11px] font-bold flex items-center justify-center">
           {conv.unread > 99 ? "99+" : conv.unread}
         </span>
+      ) : (
+        <ChevronRight className="h-5 w-5 text-gray-600 shrink-0" />
       )}
     </button>
   );
@@ -480,7 +487,7 @@ export default function Chat() {
           <Button
             type="submit"
             disabled={!message.trim()}
-            className="h-11 px-4 flex-shrink-0"
+            className="h-11 px-4 flex-shrink-0 bg-[#3a4d2b] hover:bg-[#2d3a21] text-white rounded-xl shadow-none"
           >
             <Send className="h-4 w-4" />
           </Button>
@@ -500,7 +507,7 @@ export default function Chat() {
           placeholder="Buscar tutor ou pet..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          className="w-full pl-9 pr-3 py-3 rounded-2xl bg-[#16171a] border border-white/5 text-[15px] text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[#84a93a]"
         />
       </div>
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-0.5 min-h-0">
@@ -590,7 +597,7 @@ export default function Chat() {
             {listView}
           </div>
         )}
-        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#16171a] border-0 rounded-[24px]">
           <CardContent className="p-0 flex flex-col h-full min-h-0">
             {selectedTutorId ? (
               conversationView

@@ -156,12 +156,19 @@ export default function QrScanner() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-lg mx-auto">
-      <div>
-        <h1 className="text-3xl font-display font-bold text-white">Leitor QR Code</h1>
-        <p className="text-muted-foreground mt-1">Escaneie o QR Code da coleira do pet para check-in rápido.</p>
+      <div className="flex items-center gap-3">
+        <button onClick={() => window.history.back()} className="h-10 w-10 rounded-full border border-white/5 bg-[#16171a] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+        </button>
+        <div>
+          <h1 className="text-[28px] leading-tight font-display font-bold text-white flex items-center gap-2">
+            Leitor QR Code <span className="text-[#84a93a]">QR</span>
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">Escaneie o QR Code da coleira do pet para check-in rápido e seguro.</p>
+        </div>
       </div>
 
-      <Card>
+      <Card className="bg-[#16171a] border-0 rounded-[24px]">
         <CardContent className="p-6 space-y-5">
           {/* Camera / Result area */}
           <div className="relative aspect-square rounded-2xl overflow-hidden bg-black/60 flex items-center justify-center border border-white/10">
@@ -174,9 +181,21 @@ export default function QrScanner() {
             <canvas ref={canvasRef} className="hidden" />
 
             {scanState === "idle" && (
-              <div className="text-center p-8 space-y-4">
-                <QrCode className="h-20 w-20 text-primary/40 mx-auto" />
-                <p className="text-muted-foreground text-sm">Clique em "Escanear" para ativar a câmera</p>
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-8">
+                {/* Custom four corners */}
+                <div className="absolute top-6 left-6 w-8 h-8 border-t-2 border-l-2 border-[#84a93a] rounded-tl-xl" />
+                <div className="absolute top-6 right-6 w-8 h-8 border-t-2 border-r-2 border-[#84a93a] rounded-tr-xl" />
+                <div className="absolute bottom-6 left-6 w-8 h-8 border-b-2 border-l-2 border-[#84a93a] rounded-bl-xl" />
+                <div className="absolute bottom-6 right-6 w-8 h-8 border-b-2 border-r-2 border-[#84a93a] rounded-br-xl" />
+                
+                <div className="flex flex-col items-center justify-center space-y-4 text-center mt-4">
+                  <div className="h-24 w-24 border-[3px] border-dashed border-gray-600 rounded-3xl flex items-center justify-center opacity-40">
+                     <QrCode className="h-10 w-10 text-gray-400" />
+                  </div>
+                  <p className="text-[15px] font-medium text-gray-400 max-w-[220px] mx-auto mt-6">
+                    Centralize o QR Code da coleira do pet dentro do quadro para escanear.
+                  </p>
+                </div>
               </div>
             )}
 

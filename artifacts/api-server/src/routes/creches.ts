@@ -166,7 +166,7 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const { name, address, phone, email, maxCapacity, status, logoUrl } = req.body;
+  const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName } = req.body;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (address !== undefined) updates.address = address;
@@ -175,6 +175,9 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
   if (maxCapacity !== undefined) updates.maxCapacity = maxCapacity;
   if (status !== undefined) updates.status = status;
   if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+  if (pixKey !== undefined) updates.pixKey = pixKey;
+  if (pixName !== undefined) updates.pixName = pixName;
+  if (req.body.auditEnabled !== undefined) updates.auditEnabled = req.body.auditEnabled;
   const [creche] = await db.update(crechesTable).set(updates).where(eq(crechesTable.id, id)).returning();
   res.json(creche);
 });

@@ -560,3 +560,52 @@ export function startPastDueSuspender() {
   suspendOverduePastDueSubscriptions();
   console.log(`[scheduler] Past-due suspender iniciado (graça: ${PAST_DUE_GRACE_DAYS} dias).`);
 }
+
+// ─── Auto-delete old Pix receipts (90 days LGPD) ──────────────────────────────
+import { ObjectStorageService } from "./objectStorage.js";
+import { invoicesTable } from "@workspace/db/schema";
+
+async function deleteOldReceipts() {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
+
+    const oldInvoices = await db
+      .select({ id: invoicesTable.id, receiptPhotoPath: invoicesTable.receiptPhotoPath })
+      .from(invoicesTable)
+      .where(
+        and(
+          isNotNull(invoicesTable.receiptPhotoPath),
+          lte(invoicesTable.updatedAt, cutoff)
+        )
+      );
+
+    if (!oldInvoices.length) return;
+
+    const objectStorageService = new ObjectStorageService();
+    console.log(`[scheduler] Excluindo ${oldInvoices.length} comprovantes antigos (>90 dias)...`);
+
+    for (const inv of oldInvoices) {
+      if (inv.receiptPhotoPath) {
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(inv.receiptPhotoPath);
+          await objectStorageService.deleteObject(objectFile);
+        } catch (e) {
+          console.warn(`[scheduler] Falha ao deletar arquivo ${inv.receiptPhotoPath}`, e);
+        }
+      }
+      await db.update(invoicesTable).set({ receiptPhotoPath: null }).where(eq(invoicesTable.id, inv.id));
+    }
+  } catch (err) {
+    console.error("[scheduler] erro ao limpar comprovantes antigos:", err);
+  }
+}
+
+export function startReceiptCleanupJob() {
+  // Runs daily at 04:00 BRT
+  cron.schedule("0 4 * * *", async () => {
+    console.log("[scheduler] Verificando comprovantes antigos para deleção...");
+    await deleteOldReceipts();
+  });
+  console.log("[scheduler] Receipt cleanup job iniciado.");
+}

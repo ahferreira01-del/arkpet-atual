@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { UserProfile } from "@workspace/api-client-react";
+import { UserProfile, useGetCreche } from "@workspace/api-client-react";
 import { 
   LayoutDashboard, 
   Users, 
@@ -14,7 +14,9 @@ import {
   LogOut,
   Footprints,
   QrCode,
-  CreditCard
+  CreditCard,
+  CircleDollarSign,
+  Receipt
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -25,6 +27,7 @@ interface SidebarProps {
 export function Sidebar({ user }: SidebarProps) {
   const [location] = useLocation();
   const { logout } = useAuth();
+  const { data: creche } = useGetCreche(user.crecheId || 1);
 
   const getLinks = () => {
     switch (user.role) {
@@ -39,20 +42,20 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Tarefas", href: "/staff", icon: CheckSquare },
+          { name: "Painel Operacional", href: "/staff/board", icon: CheckSquare },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Equipe", href: "/staff/manage", icon: Users },
           { name: "Tutores", href: "/tutors", icon: Users },
+          { name: "Financeiro", href: "/financial", icon: CircleDollarSign },
           { name: "Assinatura", href: "/assinatura", icon: CreditCard },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
       case "staff":
         return [
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Tarefas", href: "/staff", icon: CheckSquare },
+          { name: "Painel Operacional", href: "/staff/board", icon: CheckSquare },
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Passeios", href: "/walks", icon: Footprints },
           { name: "Leitor QR", href: "/staff/qr-scanner", icon: QrCode },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Configurações", href: "/settings", icon: Settings },
@@ -63,6 +66,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Meus Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
+          { name: "Minhas Faturas", href: "/tutor/financial", icon: Receipt },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
       default:
@@ -75,10 +79,24 @@ export function Sidebar({ user }: SidebarProps) {
   return (
     <div className="w-64 glass-panel border-y-0 border-l-0 border-r-white/10 hidden md:flex flex-col h-full z-10 relative">
       <div className="p-6 flex items-center gap-3">
-        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-          <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8" />
-        </div>
-        <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
+        {creche?.logoUrl ? (
+          <>
+            <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+              <img src={creche.logoUrl} alt={creche.name} className="h-full w-full object-cover" />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-display font-bold text-lg tracking-tight text-white line-clamp-1">{creche.name}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Powered by ArkPet</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)]">
+              <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8" />
+            </div>
+            <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
+          </>
+        )}
       </div>
 
       <div className="px-4 py-2 mb-4">
