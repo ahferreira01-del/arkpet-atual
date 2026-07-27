@@ -13,16 +13,18 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Syringe, Activity, Plus, Camera, X, AlertCircle } from "lucide-react";
+import { Syringe, Activity, Plus, Camera, X, AlertCircle, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/date-utils";
 import { usePetIncidents, useCreateIncident } from "@/hooks/use-medical";
 
 export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
   const queryClient = useQueryClient();
-  const { data: vaccines } = useListVaccines(crecheId, petId);
-  const { data: medications } = useListMedications(crecheId, petId);
-  const { data: incidents } = usePetIncidents(crecheId, petId);
+  const { toast } = useToast();
+  const { data: vaccines, isLoading: vaccinesLoading } = useListVaccines(crecheId, petId);
+  const { data: medications, isLoading: medsLoading } = useListMedications(crecheId, petId);
+  const { data: incidents, isLoading: incidentsLoading } = usePetIncidents(crecheId, petId);
   const addVaccineMutation = useAddVaccine();
   const addMedMutation = useAddMedication();
   const addIncidentMutation = useCreateIncident(crecheId);
@@ -71,6 +73,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           setVaccinePhoto(null);
           queryClient.invalidateQueries();
         },
+        onError: (err: any) => toast({ title: "Erro ao salvar vacina", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
     );
   };
@@ -98,6 +101,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           setMedOpen(false);
           queryClient.invalidateQueries();
         },
+        onError: (err: any) => toast({ title: "Erro ao salvar medicamento", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
     );
   };
@@ -119,6 +123,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           setIncidentOpen(false);
           queryClient.invalidateQueries();
         },
+        onError: (err: any) => toast({ title: "Erro ao registrar incidente", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
     );
   };
@@ -135,7 +140,9 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
                 <Plus className="w-4 h-4 mr-1" /> Registrar Incidente
               </Button>
             </div>
-            {incidents?.length ? (
+            {incidentsLoading ? (
+              <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando incidentes...</div>
+            ) : incidents?.length ? (
               <div className="space-y-3">
                 {incidents.map((i: any) => (
                   <div key={i.id} className={`p-4 rounded-xl bg-white/5 border ${i.severity === 'high' ? 'border-red-500/50 bg-red-500/5' : 'border-white/10'}`}>
@@ -173,7 +180,9 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
               <Plus className="w-4 h-4 mr-1" /> Adicionar
             </Button>
           </div>
-          {vaccines?.length ? (
+          {vaccinesLoading ? (
+            <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando vacinas...</div>
+          ) : vaccines?.length ? (
             <div className="space-y-3">
               {vaccines.map((v) => (
                 <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
@@ -249,7 +258,9 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
               <Plus className="w-4 h-4 mr-1" /> Adicionar
             </Button>
           </div>
-          {medications?.length ? (
+          {medsLoading ? (
+            <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando medicamentos...</div>
+          ) : medications?.length ? (
             <div className="space-y-3">
               {medications.map((m) => (
                 <div key={m.id} className="p-4 rounded-xl bg-white/5 border border-white/10">

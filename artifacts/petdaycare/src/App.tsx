@@ -39,6 +39,8 @@ const NotFound = React.lazy(() => import("./pages/not-found"));
 const FinancialDashboard = React.lazy(() => import("./pages/financial/index"));
 const TutorFinancial = React.lazy(() => import("./pages/tutor/financial"));
 const TutorStore = React.lazy(() => import("./pages/tutor/store"));
+const Terms = React.lazy(() => import("./pages/terms"));
+const Privacy = React.lazy(() => import("./pages/privacy"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -163,6 +165,12 @@ function App() {
                 </Route>
                 <Route path="/redefinir-senha">
                   <ResetPassword />
+                </Route>
+                <Route path="/termos">
+                  <Terms />
+                </Route>
+                <Route path="/privacidade">
+                  <Privacy />
                 </Route>
 
                 <Route path="/">

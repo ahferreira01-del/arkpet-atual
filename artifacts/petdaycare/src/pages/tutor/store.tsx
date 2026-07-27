@@ -93,18 +93,6 @@ export default function TutorStore() {
   };
 
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('purchased') === 'true') {
-      toast({
-        title: "Sucesso!",
-        description: "Pagamento confirmado! Suas diárias foram liberadas.",
-        variant: "default" /* success */,
-      });
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
-
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando loja...</div>;
 
   const items = catalogue?.filter((item: any) => item.isActive) || [];

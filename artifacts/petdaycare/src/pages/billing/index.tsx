@@ -25,6 +25,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const ENTERPRISE_WHATSAPP_NUMBER = "551631870294";
+const ENTERPRISE_WHATSAPP_MSG = "Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20plano%20Enterprise%20sob%20medida.";
+
 type Interval = "month" | "quarter" | "semester" | "year";
 type PaymentMode = "subscription" | "payment";
 
@@ -472,7 +475,7 @@ export default function Billing() {
                   {plan.name.toLowerCase() === "enterprise" ? (
                     <Button
                       className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white border-0 h-12 rounded-xl text-[15px]"
-                      onClick={() => window.open('https://wa.me/551631870294?text=Ol%C3%A1%2C%20gostaria%20de%20saber%20mais%20sobre%20o%20plano%20Enterprise%20sob%20medida.', '_blank')}
+                      onClick={() => window.open(`https://wa.me/${ENTERPRISE_WHATSAPP_NUMBER}?text=${ENTERPRISE_WHATSAPP_MSG}`, '_blank')}
                     >
                       Falar no WhatsApp
                     </Button>

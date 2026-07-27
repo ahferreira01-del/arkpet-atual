@@ -23,7 +23,7 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
     : (bookings as any)?.data ?? (bookings as any)?.bookings ?? [];
   const confirmedBooking = safeBookings.find((b: any) => b.petId === petId && b.status === "confirmed");
   
-  const { data: consumables } = useBookingConsumables(crecheId, confirmedBooking?.id);
+  const { data: consumables, isLoading: consumablesLoading } = useBookingConsumables(crecheId, confirmedBooking?.id);
   const deleteConsumable = useDeleteBookingConsumable(crecheId);
 
   return (
@@ -100,7 +100,9 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
                 Consumos da Estadia
               </h3>
             </div>
-            {consumables && consumables.length > 0 ? (
+            {consumablesLoading ? (
+              <div className="text-sm text-muted-foreground py-4 text-center">Carregando consumos...</div>
+            ) : consumables && consumables.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {consumables.map((c: any) => (
                   <div key={c.id} className="p-3 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between">

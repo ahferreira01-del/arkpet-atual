@@ -381,7 +381,7 @@ function TutorDashboard({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const { data: pets } = useListPets(crecheId);
   const { data: timeline, isLoading: timelineLoading, refetch } = useTutorTimeline(crecheId, user.id);
-  const { data: invoices } = useTutorInvoices(crecheId, user.id);
+  const { data: invoices, isLoading: invoicesLoading } = useTutorInvoices(crecheId, user.id);
 
   const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
   const checkedInPets = myPets.filter((p: any) => p.isCheckedIn);
@@ -423,7 +423,10 @@ function TutorDashboard({ user }: { user: any }) {
       <NotificationPrompt />
 
       {/* ── Avisos Financeiros ── */}
-      {overdueInvoices.length > 0 && (
+      {invoicesLoading && (
+        <div className="mb-4 p-4 rounded-2xl bg-white/5 border border-white/10 animate-pulse h-16" />
+      )}
+      {!invoicesLoading && overdueInvoices.length > 0 && (
         <div className="mb-4 p-4 rounded-2xl bg-destructive/20 border border-destructive/30 flex items-start sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-destructive/30 flex items-center justify-center shrink-0">
@@ -439,7 +442,7 @@ function TutorDashboard({ user }: { user: any }) {
           </Link>
         </div>
       )}
-      {overdueInvoices.length === 0 && upcomingInvoices.length > 0 && (
+      {!invoicesLoading && overdueInvoices.length === 0 && upcomingInvoices.length > 0 && (
         <div className="mb-4 p-4 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-start sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0">
