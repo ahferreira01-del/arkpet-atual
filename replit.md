@@ -2,7 +2,7 @@
 
 ## Preferências do usuário
 
-- **Idioma**: Sempre responder em português brasileiro (pt-BR).
+- **Idioma**: OBRIGATÓRIO — todas as respostas, títulos de tarefas, descrições de tarefas e comentários devem estar em português brasileiro (pt-BR). Isso se aplica a todos os agentes, incluindo agentes de tarefas isolados. Nunca usar inglês em nenhuma comunicação com o usuário ou em títulos/descrições de tarefas propostas.
 
 
 ## Overview
