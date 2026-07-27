@@ -65,34 +65,6 @@ export function usePush() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-recovery: if the user had previously granted permission but the browser
-  // subscription was silently lost (Chrome update, data clear, FCM rotation), try
-  // to re-subscribe automatically so they don't stop receiving notifications without
-  // knowing why. Only runs when the user object becomes available.
-  useEffect(() => {
-    if (!user) return;
-    if (typeof window === "undefined") return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-
-    // Small delay so the SW has time to register on first load
-    const timer = setTimeout(async () => {
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (!sub && mountedRef.current) {
-          console.log("[push] Permission granted but subscription missing — auto-recovering...");
-          subscribe();
-        }
-      } catch {
-        // Silent fail — recovery is best-effort
-      }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
   const subscribe = useCallback(async () => {
     if (!user || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       toast({ title: "Não suportado", description: "Seu navegador não suporta notificações push.", variant: "destructive" });
@@ -222,6 +194,33 @@ export function usePush() {
       if (mountedRef.current) setIsLoading(false);
     }
   }, [user, toast]);
+
+  // Auto-recovery: if the user had previously granted permission but the browser
+  // subscription was silently lost (Chrome update, data clear, FCM rotation), try
+  // to re-subscribe automatically so they don't stop receiving notifications without
+  // knowing why. Only runs when the user object becomes available.
+  useEffect(() => {
+    if (!user) return;
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    // Small delay so the SW has time to register on first load
+    const timer = setTimeout(async () => {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub && mountedRef.current) {
+          console.log("[push] Permission granted but subscription missing — auto-recovering...");
+          subscribe();
+        }
+      } catch {
+        // Silent fail — recovery is best-effort
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [user?.id, subscribe]);
 
   const unsubscribe = useCallback(async () => {
     if (!("serviceWorker" in navigator)) return;
