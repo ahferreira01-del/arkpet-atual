@@ -63,6 +63,7 @@ const catalogueItemSchema = z.object({
     large: z.number().nonnegative()
   }).optional().nullable(),
   stockQuantity: z.number().int().nonnegative().optional().nullable(),
+  reorderThreshold: z.number().int().nonnegative().optional().nullable(),
   creditsAmount: z.number().int().positive().optional().nullable(),
   category: z.string().max(100).optional().nullable(),
   sku: z.string().max(50).optional().nullable(),
@@ -113,6 +114,7 @@ router.get("/catalogue", async (req: AuthRequest, res: Response, next: NextFunct
     const mapped = items.map(item => ({
       ...item,
       price: item.basePrice,
+      reorderThreshold: item.minStockAlert,
       pricingBySize: {
         small: item.priceSmall,
         medium: item.priceMedium,
@@ -128,7 +130,7 @@ router.get("/catalogue", async (req: AuthRequest, res: Response, next: NextFunct
 router.post("/catalogue", requireFinancialAccess, validate(catalogueItemSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
-    const { name, type, description, price, pricingBySize, stockQuantity, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
+    const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
     
     const [newItem] = await db.insert(catalogueItemsTable).values({
       crecheId: Number(crecheId),
@@ -145,6 +147,7 @@ router.post("/catalogue", requireFinancialAccess, validate(catalogueItemSchema),
       priceMedium: pricingBySize?.medium ?? price,
       priceLarge: pricingBySize?.large ?? price,
       stockQuantity: stockQuantity ?? 0,
+      minStockAlert: reorderThreshold ?? 5,
       creditsAmount: type === 'package' ? creditsAmount : null,
     }).returning();
     
@@ -178,7 +181,7 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
   try {
     const crecheId = Number(req.params.crecheId);
     const itemId = Number(req.params.itemId);
-    const { name, type, description, price, pricingBySize, stockQuantity, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
+    const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
     
     const [oldItem] = await db.select().from(catalogueItemsTable).where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)));
     
@@ -200,6 +203,9 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
         priceMedium: pricingBySize?.medium ?? price,
         priceLarge: pricingBySize?.large ?? price,
         creditsAmount: type === 'package' ? creditsAmount : null,
+        ...(reorderThreshold !== undefined && reorderThreshold !== null
+          ? { minStockAlert: reorderThreshold }
+          : {}),
       })
       .where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)))
       .returning();

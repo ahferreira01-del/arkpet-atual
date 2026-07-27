@@ -786,6 +786,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
     description: "",
     price: "",
     stockQuantity: "",
+    reorderThreshold: "",
     priceSmall: "",
     priceMedium: "",
     priceLarge: "",
@@ -806,6 +807,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       description: item.description || "",
       price: (item.basePrice / 100).toString(),
       stockQuantity: item.stockQuantity?.toString() || "",
+      reorderThreshold: item.reorderThreshold != null ? item.reorderThreshold.toString() : "",
       priceSmall: item.pricingBySize?.small ? (item.pricingBySize.small).toString() : "",
       priceMedium: item.pricingBySize?.medium ? (item.pricingBySize.medium).toString() : "",
       priceLarge: item.pricingBySize?.large ? (item.pricingBySize.large).toString() : "",
@@ -850,6 +852,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       description: form.description,
       price: val * 100, // convert to cents
       stockQuantity: form.type === "product" && form.stockQuantity ? parseInt(form.stockQuantity) : null,
+      reorderThreshold: form.type === "product" && form.reorderThreshold !== "" ? parseInt(form.reorderThreshold) : null,
       creditsAmount: form.type === "package" && form.creditsAmount ? parseInt(form.creditsAmount) : null,
       maxPetsPerDay: form.type === "package" && form.maxPetsPerDay ? parseInt(form.maxPetsPerDay) : 1,
       pricingBySize: form.type === "service" ? {
@@ -869,7 +872,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
         onSuccess: () => {
           setModalOpen(false);
           setEditingId(null);
-          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
+          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           toast({ title: "Sucesso", description: "Item atualizado no catálogo", variant: "default" });
         },
         onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
@@ -878,7 +881,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       createMutation.mutate(payload, {
         onSuccess: () => {
           setModalOpen(false);
-          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
+          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           toast({ title: "Sucesso", description: "Item adicionado ao catálogo", variant: "default" });
         },
         onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
@@ -887,14 +890,29 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   };
 
 
+  const lowStockItems = (catalogue || []).filter((item: any) =>
+    item.type === "product" &&
+    item.stockQuantity !== null &&
+    item.reorderThreshold != null &&
+    item.stockQuantity <= item.reorderThreshold
+  );
+
   if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando catálogo...</div>;
   return (
     <>
       <div className="flex justify-between items-center mb-6">
-        <h3 className="font-medium text-white">Catálogo de Produtos e Serviços</h3>
+        <div className="flex items-center gap-3">
+          <h3 className="font-medium text-white">Catálogo de Produtos e Serviços</h3>
+          {lowStockItems.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-destructive/15 border border-destructive/30 text-destructive px-2.5 py-1 rounded-full text-xs font-semibold">
+              <ShieldAlert className="w-3 h-3" />
+              {lowStockItems.length} {lowStockItems.length === 1 ? "item com estoque baixo" : "itens com estoque baixo"}
+            </div>
+          )}
+        </div>
         <Button size="sm" onClick={() => {
           setEditingId(null);
-          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
+          setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           setModalOpen(true);
         }}>
           <Plus className="mr-2 h-4 w-4" /> Novo Item
@@ -912,7 +930,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                   <PackageOpen className="h-10 w-10 text-white/20 group-hover:scale-110 transition-transform" />
                 )}
                 
-                {item.type === "product" && item.stockQuantity !== null && item.stockQuantity < 5 && (
+                {item.type === "product" && item.stockQuantity !== null && item.reorderThreshold != null && item.stockQuantity <= item.reorderThreshold && (
                   <div className="absolute top-2 right-2 bg-destructive/80 text-white text-[10px] px-2 py-1 rounded-full font-bold">
                     Estoque Baixo
                   </div>
@@ -1032,9 +1050,16 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    <label className="text-sm">Ponto de Reposição</label>
+                    <Input type="number" min="0" value={form.reorderThreshold} onChange={e => setForm({...form, reorderThreshold: e.target.value})} placeholder="Ex: 5" />
+                    <p className="text-xs text-muted-foreground mt-1">Alerta de estoque baixo ao atingir esta quantidade.</p>
+                  </div>
+                  <div>
                     <label className="text-sm">Código de Barras</label>
                     <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." autoFocus={modalOpen && form.type === 'product'} />
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm">SKU (opcional)</label>
                     <Input value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Código interno" />
