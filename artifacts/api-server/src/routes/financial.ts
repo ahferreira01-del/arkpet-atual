@@ -183,7 +183,7 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
   try {
     const crecheId = Number(req.params.crecheId);
     const itemId = Number(req.params.itemId);
-    const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
+    const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, maxPetsPerDay, category, sku, barcode, costPrice, mediaUrls } = req.body;
     
     const [oldItem] = await db.select().from(catalogueItemsTable).where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)));
     
@@ -205,6 +205,7 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
         priceMedium: pricingBySize?.medium ?? price,
         priceLarge: pricingBySize?.large ?? price,
         creditsAmount: type === 'package' ? creditsAmount : null,
+        maxPetsPerDay: type === 'package' && maxPetsPerDay ? maxPetsPerDay : oldItem.maxPetsPerDay,
         ...(reorderThreshold !== undefined && reorderThreshold !== null
           ? { minStockAlert: reorderThreshold }
           : {}),

@@ -440,7 +440,10 @@ export function useUpdateCatalogueItem(crecheId: number) {
         },
         body: JSON.stringify(data)
       });
-      if (!res.ok) throw new Error("Erro ao atualizar item do catálogo");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || body?.message || `Erro ao atualizar item do catálogo (${res.status})`);
+      }
       return res.json();
     },
     onSuccess: () => {
