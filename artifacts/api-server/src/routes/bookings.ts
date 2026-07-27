@@ -427,18 +427,38 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         }
 
         if (daysToBill > 0) {
-          const allServices = await tx
+          // Search both services AND packages so items like "Day use" (package)
+          // are found. Also filter is_active to exclude deactivated items.
+          const allItems = await tx
             .select()
             .from(catalogueItemsTable)
-            .where(and(eq(catalogueItemsTable.crecheId, crecheId), eq(catalogueItemsTable.type, "service")));
-          
-          let catalogueItem = allServices.find(i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type);
+            .where(and(
+              eq(catalogueItemsTable.crecheId, crecheId),
+              eq(catalogueItemsTable.isActive, true),
+            ));
+
+          // 1. Exact name match: "Day use" → "day_use" === existing.type
+          let catalogueItem = allItems.find(
+            i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type,
+          );
+
+          // 2. Keyword fallback for day_use type
           if (!catalogueItem && existing.type === "day_use") {
-            catalogueItem = allServices.find(i => {
+            catalogueItem = allItems.find(i => {
               const name = i.name.toLowerCase();
-              return name.includes("creche") || name.includes("day") || name.includes("diária");
+              return (
+                name.includes("creche") ||
+                name.includes("day") ||
+                name.includes("diária") ||
+                name.includes("diaria") ||
+                name.includes("hosped") ||
+                name.includes("estadia") ||
+                name.includes("pernoite") ||
+                name.includes("hotel")
+              );
             });
           }
+
           if (!catalogueItem) {
             throw new Error(`Saldo insuficiente e não foi possível faturar diárias excedentes: O serviço '${existing.type === "day_use" ? "Day Use / Creche" : existing.type}' não está cadastrado no catálogo de preços.`);
           }
