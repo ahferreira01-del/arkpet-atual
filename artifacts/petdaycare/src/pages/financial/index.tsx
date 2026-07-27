@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdvancedDataTable } from "../../components/ui/advanced-data-table";
 import { DateFilterPopover } from "@/components/ui/date-filter-popover";
-import { useListAuditLogs, useDashboardCashFlow, useListAllInvoices, useListExpenses, useListCatalogue, useCreateExpense, usePayExpense, useDashboardDre, useRefundInvoice, useVoidInvoice, useCreateCatalogueItem, usePayManualInvoice, useApproveReceipt, useUpdateExpense, useDeleteExpense, useUpdateCatalogueItem, useDeleteCatalogueItem, useCreche, useUpdateCrecheSettings, useInvoiceItems, useListOrders, useUpdateOrderStatus, useRefundInvoiceItem } from "@/hooks/use-financial";
+import { useListAuditLogs, useDashboardCashFlow, useListAllInvoices, useListExpenses, useListCatalogue, useCreateExpense, usePayExpense, useDashboardDre, useRefundInvoice, useVoidInvoice, useCreateCatalogueItem, usePayManualInvoice, useApproveReceipt, useUpdateExpense, useDeleteExpense, useUpdateCatalogueItem, useDeleteCatalogueItem, useCreche, useUpdateCrecheSettings, useInvoiceItems, useListOrders, useUpdateOrderStatus, useRefundInvoiceItem, useStockTransactions } from "@/hooks/use-financial";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useSearch, useLocation } from "wouter";
@@ -636,6 +636,77 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
   );
 }
 
+function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: number; itemId: number; itemName: string; onClose: () => void }) {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useStockTransactions(crecheId, itemId, page, 20);
+
+  const transactions = data?.data || [];
+  const totalPages = data?.totalPages || 1;
+
+  const typeLabel = (type: string) => {
+    if (type === "in") return { label: "Entrada", color: "text-emerald-400" };
+    if (type === "out") return { label: "Saída", color: "text-red-400" };
+    return { label: "Ajuste", color: "text-amber-400" };
+  };
+
+  const typeDelta = (type: string, qty: number) => {
+    if (type === "in") return `+${qty}`;
+    if (type === "out") return `-${qty}`;
+    return `${qty}`;
+  };
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title={`Histórico de Estoque — ${itemName}`} className="max-w-2xl">
+      <div className="space-y-4">
+        {isLoading ? (
+          <div className="text-center p-8 text-muted-foreground">Carregando histórico...</div>
+        ) : transactions.length === 0 ? (
+          <div className="text-center p-8 text-muted-foreground">Nenhuma movimentação registrada.</div>
+        ) : (
+          <div className="divide-y divide-white/5 border border-white/10 rounded-lg overflow-hidden">
+            <div className="grid grid-cols-5 gap-2 px-4 py-2 bg-white/5 text-xs font-medium text-muted-foreground uppercase">
+              <span className="col-span-2">Data / Responsável</span>
+              <span>Tipo</span>
+              <span className="text-right">Delta</span>
+              <span className="col-span-1 text-right">Motivo</span>
+            </div>
+            {transactions.map((tx: any) => {
+              const { label, color } = typeLabel(tx.type);
+              return (
+                <div key={tx.id} className="grid grid-cols-5 gap-2 px-4 py-3 text-sm hover:bg-white/5 transition-colors items-start">
+                  <div className="col-span-2">
+                    <p className="text-white font-medium">
+                      {tx.createdAt ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tx.createdAt)) : "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{tx.userName || "Sistema"}</p>
+                  </div>
+                  <span className={`font-medium ${color}`}>{label}</span>
+                  <span className={`text-right font-bold ${color}`}>{typeDelta(tx.type, tx.quantity)}</span>
+                  <span className="text-right text-muted-foreground text-xs truncate" title={tx.reason}>{tx.reason}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center pt-2">
+            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+              Anterior
+            </Button>
+            <span className="text-sm text-muted-foreground">Página {page} de {totalPages}</span>
+            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+              Próxima
+            </Button>
+          </div>
+        )}
+        <div className="flex justify-end pt-2">
+          <Button variant="outline" onClick={onClose}>Fechar</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function CatalogueTab({ crecheId }: { crecheId: number }) {
   const { data: catalogue, isLoading } = useListCatalogue(crecheId);
   const createMutation = useCreateCatalogueItem(crecheId);
@@ -645,6 +716,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [historyItem, setHistoryItem] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({
     name: "",
     type: "product",
@@ -819,7 +891,12 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                   </p>
                 )}
                 
-                <div className="pt-4 flex gap-2">
+                <div className="pt-4 flex gap-2 flex-wrap">
+                  {item.type === "product" && (
+                    <Button size="sm" variant="outline" className="border-white/20 text-white/70 hover:text-white flex-1" onClick={() => setHistoryItem({ id: item.id, name: item.name })}>
+                      Histórico
+                    </Button>
+                  )}
                   <Button size="sm" variant="default" className="bg-white/10 text-white flex-1" onClick={() => openEditModal(item)}>
                     Editar
                   </Button>
@@ -944,6 +1021,15 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
             </Button>
           </div>
         </Modal>
+      )}
+
+      {historyItem && (
+        <StockHistoryModal
+          crecheId={crecheId}
+          itemId={historyItem.id}
+          itemName={historyItem.name}
+          onClose={() => setHistoryItem(null)}
+        />
       )}
     </>
   );

@@ -351,6 +351,67 @@ router.post("/catalogue/:itemId/stock-adjustment", requireFinancialAccess, valid
   }
 });
 
+router.get("/catalogue/:itemId/stock-transactions", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const crecheId = Number(req.params.crecheId);
+    const itemId = Number(req.params.itemId);
+    const { page, pageSize, offset } = getPaginationParams(req.query);
+
+    // Verify item belongs to this creche
+    const [item] = await db
+      .select({ id: catalogueItemsTable.id })
+      .from(catalogueItemsTable)
+      .where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)));
+
+    if (!item) {
+      res.status(404).json({ error: "Item não encontrado." });
+      return;
+    }
+
+    const [data, [{ total }]] = await Promise.all([
+      db
+        .select({
+          id: catalogueStockTransactionsTable.id,
+          type: catalogueStockTransactionsTable.type,
+          quantity: catalogueStockTransactionsTable.quantity,
+          reason: catalogueStockTransactionsTable.reason,
+          createdAt: catalogueStockTransactionsTable.createdAt,
+          userName: usersTable.name,
+        })
+        .from(catalogueStockTransactionsTable)
+        .leftJoin(usersTable, eq(catalogueStockTransactionsTable.userId, usersTable.id))
+        .where(
+          and(
+            eq(catalogueStockTransactionsTable.itemId, itemId),
+            eq(catalogueStockTransactionsTable.crecheId, crecheId)
+          )
+        )
+        .orderBy(desc(catalogueStockTransactionsTable.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      db
+        .select({ total: count() })
+        .from(catalogueStockTransactionsTable)
+        .where(
+          and(
+            eq(catalogueStockTransactionsTable.itemId, itemId),
+            eq(catalogueStockTransactionsTable.crecheId, crecheId)
+          )
+        ),
+    ]);
+
+    res.json({
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.delete("/catalogue/:itemId", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);

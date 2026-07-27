@@ -872,6 +872,24 @@ export function useCatalogueSmartIndicators(crecheId: number, itemId: number | u
       });
 }
 
+export function useStockTransactions(crecheId: number, itemId: number | undefined, page = 1, pageSize = 20) {
+  return useQuery({
+    staleTime: 60 * 1000, // 1 minuto
+    queryKey: ["stock-transactions", crecheId, itemId, page, pageSize],
+    queryFn: async () => {
+      if (!itemId) return { data: [], total: 0, page: 1, pageSize, totalPages: 0 };
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(
+        `/api/creches/${crecheId}/financial/catalogue/${itemId}/stock-transactions?page=${page}&pageSize=${pageSize}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error("Erro ao carregar histórico de estoque");
+      return res.json();
+    },
+    enabled: !!crecheId && !!itemId,
+  });
+}
+
 export function useListBatches(crecheId: number, itemId: number) {
   return useQuery({
     queryKey: ["item-batches", crecheId, itemId],
