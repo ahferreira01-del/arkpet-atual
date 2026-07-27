@@ -780,6 +780,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [historyItem, setHistoryItem] = useState<{ id: number; name: string } | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: "",
     type: "product",
@@ -801,6 +802,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
 
   const openEditModal = (item: any) => {
     setEditingId(item.id);
+    setModalError(null);
     setForm({
       name: item.name,
       type: item.type,
@@ -872,19 +874,27 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
         onSuccess: () => {
           setModalOpen(false);
           setEditingId(null);
+          setModalError(null);
           setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           toast({ title: "Sucesso", description: "Item atualizado no catálogo", variant: "default" });
         },
-        onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+        onError: (err: any) => {
+          // Show error inline inside the modal; do NOT close it
+          setModalError(err.message || "Erro ao atualizar item do catálogo");
+        }
       });
     } else {
       createMutation.mutate(payload, {
         onSuccess: () => {
           setModalOpen(false);
+          setModalError(null);
           setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           toast({ title: "Sucesso", description: "Item adicionado ao catálogo", variant: "default" });
         },
-        onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+        onError: (err: any) => {
+          // Show error inline inside the modal; do NOT close it
+          setModalError(err.message || "Erro ao criar item do catálogo");
+        }
       });
     }
   };
@@ -912,6 +922,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
         </div>
         <Button size="sm" onClick={() => {
           setEditingId(null);
+          setModalError(null);
           setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
           setModalOpen(true);
         }}>
@@ -993,14 +1004,36 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       </div>
 
       {modalOpen && (
-        <Modal isOpen={true} onClose={() => setModalOpen(false)} title={editingId ? "Editar Item do Catálogo" : "Novo Item no Catálogo"} className="max-w-2xl">
+        <Modal isOpen={true} onClose={() => { setModalOpen(false); setModalError(null); }} title={editingId ? "Editar Item do Catálogo" : "Novo Item no Catálogo"} className="max-w-2xl">
           <div className="space-y-4">
             {editingId && (
               <CatalogueSmartIndicators crecheId={crecheId} itemId={editingId} type={form.type} />
             )}
+
+            {/* Inline error banner — shown when save fails; keeps modal open */}
+            {modalError && (
+              <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{modalError}</span>
+              </div>
+            )}
+
             <div>
               <label className="text-sm">Nome *</label>
-              <Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Nome do item" />
+              <Input
+                value={form.name}
+                onChange={e => { setForm({...form, name: e.target.value}); setModalError(null); }}
+                placeholder="Nome do item"
+              />
+              {/* Duplicate name warning for create mode */}
+              {!editingId && form.name.trim() && catalogue?.some((item: any) =>
+                item.name.trim().toLowerCase() === form.name.trim().toLowerCase()
+              ) && (
+                <p className="mt-1 text-xs text-amber-400 flex items-center gap-1">
+                  <ShieldAlert className="h-3 w-3" />
+                  Já existe um item com este nome no catálogo.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-sm">Tipo</label>
@@ -1104,7 +1137,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
               </div>
             )}
 
-            <Button onClick={handleSave} isLoading={createMutation.isPending} className="w-full">
+            <Button onClick={handleSave} isLoading={createMutation.isPending || updateMutation.isPending} className="w-full">
               Salvar Item
             </Button>
           </div>

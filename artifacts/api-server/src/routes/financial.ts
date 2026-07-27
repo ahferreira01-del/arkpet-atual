@@ -17,7 +17,7 @@ import {
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 const objectStorageService = new ObjectStorageService();
-import { eq, and, desc, asc, sql, gte, lte, count, lt, or, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, sql, gte, lte, count, lt, or, isNull, ne } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { processManualPayment, approveReceipt, voidInvoice, refundInvoice, calculateDueDate, hasOverdueInvoices } from "../services/billing.js";
 import { validate } from "../middlewares/validate.js";
@@ -133,7 +133,24 @@ router.post("/catalogue", requireFinancialAccess, validate(catalogueItemSchema),
   try {
     const crecheId = Number(req.params.crecheId);
     const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, category, sku, barcode, costPrice, mediaUrls } = req.body;
-    
+
+    // Prevent creating a duplicate active item with the same name
+    const [existing] = await db
+      .select({ id: catalogueItemsTable.id })
+      .from(catalogueItemsTable)
+      .where(
+        and(
+          eq(catalogueItemsTable.crecheId, crecheId),
+          eq(catalogueItemsTable.name, name),
+          eq(catalogueItemsTable.isActive, true)
+        )
+      )
+      .limit(1);
+    if (existing) {
+      res.status(409).json({ error: `Já existe um item ativo com o nome "${name}" no catálogo.` });
+      return;
+    }
+
     const [newItem] = await db.insert(catalogueItemsTable).values({
       crecheId: Number(crecheId),
       name,
@@ -189,6 +206,24 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
     
     if (!oldItem) {
       res.status(404).json({ error: "Item não encontrado." });
+      return;
+    }
+
+    // Prevent renaming to a name already used by another active item
+    const [duplicate] = await db
+      .select({ id: catalogueItemsTable.id })
+      .from(catalogueItemsTable)
+      .where(
+        and(
+          eq(catalogueItemsTable.crecheId, crecheId),
+          eq(catalogueItemsTable.name, name),
+          eq(catalogueItemsTable.isActive, true),
+          ne(catalogueItemsTable.id, itemId)
+        )
+      )
+      .limit(1);
+    if (duplicate) {
+      res.status(409).json({ error: `Já existe outro item ativo com o nome "${name}" no catálogo.` });
       return;
     }
     
