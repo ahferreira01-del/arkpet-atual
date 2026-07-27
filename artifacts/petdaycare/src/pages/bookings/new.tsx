@@ -477,8 +477,9 @@ export default function NewBooking() {
                   </label>
                   <Input
                     type="date"
-                    className="h-12 bg-black/40 border-white/10 text-white"
+                    className="h-12 bg-black/40 border-white/10 text-white [color-scheme:dark]"
                     value={form.startDate}
+                    min={format(new Date(), "yyyy-MM-dd")}
                     onChange={(e) =>
                       setForm({ ...form, startDate: e.target.value })
                     }
@@ -493,7 +494,7 @@ export default function NewBooking() {
                   </label>
                   <Input
                     type="date"
-                    className="h-12 bg-black/40 border-white/10 text-white"
+                    className="h-12 bg-black/40 border-white/10 text-white [color-scheme:dark]"
                     value={form.endDate}
                     onChange={(e) =>
                       setForm({ ...form, endDate: e.target.value })
