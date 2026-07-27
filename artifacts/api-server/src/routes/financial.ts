@@ -154,6 +154,7 @@ router.post("/catalogue", requireFinancialAccess, validate(catalogueItemSchema),
         itemId: newItem.id,
         quantity: stockQuantity,
         type: 'in',
+        reason: 'Estoque inicial',
         userId: req.user!.id
       });
     }
