@@ -1,10 +1,25 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
+
+const completeTaskSchema = z.object({
+  notes: z.string().optional().nullable(),
+});
+
+const createTaskSchema = z.object({
+  type: z.enum(["feeding", "medication", "grooming", "walk", "play", "health_check", "other"]),
+  title: z.string().min(1, "title é obrigatório"),
+  scheduledFor: z.coerce.date({ errorMap: () => ({ message: "scheduledFor deve ser uma data válida" }) }),
+  petId: z.number().int().positive().optional().nullable(),
+  assignedToId: z.number().int().positive().optional().nullable(),
+  description: z.string().optional().nullable(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+});
 
 /** Today's date string and day boundaries in Brasilia time (UTC-3). */
 function brazilToday() {
@@ -64,10 +79,15 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.post("/", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
-  const { petId, assignedToId, type, title, description, scheduledFor, priority } = req.body;
+  const parsed = createTaskSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { petId, assignedToId, type, title, description, scheduledFor, priority } = parsed.data;
   const [task] = await db.insert(tasksTable).values({
     crecheId, petId, assignedToId, type, title, description,
-    scheduledFor: new Date(scheduledFor), priority: priority || "medium",
+    scheduledFor, priority: priority || "medium",
   }).returning();
 
   // Notify assigned staff member
@@ -96,6 +116,8 @@ router.post("/", async (req: AuthRequest, res) => {
 // We intentionally scope to today so that tasks pre-generated for future days
 // (e.g. a multi-day stay) are NOT marked done when the pet checks out today.
 router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
+  // No body fields used; validate that nothing unexpected causes issues
+  z.object({}).passthrough().safeParse(req.body ?? {});
   const crecheId = parseInt(String(req.params.crecheId));
   const petId = parseInt(String(req.params.petId));
   const { startOfDay, endOfDay } = brazilToday();
@@ -121,7 +143,12 @@ router.post("/complete-by-pet/:petId", async (req: AuthRequest, res) => {
 router.post("/:taskId/complete", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const taskId = parseInt(String(req.params.taskId));
-  const { notes } = req.body || {};
+  const parsedComplete = completeTaskSchema.safeParse(req.body ?? {});
+  if (!parsedComplete.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsedComplete.error.flatten().fieldErrors });
+    return;
+  }
+  const { notes } = parsedComplete.data;
 
   const [before] = await db.select({
     title: tasksTable.title,

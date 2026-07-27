@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { usersTable, financialAuditLogsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
@@ -6,6 +7,30 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { hashPassword } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import { logFinancialAudit } from "../services/audit.js";
+
+const userRoleEnum = z.enum(["master_admin", "creche_admin", "staff", "tutor"]);
+
+const createUserSchema = z.object({
+  name: z.string().min(1, "name é obrigatório"),
+  email: z.string().email("email inválido"),
+  password: z.string().min(1, "password é obrigatório"),
+  role: userRoleEnum,
+  crecheId: z.number().int().positive().optional().nullable(),
+  cpf: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+});
+
+const updateUserSchema = z.object({
+  name: z.string().min(1).optional(),
+  email: z.string().email("email inválido").optional(),
+  avatarUrl: z.string().url("avatarUrl inválido").optional().nullable(),
+  role: userRoleEnum.optional(),
+  isActive: z.boolean().optional(),
+  crecheId: z.number().int().positive().optional().nullable(),
+  newPassword: z.string().min(6, "senha deve ter ao menos 6 caracteres").optional(),
+  cpf: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+});
 
 const router = Router();
 router.use(authenticate);
@@ -44,11 +69,12 @@ router.get("/", requireRole("master_admin"), async (_req, res) => {
 
 // POST create user (master_admin or creche_admin)
 router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
-  const { name, email, password, role, crecheId, cpf, phone } = req.body;
-  if (!name || !email || !password || !role) {
-    res.status(400).json({ error: "name, email, password e role são obrigatórios" });
+  const parsed = createUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
     return;
   }
+  const { name, email, password, role, crecheId, cpf, phone } = parsed.data;
   if (req.user?.role === "creche_admin" && !["staff", "tutor"].includes(role)) {
     res.status(403).json({ error: "Admins de creche só podem criar staff e tutores" });
     return;
@@ -109,7 +135,12 @@ router.put("/:userId", async (req: AuthRequest, res) => {
   const isAdmin = req.user?.role === "master_admin" || req.user?.role === "creche_admin";
   if (!isSelf && !isAdmin) { res.status(403).json({ error: "Sem permissão" }); return; }
 
-  const { name, email, avatarUrl, role, isActive, crecheId, newPassword, cpf, phone } = req.body;
+  const parsed = updateUserSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { name, email, avatarUrl, role, isActive, crecheId, newPassword, cpf, phone } = parsed.data;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (email !== undefined) updates.email = String(email).trim().toLowerCase();

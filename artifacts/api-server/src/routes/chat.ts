@@ -1,10 +1,25 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { chatMessagesTable, usersTable, petsTable } from "@workspace/db/schema";
 import { eq, and, ne, desc, isNull, isNotNull, inArray, lt, sql } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUsers } from "../lib/push.js";
+
+const sendMessageSchema = z.object({
+  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive(),
+  content: z.string().optional().nullable(),
+  petId: z.number().int().positive().optional().nullable(),
+  mediaUrl: z.string().url("mediaUrl inválido").optional().nullable(),
+}).refine(
+  (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
+  { message: "content ou mediaUrl é obrigatório" }
+);
+
+const markReadSchema = z.object({
+  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive(),
+});
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -145,15 +160,19 @@ router.get("/unread", async (req: AuthRequest, res) => {
 router.post("/mark-read", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-  const { tutorId } = req.body;
 
-  if (!tutorId) { res.status(400).json({ error: "tutorId required" }); return; }
+  const parsed = markReadSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { tutorId } = parsed.data;
 
   await db.update(chatMessagesTable)
     .set({ readAt: new Date() })
     .where(and(
       eq(chatMessagesTable.crecheId, crecheId),
-      eq(chatMessagesTable.tutorId, parseInt(String(tutorId))),
+      eq(chatMessagesTable.tutorId, tutorId),
       ne(chatMessagesTable.senderId, req.user.id),
       isNull(chatMessagesTable.readAt),
     ));
@@ -215,12 +234,16 @@ router.get("/", async (req: AuthRequest, res) => {
 router.post("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-  const { tutorId, petId, content, mediaUrl } = req.body;
 
-  if (!tutorId) { res.status(400).json({ error: "tutorId required" }); return; }
+  const parsed = sendMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { tutorId, petId, content, mediaUrl } = parsed.data;
 
-  const parsedTutorId = parseInt(String(tutorId));
-  const parsedPetId = petId ? parseInt(String(petId)) : null;
+  const parsedTutorId = tutorId;
+  const parsedPetId = petId ?? null;
 
   let petName: string | null = null;
   if (parsedPetId) {
@@ -237,11 +260,12 @@ router.post("/", async (req: AuthRequest, res) => {
     tutorId: parsedTutorId,
     petId: parsedPetId,
     senderId: req.user.id,
-    content,
+    content: content ?? "",
     mediaUrl: mediaUrl ?? null,
   }).returning();
 
-  const preview = content?.length > 60 ? content.slice(0, 57) + "..." : content;
+  const safeContent = content ?? null;
+  const preview = safeContent && safeContent.length > 60 ? safeContent.slice(0, 57) + "..." : safeContent;
   const pushTitle = petName
     ? `💬 ${req.user.name} → ${petName}`
     : `💬 ${req.user.name}`;

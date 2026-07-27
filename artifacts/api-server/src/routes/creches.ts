@@ -1,10 +1,51 @@
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { crechesTable, usersTable, petsTable, bookingsTable, tasksTable } from "@workspace/db/schema";
 import { eq, and, count, sql, gte, lt } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { hashPassword } from "../lib/auth.js";
 import { sendWelcomeEmail } from "../services/email.js";
+
+const staffRoleEnum = z.enum(["creche_admin", "staff"]);
+
+const createCrecheSchema = z.object({
+  name: z.string().min(1, "name é obrigatório"),
+  address: z.string().min(1, "address é obrigatório"),
+  phone: z.string().min(1, "phone é obrigatório"),
+  email: z.string().email("email inválido"),
+  maxCapacity: z.number().int().positive().optional(),
+  adminEmail: z.string().email("adminEmail inválido").optional().nullable(),
+  adminName: z.string().optional().nullable(),
+  adminPassword: z.string().optional().nullable(),
+});
+
+const updateCrecheSchema = z.object({
+  name: z.string().min(1).optional(),
+  address: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  email: z.string().email("email inválido").optional().nullable(),
+  maxCapacity: z.number().int().positive().optional().nullable(),
+  status: z.string().optional().nullable(),
+  logoUrl: z.string().url("logoUrl inválido").optional().nullable(),
+  pixKey: z.string().optional().nullable(),
+  pixName: z.string().optional().nullable(),
+  auditEnabled: z.boolean().optional(),
+});
+
+const addStaffSchema = z.object({
+  email: z.string().email("email é obrigatório e deve ser válido"),
+  name: z.string().min(1, "name é obrigatório").optional(),
+  role: staffRoleEnum.optional().default("staff"),
+  password: z.string().optional().nullable(),
+});
+
+const createTutorSchema = z.object({
+  name: z.string().min(1, "name é obrigatório"),
+  email: z.string().email("email inválido"),
+  password: z.string().optional().nullable(),
+  mensalidadeDia: z.number().int().min(1).max(31).optional().nullable(),
+});
 
 const router = Router();
 
@@ -69,8 +110,12 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin", "st
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
   }
-  const { name, email, password, mensalidadeDia } = req.body;
-  if (!name || !email) { res.status(400).json({ error: "Nome e e-mail são obrigatórios" }); return; }
+  const parsedTutor = createTutorSchema.safeParse(req.body);
+  if (!parsedTutor.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsedTutor.error.flatten().fieldErrors });
+    return;
+  }
+  const { name, email, password, mensalidadeDia } = parsedTutor.data;
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) { res.status(409).json({ error: "E-mail já cadastrado" }); return; }
   const [user] = await db.insert(usersTable).values({
@@ -79,7 +124,7 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin", "st
     mensalidadeDia: mensalidadeDia ? parseInt(String(mensalidadeDia)) : null,
   }).returning();
   // Send welcome email (non-blocking)
-  sendWelcomeEmail({ name: user.name, email: user.email, role: "tutor", tempPassword: password }).catch(() => {});
+  sendWelcomeEmail({ name: user.name, email: user.email, role: "tutor", tempPassword: password as string }).catch(() => {});
   res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role, crecheId: user.crecheId, mensalidadeDia: user.mensalidadeDia, createdAt: user.createdAt });
 });
 
@@ -114,7 +159,12 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", requireRole("master_admin"), async (req: AuthRequest, res) => {
-  const { name, address, phone, email, maxCapacity, adminEmail, adminName, adminPassword } = req.body;
+  const parsed = createCrecheSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { name, address, phone, email, maxCapacity, adminEmail, adminName, adminPassword } = parsed.data;
   const [creche] = await db.insert(crechesTable).values({
     name, address, phone, email, maxCapacity: maxCapacity || 20,
   }).returning();
@@ -166,7 +216,12 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName } = req.body;
+  const parsed = updateCrecheSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName } = parsed.data;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (address !== undefined) updates.address = address;
@@ -177,7 +232,7 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
   if (logoUrl !== undefined) updates.logoUrl = logoUrl;
   if (pixKey !== undefined) updates.pixKey = pixKey;
   if (pixName !== undefined) updates.pixName = pixName;
-  if (req.body.auditEnabled !== undefined) updates.auditEnabled = req.body.auditEnabled;
+  if (parsed.data.auditEnabled !== undefined) updates.auditEnabled = parsed.data.auditEnabled;
   const [creche] = await db.update(crechesTable).set(updates).where(eq(crechesTable.id, id)).returning();
   res.json(creche);
 });
@@ -248,7 +303,12 @@ router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), asy
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const { email, name, role, password } = req.body;
+  const parsed = addStaffSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
+    return;
+  }
+  const { email, name, role, password } = parsed.data;
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) {
     await db.update(usersTable).set({ crecheId: id, role }).where(eq(usersTable.id, existing.id));
@@ -256,8 +316,12 @@ router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), asy
     res.status(201).json({ id: updated.id, name: updated.name, email: updated.email, role: updated.role, crecheId: updated.crecheId, avatarUrl: updated.avatarUrl, createdAt: updated.createdAt });
     return;
   }
+  if (!name) {
+    res.status(400).json({ error: "name é obrigatório ao criar um novo staff" });
+    return;
+  }
   const [user] = await db.insert(usersTable).values({
-    name, email, passwordHash: hashPassword(password || "password123"), role, crecheId: id,
+    name, email, passwordHash: hashPassword(password ?? "password123"), role, crecheId: id,
     mustChangePassword: true, isActive: true,
   }).returning();
   // Send welcome email (non-blocking)
