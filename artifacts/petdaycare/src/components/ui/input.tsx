@@ -6,11 +6,18 @@ export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> 
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, icon, ...props }, ref) => {
+  ({ className, type, icon, inputMode, ...props }, ref) => {
+    // Default inputMode for number fields so iOS/Android show the numeric
+    // keypad instead of the full keyboard.  Caller can override by passing
+    // inputMode explicitly.
+    const resolvedInputMode =
+      inputMode ?? (type === "number" ? "decimal" : undefined);
+
     return (
       <div className="relative w-full">
         <input
           type={type}
+          inputMode={resolvedInputMode}
           className={cn(
             /* text-base on mobile keeps iOS Safari from auto-zooming (needs ≥16px).
                md:text-sm restores the design on larger screens. */

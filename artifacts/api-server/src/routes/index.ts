@@ -19,6 +19,7 @@ import financialSearchRouter from "./financial-search.js";
 import financialReportsRouter from "./financial-reports.js";
 import medicalRouter from "./medical.js";
 import ordersRouter from "./orders.js";
+import logsRouter from "./logs.js";
 
 const router = Router();
 
@@ -44,6 +45,7 @@ router.use("/creches/:crecheId/orders", ordersRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);
+router.use(logsRouter);
 
 // ── Versão do app ────────────────────────────────────────────────────────────
 // Deve ser bumped junto com CACHE_NAME em public/sw.js a cada deploy que
