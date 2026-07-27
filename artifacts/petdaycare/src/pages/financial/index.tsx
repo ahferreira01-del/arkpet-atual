@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AdvancedDataTable } from "../../components/ui/advanced-data-table";
 import { DateFilterPopover } from "@/components/ui/date-filter-popover";
-import { useListAuditLogs, useDashboardCashFlow, useListAllInvoices, useListExpenses, useListCatalogue, useCreateExpense, usePayExpense, useDashboardDre, useRefundInvoice, useVoidInvoice, useCreateCatalogueItem, usePayManualInvoice, useApproveReceipt, useUpdateExpense, useDeleteExpense, useUpdateCatalogueItem, useDeleteCatalogueItem, useCreche, useUpdateCrecheSettings, useInvoiceItems, useListOrders, useUpdateOrderStatus, useRefundInvoiceItem, useStockTransactions } from "@/hooks/use-financial";
+import { useListAuditLogs, useDashboardCashFlow, useListAllInvoices, useListExpenses, useListCatalogue, useCreateExpense, usePayExpense, useDashboardDre, useRefundInvoice, useVoidInvoice, useCreateCatalogueItem, usePayManualInvoice, useApproveReceipt, useUpdateExpense, useDeleteExpense, useUpdateCatalogueItem, useDeleteCatalogueItem, useCreche, useUpdateCrecheSettings, useInvoiceItems, useListOrders, useUpdateOrderStatus, useRefundInvoiceItem, useStockTransactions, useStockAdjustment } from "@/hooks/use-financial";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useSearch, useLocation } from "wouter";
@@ -639,6 +639,34 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
 function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: number; itemId: number; itemName: string; onClose: () => void }) {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useStockTransactions(crecheId, itemId, page, 20);
+  const adjustMutation = useStockAdjustment(crecheId);
+  const { toast } = useToast();
+
+  const [adjDelta, setAdjDelta] = useState("");
+  const [adjReason, setAdjReason] = useState("");
+
+  const handleAdjust = () => {
+    const delta = parseInt(adjDelta);
+    if (!adjDelta || isNaN(delta) || delta === 0) {
+      toast({ title: "Erro", description: "Informe um delta diferente de zero.", variant: "destructive" });
+      return;
+    }
+    if (!adjReason.trim()) {
+      toast({ title: "Erro", description: "Informe o motivo do ajuste.", variant: "destructive" });
+      return;
+    }
+    adjustMutation.mutate({ itemId, delta, reason: adjReason.trim() }, {
+      onSuccess: () => {
+        toast({ title: "Sucesso", description: "Estoque ajustado com sucesso." });
+        setAdjDelta("");
+        setAdjReason("");
+        setPage(1);
+      },
+      onError: (err: any) => {
+        toast({ title: "Erro", description: err.message, variant: "destructive" });
+      },
+    });
+  };
 
   const transactions = data?.data || [];
   const totalPages = data?.totalPages || 1;
@@ -658,6 +686,41 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Histórico de Estoque — ${itemName}`} className="max-w-2xl">
       <div className="space-y-4">
+        {/* Inline adjustment form */}
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+          <h4 className="text-sm font-semibold text-white mb-3">Ajustar Estoque</h4>
+          <div className="flex gap-2 items-end">
+            <div className="w-28 shrink-0">
+              <label className="text-xs text-muted-foreground mb-1 block">Delta (+ / -)</label>
+              <Input
+                type="number"
+                placeholder="ex: -3"
+                value={adjDelta}
+                onChange={e => setAdjDelta(e.target.value)}
+                className="h-9 bg-white/5 border-white/10 text-white"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">Motivo</label>
+              <Input
+                placeholder="ex: Quebra, recontagem..."
+                value={adjReason}
+                onChange={e => setAdjReason(e.target.value)}
+                className="h-9 bg-white/5 border-white/10 text-white"
+                onKeyDown={e => { if (e.key === "Enter") handleAdjust(); }}
+              />
+            </div>
+            <Button
+              onClick={handleAdjust}
+              isLoading={adjustMutation.isPending}
+              disabled={adjustMutation.isPending}
+              className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+            >
+              Confirmar
+            </Button>
+          </div>
+        </div>
+
         {isLoading ? (
           <div className="text-center p-8 text-muted-foreground">Carregando histórico...</div>
         ) : transactions.length === 0 ? (

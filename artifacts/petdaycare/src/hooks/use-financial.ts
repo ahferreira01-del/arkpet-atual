@@ -872,6 +872,32 @@ export function useCatalogueSmartIndicators(crecheId: number, itemId: number | u
       });
 }
 
+export function useStockAdjustment(crecheId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ itemId, delta, reason }: { itemId: number; delta: number; reason: string }) => {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/creches/${crecheId}/financial/catalogue/${itemId}/stock-adjustment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ delta, reason }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erro ao ajustar estoque");
+      }
+      return res.json();
+    },
+    onSuccess: (_, { itemId }) => {
+      queryClient.invalidateQueries({ queryKey: ["stock-transactions", crecheId, itemId] });
+      queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
+    },
+  });
+}
+
 export function useStockTransactions(crecheId: number, itemId: number | undefined, page = 1, pageSize = 20) {
   return useQuery({
     staleTime: 60 * 1000, // 1 minuto
