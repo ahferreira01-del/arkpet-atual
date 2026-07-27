@@ -66,7 +66,10 @@ router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthReque
     crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
     weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
   }).returning();
-  res.status(201).json({ ...pet, tutorName: null });
+  const [tutor] = tutorId
+    ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1)
+    : [{ name: null }];
+  res.status(201).json({ ...pet, tutorName: tutor?.name ?? null });
 });
 
 router.get("/by-qr/:token", async (req: AuthRequest, res) => {
@@ -163,7 +166,10 @@ router.put("/:petId", async (req: AuthRequest, res) => {
   if (isCastrated !== undefined) updates.isCastrated = isCastrated;
   const [pet] = await db.update(petsTable).set(updates)
     .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId))).returning();
-  res.json({ ...pet, tutorName: null });
+  const [tutor] = pet?.tutorId
+    ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pet.tutorId)).limit(1)
+    : [{ name: null }];
+  res.json({ ...pet, tutorName: tutor?.name ?? null });
 });
 
 router.get("/:petId/vaccines", async (req: AuthRequest, res) => {

@@ -17,7 +17,7 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { z } from "zod";
 
 const router = Router({ mergeParams: true });
-// router.use(authenticate);
+router.use(authenticate);
 
 function requireFinancialAccess(req: AuthRequest, res: Response, next: NextFunction) {
   const user = req.user;
@@ -61,7 +61,7 @@ function parseDates(req: Request) {
 // ----------------------------------------------------------------------
 // GET /dashboard/kpis
 // ----------------------------------------------------------------------
-router.get("/dashboard/kpis", async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get("/dashboard/kpis", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
     const dates = parseDates(req);
@@ -237,25 +237,15 @@ router.get("/dashboard/kpis", async (req: AuthRequest, res: Response, next: Next
 // ----------------------------------------------------------------------
 // GET /dashboard/charts
 // ----------------------------------------------------------------------
-router.get("/dashboard/charts", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    res.json({ charts: [] });
-  } catch (err) {
-    console.error("Error in /dashboard/kpis:", err);
-    next(err);
-  }
+router.get("/dashboard/charts", requireFinancialAccess, async (_req: AuthRequest, res: Response) => {
+  res.status(501).json({ message: "Não implementado" });
 });
 
 // ----------------------------------------------------------------------
 // GET /dashboard/sales
 // ----------------------------------------------------------------------
-router.get("/dashboard/sales", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    res.json({ topProducts: [], topServices: [] });
-  } catch (err) {
-    console.error("Error in /dashboard/kpis:", err);
-    next(err);
-  }
+router.get("/dashboard/sales", requireFinancialAccess, async (_req: AuthRequest, res: Response) => {
+  res.status(501).json({ message: "Não implementado" });
 });
 
 

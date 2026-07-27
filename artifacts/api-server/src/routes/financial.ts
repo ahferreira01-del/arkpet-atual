@@ -12,8 +12,6 @@ import {
   catalogueStockTransactionsTable,
   ordersTable,
   orderItemsTable,
-  itemBatchesTable,
-  inventoryMovementsTable,
 } from "@workspace/db/schema";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -26,7 +24,7 @@ import { z } from "zod";
 import { logFinancialAudit } from "../services/audit.js";
 
 const router = Router({ mergeParams: true });
-// router.use(authenticate);
+router.use(authenticate);
 
 function requireFinancialAccess(req: AuthRequest, res: Response, next: NextFunction) {
   const user = req.user;

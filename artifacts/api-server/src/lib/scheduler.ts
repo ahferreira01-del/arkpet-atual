@@ -6,6 +6,7 @@ import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-
 import { sendPushToUser, sendPushToRole } from "./push.js";
 
 const notifiedTaskIds = new Set<number>();
+let taskReminderRunning = false;
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -313,6 +314,8 @@ export function startScheduler() {
   });
 
   cron.schedule("* * * * *", async () => {
+    if (taskReminderRunning) return;
+    taskReminderRunning = true;
     try {
       const now = new Date();
       const windowStart = new Date(now.getTime() + 4 * 60 * 1000);
@@ -367,6 +370,8 @@ export function startScheduler() {
       }
     } catch (err) {
       console.error("[scheduler] error:", err);
+    } finally {
+      taskReminderRunning = false;
     }
   });
 

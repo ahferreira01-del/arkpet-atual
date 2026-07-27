@@ -62,7 +62,6 @@ function getPaginationParams(query: Record<string, any>) {
 
 router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    req.user = req.user || { id: 49, role: 'tutor', crecheId: 40, name: 'Test', email: 'test@example.com' };
     const crecheId = parseInt(String(req.params.crecheId));
     const { status, type, date, page: qPage, pageSize: qPageSize, petId, tutorId } = req.query;
     let conditions: SQLWrapper[] = [eq(bookingsTable.crecheId, crecheId)];
@@ -1175,7 +1174,6 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
 // ==========================================
 
 router.get("/:bookingId/consumables", async (req: AuthRequest, res) => {
-  console.log("HITTING CONSUMABLES ROUTE! params:", req.params);
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
   try {
