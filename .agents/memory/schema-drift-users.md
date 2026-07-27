@@ -1,20 +1,33 @@
 ---
-name: Schema drift — users cpf/phone
-description: cpf and phone columns defined in Drizzle schema but were never applied to the real DB, causing all usersTable SELECTs to fail with "Failed query".
+name: Schema drift — multiple tables
+description: Several Drizzle schema columns and entire tables were never applied to the real DB; caused "Failed query" 500s on any endpoint that touched those tables.
 ---
 
 ## Rule
-Any column present in `lib/db/src/schema/users.ts` (or any schema file) but absent from the actual database will make **every** Drizzle query that touches that table fail at runtime with `Error: Failed query`.
+Any column (or table) in a Drizzle schema file but absent from the actual DB makes **every** query touching that table fail at runtime with `Error: Failed query` / `column X does not exist`. Drizzle names every column in its generated SQL — there is no graceful degradation.
 
-## What happened
-`cpf` and `phone` were declared in `lib/db/src/schema/users.ts` (lines 15-16) with a comment about AES-256-GCM encryption, but were never applied via migration. Since Drizzle generates `SELECT *-equivalent` queries that name every column, the missing columns caused 500s on login, register-creche, and any other endpoint that queried `usersTable`.
+## Full drift found and fixed (2026-07-27)
 
-**Fix applied (2025-07-27):**
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS cpf text;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS phone text;
+| Table | Missing columns/objects |
+|---|---|
+| `users` | `cpf text`, `phone text` |
+| `creches` | `audit_enabled bool NOT NULL DEFAULT true`, `delivery_type creche_delivery_type NOT NULL DEFAULT 'fixed'`, `delivery_fee numeric(10,2) NOT NULL DEFAULT 0`, `pix_key text`, `pix_name text` |
+| `bookings` | `package_max_pets integer` |
+| `pets` | `size pet_size NOT NULL DEFAULT 'medium'` |
+| enums | `creche_delivery_type ('fixed','on_demand')`, `pet_size ('small','medium','large')` |
+| tables | `timeline_event_pets`, `timeline_views`, `timeline_comments` (entirely missing) |
+
+Migration idempotently saved to `lib/db/src/migrations/fix_schema_drift.sql`.
+
+## How to diagnose
 ```
-Migration saved to `lib/db/src/migrations/add_users_cpf_phone.sql`.
+psql $DATABASE_URL -c "\d <table>"
+```
+Cross-check every column in `lib/db/src/schema/<file>.ts` against the actual DB columns. Missing column = 500 on every query that touches the table.
 
 ## How to apply
-When a route returns a Drizzle "Failed query" error with no obvious SQL syntax problem, cross-check the schema file columns against `\d <table>` in psql. Missing columns = apply `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
+```sql
+ALTER TABLE <t> ADD COLUMN IF NOT EXISTS <col> <type>;
+CREATE TYPE IF NOT EXISTS <enum> AS ENUM (...);
+CREATE TABLE IF NOT EXISTS ...;
+```

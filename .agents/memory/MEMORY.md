@@ -7,7 +7,7 @@
 - [Stripe sync enum collision](stripe-sync-enum-collision.md) — stripe-replit-sync migration's unqualified pg_type check collides with app enums; app's subscription_status renamed to creche_subscription_status.
 - [Billing confirm trust boundary](billing-confirm-trust-boundary.md) — /billing/confirm must check crecheId + payment_status==="paid" + derive plan from purchased price, never metadata.planId.
 - [DB conventions & API dev quirks](db-and-api-dev-quirks.md) — no FK constraints anywhere; test API at localhost:8080 (not DEV_DOMAIN/api); drizzle-kit push prompts on constraints (use psql); known pre-existing issues.
-- [Schema drift: users cpf/phone](schema-drift-users.md) — cpf and phone columns were in Drizzle schema but absent from DB; every usersTable query 500'd until ALTER TABLE added them.
+- [Schema drift — multiple tables](schema-drift-users.md) — many columns/enums/tables in Drizzle schema were never applied to DB; any missing column causes 500 on every query for that table.
 - [Auth session & reset](auth-session-and-reset.md) — stateless tokens revoked via users.password_changed_at vs token issuedAt; reset token single-use = atomic UPDATE...WHERE used_at IS NULL RETURNING.
 - [Email normalization on auth](email-normalization-auth.md) — login MUST normalize email (trim+lowercase) to match register's normalization, or mobile keyboard auto-capitalization silently breaks login.
 - [pg Pool crash on dropped connection](pg-pool-error-handler.md) — pool MUST have a pool.on("error") listener; a DB-terminated idle connection emits unhandled 'error' that crashes the whole API and takes down all logins.
