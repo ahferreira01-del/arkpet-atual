@@ -7,7 +7,8 @@ import {
   invoicesTable,
   invoiceItemsTable,
   catalogueStockTransactionsTable,
-  usersTable
+  usersTable,
+  crechesTable,
 } from "@workspace/db/schema";
 import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
@@ -15,6 +16,7 @@ import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { releasePurchasedCredits } from "../services/credits.js";
 import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
+import { sendLowStockAlertEmail } from "../services/email.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -43,6 +45,9 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
     const crecheId = Number(req.params.crecheId);
     const tutorId = req.user!.id;
     const { items, deliveryMethod, deliveryAddress, deliveryFee } = req.body;
+
+    // Collect items that cross the low-stock threshold so we can alert after the transaction
+    const lowStockAlerts: Array<{ itemName: string; currentStock: number; reorderThreshold: number }> = [];
 
     await db.transaction(async (tx) => {
       // 1. Sort item IDs to prevent deadlocks when acquiring multiple row locks
@@ -77,6 +82,16 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
           await tx.update(catalogueItemsTable)
             .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${reqItem.quantity}` })
             .where(eq(catalogueItemsTable.id, lockedItem.id));
+
+          // Check if the new quantity will be at or below the reorder threshold
+          const newQuantity = lockedItem.stockQuantity - reqItem.quantity;
+          if (newQuantity <= lockedItem.minStockAlert) {
+            lowStockAlerts.push({
+              itemName: lockedItem.name,
+              currentStock: newQuantity,
+              reorderThreshold: lockedItem.minStockAlert,
+            });
+          }
         }
         
         catalogueItems.push(lockedItem);
@@ -165,6 +180,38 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
 
       res.status(201).json({ order, invoice });
     });
+
+    // Fire low-stock alerts asynchronously after the transaction commits — does not block the response
+    if (lowStockAlerts.length > 0) {
+      (async () => {
+        try {
+          const [admin] = await db
+            .select({ email: usersTable.email, name: usersTable.name })
+            .from(usersTable)
+            .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, "creche_admin")))
+            .limit(1);
+          const [creche] = await db
+            .select({ name: crechesTable.name })
+            .from(crechesTable)
+            .where(eq(crechesTable.id, crecheId))
+            .limit(1);
+          if (admin && creche) {
+            for (const alert of lowStockAlerts) {
+              await sendLowStockAlertEmail({
+                adminEmail: admin.email,
+                adminName: admin.name,
+                crecheName: creche.name,
+                itemName: alert.itemName,
+                currentStock: alert.currentStock,
+                reorderThreshold: alert.reorderThreshold,
+              });
+            }
+          }
+        } catch (alertErr) {
+          console.error("[low-stock-alert] Failed to send alert after POS sale:", alertErr);
+        }
+      })();
+    }
   } catch (err: any) {
     if (err.message && err.message.includes("Estoque")) {
       res.status(400).json({ error: err.message });

@@ -219,6 +219,82 @@ p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
   console.log(`[email] Self-signup welcome sent to ${params.email}`);
 }
 
+export async function sendLowStockAlertEmail(params: {
+  adminEmail: string;
+  adminName: string;
+  crecheName: string;
+  itemName: string;
+  currentStock: number;
+  reorderThreshold: number;
+}): Promise<void> {
+  const resend = await getUncachableResendClient();
+
+  if (!resend) {
+    console.log(
+      `[email] Resend not configured — would send low-stock alert to ${params.adminEmail} for item "${params.itemName}" (qty: ${params.currentStock}, threshold: ${params.reorderThreshold})`
+    );
+    return;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8" /><style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f1a; color: #e2e8f0; margin: 0; padding: 0; }
+.container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+.card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 40px; }
+.logo { text-align: center; margin-bottom: 32px; }
+.logo-icon { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; background: linear-gradient(135deg, #8b5cf6, #a78bfa); border-radius: 14px; font-size: 28px; }
+.logo-text { font-size: 24px; font-weight: 700; color: #fff; letter-spacing: -0.5px; margin-top: 12px; }
+h1 { font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 16px; }
+p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
+.alert-box { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 12px; padding: 20px 24px; margin: 24px 0; }
+.alert-title { color: #f87171; font-size: 15px; font-weight: 700; margin: 0 0 12px; }
+.stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.stat-row:last-child { border-bottom: none; }
+.stat-label { color: #64748b; font-size: 13px; }
+.stat-value { font-size: 13px; font-weight: 700; }
+.stat-value.danger { color: #f87171; }
+.stat-value.normal { color: #e2e8f0; }
+.btn { display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #8b5cf6, #a78bfa); color: #fff !important; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; margin: 24px 0; }
+.footer { text-align: center; margin-top: 32px; color: #475569; font-size: 12px; }
+</style></head>
+<body><div class="container"><div class="card">
+  <div class="logo"><div class="logo-icon">🐾</div><div class="logo-text">ArkPet</div></div>
+  <h1>⚠️ Alerta de Estoque Baixo</h1>
+  <p>Olá, <strong style="color:#e2e8f0">${params.adminName}</strong>. Um produto da creche <strong style="color:#e2e8f0">${params.crecheName}</strong> atingiu ou ficou abaixo do limite mínimo de reposição.</p>
+  <div class="alert-box">
+    <div class="alert-title">📦 ${params.itemName}</div>
+    <div class="stat-row">
+      <span class="stat-label">Estoque atual</span>
+      <span class="stat-value danger">${params.currentStock} unidade${params.currentStock !== 1 ? "s" : ""}</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Limite de reposição</span>
+      <span class="stat-value normal">${params.reorderThreshold} unidade${params.reorderThreshold !== 1 ? "s" : ""}</span>
+    </div>
+  </div>
+  <p style="font-size:13px;color:#64748b">Recomendamos realizar um pedido de reposição em breve para evitar rupturas de estoque.</p>
+  <div style="text-align:center"><a href="${APP_URL}" class="btn">Gerenciar Catálogo →</a></div>
+</div>
+<div class="footer"><p>© ${new Date().getFullYear()} ArkPet. Todos os direitos reservados.</p><p>Você recebeu este e-mail porque é administrador da creche ${params.crecheName}.</p></div>
+</div></body></html>`.trim();
+
+  const { error } = await resend.client.emails.send({
+    from: resend.fromEmail,
+    to: params.adminEmail,
+    subject: `⚠️ Estoque baixo: ${params.itemName} — ArkPet`,
+    html,
+  });
+
+  if (error) {
+    console.error(`[email] Failed to send low-stock alert to ${params.adminEmail}:`, error);
+    throw new Error(error.message);
+  }
+
+  console.log(`[email] Low-stock alert sent to ${params.adminEmail} for item "${params.itemName}" (qty: ${params.currentStock})`);
+}
+
 export async function sendPasswordResetEmail(params: {
   name: string;
   email: string;

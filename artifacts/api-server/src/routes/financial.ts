@@ -12,6 +12,7 @@ import {
   catalogueStockTransactionsTable,
   ordersTable,
   orderItemsTable,
+  crechesTable,
 } from "@workspace/db/schema";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
@@ -22,6 +23,7 @@ import { processManualPayment, approveReceipt, voidInvoice, refundInvoice, calcu
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { logFinancialAudit } from "../services/audit.js";
+import { sendLowStockAlertEmail } from "../services/email.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -346,6 +348,36 @@ router.post("/catalogue/:itemId/stock-adjustment", requireFinancialAccess, valid
     });
 
     res.json(updatedItem!);
+
+    // Fire low-stock alert asynchronously — does not block the response
+    if (delta < 0 && updatedItem!.stockQuantity <= updatedItem!.minStockAlert) {
+      (async () => {
+        try {
+          const [admin] = await db
+            .select({ email: usersTable.email, name: usersTable.name })
+            .from(usersTable)
+            .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, "creche_admin")))
+            .limit(1);
+          const [creche] = await db
+            .select({ name: crechesTable.name })
+            .from(crechesTable)
+            .where(eq(crechesTable.id, crecheId))
+            .limit(1);
+          if (admin && creche) {
+            await sendLowStockAlertEmail({
+              adminEmail: admin.email,
+              adminName: admin.name,
+              crecheName: creche.name,
+              itemName: updatedItem!.name,
+              currentStock: updatedItem!.stockQuantity,
+              reorderThreshold: updatedItem!.minStockAlert,
+            });
+          }
+        } catch (alertErr) {
+          console.error("[low-stock-alert] Failed to send alert after stock adjustment:", alertErr);
+        }
+      })();
+    }
   } catch (err: any) {
     if (err.status === 404) {
       res.status(404).json({ error: err.message });
