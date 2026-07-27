@@ -1,8 +1,8 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
-import { and, eq, gte, lte, isNotNull, inArray, or, isNull } from "drizzle-orm";
+import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
 
 const notifiedTaskIds = new Set<number>();
@@ -373,89 +373,100 @@ export function startScheduler() {
   console.log("[scheduler] Task reminder scheduler started.");
 }
 
-async function sendMensalidadeReminders() {
+async function sendInvoiceReminders() {
   try {
-    // Busca todos os tutores ativos com data de vencimento configurada,
-    // incluindo o crecheId para notificar o admin da creche também.
-    const tutors = await db
+    const pendingInvoices = await db
       .select({
-        id: usersTable.id,
-        name: usersTable.name,
+        invoiceId: invoicesTable.id,
+        dueDate: invoicesTable.dueDate,
+        amount: invoicesTable.amount,
+        status: invoicesTable.status,
+        tutorId: usersTable.id,
+        tutorName: usersTable.name,
         crecheId: usersTable.crecheId,
-        mensalidadeDia: usersTable.mensalidadeDia,
       })
-      .from(usersTable)
-      .where(and(eq(usersTable.role, "tutor"), eq(usersTable.isActive, true), isNotNull(usersTable.mensalidadeDia)));
-
-    if (!tutors.length) return;
-
-    // Dispara lembretes em 4 momentos: 7 dias antes, 3 dias antes,
-    // 1 dia antes e no próprio dia de vencimento.
-    const INTERVALS_DAYS = [7, 3, 1, 0];
-
-    for (const daysAhead of INTERVALS_DAYS) {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + daysAhead);
-      const targetDay = futureDate.getDate();
-
-      const matching = tutors.filter(
-        (t) => t.mensalidadeDia === targetDay && t.crecheId != null,
-      );
-      if (!matching.length) continue;
-
-      console.log(
-        `[scheduler] Mensalidade: ${matching.length} tutor(s) com vencimento ` +
-        `${daysAhead === 0 ? "HOJE" : `em ${daysAhead} dia(s)`} (dia ${targetDay})`,
+      .from(invoicesTable)
+      .innerJoin(usersTable, eq(invoicesTable.tutorId, usersTable.id))
+      .where(
+        and(
+          eq(usersTable.role, "tutor"),
+          eq(usersTable.isActive, true),
+          or(eq(invoicesTable.status, "pending"), eq(invoicesTable.status, "overdue"))
+        )
       );
 
-      const daysLabel =
-        daysAhead === 0 ? "HOJE" :
-        daysAhead === 1 ? "amanhã" :
-        `em ${daysAhead} dias`;
+    if (!pendingInvoices.length) return;
 
-      for (const tutor of matching) {
-        // ── Notificação para o TUTOR ────────────────────────────────────
-        const tutorTitle = daysAhead === 0
-          ? "⚠️ Mensalidade vence hoje!"
-          : "📅 Lembrete de mensalidade";
-        const tutorBody = daysAhead === 0
-          ? `Sua mensalidade vence HOJE (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`
-          : `Sua mensalidade vence ${daysLabel} (dia ${tutor.mensalidadeDia}). Entre em contato com a creche.`;
+    for (const invoice of pendingInvoices) {
+      if (!invoice.dueDate || !invoice.crecheId) continue;
 
-        await sendPushToUser(tutor.id, {
-          title: tutorTitle,
-          body: tutorBody,
-          tag: `mensalidade-tutor-${tutor.id}-d${daysAhead}`,
-          data: { type: "mensalidade" },
-        }).catch(() => {});
+      const dueDateObj = new Date(`${invoice.dueDate}T00:00:00`);
+      const todayDateObj = new Date(`${getBrazilDateStr()}T00:00:00`);
+      const diffTime = dueDateObj.getTime() - todayDateObj.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-        // ── Notificação para o ADMIN da creche ──────────────────────────
-        const adminTitle = daysAhead === 0
-          ? "⚠️ Mensalidade vence hoje"
-          : "📅 Mensalidade de tutor";
-        const adminBody = daysAhead === 0
-          ? `A mensalidade de ${tutor.name} vence HOJE (dia ${tutor.mensalidadeDia}).`
-          : `A mensalidade de ${tutor.name} vence ${daysLabel} (dia ${tutor.mensalidadeDia}).`;
+      let notifyType: "5_days" | "3_days" | "today" | "overdue" | null = null;
+      if (diffDays === 5) notifyType = "5_days";
+      else if (diffDays === 3) notifyType = "3_days";
+      else if (diffDays === 0) notifyType = "today";
+      else if (diffDays === -1) notifyType = "overdue";
 
-        await sendPushToRole(tutor.crecheId!, "creche_admin", {
-          title: adminTitle,
-          body: adminBody,
-          tag: `mensalidade-creche-${tutor.id}-d${daysAhead}`,
-          data: { type: "mensalidade", tutorId: tutor.id },
-        }).catch(() => {});
+      if (!notifyType) continue;
+
+      const [y, m, d] = invoice.dueDate.split("-");
+      const dueDateStr = `${d}/${m}/${y}`;
+
+      let tutorTitle = "📅 Lembrete de Fatura";
+      let tutorBody = "";
+
+      if (notifyType === "5_days") {
+        tutorBody = `Sua fatura de R$ ${invoice.amount} vence em 5 dias (${dueDateStr}).`;
+      } else if (notifyType === "3_days") {
+        tutorBody = `Sua fatura de R$ ${invoice.amount} vence em 3 dias (${dueDateStr}).`;
+      } else if (notifyType === "today") {
+        tutorTitle = "⚠️ Fatura Vence HOJE";
+        tutorBody = `Sua fatura de R$ ${invoice.amount} vence HOJE. Pague para evitar bloqueios.`;
+      } else if (notifyType === "overdue") {
+        tutorTitle = "🚨 Fatura Atrasada";
+        tutorBody = `Sua fatura de R$ ${invoice.amount} está atrasada. Novos agendamentos estão bloqueados até a regularização.`;
       }
+
+      await sendPushToUser(invoice.tutorId, {
+        title: tutorTitle,
+        body: tutorBody,
+        tag: `invoice-tutor-${invoice.invoiceId}-${notifyType}`,
+        data: { type: "invoice", invoiceId: invoice.invoiceId },
+      }).catch(() => {});
+
+      let adminTitle = "📅 Fatura de Tutor";
+      let adminBody = `A fatura de ${invoice.tutorName} no valor de R$ ${invoice.amount} vence em ${diffDays} dia(s).`;
+
+      if (notifyType === "today") {
+        adminTitle = "⚠️ Fatura Vence Hoje";
+        adminBody = `A fatura de ${invoice.tutorName} (R$ ${invoice.amount}) vence HOJE.`;
+      } else if (notifyType === "overdue") {
+        adminTitle = "🚨 Fatura Atrasada";
+        adminBody = `A fatura de ${invoice.tutorName} (R$ ${invoice.amount}) está atrasada e o tutor foi bloqueado para novos agendamentos.`;
+      }
+
+      await sendPushToRole(invoice.crecheId, "creche_admin", {
+        title: adminTitle,
+        body: adminBody,
+        tag: `invoice-creche-${invoice.invoiceId}-${notifyType}`,
+        data: { type: "invoice", tutorId: invoice.tutorId },
+      }).catch(() => {});
     }
   } catch (err) {
-    console.error("[scheduler] mensalidade reminder error:", err);
+    console.error("[scheduler] invoice reminder error:", err);
   }
 }
 
 export function startMensalidadeScheduler() {
   cron.schedule("0 9 * * *", async () => {
-    console.log("[scheduler] Running mensalidade check...");
-    await sendMensalidadeReminders();
+    console.log("[scheduler] Running invoice reminders...");
+    await sendInvoiceReminders();
   });
-  console.log("[scheduler] Mensalidade reminder scheduler started.");
+  console.log("[scheduler] Invoice reminder scheduler started.");
 }
 
 // ─── Scheduled plan changes ───────────────────────────────────────────────────

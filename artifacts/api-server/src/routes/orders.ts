@@ -14,6 +14,7 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { releasePurchasedCredits } from "../services/credits.js";
+import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -100,13 +101,22 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
 
       const total = subtotal + Number(deliveryFee);
 
+      let dueDateStr = new Date().toISOString().split('T')[0];
+      if (!(await hasOverdueInvoices(tutorId))) {
+        const [tutorRec] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
+        dueDateStr = calculateDueDate(tutorRec?.mensalidadeDia, new Date());
+      } else {
+        // If they have overdue invoices, we force payment today (no faturado)
+        dueDateStr = new Date().toISOString().split('T')[0];
+      }
+
       // 2. Create Invoice
       const [invoice] = await tx.insert(invoicesTable).values({
         crecheId,
         tutorId,
         amount: total.toString(),
         status: "pending",
-        dueDate: new Date().toISOString().split('T')[0],
+        dueDate: dueDateStr,
       }).returning();
 
       // 3. Create Invoice Items

@@ -1,9 +1,67 @@
 import { db } from "@workspace/db";
 import { invoicesTable, transactionsTable, financialAuditLogsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { ordersTable } from "@workspace/db/schema";
 import { logFinancialAudit } from "./audit.js";
+
+/**
+ * Calcula a data de vencimento baseada no dia de mensalidade do tutor.
+ * @param tutorMensalidadeDia Dia do vencimento (ex: 10). Se nulo, usa a data atual + 3 dias.
+ * @param fallbackDate Data base (geralmente data da reserva ou de hoje).
+ */
+export function calculateDueDate(tutorMensalidadeDia: number | null | undefined, fallbackDate: Date = new Date()): string {
+  if (!tutorMensalidadeDia) {
+    const fallback = new Date(fallbackDate);
+    fallback.setDate(fallback.getDate() + 3);
+    return fallback.toISOString().split("T")[0];
+  }
+
+  const today = new Date();
+  let dueMonth = today.getMonth();
+  let dueYear = today.getFullYear();
+
+  if (today.getDate() > tutorMensalidadeDia) {
+    dueMonth += 1;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear += 1;
+    }
+  }
+
+  const lastDayOfMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+  const actualDay = Math.min(tutorMensalidadeDia, lastDayOfMonth);
+  
+  const finalDueDate = new Date(dueYear, dueMonth, actualDay);
+  return finalDueDate.toISOString().split("T")[0];
+}
+
+/**
+ * Verifica se um tutor possui faturas em atraso.
+ * Uma fatura está em atraso se o status for 'overdue' ou se for 'pending' e a data de vencimento for anterior a hoje.
+ */
+export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
+  const todayStr = new Date().toISOString().split("T")[0];
+  const [overdue] = await db
+    .select({ id: invoicesTable.id })
+    .from(invoicesTable)
+    .where(
+      and(
+        eq(invoicesTable.tutorId, tutorId),
+        or(
+          eq(invoicesTable.status, "overdue"),
+          and(
+            eq(invoicesTable.status, "pending"),
+            // Usamos sql para comparar strings yyyy-mm-dd
+            sql`${invoicesTable.dueDate} < ${todayStr}`
+          )
+        )
+      )
+    )
+    .limit(1);
+
+  return !!overdue;
+}
 
 export async function processManualPayment(invoiceId: number, crecheId: number, userId: number, paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip") {
   return await db.transaction(async (tx) => {

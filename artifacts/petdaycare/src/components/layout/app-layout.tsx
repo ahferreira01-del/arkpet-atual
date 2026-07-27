@@ -9,7 +9,7 @@ import { Loader2 } from "lucide-react";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
 
   React.useEffect(() => {
     if (!isLoading && !user) {
@@ -30,6 +30,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   if (!user) return null;
 
+  const hideBottomNav = location.startsWith("/bookings/new") || location.startsWith("/staff/qr-scanner");
+
   return (
     <div className="flex min-h-dvh bg-background overflow-hidden relative">
       {/* Ambient background glow */}
@@ -49,21 +51,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">
           <div className="max-w-7xl mx-auto">
             {children}
-            {/* Physical bottom spacer — visible only on mobile.
+            {/* Physical bottom spacer ?" visible only on mobile.
                 A real element is more reliable than padding-bottom on
                 overflow-y:auto in Safari (known Safari bug).
                 Height = nav bar (~68 px) + safe-area-inset-bottom.        */}
-            <div
-              className="block md:hidden flex-shrink-0"
-              aria-hidden="true"
-              style={{ height: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
-            />
+            {!hideBottomNav && (
+              <div
+                className="block md:hidden flex-shrink-0"
+                aria-hidden="true"
+                style={{ height: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+              />
+            )}
           </div>
         </main>
       </div>
 
       {/* Mobile bottom navigation */}
-      <BottomNav user={user} />
+      {!hideBottomNav && <BottomNav user={user} />}
     </div>
   );
 }

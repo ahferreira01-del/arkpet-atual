@@ -23,8 +23,9 @@ import { eq, and, desc, gte, gt, sql, or, isNull, asc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
-import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 import { logFinancialAudit } from "../services/audit.js";
+import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
+import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -192,6 +193,10 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
       if (!pet) throw new Error("Pet não encontrado");
 
       const tutorId = req.user!.role === "tutor" ? req.user!.id : (pet.tutorId ?? req.user!.id);
+
+      if (await hasOverdueInvoices(tutorId)) {
+        throw new Error("Este tutor possui faturas em atraso. Regularize a situação para realizar novos agendamentos.");
+      }
 
       // Calcula duração (dias). Se endDate não for passado ou for igual, é 1 dia.
       const start = new Date(startDate);
@@ -455,13 +460,14 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
           
           const subtotal = unitPrice * daysToBill;
           if (subtotal > 0) {
+            const [tutor] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, existing.tutorId!)).limit(1);
             const [invoice] = await tx.insert(invoicesTable).values({
               crecheId,
               tutorId: existing.tutorId,
               bookingId,
               amount: String(subtotal),
               status: "pending",
-              dueDate: existing.startDate,
+              dueDate: calculateDueDate(tutor?.mensalidadeDia, new Date(existing.startDate)),
             }).returning();
             await tx.insert(invoiceItemsTable).values({
               invoiceId: invoice.id,
@@ -999,8 +1005,7 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
 
       // 4. Gerar Fatura se houver valor ou se usou crédito
       if (totalAmount > 0 || creditsUsed > 0) {
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + 3); // Vence em 3 dias
+        const [tutor] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, existing.tutorId!)).limit(1);
 
         const [invoice] = await tx
           .insert(invoicesTable)
@@ -1009,7 +1014,7 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
             tutorId: existing.tutorId!,
             amount: String(totalAmount),
             status: totalAmount === 0 ? "paid" : "pending",
-            dueDate: dueDate.toISOString().split("T")[0],
+            dueDate: calculateDueDate(tutor?.mensalidadeDia, new Date()),
           })
           .returning();
 

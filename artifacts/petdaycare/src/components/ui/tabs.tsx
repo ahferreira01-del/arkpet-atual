@@ -22,28 +22,8 @@ export function Tabs({ tabs, defaultTab, className, onValueChange }: TabsProps) 
 
   return (
     <div className={cn("w-full flex flex-col", className)}>
-      {/* Mobile Select */}
-      <div className="sm:hidden mb-4">
-        <div className="relative">
-          <select
-            value={activeTab}
-            onChange={(e) => handleTabClick(e.target.value)}
-            className="w-full h-12 appearance-none bg-black/20 border border-white/10 rounded-xl pl-4 pr-10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary backdrop-blur-md"
-          >
-            {tabs.map((tab) => (
-              <option key={tab.id} value={tab.id}>
-                {tab.label}
-              </option>
-            ))}
-          </select>
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-muted-foreground">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-          </div>
-        </div>
-      </div>
-
-      {/* Desktop Tabs */}
-      <div className="hidden sm:flex flex-nowrap space-x-2 border-b border-border/50 pb-px overflow-x-auto scrollbar-sleek items-center">
+      {/* Tabs */}
+      <div className="flex flex-nowrap space-x-2 border-b border-border/50 pb-px overflow-x-auto scrollbar-sleek items-center">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (

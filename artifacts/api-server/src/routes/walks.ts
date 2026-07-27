@@ -40,7 +40,7 @@ router.get("/", async (req: AuthRequest, res) => {
 router.post("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-  const { petId } = req.body;
+  const { petId, durationMinutes } = req.body;
   if (!petId) { res.status(400).json({ error: "petId is required" }); return; }
   const [walk] = await db.insert(walksTable).values({
     crecheId,
@@ -48,6 +48,7 @@ router.post("/", async (req: AuthRequest, res) => {
     staffId: req.user.id,
     startTime: new Date(),
     status: "in_progress",
+    durationMinutes: durationMinutes ? parseInt(durationMinutes) : null,
   }).returning();
   const [pet] = await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, petId)).limit(1);
   res.status(201).json({ ...walk, petName: pet?.name ?? null, staffName: req.user.name, startedAt: walk.startTime, endedAt: walk.endTime });

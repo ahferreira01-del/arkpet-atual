@@ -13,6 +13,8 @@ import {
   useListUsers,
   ListTasksStatus,
 } from "@workspace/api-client-react";
+import { FeedTab } from "@/components/feed-tab";
+import { Tabs } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +61,7 @@ import { useToast } from "@/hooks/use-toast";
 import { parseUTC, todayBrazil, parseLocalDate } from "@/lib/date-utils";
 import { resolvePhotoUrl } from "@/lib/utils";
 import { usePush } from "@/hooks/use-push";
+import { useTutorInvoices } from "@/hooks/use-financial";
 
 // ─── Componente de Prompt de Notificação ──────────────────────────────────────
 function NotificationPrompt() {
@@ -113,13 +116,9 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
 
   const { data: stats } = useGetCrecheStats(crecheId);
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
-  const { data: bookings, isLoading: bookingsLoading } = useListBookings(crecheId);
-  const { data: tasks, isLoading: tasksLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus, date: todayBrazil() });
-  const { data: walks } = (useListWalks as any)(crecheId);
+  const { data: bookings } = useListBookings(crecheId);
+  const { data: tasks } = useListTasks(crecheId, { status: "pending" as ListTasksStatus, date: todayBrazil() });
   const { data: staff } = useListCrecheStaff(crecheId);
-
-  const updateBookingMutation = useUpdateBooking();
-  const completeTaskMutation = useCompleteTask();
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
@@ -131,41 +130,8 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const checkedIn = petsArray.filter((p: any) => p.isCheckedIn) || [];
   const checkedInIds = new Set(checkedIn.map((p: any) => p.id).filter((id: any): id is number => id != null));
   const pendingBookings = bookingsArray.filter((b: any) => b.status === "pending") || [];
-  const activeWalks = (walks || []).filter((w: any) => w.status === "in_progress");
-  const activeTasks = (tasks || []).filter((t) => t.petId != null && checkedInIds.has(t.petId));
-  const todayTasks = activeTasks.slice(0, 4);
+  const activeTasks = (tasks || []).filter((t: any) => t.petId != null && checkedInIds.has(t.petId));
   const staffCount = (staff || []).filter((s: any) => s.isActive !== false).length;
-
-  const confirmBooking = (bookingId: number) => {
-    updateBookingMutation.mutate(
-      { crecheId, bookingId, data: { status: "confirmed" } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries();
-          toast({ title: "Reserva confirmada!" });
-        },
-      }
-    );
-  };
-
-  const cancelBooking = (bookingId: number) => {
-    updateBookingMutation.mutate(
-      { crecheId, bookingId, data: { status: "cancelled" } },
-      {
-        onSuccess: () => {
-          queryClient.invalidateQueries();
-          toast({ title: "Reserva cancelada." });
-        },
-      }
-    );
-  };
-
-  const bookingTypeLabel: Record<string, string> = {
-    daycare: "Creche",
-    overnight: "Pernoite",
-    grooming: "Banho/Tosa",
-    visita: "Visita",
-  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -186,287 +152,71 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
         </Link>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/pets?filter=present">
-          <StatCard
-            title="Pets Presentes"
-            value={checkedIn.length.toString()}
-            subValue={`de ${pets?.length || 0} cadastrados`}
-            icon={<Dog className="h-5 w-5" />}
-            iconBg="bg-primary/20"
-            iconColor="text-primary"
-            clickable
-          />
-        </Link>
-        <Link href="/bookings?status=pending">
-          <StatCard
-            title="Reservas Pendentes"
-            value={stats?.pendingBookings?.toString() ?? pendingBookings.length.toString()}
-            subValue="aguardando confirmação"
-            icon={<Calendar className="h-5 w-5" />}
-            iconBg={pendingBookings.length > 0 ? "bg-amber-400/20" : "bg-blue-500/20"}
-            iconColor={pendingBookings.length > 0 ? "text-amber-400" : "text-blue-400"}
-            alert={pendingBookings.length > 0}
-            clickable
-          />
-        </Link>
-        <Link href="/staff?filter=present">
-          <StatCard
-            title="Tarefas Pendentes"
-            value={activeTasks.length.toString()}
-            subValue="para hoje"
-            icon={<CheckSquare className="h-5 w-5" />}
-            iconBg={activeTasks.length > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
-            iconColor={activeTasks.length > 0 ? "text-red-400" : "text-emerald-400"}
-            clickable
-          />
-        </Link>
-        <Link href="/staff/manage">
-          <StatCard
-            title="Equipe Ativa"
-            value={staffCount.toString()}
-            subValue="membros"
-            icon={<Users className="h-5 w-5" />}
-            iconBg="bg-violet-500/20"
-            iconColor="text-violet-400"
-            clickable
-          />
-        </Link>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Left col: pets + bookings */}
-        <div className="lg:col-span-2 space-y-6">
-
-          {/* Pending bookings */}
-          {pendingBookings.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-400" />
-                  Reservas Aguardando Confirmação
-                  <Badge variant="warning">{pendingBookings.length}</Badge>
-                </h2>
-                <Link href="/bookings">
-                  <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button>
-                </Link>
-              </div>
-              <Card className="border-amber-400/20">
-                <CardContent className="p-0">
-                  {bookingsLoading ? (
-                    <div className="p-6 text-center text-muted-foreground">Carregando...</div>
-                  ) : (
-                    <div className="divide-y divide-white/5">
-                      {pendingBookings.slice(0, 4).map((b) => (
-                        <div key={b.id} className="p-4 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                              <Dog className="h-4 w-4 text-primary" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-white text-sm truncate">{b.petName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {bookingTypeLabel[b.type] || b.type} · {format(parseLocalDate(b.startDate), "dd/MM", { locale: ptBR })}
-                                {b.endDate && ` → ${format(parseLocalDate(b.endDate), "dd/MM", { locale: ptBR })}`}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2 flex-shrink-0">
-                            <button
-                              onClick={() => cancelBooking(b.id)}
-                              className="h-8 w-8 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 flex items-center justify-center transition-colors"
-                              title="Cancelar"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => confirmBooking(b.id)}
-                              className="h-8 px-3 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1 text-xs font-medium transition-colors"
-                              title="Confirmar"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Pets presentes */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                Pets Presentes
-                {checkedIn.length > 0 && <span className="text-muted-foreground text-sm font-normal">({checkedIn.length})</span>}
-              </h2>
-              <Link href="/pets">
-                <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todos →</button>
-              </Link>
-            </div>
-            <Card>
-              <CardContent className="p-0">
-                {petsLoading ? (
-                  <div className="p-8 text-center text-muted-foreground">Carregando...</div>
-                ) : checkedIn.length ? (
-                  <div className="divide-y divide-white/5">
-                    {checkedIn.map((pet) => (
-                      <Link key={pet.id} href={`/pets/${pet.id}`}>
-                        <div className="flex items-center justify-between gap-3 p-4 hover:bg-white/5 transition-colors cursor-pointer group">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="h-12 w-12 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
-                              {pet.photoUrl ? (
-                                <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <div className="h-full w-full flex items-center justify-center">
-                                  <Dog className="h-5 w-5 text-white/60" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-medium text-white group-hover:text-primary transition-colors truncate">{pet.name}</p>
-                              <p className="text-sm text-muted-foreground capitalize truncate">{pet.breed || pet.species}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <Badge variant="success">Presente</Badge>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState
-                    icon={Dog}
-                    title="Nenhum pet com check-in"
-                    description="Use o leitor QR para registrar a chegada dos pets."
-                    action={{ label: "Abrir QR Scanner", onClick: () => navigate("/staff/qr-scanner") }}
-                    className="py-10"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Active walks */}
-          {activeWalks.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
-                  <Footprints className="h-5 w-5 text-emerald-400" /> Passeios em Andamento
-                  <Badge variant="success">{activeWalks.length}</Badge>
-                </h2>
-                <Link href="/walks">
-                  <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todos →</button>
-                </Link>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {activeWalks.map((w: any) => (
-                  <Link key={w.id} href="/walks">
-                    <div className="glass-panel p-4 rounded-xl hover:bg-white/10 transition-all cursor-pointer">
-                      <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                          <Footprints className="h-4 w-4 text-emerald-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-white text-sm truncate">{w.petName || "Pet"}</p>
-                          <p className="text-xs text-emerald-400">Em andamento</p>
-                        </div>
-                      </div>
-                    </div>
+      <div className="mt-6">
+        <Tabs 
+          defaultTab="timeline"
+          tabs={[
+            {
+              id: "timeline",
+              label: "Timeline",
+              content: <FeedTab crecheId={crecheId} />
+            },
+            {
+              id: "dashboard",
+              label: "Visão Geral",
+              content: (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                  <Link href="/pets?filter=present">
+                    <StatCard
+                      title="Pets Presentes"
+                      value={checkedIn.length.toString()}
+                      subValue={`de ${pets?.length || 0} cadastrados`}
+                      icon={<Dog className="h-5 w-5" />}
+                      iconBg="bg-primary/20"
+                      iconColor="text-primary"
+                      clickable
+                    />
                   </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right sidebar */}
-        <div className="space-y-6">
-
-          {/* Pending tasks */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-display font-semibold text-white flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-400" /> Tarefas Hoje
-              </h2>
-              <Link href="/staff">
-                <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button>
-              </Link>
-            </div>
-            <Card>
-              <CardContent className="p-0">
-                {tasksLoading ? (
-                  <div className="p-5 text-center text-muted-foreground text-sm">Carregando...</div>
-                ) : todayTasks.length ? (
-                  <div className="divide-y divide-white/5">
-                    {todayTasks.map((task) => (
-                      <div key={task.id} className="p-3.5 flex items-center gap-3">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-white text-sm truncate">{task.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {task.petName && <span className="text-primary mr-1">{task.petName} ·</span>}
-                            {format(new Date(task.scheduledFor), "HH:mm")}
-                          </p>
-                        </div>
-                        <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs flex-shrink-0">
-                          {task.priority === "high" ? "Alta" : task.priority === "medium" ? "Média" : "Baixa"}
-                        </Badge>
-                      </div>
-                    ))}
-                    {(tasks?.length || 0) > 4 && (
-                      <Link href="/staff">
-                        <div className="p-3 text-center text-xs text-primary hover:bg-white/5 transition-colors cursor-pointer">
-                          +{(tasks?.length || 0) - 4} tarefas pendentes →
-                        </div>
-                      </Link>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-5 flex items-center gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400 flex-shrink-0" />
-                    <p className="text-sm text-emerald-400 font-medium">Todas as tarefas concluídas!</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Quick actions */}
-          <div>
-            <h2 className="text-lg font-display font-semibold text-white mb-3">Ações Rápidas</h2>
-            <div className="space-y-2">
-              {[
-                { href: "/bookings", icon: <Calendar className="h-4 w-4" />, bg: "bg-blue-500/20", color: "text-blue-400", label: "Nova Reserva", desc: "Agendar estadia ou serviço" },
-                { href: "/pets", icon: <Dog className="h-4 w-4" />, bg: "bg-primary/20", color: "text-primary", label: "Cadastrar Pet", desc: "Adicionar novo pet ao sistema" },
-                { href: "/staff", icon: <CheckSquare className="h-4 w-4" />, bg: "bg-amber-400/20", color: "text-amber-400", label: "Ver Tarefas", desc: "Checklist de tarefas do dia" },
-                { href: "/staff/manage", icon: <Users className="h-4 w-4" />, bg: "bg-violet-500/20", color: "text-violet-400", label: "Gerenciar Equipe", desc: "Membros e permissões" },
-                { href: "/tutors", icon: <UserCheck className="h-4 w-4" />, bg: "bg-emerald-500/20", color: "text-emerald-400", label: "Tutores", desc: "Tutores e seus pets" },
-                { href: "/chat", icon: <MessageSquare className="h-4 w-4" />, bg: "bg-pink-500/20", color: "text-pink-400", label: "Chat Interno", desc: "Mensagens da equipe" },
-              ].map(({ href, icon, bg, color, label, desc }) => (
-                <Link key={href} href={href}>
-                  <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all cursor-pointer group">
-                    <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${bg} ${color} group-hover:scale-105 transition-transform`}>
-                      {icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white">{label}</p>
-                      <p className="text-xs text-muted-foreground truncate">{desc}</p>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
+                  <Link href="/bookings?status=pending">
+                    <StatCard
+                      title="Reservas Pendentes"
+                      value={stats?.pendingBookings?.toString() ?? pendingBookings.length.toString()}
+                      subValue="aguardando confirmação"
+                      icon={<Calendar className="h-5 w-5" />}
+                      iconBg={pendingBookings.length > 0 ? "bg-amber-400/20" : "bg-blue-500/20"}
+                      iconColor={pendingBookings.length > 0 ? "text-amber-400" : "text-blue-400"}
+                      alert={pendingBookings.length > 0}
+                      clickable
+                    />
+                  </Link>
+                  <Link href="/staff?filter=present">
+                    <StatCard
+                      title="Tarefas Pendentes"
+                      value={activeTasks.length.toString()}
+                      subValue="para hoje"
+                      icon={<CheckSquare className="h-5 w-5" />}
+                      iconBg={activeTasks.length > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
+                      iconColor={activeTasks.length > 0 ? "text-red-400" : "text-emerald-400"}
+                      clickable
+                    />
+                  </Link>
+                  <Link href="/staff/manage">
+                    <StatCard
+                      title="Equipe Ativa"
+                      value={staffCount.toString()}
+                      subValue="membros"
+                      icon={<Users className="h-5 w-5" />}
+                      iconBg="bg-violet-500/20"
+                      iconColor="text-violet-400"
+                      clickable
+                    />
+                  </Link>
+                </div>
+              )
+            }
+          ]}
+        />
       </div>
     </div>
   );
@@ -611,6 +361,8 @@ function useTutorTimeline(crecheId: number, tutorId: number) {
   });
 }
 
+
+
 const eventConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
   check_in:   { icon: <LogIn className="h-3.5 w-3.5" />,         label: "Check-in",    color: "text-emerald-400 bg-emerald-500/15 border-emerald-500/25" },
   check_out:  { icon: <LogOut className="h-3.5 w-3.5" />,        label: "Check-out",   color: "text-amber-400 bg-amber-500/15 border-amber-500/25" },
@@ -629,6 +381,7 @@ function TutorDashboard({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const { data: pets } = useListPets(crecheId);
   const { data: timeline, isLoading: timelineLoading, refetch } = useTutorTimeline(crecheId, user.id);
+  const { data: invoices } = useTutorInvoices(crecheId, user.id);
 
   const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
   const checkedInPets = myPets.filter((p: any) => p.isCheckedIn);
@@ -645,9 +398,63 @@ function TutorDashboard({ user }: { user: any }) {
     queryClient.invalidateQueries({ queryKey: ["tutor-timeline"] });
   };
 
+  const invoiceList = invoices?.data || (Array.isArray(invoices) ? invoices : []);
+  const pendingOrOverdue = invoiceList.filter((inv: any) => inv.status === "pending" || inv.status === "overdue");
+  const overdueInvoices = pendingOrOverdue.filter((inv: any) => {
+    if (inv.status === "overdue") return true;
+    if (!inv.dueDate) return false;
+    const due = new Date(`${inv.dueDate}T00:00:00`);
+    const today = new Date(`${todayBrazil()}T00:00:00`);
+    return due.getTime() < today.getTime();
+  });
+  
+  const upcomingInvoices = pendingOrOverdue.filter((inv: any) => {
+    if (inv.status === "overdue") return false;
+    if (!inv.dueDate) return false;
+    const due = new Date(`${inv.dueDate}T00:00:00`);
+    const today = new Date(`${todayBrazil()}T00:00:00`);
+    const diff = due.getTime() - today.getTime();
+    const diffDays = Math.round(diff / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= 5;
+  });
+
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
       <NotificationPrompt />
+
+      {/* ── Avisos Financeiros ── */}
+      {overdueInvoices.length > 0 && (
+        <div className="mb-4 p-4 rounded-2xl bg-destructive/20 border border-destructive/30 flex items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-destructive/30 flex items-center justify-center shrink-0">
+              <AlertCircle className="h-5 w-5 text-destructive-foreground" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-white">Faturas Atrasadas</h3>
+              <p className="text-xs text-destructive-foreground mt-0.5 leading-relaxed">Você possui faturas em atraso. Regularize para continuar agendando.</p>
+            </div>
+          </div>
+          <Link href="/financial">
+            <Button size="sm" variant="destructive" className="shrink-0">Regularizar</Button>
+          </Link>
+        </div>
+      )}
+      {overdueInvoices.length === 0 && upcomingInvoices.length > 0 && (
+        <div className="mb-4 p-4 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0">
+              <AlertCircle className="h-5 w-5 text-amber-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-white">Fatura Próxima do Vencimento</h3>
+              <p className="text-xs text-amber-400 mt-0.5 leading-relaxed">Você possui uma fatura vencendo nos próximos 5 dias.</p>
+            </div>
+          </div>
+          <Link href="/financial">
+            <Button size="sm" variant="glass" className="shrink-0 text-amber-400 hover:text-amber-300">Pagar agora</Button>
+          </Link>
+        </div>
+      )}
 
       {/* ── Greeting ── */}
       <div className="flex items-start justify-between gap-4">

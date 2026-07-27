@@ -11,6 +11,7 @@ import { Footprints, Play, Square, Dog, Clock } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useToast } from "@/hooks/use-toast";
 
 function useCreecheWalks(crecheId: number) {
   return useQuery<any[]>({
@@ -28,24 +29,102 @@ function useCreecheWalks(crecheId: number) {
   });
 }
 
+function ActiveWalkCard({ walk, onEnd, isEnding }: { walk: any, onEnd: (id: number) => void, isEnding: boolean }) {
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  const [ended, setEnded] = useState(false);
+  const { toast } = useToast();
+
+  React.useEffect(() => {
+    if (!walk.durationMinutes || !walk.startedAt) return;
+    
+    const startMs = new Date(walk.startedAt).getTime();
+    const durationMs = walk.durationMinutes * 60 * 1000;
+    
+    const tick = () => {
+      const now = Date.now();
+      const remaining = startMs + durationMs - now;
+      if (remaining <= 0) {
+        setTimeLeft(0);
+        if (!ended) {
+          setEnded(true);
+          toast({ title: "Tempo Esgotado!", description: `O passeio de ${walk.petName} chegou ao fim automático.`, variant: "destructive" });
+          onEnd(walk.id);
+        }
+      } else {
+        setTimeLeft(Math.floor(remaining / 1000));
+      }
+    };
+    
+    tick(); // initial tick
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [walk, ended, onEnd, toast]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  return (
+    <Card className="border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)] relative overflow-hidden">
+      {timeLeft !== null && timeLeft > 0 && (
+        <div className="absolute top-0 left-0 h-1 bg-emerald-500/50" style={{ width: `${(timeLeft / (walk.durationMinutes * 60)) * 100}%`, transition: 'width 1s linear' }} />
+      )}
+      <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-emerald-500/20 flex items-center justify-center relative z-10">
+            <Footprints className="h-5 w-5 text-emerald-400" />
+          </div>
+          <div className="relative z-10">
+            <p className="font-semibold text-white text-lg">{walk.petName}</p>
+            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
+              <Clock className="h-3.5 w-3.5" />
+              {timeLeft !== null ? (
+                <span className={timeLeft < 60 ? "text-red-400 font-medium" : "text-emerald-400 font-medium"}>
+                  Restam {formatTime(timeLeft)}
+                </span>
+              ) : (
+                <>Iniciado {formatDistanceToNow(new Date(walk.startedAt), { addSuffix: true, locale: ptBR })}</>
+              )}
+            </p>
+            {walk.staffName && (
+              <p className="text-xs text-muted-foreground mt-0.5">por {walk.staffName}</p>
+            )}
+          </div>
+        </div>
+        <Button
+          onClick={() => onEnd(walk.id)}
+          isLoading={isEnding}
+          variant="outline"
+          className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 w-full sm:w-auto relative z-10"
+        >
+          <Square className="mr-2 h-4 w-4" /> Finalizar Passeio
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(30);
 
   const { data: walks, isLoading } = useCreecheWalks(crecheId);
   const { data: petsResponse } = useListPets(crecheId);
   const pets = (petsResponse as any)?.items;
 
   const startMutation = useMutation({
-    mutationFn: async (petId: number) => {
+    mutationFn: async ({ petId, durationMinutes }: { petId: number, durationMinutes: number }) => {
       const token = localStorage.getItem("auth_token");
       const r = await fetch(`/api/creches/${crecheId}/walks`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ petId }),
+        body: JSON.stringify({ petId, durationMinutes }),
       });
       if (!r.ok) throw new Error("Erro ao iniciar passeio");
       return r.json();
@@ -53,6 +132,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
     onSuccess: () => {
       setIsModalOpen(false);
       setSelectedPetId(0);
+      setDuration(30);
       queryClient.invalidateQueries({ queryKey: ["creche-walks"] });
     },
   });
@@ -78,7 +158,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPetId) return;
-    startMutation.mutate(selectedPetId);
+    startMutation.mutate({ petId: selectedPetId, durationMinutes: duration });
   };
 
   return (
@@ -114,33 +194,12 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
             Em Andamento ({activeWalks.length})
           </h2>
           {activeWalks.map((walk) => (
-            <Card key={walk.id} className="border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)]">
-              <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 flex-shrink-0 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                    <Footprints className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-white text-lg">{walk.petName}</p>
-                    <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
-                      <Clock className="h-3.5 w-3.5" />
-                      Iniciado {formatDistanceToNow(new Date(walk.startedAt), { addSuffix: true, locale: ptBR })}
-                    </p>
-                    {walk.staffName && (
-                      <p className="text-xs text-muted-foreground mt-0.5">por {walk.staffName}</p>
-                    )}
-                  </div>
-                </div>
-                <Button
-                  onClick={() => endMutation.mutate({ walkId: walk.id })}
-                  isLoading={endMutation.isPending}
-                  variant="outline"
-                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 w-full sm:w-auto"
-                >
-                  <Square className="mr-2 h-4 w-4" /> Finalizar Passeio
-                </Button>
-              </CardContent>
-            </Card>
+            <ActiveWalkCard
+              key={walk.id}
+              walk={walk}
+              onEnd={(id) => endMutation.mutate({ walkId: id })}
+              isEnding={endMutation.isPending && (endMutation.variables as any)?.walkId === walk.id}
+            />
           ))}
         </div>
       )}
@@ -205,7 +264,15 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
             {checkedInPets.length > 0 ? (
               <select
                 value={selectedPetId}
-                onChange={(e) => setSelectedPetId(Number(e.target.value))}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  setSelectedPetId(id);
+                  const pet = checkedInPets.find(p => p.id === id);
+                  if (pet?.walkSchedule && Array.isArray(pet.walkSchedule) && pet.walkSchedule.length > 0) {
+                    const plannedDuration = pet.walkSchedule[0]?.durationMinutes;
+                    if (plannedDuration) setDuration(Number(plannedDuration));
+                  }
+                }}
                 required
                 className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
               >
@@ -219,6 +286,17 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
                 Nenhum pet fez check-in. Realize o check-in de um pet antes de iniciar o passeio.
               </div>
             )}
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Tempo estipulado (minutos)</label>
+            <input
+              type="number"
+              min="1"
+              value={duration}
+              readOnly
+              disabled
+              className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-base text-white/70 focus:outline-none cursor-not-allowed"
+            />
           </div>
           <div className="modal-sticky-footer flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>

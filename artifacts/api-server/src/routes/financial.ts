@@ -20,7 +20,7 @@ import { ObjectStorageService } from "../lib/objectStorage.js";
 const objectStorageService = new ObjectStorageService();
 import { eq, and, desc, asc, sql, gte, lte, count, lt, or, isNull } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
-import { processManualPayment, approveReceipt, voidInvoice, refundInvoice } from "../services/billing.js";
+import { processManualPayment, approveReceipt, voidInvoice, refundInvoice, calculateDueDate, hasOverdueInvoices } from "../services/billing.js";
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { logFinancialAudit } from "../services/audit.js";
@@ -547,14 +547,13 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
     }
 
     // 2. Criar fatura para o tutor
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + 3);
+    const [tutorRec] = await db.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
 
     const [invoice] = await db.insert(invoicesTable).values({
       crecheId,
       tutorId,
       amount: item.basePrice,
-      dueDate: dueDate.toISOString().split('T')[0],
+      dueDate: calculateDueDate(tutorRec?.mensalidadeDia, new Date()),
       status: 'pending',
     }).returning();
 
@@ -973,6 +972,18 @@ router.post("/pos-sale", requireFinancialAccess, validate(posSaleSchema), async 
       }
 
       const isPending = !paymentMethod || paymentMethod === 'pending';
+      
+      if (isPending && tutorId) {
+        if (await hasOverdueInvoices(tutorId)) {
+          throw new Error("Este tutor possui faturas em atraso. A compra deve ser paga à vista (jogar para a fatura está bloqueado).");
+        }
+      }
+
+      let dueDateStr = new Date().toISOString().split('T')[0];
+      if (isPending && tutorId) {
+        const [tutorRec] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
+        dueDateStr = calculateDueDate(tutorRec?.mensalidadeDia, new Date());
+      }
 
       // Create Invoice
       const [invoice] = await tx.insert(invoicesTable).values({
@@ -980,7 +991,7 @@ router.post("/pos-sale", requireFinancialAccess, validate(posSaleSchema), async 
         tutorId: tutorId || null,
         amount: subtotal.toString(),
         status: isPending ? "pending" : "paid",
-        dueDate: new Date().toISOString().split('T')[0],
+        dueDate: dueDateStr,
       }).returning();
 
       // Create Invoice Items

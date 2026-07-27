@@ -26,7 +26,7 @@ router.get("/:crecheId/tutors", async (req: AuthRequest, res) => {
 });
 
 // GET tutors with full data + pet count — for tutor management page
-router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
+router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin", "staff"), async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" });
@@ -64,7 +64,7 @@ router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin
 });
 
 // POST create tutor
-router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
+router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin", "staff"), async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" }); return;
@@ -84,7 +84,7 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin"), as
 });
 
 // PATCH toggle tutor active status
-router.patch("/:crecheId/tutors/:tutorId", requireRole("master_admin", "creche_admin"), async (req: AuthRequest, res) => {
+router.patch("/:crecheId/tutors/:tutorId", requireRole("master_admin", "creche_admin", "staff"), async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const tutorId = parseInt(String(req.params.tutorId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {

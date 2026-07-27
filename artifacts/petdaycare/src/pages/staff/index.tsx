@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
@@ -115,13 +116,13 @@ function TaskCompleteModal({
           addEventMutation.mutate(
             {
               crecheId,
-              petId: task.petId,
               data: {
+                petIds: [task.petId],
                 type: selectedType as any,
                 content: content || `${taskTypeLabel[task.type] || task.type} concluída.`,
                 mediaUrl: mediaDataRef.current || null,
                 mediaType: mediaDataRef.current ? "photo" : undefined,
-              },
+              } as any,
             },
             {
               onSuccess: () => {
@@ -302,6 +303,33 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
     ? allCompleted.filter((t) => !t.petId || checkedInPetIds.has(t.petId) || (t as any).petIsCheckedIn)
     : allCompleted;
 
+  const groupedPendingTasks = React.useMemo(() => {
+    const groups: Record<string, { tutorName: string, tutorId: number, tasks: any[] }> = {};
+    pendingTasks.forEach(task => {
+      let tutorId = 0;
+      let tutorName = "Tarefas Gerais / Sem Pet";
+      
+      if (task.petId && pets) {
+        const pet = pets.find((p: any) => p.id === task.petId);
+        if (pet) {
+          tutorId = pet.tutorId;
+          tutorName = pet.tutorName || "Tutor Desconhecido";
+        }
+      }
+      
+      const key = `${tutorId}-${tutorName}`;
+      if (!groups[key]) {
+        groups[key] = { tutorName, tutorId, tasks: [] };
+      }
+      groups[key].tasks.push(task);
+    });
+    return Object.values(groups).sort((a, b) => {
+      if (a.tutorId === 0) return 1;
+      if (b.tutorId === 0) return -1;
+      return a.tutorName.localeCompare(b.tutorName);
+    });
+  }, [pendingTasks, pets]);
+
   const handleConcluir = (task: any) => {
     if (task.petId) {
       setTaskToComplete(task);
@@ -369,53 +397,70 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Carregando tarefas...</div>
           ) : pendingTasks.length ? (
-            <div className="space-y-3">
-              {pendingTasks.map(task => (
-                <div
-                  key={task.id}
-                  id={`task-${task.id}`}
-                  className={`p-4 rounded-xl bg-white/5 border flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-white/10 transition-all group ${
-                    task.petId && checkedInPetIds.has(task.petId)
-                      ? "border-emerald-500/20"
-                      : "border-white/10"
-                  } ${highlightTaskId === task.id ? "ring-2 ring-violet-400/50 bg-violet-500/5" : ""}`}
-                >
-                  <div className="flex flex-col min-w-0">
-                    <p className="font-semibold text-white text-base">{task.title}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {task.petName && (
-                        <span className={`font-medium mr-2 ${
+            <Accordion type="multiple" defaultValue={groupedPendingTasks.map(g => `tutor-${g.tutorId}`)} className="w-full space-y-3">
+              {groupedPendingTasks.map(group => (
+                <AccordionItem key={`tutor-${group.tutorId}`} value={`tutor-${group.tutorId}`} className="border-white/10 bg-white/5 rounded-xl px-4 data-[state=open]:bg-white/10 transition-colors">
+                  <AccordionTrigger className="hover:no-underline py-4">
+                    <div className="flex items-center gap-3 text-left">
+                      <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                        <Users className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-white text-base">{group.tutorName}</p>
+                        <p className="text-sm text-muted-foreground">{group.tasks.length} tarefa{group.tasks.length !== 1 && 's'} pendente{group.tasks.length !== 1 && 's'}</p>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pt-2 pb-4 space-y-3">
+                    {group.tasks.map(task => (
+                      <div
+                        key={task.id}
+                        id={`task-${task.id}`}
+                        className={`p-4 rounded-xl bg-black/20 border flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-black/40 transition-all group ${
                           task.petId && checkedInPetIds.has(task.petId)
-                            ? "text-emerald-400"
-                            : "text-primary"
-                        }`}>
-                          {task.petName}
-                          {task.petId && checkedInPetIds.has(task.petId) && " ✓"}
-                        </span>
-                      )}
-                      {format(new Date(task.scheduledFor), "HH:mm")} · {taskTypeLabel[task.type] || task.type}
-                    </p>
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{task.description}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between sm:justify-end gap-3 flex-shrink-0">
-                    <Badge variant={task.priority === "high" ? "destructive" : "secondary"}>
-                      {priorityLabel[task.priority] || task.priority}
-                    </Badge>
-                    <Button
-                      onClick={() => handleConcluir(task)}
-                      variant="glass"
-                      size="sm"
-                      isLoading={completeTaskMutation.isPending && !taskToComplete}
-                      className="group-hover:bg-primary group-hover:text-white group-hover:border-primary border-white/20 transition-all w-full sm:w-auto"
-                    >
-                      Concluir
-                    </Button>
-                  </div>
-                </div>
+                            ? "border-emerald-500/20"
+                            : "border-white/10"
+                        } ${highlightTaskId === task.id ? "ring-2 ring-violet-400/50 bg-violet-500/5" : ""}`}
+                      >
+                        <div className="flex flex-col min-w-0">
+                          <p className="font-semibold text-white text-base">{task.title}</p>
+                          <p className="text-sm text-muted-foreground mt-0.5">
+                            {task.petName && (
+                              <span className={`font-medium mr-2 ${
+                                task.petId && checkedInPetIds.has(task.petId)
+                                  ? "text-emerald-400"
+                                  : "text-primary"
+                              }`}>
+                                {task.petName}
+                                {task.petId && checkedInPetIds.has(task.petId) && " ✓"}
+                              </span>
+                            )}
+                            {format(new Date(task.scheduledFor), "HH:mm")} · {taskTypeLabel[task.type] || task.type}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{task.description}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between sm:justify-end gap-3 flex-shrink-0">
+                          <Badge variant={task.priority === "high" ? "destructive" : "secondary"}>
+                            {priorityLabel[task.priority] || task.priority}
+                          </Badge>
+                          <Button
+                            onClick={() => handleConcluir(task)}
+                            variant="glass"
+                            size="sm"
+                            isLoading={completeTaskMutation.isPending && !taskToComplete}
+                            className="group-hover:bg-primary group-hover:text-white group-hover:border-primary border-white/20 transition-all w-full sm:w-auto"
+                          >
+                            Concluir
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </div>
+            </Accordion>
           ) : (
             <EmptyState
               icon={CheckSquare}

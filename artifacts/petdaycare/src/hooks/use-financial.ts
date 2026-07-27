@@ -753,7 +753,6 @@ export function useDashboardKPIs(crecheId: number, startDate?: string, endDate?:
       return res.json();
     },
     enabled: !!crecheId,
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
   });
 }
 
@@ -816,7 +815,6 @@ export function useFinancialReport(crecheId: number, type: string, startDate?: s
       return res.json();
     },
     enabled: !!crecheId && !!type,
-    staleTime: 5 * 60 * 1000,
   });
 }
 
