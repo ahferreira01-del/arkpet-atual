@@ -187,9 +187,16 @@ export default function NewBooking() {
       });
       setLocation("/bookings");
     } catch (err: any) {
+      // Se o servidor retornou HTML (ex: proxy 404 durante reinício),
+      // mostramos uma mensagem amigável em vez do HTML bruto.
+      const raw: string = err?.message ?? "";
+      const isHtmlError =
+        raw.includes("<!DOCTYPE") || raw.includes("<html") || raw.includes("text/html");
       toast({
         title: "Erro ao criar reserva",
-        description: err.message,
+        description: isHtmlError
+          ? "Não foi possível conectar ao servidor. Aguarde alguns segundos e tente novamente."
+          : raw || "Ocorreu um erro inesperado.",
         variant: "destructive",
       });
     }

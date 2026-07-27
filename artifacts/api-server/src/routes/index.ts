@@ -55,4 +55,11 @@ router.get("/version", (_req, res) => {
   res.json({ version: APP_VERSION });
 });
 
+// ── Catch-all: rota não encontrada → sempre JSON, nunca HTML ─────────────────
+// Garante que qualquer requisição a /api/* que não bater em nenhuma rota
+// receba JSON, em vez do HTML padrão do Express, que quebra o customFetch.
+router.use((_req, res) => {
+  res.status(404).json({ error: "Rota não encontrada" });
+});
+
 export default router;
