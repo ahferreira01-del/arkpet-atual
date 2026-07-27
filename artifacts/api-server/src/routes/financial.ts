@@ -278,6 +278,79 @@ router.get("/invoices/:invoiceId/receipt-url", requireFinancialAccess, async (re
   } catch(err) { next(err); }
 });
 
+const stockAdjustmentSchema = z.object({
+  delta: z.number().int().refine(v => v !== 0, { message: "delta não pode ser zero" }),
+  reason: z.string().min(1).max(255),
+});
+
+router.post("/catalogue/:itemId/stock-adjustment", requireFinancialAccess, validate(stockAdjustmentSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const crecheId = Number(req.params.crecheId);
+    const itemId = Number(req.params.itemId);
+    const { delta, reason } = req.body as { delta: number; reason: string };
+
+    let updatedItem: typeof catalogueItemsTable.$inferSelect;
+
+    await db.transaction(async (tx) => {
+      // Acquire row lock to prevent concurrent overwrites
+      const [lockedItem] = await tx
+        .select()
+        .from(catalogueItemsTable)
+        .where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)))
+        .for("update");
+
+      if (!lockedItem) {
+        throw Object.assign(new Error("Item não encontrado."), { status: 404 });
+      }
+
+      const newQuantity = lockedItem.stockQuantity + delta;
+      if (newQuantity < 0) {
+        throw Object.assign(
+          new Error(`Estoque insuficiente. Saldo atual: ${lockedItem.stockQuantity}, ajuste solicitado: ${delta}.`),
+          { status: 400 }
+        );
+      }
+
+      // Apply relative delta — safe under concurrent access
+      const [updated] = await tx
+        .update(catalogueItemsTable)
+        .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${delta}` })
+        .where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)))
+        .returning();
+
+      updatedItem = updated;
+
+      await tx.insert(catalogueStockTransactionsTable).values({
+        crecheId,
+        itemId,
+        quantity: Math.abs(delta),
+        type: delta > 0 ? "in" : "out",
+        reason,
+        userId: req.user!.id,
+      });
+
+      await logFinancialAudit({
+        crecheId,
+        userId: req.user!.id,
+        action: "stock_adjustment",
+        referenceId: itemId,
+        referenceType: "catalogue_items",
+        details: `Ajuste de estoque: ${delta > 0 ? "+" : ""}${delta} unidade(s). Motivo: ${reason}. Novo saldo: ${newQuantity}.`,
+      }, tx);
+    });
+
+    res.json(updatedItem!);
+  } catch (err: any) {
+    if (err.status === 404) {
+      res.status(404).json({ error: err.message });
+    } else if (err.status === 400 || (err.message && err.message.includes("Estoque"))) {
+      res.status(400).json({ error: err.message });
+    } else {
+      next(err);
+    }
+  }
+});
+
 router.delete("/catalogue/:itemId", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
