@@ -608,11 +608,9 @@ export default function Bookings() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 w-full mb-2">
-        {!isTutor && (
-          <Button onClick={() => setLocation("/bookings/new")} className="bg-[#a3d84b] text-[#1a1a2e] hover:bg-[#92c73a] shrink-0 w-full sm:w-auto h-10 rounded-xl">
-            <Plus className="h-5 w-5 mr-2" /> Nova Reserva
-          </Button>
-        )}
+        <Button onClick={() => setLocation("/bookings/new")} className="bg-[#a3d84b] text-[#1a1a2e] hover:bg-[#92c73a] shrink-0 w-full sm:w-auto h-10 rounded-xl">
+          <Plus className="h-5 w-5 mr-2" /> Nova Reserva
+        </Button>
         
         <div className="flex flex-col sm:flex-row gap-2 w-full">
           <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
