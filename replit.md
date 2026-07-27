@@ -1,5 +1,10 @@
 # ArkPet — Pet Daycare SaaS
 
+## Preferências do usuário
+
+- **Idioma**: Sempre responder em português brasileiro (pt-BR).
+
+
 ## Overview
 
 A full-stack multi-tenant SaaS platform for managing pet daycare centers (creches). Built with React + Vite frontend and Express backend with PostgreSQL.
