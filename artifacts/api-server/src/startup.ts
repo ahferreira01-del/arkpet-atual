@@ -15,6 +15,7 @@ import {
 import { eq, and, count, isNull } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
+import { migrateV1MediaUrls } from "./lib/migrateV1Media.js";
 
 const DEFAULT_PLANS = [
   { name: "Trial", petLimit: 10, priceBrl: 0, description: "Teste grátis por 10 dias" },
@@ -235,6 +236,13 @@ async function migrateQuintalPetTrial() {
 
 export async function initializeDatabase() {
   await seedPlans();
+
+  // Idempotent: promote any legacy base64 mediaUrl values to object-storage
+  // paths so V1 posts show their photos again in the V2 feed.  Runs on every
+  // startup in all environments; rows already migrated are skipped instantly.
+  await migrateV1MediaUrls().catch((err) =>
+    console.error("[startup] migrateV1MediaUrls failed (non-fatal):", err)
+  );
 
   if (process.env.NODE_ENV !== "production") return;
 
