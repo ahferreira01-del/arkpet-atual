@@ -65,7 +65,18 @@ router.get("/", async (req: AuthRequest, res) => {
     .orderBy(desc(timelineEventsTable.createdAt))
     .limit(limit);
 
-  res.json(events);
+  // Strip base64 data-URIs from the list payload — large images embedded in
+  // JSON can reach several MB and cause mobile requests to time out.
+  // Full media for a single event is available via GET /api/creches/:id/feed/:eventId.
+  const eventsForClient = events.map(e => ({
+    ...e,
+    hasMedia: !!(e.mediaUrl),
+    mediaUrl: typeof e.mediaUrl === "string" && e.mediaUrl.startsWith("data:")
+      ? null
+      : e.mediaUrl,
+  }));
+
+  res.json(eventsForClient);
 });
 
 export default router;

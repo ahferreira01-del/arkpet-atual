@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useListFeed, useAddFeedPost } from "@workspace/api-client-react";
+import { useListFeed, getListFeedQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { compressImage } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -45,6 +45,33 @@ function FeedCard({
   const [expanded, setExpanded] = useState(false);
   const [liked, setLiked] = useState<boolean>(event.isLikedByUser ?? false);
   const [likeCount, setLikeCount] = useState<number>(event.likeCount ?? 0);
+  // Lazy-load: mediaUrl is stripped from the list payload to keep it small.
+  // The full base64/URL is fetched on demand when the user taps "Ver foto".
+  const [loadedMedia, setLoadedMedia] = useState<string | null>(null);
+  const [mediaLoading, setMediaLoading] = useState(false);
+
+  const displayMedia = event.mediaUrl || loadedMedia;
+  const hasMedia = event.hasMedia ?? !!event.mediaUrl;
+
+  const handleLoadMedia = async () => {
+    if (mediaLoading || loadedMedia) return;
+    setMediaLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
+      }
+    } catch {
+      // silently ignore — user can tap again
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
   const meta = EVENT_META[event.type] || {
     emoji: "📌",
     label: event.type,
@@ -119,14 +146,26 @@ function FeedCard({
             </p>
           )}
 
-          {event.mediaUrl && event.mediaType === "photo" && (
+          {/* Lazy-load placeholder */}
+          {hasMedia && !displayMedia && (
+            <button
+              onClick={handleLoadMedia}
+              disabled={mediaLoading}
+              className="w-full flex items-center justify-center gap-2 py-8 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <Camera className="h-4 w-4" />
+              {mediaLoading ? "Carregando foto..." : "Toque para ver a foto"}
+            </button>
+          )}
+
+          {displayMedia && event.mediaType === "photo" && (
             <div
               className="relative w-full rounded-xl overflow-hidden cursor-zoom-in"
               style={{ maxHeight: expanded ? "none" : "300px" }}
               onClick={() => setExpanded(!expanded)}
             >
               <img
-                src={event.mediaUrl}
+                src={displayMedia}
                 alt="Foto"
                 className="w-full object-cover transition-transform duration-300 hover:scale-105"
                 style={{ height: expanded ? "auto" : "300px" }}
@@ -167,7 +206,7 @@ function FeedCard({
 export function FeedTab({ crecheId }: { crecheId: number }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { data: feedData, isLoading } = useListFeed(crecheId);
+  const { data: feedData, isLoading, isError } = useListFeed(crecheId);
   
   // To allow tagging multiple pets in new post
   const { data: petsData } = useListPets(crecheId);
@@ -227,7 +266,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
       setContent("");
       setMediaFile(null);
       setSelectedPets([]);
-      queryClient.invalidateQueries({ queryKey: ["getFeed"] });
+      queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) });
     } catch (e) {
       console.error(e);
     } finally {
@@ -344,21 +383,54 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
 
       {/* Feed List */}
       <div className="space-y-6">
-        {isLoading && <div className="text-center py-12 text-muted-foreground animate-pulse">Carregando feed...</div>}
-        {!isLoading && events.length === 0 && (
+        {isLoading && (
+          <div className="flex flex-col gap-4">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-card border border-white/5 rounded-2xl overflow-hidden animate-pulse">
+                <div className="p-4 flex items-center gap-3 border-b border-white/5">
+                  <div className="h-10 w-10 rounded-full bg-white/10 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 bg-white/10 rounded w-1/3" />
+                    <div className="h-3 bg-white/10 rounded w-1/4" />
+                  </div>
+                </div>
+                <div className="p-4 space-y-2">
+                  <div className="h-3 bg-white/10 rounded w-full" />
+                  <div className="h-3 bg-white/10 rounded w-3/4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!isLoading && isError && (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center">
+              <X className="h-6 w-6 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-white">Não foi possível carregar o feed</p>
+            <p className="text-xs text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) })}
+              className="text-xs text-primary hover:text-primary/80 transition-colors mt-1"
+            >
+              Tentar novamente
+            </button>
+          </div>
+        )}
+        {!isLoading && !isError && events.length === 0 && (
           <EmptyState 
             icon={Camera}
             title="Nenhuma novidade ainda"
             description="O feed da creche aparecerá aqui."
           />
         )}
-        {events.map((evt: any) => (
+        {!isLoading && !isError && events.map((evt: any) => (
           <FeedCard 
             key={evt.id} 
             event={evt} 
             crecheId={crecheId} 
             user={user as any} 
-            onDeleted={() => queryClient.invalidateQueries({ queryKey: ["getFeed"] })}
+            onDeleted={() => queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) })}
           />
         ))}
       </div>

@@ -376,11 +376,119 @@ const eventConfig: Record<string, { icon: React.ReactNode; label: string; color:
   health:     { icon: <Heart className="h-3.5 w-3.5" />,         label: "Saúde",       color: "text-rose-400 bg-rose-500/15 border-rose-500/25" },
 };
 
+function TimelineEventCard({
+  ev,
+  crecheId,
+  onLike,
+}: {
+  ev: any;
+  crecheId: number;
+  onLike: () => void;
+}) {
+  const cfg = eventConfig[ev.type] ?? {
+    icon: <Sparkles className="h-3.5 w-3.5" />,
+    label: ev.type,
+    color: "text-muted-foreground bg-white/5 border-white/10",
+  };
+
+  const [loadedMedia, setLoadedMedia] = React.useState<string | null>(null);
+  const [mediaLoading, setMediaLoading] = React.useState(false);
+  const displayMedia = ev.mediaUrl || loadedMedia;
+  const hasMedia = ev.hasMedia ?? !!ev.mediaUrl;
+
+  const handleLoadMedia = async () => {
+    if (mediaLoading || loadedMedia) return;
+    setMediaLoading(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/creches/${crecheId}/feed/${ev.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
+      }
+    } catch {
+      // user pode tentar de novo
+    } finally {
+      setMediaLoading(false);
+    }
+  };
+
+  return (
+    <div className="glass-panel rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
+        <div className="h-9 w-9 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
+          {ev.petPhotoUrl ? (
+            <img src={ev.petPhotoUrl} alt={ev.petName} className="h-full w-full object-cover" />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center">
+              <Dog className="h-4 w-4 text-white/60" />
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-white leading-tight">{ev.petName}</p>
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium flex-shrink-0 ${cfg.color}`}>
+              {cfg.icon} {cfg.label}
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {ev.authorName ? `${ev.authorName} · ` : ""}
+            {format(parseUTC(ev.createdAt), "dd/MM · HH:mm", { locale: ptBR })}
+          </p>
+        </div>
+      </div>
+
+      {/* Text */}
+      {ev.content && (
+        <p className="text-sm text-white/80 px-4 pb-3 leading-relaxed">{ev.content}</p>
+      )}
+
+      {/* Lazy-load media placeholder */}
+      {hasMedia && !displayMedia && (
+        <button
+          onClick={handleLoadMedia}
+          disabled={mediaLoading}
+          className="mx-4 mb-3 w-[calc(100%-2rem)] flex items-center justify-center gap-2 py-6 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
+        >
+          <Camera className="h-4 w-4" />
+          {mediaLoading ? "Carregando foto..." : "Toque para ver a foto"}
+        </button>
+      )}
+
+      {/* Media */}
+      {displayMedia && ev.mediaType === "photo" && (
+        <img src={displayMedia} alt="foto" className="w-full object-cover max-h-80" loading="lazy" />
+      )}
+      {displayMedia && ev.mediaType === "video" && (
+        <video src={displayMedia} controls className="w-full max-h-64" />
+      )}
+
+      {/* Like */}
+      <div className="px-4 py-2.5">
+        <button
+          onClick={onLike}
+          className={`flex items-center gap-1.5 text-xs transition-colors ${
+            ev.isLikedByUser ? "text-rose-400" : "text-muted-foreground hover:text-rose-400"
+          }`}
+        >
+          <Heart className={`h-3.5 w-3.5 ${ev.isLikedByUser ? "fill-rose-400" : ""}`} />
+          {ev.likeCount > 0 && <span>{ev.likeCount}</span>}
+          <span>{ev.isLikedByUser ? "Curtido" : "Curtir"}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TutorDashboard({ user }: { user: any }) {
   const crecheId = user.crecheId || 1;
   const queryClient = useQueryClient();
   const { data: pets } = useListPets(crecheId);
-  const { data: timeline, isLoading: timelineLoading, refetch } = useTutorTimeline(crecheId, user.id);
+  const { data: timeline, isLoading: timelineLoading, isError: timelineError, refetch } = useTutorTimeline(crecheId, user.id);
   const { data: invoices, isLoading: invoicesLoading } = useTutorInvoices(crecheId, user.id);
 
   const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
@@ -542,8 +650,22 @@ function TutorDashboard({ user }: { user: any }) {
           </div>
         )}
 
+        {/* Error state */}
+        {!timelineLoading && timelineError && (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="h-11 w-11 rounded-full bg-red-500/10 flex items-center justify-center">
+              <RefreshCw className="h-5 w-5 text-red-400" />
+            </div>
+            <p className="text-sm font-medium text-white">Não foi possível carregar as atividades</p>
+            <p className="text-xs text-muted-foreground">Verifique sua conexão e tente novamente.</p>
+            <button onClick={() => refetch()} className="text-xs text-primary hover:text-primary/80 transition-colors">
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
         {/* Empty state */}
-        {!timelineLoading && events.length === 0 && (
+        {!timelineLoading && !timelineError && events.length === 0 && (
           <EmptyState
             icon={Sparkles}
             title="Nenhuma atividade ainda"
@@ -553,79 +675,16 @@ function TutorDashboard({ user }: { user: any }) {
         )}
 
         {/* Events */}
-        {!timelineLoading && events.length > 0 && (
+        {!timelineLoading && !timelineError && events.length > 0 && (
           <div className="flex flex-col gap-3">
-            {events.map((ev) => {
-              const cfg = eventConfig[ev.type] ?? {
-                icon: <Sparkles className="h-3.5 w-3.5" />,
-                label: ev.type,
-                color: "text-muted-foreground bg-white/5 border-white/10",
-              };
-              return (
-                <div key={`${ev.id}-${ev.petId}`} className="glass-panel rounded-2xl overflow-hidden">
-                  {/* Header */}
-                  <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
-                    {/* Pet avatar */}
-                    <div className="h-9 w-9 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
-                      {ev.petPhotoUrl ? (
-                        <img src={ev.petPhotoUrl} alt={ev.petName} className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center">
-                          <Dog className="h-4 w-4 text-white/60" />
-                        </div>
-                      )}
-                    </div>
-                    {/* Name + badge + time */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-semibold text-white leading-tight">{ev.petName}</p>
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium flex-shrink-0 ${cfg.color}`}>
-                          {cfg.icon}
-                          {cfg.label}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {ev.authorName ? `${ev.authorName} · ` : ""}
-                        {format(parseUTC(ev.createdAt), "dd/MM · HH:mm", { locale: ptBR })}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Text content */}
-                  {ev.content && (
-                    <p className="text-sm text-white/80 px-4 pb-3 leading-relaxed">{ev.content}</p>
-                  )}
-
-                  {/* Media — full width, no side margins */}
-                  {ev.mediaUrl && ev.mediaType === "photo" && (
-                    <img
-                      src={ev.mediaUrl}
-                      alt="foto"
-                      className="w-full object-cover max-h-80"
-                    />
-                  )}
-                  {ev.mediaUrl && ev.mediaType === "video" && (
-                    <video src={ev.mediaUrl} controls className="w-full max-h-64" />
-                  )}
-
-                  {/* Like */}
-                  <div className="px-4 py-2.5">
-                    <button
-                      onClick={() => handleLike(ev)}
-                      className={`flex items-center gap-1.5 text-xs transition-colors ${
-                        ev.isLikedByUser
-                          ? "text-rose-400"
-                          : "text-muted-foreground hover:text-rose-400"
-                      }`}
-                    >
-                      <Heart className={`h-3.5 w-3.5 ${ev.isLikedByUser ? "fill-rose-400" : ""}`} />
-                      {ev.likeCount > 0 && <span>{ev.likeCount}</span>}
-                      <span>{ev.isLikedByUser ? "Curtido" : "Curtir"}</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            {events.map((ev) => (
+              <TimelineEventCard
+                key={`${ev.id}-${ev.petId}`}
+                ev={ev}
+                crecheId={crecheId}
+                onLike={() => handleLike(ev)}
+              />
+            ))}
           </div>
         )}
       </div>

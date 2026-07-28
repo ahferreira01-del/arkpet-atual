@@ -776,7 +776,6 @@ export function useDashboardCharts(crecheId: number, startDate?: string, endDate
       return res.json();
     },
     enabled: !!crecheId,
-    staleTime: 5 * 60 * 1000,
   });
 }
 
@@ -797,7 +796,6 @@ export function useDashboardSales(crecheId: number, startDate?: string, endDate?
       return res.json();
     },
     enabled: !!crecheId,
-    staleTime: 5 * 60 * 1000,
   });
 }
 

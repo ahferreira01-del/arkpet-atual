@@ -15,12 +15,52 @@ import { sendPushToUser } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
 
+// Detalhes de um evento — inclui mediaUrl completa (base64 incluído)
+router.get("/:eventId", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+  const crecheId = parseInt(String(req.params.crecheId));
+  const eventId  = parseInt(String(req.params.eventId));
+  const userId   = req.user.id;
+
+  const [event] = await db
+    .select({
+      id:          timelineEventsTable.id,
+      crecheId:    timelineEventsTable.crecheId,
+      authorId:    timelineEventsTable.authorId,
+      authorName:  usersTable.name,
+      type:        timelineEventsTable.type,
+      content:     timelineEventsTable.content,
+      mediaUrl:    timelineEventsTable.mediaUrl,
+      mediaType:   timelineEventsTable.mediaType,
+      createdAt:   timelineEventsTable.createdAt,
+      likeCount:   sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${timelineEventsTable.id})::int`,
+      isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${timelineEventsTable.id} AND user_id = ${userId})`,
+    })
+    .from(timelineEventsTable)
+    .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
+    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!event) { res.status(404).json({ error: "Evento não encontrado" }); return; }
+
+  const pets = await db
+    .select({ petId: petsTable.id, petName: petsTable.name, petPhoto: petsTable.photoUrl })
+    .from(timelineEventPetsTable)
+    .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
+    .where(eq(timelineEventPetsTable.eventId, eventId));
+
+  res.json({ ...event, pets });
+});
+
 // Listar o Feed
 router.get("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-  const userId = req.user.id;
-  const isTutor = req.user.role === "tutor";
+  const userId   = req.user.id;
+  const isTutor  = req.user.role === "tutor";
+  // Default 20 items; allow up to 50 via ?limit=; paginação via ?offset=
+  const limit  = Math.min(parseInt(String(req.query.limit  ?? "20")), 50);
+  const offset = Math.max(parseInt(String(req.query.offset ?? "0")), 0);
 
   // Se for tutor, achar os pets dele
   let tutorPetIds: number[] = [];
@@ -55,7 +95,8 @@ router.get("/", async (req: AuthRequest, res) => {
   .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
   .where(eq(timelineEventsTable.crecheId, crecheId))
   .orderBy(desc(timelineEventsTable.createdAt))
-  .limit(50); // limit for now
+  .limit(limit)
+  .offset(offset);
 
   // Pegar os pets marcados em cada evento
   const eventIds = events.map(e => e.id);
@@ -89,7 +130,17 @@ router.get("/", async (req: AuthRequest, res) => {
     }));
   }
 
-  res.json(feed);
+  // Strip base64 data-URIs from the list payload — they can be MBs each and
+  // make mobile requests timeout. Full media is available via GET /:eventId.
+  const feedForClient = feed.map(e => ({
+    ...e,
+    hasMedia: !!(e.mediaUrl),
+    mediaUrl: typeof e.mediaUrl === "string" && e.mediaUrl.startsWith("data:")
+      ? null
+      : e.mediaUrl,
+  }));
+
+  res.json(feedForClient);
 });
 
 // Criar Post
