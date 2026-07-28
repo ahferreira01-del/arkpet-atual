@@ -271,6 +271,7 @@ function FeedCard({
 export function FeedTab({ crecheId }: { crecheId: number }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: feedData, isLoading, isError } = useListFeed(crecheId);
   
   // To allow tagging multiple pets in new post
