@@ -396,7 +396,7 @@ function TimelineEventCard({
   const displayMedia = ev.mediaUrl || loadedMedia;
   const hasMedia = ev.hasMedia ?? !!ev.mediaUrl;
 
-  const handleLoadMedia = async () => {
+  const handleLoadMedia = React.useCallback(async () => {
     if (mediaLoading || loadedMedia) return;
     setMediaLoading(true);
     try {
@@ -409,11 +409,19 @@ function TimelineEventCard({
         if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
       }
     } catch {
-      // user pode tentar de novo
+      // silent
     } finally {
       setMediaLoading(false);
     }
-  };
+  }, [crecheId, ev.id, loadedMedia, mediaLoading]);
+
+  // Auto-load media on mount
+  React.useEffect(() => {
+    if (hasMedia && !ev.mediaUrl && !loadedMedia) {
+      handleLoadMedia();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="glass-panel rounded-2xl overflow-hidden">
@@ -447,16 +455,12 @@ function TimelineEventCard({
         <p className="text-sm text-white/80 px-4 pb-3 leading-relaxed">{ev.content}</p>
       )}
 
-      {/* Lazy-load media placeholder */}
+      {/* Loading placeholder while media fetches automatically */}
       {hasMedia && !displayMedia && (
-        <button
-          onClick={handleLoadMedia}
-          disabled={mediaLoading}
-          className="mx-4 mb-3 w-[calc(100%-2rem)] flex items-center justify-center gap-2 py-6 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
-        >
+        <div className="mx-4 mb-3 flex items-center justify-center gap-2 py-6 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
           <Camera className="h-4 w-4" />
-          {mediaLoading ? "Carregando foto..." : "Toque para ver a foto"}
-        </button>
+          Carregando foto...
+        </div>
       )}
 
       {/* Media */}

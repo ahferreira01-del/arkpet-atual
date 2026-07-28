@@ -53,7 +53,7 @@ function FeedCard({
   const displayMedia = event.mediaUrl || loadedMedia;
   const hasMedia = event.hasMedia ?? !!event.mediaUrl;
 
-  const handleLoadMedia = async () => {
+  const handleLoadMedia = React.useCallback(async () => {
     if (mediaLoading || loadedMedia) return;
     setMediaLoading(true);
     try {
@@ -66,11 +66,19 @@ function FeedCard({
         if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
       }
     } catch {
-      // silently ignore — user can tap again
+      // silent
     } finally {
       setMediaLoading(false);
     }
-  };
+  }, [crecheId, event.id, loadedMedia, mediaLoading]);
+
+  // Auto-load media as soon as the card mounts
+  React.useEffect(() => {
+    if (hasMedia && !event.mediaUrl && !loadedMedia) {
+      handleLoadMedia();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const meta = EVENT_META[event.type] || {
     emoji: "📌",
@@ -146,16 +154,12 @@ function FeedCard({
             </p>
           )}
 
-          {/* Lazy-load placeholder */}
+          {/* Loading placeholder while media fetches automatically */}
           {hasMedia && !displayMedia && (
-            <button
-              onClick={handleLoadMedia}
-              disabled={mediaLoading}
-              className="w-full flex items-center justify-center gap-2 py-8 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground hover:bg-white/10 hover:text-white transition-colors"
-            >
+            <div className="w-full flex items-center justify-center gap-2 py-10 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
               <Camera className="h-4 w-4" />
-              {mediaLoading ? "Carregando foto..." : "Toque para ver a foto"}
-            </button>
+              Carregando foto...
+            </div>
           )}
 
           {displayMedia && event.mediaType === "photo" && (
