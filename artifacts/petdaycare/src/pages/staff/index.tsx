@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles, Video } from "lucide-react";
+import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -210,16 +210,12 @@ function TaskCompleteModal({
         {/* Photo / Video upload */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
-          <input id="task-camera-input" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <input id="task-camera-input" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-white/10">
-              {mediaTypeRef.current === "video" ? (
-                <video src={preview} className="w-full max-h-52 bg-black" muted playsInline preload="metadata" />
-              ) : (
-                <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
-              )}
+              <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
               <button
                 type="button"
                 onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
@@ -231,10 +227,10 @@ function TaskCompleteModal({
           ) : compressing ? (
             <div className="w-full h-24 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-xs text-muted-foreground">Enviando...</span>
+              <span className="text-xs text-muted-foreground">Processando...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
@@ -250,14 +246,6 @@ function TaskCompleteModal({
               >
                 <Camera className="h-5 w-5" />
                 <span className="text-xs">Câmera</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
-              >
-                <Video className="h-5 w-5" />
-                <span className="text-xs">Vídeo</span>
               </button>
             </div>
           )}
@@ -420,15 +408,11 @@ function StandalonePublishModal({
         {/* Photo / Video */}
         <div className="space-y-2">
           <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
-          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
-          <input id="standalone-camera" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <input id="standalone-camera" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-white/10">
-              {mediaTypeRef.current === "video" ? (
-                <video src={preview} className="w-full max-h-36 bg-black" muted playsInline preload="metadata" />
-              ) : (
-                <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
-              )}
+              <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
               <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
                 className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
                 <X className="h-4 w-4 text-white" />
@@ -437,10 +421,10 @@ function StandalonePublishModal({
           ) : compressing ? (
             <div className="w-full h-20 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
-              <span className="text-xs text-muted-foreground">Enviando...</span>
+              <span className="text-xs text-muted-foreground">Processando...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => fileRef.current?.click()}
                 className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
                 <ImageIcon className="h-4 w-4" /><span className="text-xs">Galeria</span>
@@ -448,10 +432,6 @@ function StandalonePublishModal({
               <button type="button" onClick={() => document.getElementById("standalone-camera")?.click()}
                 className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
                 <Camera className="h-4 w-4" /><span className="text-xs">Câmera</span>
-              </button>
-              <button type="button" onClick={() => fileRef.current?.click()}
-                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
-                <Video className="h-4 w-4" /><span className="text-xs">Vídeo</span>
               </button>
             </div>
           )}

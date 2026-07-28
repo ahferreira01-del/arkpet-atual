@@ -142,14 +142,15 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
         .leftJoin(usersTable, eq(bookingsTable.tutorId, usersTable.id))
         .where(and(...conditions))
         .orderBy(
-          // Pending bookings first, then cancel_requested, then active, then the rest
+          // Pending first, then confirmed, then cancel_requested, then active, then the rest
           sql`CASE ${bookingsTable.status}
             WHEN 'pending'          THEN 0
-            WHEN 'cancel_requested' THEN 1
-            WHEN 'active'           THEN 2
-            WHEN 'completed'        THEN 3
-            WHEN 'cancelled'        THEN 4
-            ELSE 5 END`,
+            WHEN 'confirmed'        THEN 1
+            WHEN 'cancel_requested' THEN 2
+            WHEN 'active'           THEN 3
+            WHEN 'completed'        THEN 4
+            WHEN 'cancelled'        THEN 5
+            ELSE 6 END`,
           desc(bookingsTable.startDate),
         )
         .limit(pageSize)
@@ -703,9 +704,12 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
 
   if (req.user.role === "tutor") {
     // Tutor está a caminho → avisar creche (admins e staff)
+    const tutorBody = type === "drop_off"
+      ? `${senderName} está a caminho para deixar ${petName}${etaText}.`
+      : `${senderName} está a caminho para buscar ${petName}${etaText}.`;
     sendPushToRole(crecheId, "creche_admin", {
       title: `🚗 Tutor a caminho — ${petName}`,
-      body: `${senderName} está vindo com ${petName}${etaText}.`,
+      body: tutorBody,
       tag: `on-the-way-${booking.id}`,
       data: {
         type: "booking",
@@ -716,7 +720,7 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
     }).catch(() => {});
     sendPushToRole(crecheId, "staff", {
       title: `🚗 Tutor a caminho — ${petName}`,
-      body: `${senderName} está vindo com ${petName}${etaText}.`,
+      body: tutorBody,
       tag: `on-the-way-${booking.id}`,
       data: {
         type: "booking",
@@ -727,12 +731,14 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
     }).catch(() => {});
   } else {
     // Creche (admin/staff) está a caminho → avisar tutor
-    // type "drop_off" = creche vai buscar o pet na casa do tutor; "pickup" = creche vai levar o pet de volta
-    const crecheTypeLabel = type === "drop_off" ? "buscar" : "trazer";
+    // drop_off = creche vai levar o pet ao tutor; pickup = creche vai buscar o pet no tutor
+    const crecheBody = type === "drop_off"
+      ? `A creche está a caminho para levar ${petName}${etaText}.`
+      : `A creche está a caminho para buscar ${petName}${etaText}.`;
     if (booking.tutorId) {
       sendPushToUser(booking.tutorId, {
         title: `🚗 Creche a caminho — ${petName}`,
-        body: `A creche está vindo ${crecheTypeLabel} ${petName}${etaText}.`,
+        body: crecheBody,
         tag: `on-the-way-${booking.id}`,
         data: { type: "booking", bookingId: booking.id, petId: booking.petId },
       }).catch(() => {});

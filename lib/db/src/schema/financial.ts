@@ -147,7 +147,7 @@ export const invoicesTable = pgTable("invoices", {
   creditsReleased: boolean("credits_released").default(false).notNull(),
   paymentMethod: paymentMethodEnum("payment_method"),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  receiptPhotoPath: varchar("receipt_photo_path", { length: 500 }), // Caminho privado no storage (não URL pública)
+  receiptPhotoPath: text("receipt_photo_path"), // Caminho privado no storage ou data URI base64 (sem limite de tamanho)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

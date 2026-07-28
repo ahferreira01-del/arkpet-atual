@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export function useTutorInvoices(crecheId: number, tutorId: number | undefined) {
   return useQuery({
-    staleTime: 5 * 60 * 1000, // 5 minutos de cache para evitar refetching
+    staleTime: 30 * 1000, // 30 segundos — permite ver baixa dada pelo admin rapidamente
     queryKey: ["tutor-invoices", crecheId, tutorId],
     queryFn: async () => {
       if (!tutorId) return [];
