@@ -119,7 +119,12 @@ export async function compressToWebPBlob(file: File): Promise<Blob> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Upload to object storage via the API server (no sidecar / presigned URL)
+// Two-step upload: request presigned PUT URL → PUT directly to GCS
+//
+// This avoids routing the file through the Express server (which would need
+// the sidecar signed-URL approach that was failing), and is the canonical
+// Replit Object Storage pattern: the server only generates the URL (JSON),
+// the browser PUTs the bytes straight to GCS.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface UploadResult {
@@ -130,13 +135,42 @@ export async function uploadToStorage(
   blob: Blob,
   contentType: string,
   token: string,
+  crecheId: number,
   onProgress?: (percent: number) => void,
 ): Promise<UploadResult> {
-  // XHR for progress events; fetch API does not support upload progress yet
+  // Step 1 — ask the API server for a presigned PUT URL
+  const urlRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "upload",
+      size: blob.size,
+      contentType,
+    }),
+  });
+
+  if (!urlRes.ok) {
+    let message = "Falha ao preparar upload. Tente novamente.";
+    try {
+      const err = await urlRes.json() as { error?: string };
+      if (err.error) message = err.error;
+    } catch { /* ignore */ }
+    throw new Error(message);
+  }
+
+  const { uploadURL, objectPath } = await urlRes.json() as {
+    uploadURL: string;
+    objectPath: string;
+  };
+
+  // Step 2 — PUT the bytes directly to GCS via the presigned URL.
+  // XHR is used instead of fetch so we can report upload progress.
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/storage/uploads/direct");
-    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.open("PUT", uploadURL);
     xhr.setRequestHeader("Content-Type", contentType);
 
     xhr.upload.onprogress = (e) => {
@@ -147,19 +181,9 @@ export async function uploadToStorage(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText) as { objectPath: string };
-          resolve(data);
-        } catch {
-          reject(new Error("Resposta inválida do servidor"));
-        }
+        resolve({ objectPath });
       } else {
-        let message = "Falha ao enviar arquivo. Tente novamente.";
-        try {
-          const err = JSON.parse(xhr.responseText) as { error?: string };
-          if (err.error) message = err.error;
-        } catch { /* ignore */ }
-        reject(new Error(message));
+        reject(new Error(`Falha ao enviar arquivo para o armazenamento (${xhr.status}).`));
       }
     };
 

@@ -64,7 +64,7 @@ export async function publishPost(
 
     onProgress?.({ stage: "uploading", uploadPercent: 0 });
 
-    const uploaded = await uploadToStorage(uploadBlob, uploadContentType, token, (pct) => {
+    const uploaded = await uploadToStorage(uploadBlob, uploadContentType, token, crecheId, (pct) => {
       onProgress?.({ stage: "uploading", uploadPercent: pct });
     });
 

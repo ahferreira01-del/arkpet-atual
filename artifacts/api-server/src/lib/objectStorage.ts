@@ -106,7 +106,7 @@ export class ObjectStorageService {
     return new Response(webStream, { headers });
   }
 
-  async getObjectEntityUploadURL(): Promise<string> {
+  async getObjectEntityUploadURL(crecheId?: string): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) {
       throw new Error(
@@ -115,8 +115,11 @@ export class ObjectStorageService {
       );
     }
 
-    const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+    const entityDir = privateObjectDir.endsWith("/") ? privateObjectDir : privateObjectDir + "/";
+    const uuid = randomUUID();
+    // Encode crecheId into the path for access-control without GCS metadata writes.
+    const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
+    const fullPath = `${entityDir}${subPath}`;
 
     const { bucketName, objectName } = parseObjectPath(fullPath);
 
@@ -308,11 +311,10 @@ async function signObjectURL({
     expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
   };
 
-  // Include the Replit identity token so the sidecar can authenticate
-  // the request in the deployed (production) environment.
+  // The sidecar at 127.0.0.1:1106 authenticates via its own internal mechanism.
+  // Do NOT add an Authorization header — the official template omits it and
+  // adding REPL_IDENTITY causes a 401 in the deployed environment.
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const identity = process.env.REPL_IDENTITY;
-  if (identity) headers["Authorization"] = `Bearer ${identity}`;
 
   const response = await fetch(
     `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,

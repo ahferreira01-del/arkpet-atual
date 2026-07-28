@@ -64,10 +64,10 @@ self.addEventListener("fetch", (event) => {
   // Guard against non-absolute URLs (e.g. old base64 media strings that
   // ended up as <img src> values — new URL() throws on them and would crash
   // the entire fetch handler, breaking every subsequent network request).
-  let url: URL;
+  let url;
   try {
     url = new URL(request.url);
-  } catch {
+  } catch (_) {
     return; // Let the browser handle it without SW interference
   }
 
