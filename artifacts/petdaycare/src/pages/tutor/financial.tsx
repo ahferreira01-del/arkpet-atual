@@ -36,23 +36,57 @@ export default function TutorFinancial() {
   const [pixInvoice, setPixInvoice] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [uploading, setUploading] = useState(false);
+
   const handlePixUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !uploadingFor) return;
-    
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    const token = localStorage.getItem("auth_token");
+    setUploading(true);
     toast({ title: "Enviando comprovante...", description: "Aguarde um momento." });
-    
-    setTimeout(() => {
-      toast({ 
-        title: "Comprovante enviado!", 
+
+    try {
+      // 1. Solicitar URL assinada de upload
+      const urlRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!urlRes.ok) throw new Error("Não foi possível gerar o link de upload. Tente novamente.");
+      const { uploadURL, objectPath } = await urlRes.json();
+
+      // 2. Fazer upload do arquivo para o storage
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putRes.ok) throw new Error("Falha ao enviar o arquivo. Tente novamente.");
+
+      // 3. Registrar o comprovante na fatura
+      const receiptRes = await fetch(`/api/creches/${crecheId}/financial/invoices/${uploadingFor}/upload-receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ receiptPhotoPath: objectPath }),
+      });
+      if (!receiptRes.ok) {
+        const err = await receiptRes.json().catch(() => ({}));
+        throw new Error(err.error || "Erro ao registrar comprovante.");
+      }
+
+      toast({
+        title: "Comprovante enviado!",
         description: "A creche irá avaliar seu comprovante em breve.",
-        variant: "default"
       });
       refetch();
+    } catch (err: any) {
+      toast({ title: "Erro ao enviar", description: err.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
       setUploadingFor(null);
-    }, 1500);
-    
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handlePayOnline = (invoiceId: number) => {
