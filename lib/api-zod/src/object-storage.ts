@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const RequestUploadUrlBody = z.object({
   name: z.string(),
-  size: z.number().max(5 * 1024 * 1024, "Tamanho mximo permitido  de 5MB."),
+  size: z.number().max(500 * 1024 * 1024, "Tamanho máximo permitido é de 500MB."),
   contentType: z.string(),
 });
 
