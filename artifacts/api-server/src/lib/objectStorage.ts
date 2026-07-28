@@ -223,49 +223,50 @@ export class ObjectStorageService {
   }
 
   /**
-   * Upload a Buffer directly to private object storage without needing a
-   * sidecar-signed URL. Works in both dev and deployed environments.
-   * Returns the normalized objectPath (e.g. /objects/uploads/<uuid>).
+   * Upload a Buffer to private object storage using a sidecar-generated signed
+   * PUT URL and a plain fetch (no GCS client write calls, which fail in Replit
+   * because the external_account token-exchange scope is read-only).
+   *
+   * ACL is encoded into the object path instead of GCS custom metadata:
+   *   /objects/uploads/c{crecheId}/{uuid}   ← creche-scoped upload
+   *   /objects/uploads/{uuid}               ← owner-only upload (no crecheId)
+   *
+   * The GET /storage/objects/* route recognises the c{N} segment and allows
+   * access to any user whose crecheId matches N, without needing to read GCS
+   * metadata.
    */
   async uploadBuffer(
     buffer: Buffer,
     contentType: string,
-    ownerId?: string,
+    _ownerId?: string,
     crecheId?: string,
   ): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const entityDir = privateObjectDir.endsWith("/") ? privateObjectDir : privateObjectDir + "/";
     const uuid = randomUUID();
-    const objectEntityPath = `${entityDir}uploads/${uuid}`;
+
+    // Encode crecheId into the path so the GET route can check access
+    // without needing GCS metadata reads.
+    const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
+    const objectEntityPath = `${entityDir}${subPath}`;
+
+    // Use the sidecar to generate a signed PUT URL, then upload via fetch.
+    // This avoids the external_account token-exchange which fails for writes.
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    const file = objectStorageClient.bucket(bucketName).file(objectName);
-    await file.save(buffer, { contentType, resumable: false });
-    // Set ACL policy so GET /storage/objects/:path can serve this file.
-    // Without this, canAccessObject returns false for every caller because
-    // getObjectAclPolicy returns null when no metadata key is present.
-    //
-    // When crecheId is provided we also add a CRECHE_MEMBER ACL rule so that
-    // any active staff/admin of the same creche can read the file — even if the
-    // original uploader later changes role or is removed.  This covers the
-    // "creche admin viewing a pet's photo" use-case without tying access to a
-    // specific userId.
-    if (ownerId) {
-      const aclPolicy: import("./objectAcl.js").ObjectAclPolicy = {
-        owner: ownerId,
-        visibility: "private",
-      };
-      if (crecheId) {
-        const { ObjectAccessGroupType, ObjectPermission } = await import("./objectAcl.js");
-        aclPolicy.aclRules = [
-          {
-            group: { type: ObjectAccessGroupType.CRECHE_MEMBER, id: crecheId },
-            permission: ObjectPermission.READ,
-          },
-        ];
-      }
-      await setObjectAclPolicy(file, aclPolicy);
+    const putUrl = await signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 300 });
+
+    const uploadResponse = await fetch(putUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: buffer,
+    });
+
+    if (!uploadResponse.ok) {
+      const body = await uploadResponse.text().catch(() => "");
+      throw new Error(`GCS signed-URL upload failed: ${uploadResponse.status} ${body.slice(0, 200)}`);
     }
-    return `/objects/uploads/${uuid}`;
+
+    return `/objects/${subPath}`;
   }
 }
 

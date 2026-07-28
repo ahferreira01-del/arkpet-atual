@@ -54,7 +54,12 @@ function buildMediaItems(
   mediaUrl: string | null | undefined,
   mediaType: string | null | undefined,
 ): MediaItemDTO[] {
+  // Only emit a media item for properly stored object-storage paths.
+  // Old V1 rows have raw base64 strings as mediaUrl; skip them so the
+  // frontend never receives an invalid objectPath and the Service Worker
+  // never tries new URL(base64String) which throws and kills the fetch handler.
   if (!mediaUrl || !mediaType) return [];
+  if (!mediaUrl.startsWith("/objects/")) return [];
   const type = mediaType === "video" ? "video" : "photo";
   return [{ objectPath: mediaUrl, type, order: 0 }];
 }

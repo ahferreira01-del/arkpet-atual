@@ -156,14 +156,45 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
+
+    // --- Path-based ACL for creche-scoped uploads ---
+    // Objects uploaded via uploadBuffer with a crecheId are stored at
+    // /objects/uploads/c{N}/... so we can authorize them without a GCS
+    // metadata read (which uses a write-scoped token that isn't available).
+    const crechePathMatch = wildcardPath.match(/^uploads\/c(\d+)\//);
+    if (crechePathMatch) {
+      const pathCrecheId = parseInt(crechePathMatch[1], 10);
+      const userCrecheId = req.user?.crecheId;
+      const userRole     = req.user?.role;
+      if (
+        userRole !== "master_admin" &&
+        userCrecheId !== pathCrecheId
+      ) {
+        res.status(403).json({ error: "Sem acesso a este arquivo" });
+        return;
+      }
+      // Authorized — skip the GCS-metadata ACL check and go straight to download
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+      const response   = await objectStorageService.downloadObject(objectFile);
+      res.status(response.status);
+      response.headers.forEach((value, key) => res.setHeader(key, value));
+      if (response.body) {
+        const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+        nodeStream.pipe(res);
+      } else {
+        res.end();
+      }
+      return;
+    }
+
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
 
-    // --- Protected route ---
+    // --- Legacy ACL check via GCS metadata (non-creche-path objects) ---
     if (!req.user) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    
+
     const canAccess = await objectStorageService.canAccessObjectEntity({
       userId: String(req.user.id),
       objectFile,
