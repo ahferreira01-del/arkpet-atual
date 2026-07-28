@@ -15,6 +15,7 @@
 import { readFileSync, existsSync, statSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { createHash } from "crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -242,6 +243,50 @@ if (!existsSync(htmlPath)) {
     pass("index.html has theme-color meta tag ✓");
   } else {
     fail("index.html is missing theme-color meta tag");
+  }
+}
+
+// ─── 6. CACHE_NAME version bump check ────────────────────────────────────────
+// Hashes sw.js body (excluding the CACHE_NAME line) and compares against the
+// stored hash in scripts/sw-content.hash.  If sw.js changed but CACHE_NAME was
+// not bumped, iOS cached pages may serve stale assets after a deploy.
+//
+// Format of sw-content.hash: "<16-char-sha256-prefix> <CACHE_NAME>"
+// To update after a legitimate change: bump CACHE_NAME in sw.js, then run:
+//   node scripts/update-sw-hash.mjs
+section("6. CACHE_NAME version bump — sw.js body hash check");
+
+const swHashPath = resolve(__dirname, "sw-content.hash");
+if (!existsSync(swHashPath)) {
+  fail(
+    "scripts/sw-content.hash not found — run `node scripts/update-sw-hash.mjs` to create it"
+  );
+} else {
+  const hashLine = readFileSync(swHashPath, "utf8").trim();
+  const [storedHash, storedCacheName] = hashLine.split(" ");
+
+  if (!storedHash || !storedCacheName) {
+    fail("scripts/sw-content.hash is malformed — expected '<hash> <CACHE_NAME>'");
+  } else {
+    const swSrc = readFileSync(swPath, "utf8");
+    const swBody = swSrc.replace(/^const CACHE_NAME = .+;$/m, "").trim();
+    const currentHash = createHash("sha256").update(swBody).digest("hex").slice(0, 16);
+    const currentCacheName = (swSrc.match(/const CACHE_NAME = "([^"]+)"/) || [])[1] ?? "";
+
+    if (currentHash === storedHash) {
+      pass(`sw.js body unchanged (hash ${currentHash}) — CACHE_NAME bump not required ✓`);
+    } else if (currentCacheName !== storedCacheName) {
+      // Body changed AND CACHE_NAME bumped — good. Remind developer to commit updated hash.
+      pass(
+        `sw.js changed and CACHE_NAME bumped (${storedCacheName} → ${currentCacheName}) ✓` +
+        ` — run \`node scripts/update-sw-hash.mjs\` and commit the new hash file`
+      );
+    } else {
+      fail(
+        `sw.js body changed (hash ${storedHash} → ${currentHash}) but CACHE_NAME is still` +
+        ` "${currentCacheName}" — bump CACHE_NAME in sw.js, then run \`node scripts/update-sw-hash.mjs\``
+      );
+    }
   }
 }
 

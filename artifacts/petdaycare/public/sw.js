@@ -24,10 +24,11 @@ self.addEventListener("install", (event) => {
       return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
-  // Force immediate activation — the new SW takes over without waiting for
-  // user confirmation. This ensures mobile PWA installs always run the latest
-  // frontend code and don't get stuck on a stale cached version.
-  self.skipWaiting();
+  // Do NOT call skipWaiting() here. The in-app UpdatePrompt component detects
+  // the waiting SW and sends SKIP_WAITING only after the user confirms the
+  // update. Calling skipWaiting() unconditionally here would bypass the waiting
+  // state so the banner never appears, and on iOS Safari the page could briefly
+  // show a blank screen if the old cache is wiped mid-session.
 });
 
 // ──────────────────────────────────────────────────────
