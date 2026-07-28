@@ -61,7 +61,7 @@ router.post("/storage/uploads/direct", authenticate, raw({ type: "*/*", limit: "
       res.status(400).json({ error: "Arquivo vazio ou inválido" });
       return;
     }
-    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType);
+    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType, String(req.user.id));
     res.json({ objectPath });
   } catch (err) {
     console.error("Error uploading file directly", err);

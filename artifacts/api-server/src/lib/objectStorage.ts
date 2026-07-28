@@ -227,7 +227,11 @@ export class ObjectStorageService {
    * sidecar-signed URL. Works in both dev and deployed environments.
    * Returns the normalized objectPath (e.g. /objects/uploads/<uuid>).
    */
-  async uploadBuffer(buffer: Buffer, contentType: string): Promise<string> {
+  async uploadBuffer(
+    buffer: Buffer,
+    contentType: string,
+    ownerId?: string,
+  ): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const entityDir = privateObjectDir.endsWith("/") ? privateObjectDir : privateObjectDir + "/";
     const uuid = randomUUID();
@@ -235,6 +239,12 @@ export class ObjectStorageService {
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const file = objectStorageClient.bucket(bucketName).file(objectName);
     await file.save(buffer, { contentType, resumable: false });
+    // Set ACL policy so GET /storage/objects/:path can serve this file.
+    // Without this, canAccessObject returns false for every caller because
+    // getObjectAclPolicy returns null when no metadata key is present.
+    if (ownerId) {
+      await setObjectAclPolicy(file, { owner: ownerId, visibility: "private" });
+    }
     return `/objects/uploads/${uuid}`;
   }
 }
