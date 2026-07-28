@@ -1,4 +1,7 @@
 import { File } from "@google-cloud/storage";
+import { db } from "@workspace/db";
+import { usersTable } from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
 
 const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 
@@ -10,7 +13,18 @@ const ACL_POLICY_METADATA_KEY = "custom:aclPolicy";
 // - GROUP_MEMBER: the users who are members of a specific group;
 // - SUBSCRIBER: the users who are subscribers of a specific service / content
 //   creator.
-export enum ObjectAccessGroupType {}
+export enum ObjectAccessGroupType {
+  /**
+   * Any active user who belongs to the creche identified by the group id.
+   * This includes roles: master_admin, creche_admin, staff, and tutor.
+   * The group id is the numeric crecheId serialised as a string.
+   *
+   * Used so that all staff/admins of a creche can read pet photos even if
+   * they did not personally upload the file and even if the original uploader
+   * later changes role or is removed.
+   */
+  CRECHE_MEMBER = "CRECHE_MEMBER",
+}
 
 export interface ObjectAccessGroup {
   type: ObjectAccessGroupType;
@@ -55,13 +69,47 @@ abstract class BaseObjectAccessGroup implements ObjectAccessGroup {
   public abstract hasMember(userId: string): Promise<boolean>;
 }
 
+/**
+ * Grants access to any active user whose crecheId matches the group id.
+ * The group id is the numeric crecheId serialised as a string.
+ *
+ * This ensures that creche admins and staff can read files (e.g. pet photos)
+ * even after the original uploader changes role or leaves the creche.
+ */
+class CrecheMemberAccessGroup extends BaseObjectAccessGroup {
+  constructor(crecheId: string) {
+    super(ObjectAccessGroupType.CRECHE_MEMBER, crecheId);
+  }
+
+  public async hasMember(userId: string): Promise<boolean> {
+    const numericUserId = parseInt(userId, 10);
+    const numericCrecheId = parseInt(this.id, 10);
+    if (isNaN(numericUserId) || isNaN(numericCrecheId)) {
+      return false;
+    }
+
+    const [user] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.id, numericUserId),
+          eq(usersTable.crecheId, numericCrecheId),
+          eq(usersTable.isActive, true),
+        ),
+      )
+      .limit(1);
+
+    return !!user;
+  }
+}
+
 function createObjectAccessGroup(
   group: ObjectAccessGroup,
 ): BaseObjectAccessGroup {
   switch (group.type) {
-    // Implement per access group type, e.g.:
-    // case "USER_LIST":
-    //   return new UserListAccessGroup(group.id);
+    case ObjectAccessGroupType.CRECHE_MEMBER:
+      return new CrecheMemberAccessGroup(group.id);
     default:
       throw new Error(`Unknown access group type: ${group.type}`);
   }

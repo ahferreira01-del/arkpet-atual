@@ -231,6 +231,7 @@ export class ObjectStorageService {
     buffer: Buffer,
     contentType: string,
     ownerId?: string,
+    crecheId?: string,
   ): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
     const entityDir = privateObjectDir.endsWith("/") ? privateObjectDir : privateObjectDir + "/";
@@ -242,8 +243,27 @@ export class ObjectStorageService {
     // Set ACL policy so GET /storage/objects/:path can serve this file.
     // Without this, canAccessObject returns false for every caller because
     // getObjectAclPolicy returns null when no metadata key is present.
+    //
+    // When crecheId is provided we also add a CRECHE_MEMBER ACL rule so that
+    // any active staff/admin of the same creche can read the file — even if the
+    // original uploader later changes role or is removed.  This covers the
+    // "creche admin viewing a pet's photo" use-case without tying access to a
+    // specific userId.
     if (ownerId) {
-      await setObjectAclPolicy(file, { owner: ownerId, visibility: "private" });
+      const aclPolicy: import("./objectAcl.js").ObjectAclPolicy = {
+        owner: ownerId,
+        visibility: "private",
+      };
+      if (crecheId) {
+        const { ObjectAccessGroupType, ObjectPermission } = await import("./objectAcl.js");
+        aclPolicy.aclRules = [
+          {
+            group: { type: ObjectAccessGroupType.CRECHE_MEMBER, id: crecheId },
+            permission: ObjectPermission.READ,
+          },
+        ];
+      }
+      await setObjectAclPolicy(file, aclPolicy);
     }
     return `/objects/uploads/${uuid}`;
   }
