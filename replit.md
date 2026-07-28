@@ -2,7 +2,7 @@
 
 ## Preferências do usuário
 
-- **Idioma**: OBRIGATÓRIO — todas as respostas, títulos de tarefas, descrições de tarefas e comentários devem estar em português brasileiro (pt-BR). Isso se aplica a todos os agentes, incluindo agentes de tarefas isolados. Nunca usar inglês em nenhuma comunicação com o usuário ou em títulos/descrições de tarefas propostas.
+- **Idioma — REGRA ABSOLUTA**: TODO e QUALQUER texto produzido pelo agente DEVE estar em português brasileiro (pt-BR) SEM EXCEÇÃO: respostas ao usuário, títulos de tarefas (`proposeFollowUpTasks`, `createProjectTask`, `bulkCreateProjectTasks`), descrições de tarefas, comentários de código novos, mensagens de erro visíveis ao usuário. NUNCA misturar inglês no título de uma task (ex: "Fix X — descrição em pt" é PROIBIDO — o título inteiro deve ser pt-BR). Isso se aplica ao agente principal E a todos os agentes de tarefas isolados.
 - **Verificação de logs ao corrigir bugs**: SEMPRE que o usuário solicitar correção de qualquer problema, verificar TODOS os seguintes logs antes de tocar no código: (1) logs dos workflows via `RefreshAllLogs`, (2) `artifacts/api-server/logs/client-errors.log` (erros do frontend capturados pelo error-logger). Nunca pular essa etapa.
 
 
