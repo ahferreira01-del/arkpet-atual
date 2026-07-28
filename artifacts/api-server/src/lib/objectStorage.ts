@@ -250,21 +250,20 @@ export class ObjectStorageService {
     const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
     const objectEntityPath = `${entityDir}${subPath}`;
 
-    // Use the sidecar to generate a signed PUT URL, then upload via fetch.
-    // This avoids the external_account token-exchange which fails for writes.
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    const putUrl = await signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 300 });
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
 
-    const uploadResponse = await fetch(putUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body: buffer,
+    // Use the GCS client's resumable-upload write stream directly.
+    // The external_account token (obtained via the sidecar /token endpoint)
+    // has write access to this bucket.  This is more reliable in production
+    // than calling the sidecar /object-storage/signed-object-url endpoint,
+    // which requires REPL_IDENTITY and has returned 401 in some deployments.
+    await file.save(buffer, {
+      contentType,
+      resumable: false,        // single-request upload for files up to 100 MB
+      validation: false,       // skip CRC32 re-read to keep memory use low
     });
-
-    if (!uploadResponse.ok) {
-      const body = await uploadResponse.text().catch(() => "");
-      throw new Error(`GCS signed-URL upload failed: ${uploadResponse.status} ${body.slice(0, 200)}`);
-    }
 
     return `/objects/${subPath}`;
   }
