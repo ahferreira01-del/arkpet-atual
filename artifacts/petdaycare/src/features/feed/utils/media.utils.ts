@@ -15,3 +15,25 @@ export function buildMediaSrc(objectPath: string, mediaToken: string): string {
 export function getMediaToken(): string {
   return localStorage.getItem("media_token") ?? "";
 }
+
+/**
+ * Return the expiry timestamp (ms since epoch) embedded in a media token, or
+ * null if the token is absent / malformed. Does NOT verify the HMAC — that is
+ * the server's job. Used only to decide when to proactively refresh.
+ *
+ * Token format (base64url-encoded): "userId:crecheId:expMs:hmac"
+ */
+export function getMediaTokenExpiryMs(token: string): number | null {
+  if (!token) return null;
+  try {
+    // base64url → utf-8
+    const decoded = atob(token.replace(/-/g, "+").replace(/_/g, "/"));
+    // last field is hmac; third field (index 2) is expMs
+    const parts = decoded.split(":");
+    if (parts.length < 4) return null;
+    const exp = parseInt(parts[2], 10);
+    return Number.isFinite(exp) ? exp : null;
+  } catch {
+    return null;
+  }
+}

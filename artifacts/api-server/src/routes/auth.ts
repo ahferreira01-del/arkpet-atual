@@ -298,6 +298,19 @@ router.post("/reset-password", sensitiveLimiter, async (req, res) => {
   }
 });
 
+/**
+ * Silently refresh the caller's media token without requiring re-login.
+ * The client should call this when the stored token is within 2 h of expiry.
+ */
+router.get("/refresh-media-token", authenticate, async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+  const [user] = await db.select({ id: usersTable.id, crecheId: usersTable.crecheId })
+    .from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  const mediaToken = generateMediaToken(user.id, user.crecheId);
+  res.json({ mediaToken });
+});
+
 router.post("/logout", (_req, res) => {
   res.json({ message: "Logged out" });
 });

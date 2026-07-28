@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useGetMe, UserProfile, useLogin, getGetMeQueryKey, useLogout } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { toast } from "./use-toast";
+import { getMediaTokenExpiryMs } from "../features/feed/utils/media.utils";
 
 type AuthContextType = {
   user: UserProfile | null;
@@ -81,6 +82,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
   });
+
+  // Proactively refresh the media token when it is within 2 hours of expiry.
+  // Runs on mount and then every 30 minutes so a long-lived session never hits
+  // broken images due to a stale ?mt= credential.
+  useEffect(() => {
+    const REFRESH_BEFORE_MS = 2 * 60 * 60 * 1000; // 2 h
+    const CHECK_INTERVAL_MS = 30 * 60 * 1000;      // 30 min
+
+    async function maybeRefresh() {
+      const authToken = localStorage.getItem("auth_token");
+      if (!authToken) return; // not logged in
+
+      const mediaToken = localStorage.getItem("media_token");
+      const expiry = getMediaTokenExpiryMs(mediaToken ?? "");
+
+      // Refresh if: token is missing, malformed, already expired, or expiring soon
+      const needsRefresh = expiry === null || Date.now() > expiry - REFRESH_BEFORE_MS;
+      if (!needsRefresh) return;
+
+      try {
+        const res = await fetch("/api/auth/refresh-media-token", {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) return; // silently skip — server will reject expired auth tokens too
+        const data = await res.json();
+        if (data?.mediaToken) {
+          localStorage.setItem("media_token", data.mediaToken);
+          console.log("[media-token] refreshed, new expiry in 24 h");
+        }
+      } catch {
+        // Network failure — ignore; images will continue loading until the
+        // current token actually expires
+      }
+    }
+
+    maybeRefresh();
+    const interval = setInterval(maybeRefresh, CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <AuthContext.Provider
