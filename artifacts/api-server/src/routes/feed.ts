@@ -12,6 +12,9 @@ import {
 } from "@workspace/db/schema";
 import { db } from "@workspace/db";
 import { sendPushToUser } from "../lib/push.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+
+const objectStorageService = new ObjectStorageService();
 
 const router = Router({ mergeParams: true });
 
@@ -49,7 +52,18 @@ router.get("/:eventId", async (req: AuthRequest, res) => {
     .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
     .where(eq(timelineEventPetsTable.eventId, eventId));
 
-  res.json({ ...event, pets });
+  // Convert object-storage paths to short-lived signed URLs so the browser
+  // can play/display the media without needing auth headers.
+  let mediaUrl: string | null | undefined = event.mediaUrl;
+  if (mediaUrl && mediaUrl.startsWith("/objects/")) {
+    try {
+      mediaUrl = await objectStorageService.getSignedReadURL(mediaUrl, 600);
+    } catch {
+      // keep raw path — caller can decide what to do
+    }
+  }
+
+  res.json({ ...event, mediaUrl, pets });
 });
 
 // Listar o Feed
@@ -135,7 +149,10 @@ router.get("/", async (req: AuthRequest, res) => {
   const feedForClient = feed.map(e => ({
     ...e,
     hasMedia: !!(e.mediaUrl),
-    mediaUrl: typeof e.mediaUrl === "string" && e.mediaUrl.startsWith("data:")
+    // Strip base64 data-URIs and private object-storage paths from the list
+    // payload. They are fetched on-demand via GET /:eventId.
+    mediaUrl: typeof e.mediaUrl === "string" &&
+      (e.mediaUrl.startsWith("data:") || e.mediaUrl.startsWith("/objects/"))
       ? null
       : e.mediaUrl,
   }));
@@ -175,6 +192,7 @@ router.post("/", async (req: AuthRequest, res) => {
   const pets = await db.select().from(petsTable).where(inArray(petsTable.id, petIds));
   const typeLabels: Record<string, string> = {
     photo: "📸 Nova foto",
+    video: "🎬 Novo vídeo",
     note: "📝 Nova nota",
     play: "🎾 Momento de brincadeira",
     walk: "🦮 Passeio",

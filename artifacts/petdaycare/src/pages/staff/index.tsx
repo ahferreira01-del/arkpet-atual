@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles } from "lucide-react";
+import { CheckSquare, CheckSquare as ClipboardList, CircleDashed, CheckCircle2, Users, Filter, Camera, ImageIcon, X, Sparkles, Video } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -71,17 +71,37 @@ function TaskCompleteModal({
   const [compressing, setCompressing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaDataRef = useRef<string | null>(null);
+  const mediaTypeRef = useRef<"photo" | "video" | null>(null);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setCompressing(true);
     try {
-      const data = await compressImage(file);
-      mediaDataRef.current = data;
-      setPreview(data);
+      if (file.type.startsWith("video/")) {
+        // Upload video to object storage
+        const token = localStorage.getItem("auth_token");
+        const urlRes = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        });
+        if (!urlRes.ok) throw new Error("Erro ao gerar link de upload");
+        const { uploadURL, objectPath } = await urlRes.json();
+        const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+        if (!putRes.ok) throw new Error("Falha ao enviar vídeo");
+        mediaDataRef.current = objectPath;
+        mediaTypeRef.current = "video";
+        setPreview(URL.createObjectURL(file));
+      } else {
+        const data = await compressImage(file);
+        mediaDataRef.current = data;
+        mediaTypeRef.current = "photo";
+        setPreview(data);
+      }
     } catch {
       mediaDataRef.current = null;
+      mediaTypeRef.current = null;
       setPreview(null);
     } finally {
       setCompressing(false);
@@ -121,7 +141,7 @@ function TaskCompleteModal({
                 type: selectedType as any,
                 content: content || `${taskTypeLabel[task.type] || task.type} concluída.`,
                 mediaUrl: mediaDataRef.current || null,
-                mediaType: mediaDataRef.current ? "photo" : undefined,
+                mediaType: mediaDataRef.current ? (mediaTypeRef.current || "photo") : undefined,
               } as any,
             },
             {
@@ -185,29 +205,34 @@ function TaskCompleteModal({
           </div>
         </div>
 
-        {/* Photo upload */}
+        {/* Photo / Video upload */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto (opcional)</label>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          <input id="task-camera-input" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
+          <input id="task-camera-input" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-white/10">
-              <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
+              {mediaTypeRef.current === "video" ? (
+                <video src={preview} className="w-full max-h-52 bg-black" muted playsInline preload="metadata" />
+              ) : (
+                <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
+              )}
               <button
                 type="button"
-                onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
+                onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
                 className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
               >
                 <X className="h-4 w-4 text-white" />
               </button>
             </div>
           ) : compressing ? (
-            <div className="w-full h-24 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center">
+            <div className="w-full h-24 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
+              <span className="text-xs text-muted-foreground">Enviando...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
@@ -223,6 +248,14 @@ function TaskCompleteModal({
               >
                 <Camera className="h-5 w-5" />
                 <span className="text-xs">Câmera</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+              >
+                <Video className="h-5 w-5" />
+                <span className="text-xs">Vídeo</span>
               </button>
             </div>
           )}
@@ -277,17 +310,36 @@ function StandalonePublishModal({
   const [compressing, setCompressing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaDataRef = useRef<string | null>(null);
+  const mediaTypeRef = useRef<"photo" | "video" | null>(null);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setCompressing(true);
     try {
-      const data = await compressImage(file);
-      mediaDataRef.current = data;
-      setPreview(data);
+      if (file.type.startsWith("video/")) {
+        const token = localStorage.getItem("auth_token");
+        const urlRes = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+        });
+        if (!urlRes.ok) throw new Error("Erro ao gerar link de upload");
+        const { uploadURL, objectPath } = await urlRes.json();
+        const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+        if (!putRes.ok) throw new Error("Falha ao enviar vídeo");
+        mediaDataRef.current = objectPath;
+        mediaTypeRef.current = "video";
+        setPreview(URL.createObjectURL(file));
+      } else {
+        const data = await compressImage(file);
+        mediaDataRef.current = data;
+        mediaTypeRef.current = "photo";
+        setPreview(data);
+      }
     } catch {
       mediaDataRef.current = null;
+      mediaTypeRef.current = null;
       setPreview(null);
     } finally {
       setCompressing(false);
@@ -311,7 +363,7 @@ function StandalonePublishModal({
           type: selectedType as any,
           content: content || `${eventTypes.find(t => t.value === selectedType)?.label || "Atualização"}.`,
           mediaUrl: mediaDataRef.current || null,
-          mediaType: mediaDataRef.current ? "photo" : undefined,
+          mediaType: mediaDataRef.current ? (mediaTypeRef.current || "photo") : undefined,
         } as any,
       },
       {
@@ -372,25 +424,30 @@ function StandalonePublishModal({
           </div>
         </div>
 
-        {/* Photo */}
+        {/* Photo / Video */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto (opcional)</label>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          <input id="standalone-camera" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
+          <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
+          <input id="standalone-camera" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-white/10">
-              <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
-              <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
+              {mediaTypeRef.current === "video" ? (
+                <video src={preview} className="w-full max-h-36 bg-black" muted playsInline preload="metadata" />
+              ) : (
+                <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
+              )}
+              <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
                 className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
                 <X className="h-4 w-4 text-white" />
               </button>
             </div>
           ) : compressing ? (
-            <div className="w-full h-20 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center">
+            <div className="w-full h-20 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
+              <span className="text-xs text-muted-foreground">Enviando...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <button type="button" onClick={() => fileRef.current?.click()}
                 className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
                 <ImageIcon className="h-4 w-4" /><span className="text-xs">Galeria</span>
@@ -398,6 +455,10 @@ function StandalonePublishModal({
               <button type="button" onClick={() => document.getElementById("standalone-camera")?.click()}
                 className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
                 <Camera className="h-4 w-4" /><span className="text-xs">Câmera</span>
+              </button>
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
+                <Video className="h-4 w-4" /><span className="text-xs">Vídeo</span>
               </button>
             </div>
           )}

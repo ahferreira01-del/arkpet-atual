@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal, Pencil } from "lucide-react";
+import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal, Pencil, Video } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 // Assume we have pets from a query
@@ -211,6 +211,18 @@ function FeedCard({
             </div>
           )}
 
+          {displayMedia && event.mediaType === "video" && (
+            <div className="w-full rounded-xl overflow-hidden bg-black">
+              <video
+                src={displayMedia}
+                controls
+                playsInline
+                preload="metadata"
+                className="w-full max-h-[480px] rounded-xl"
+              />
+            </div>
+          )}
+
           {displayMedia && event.mediaType === "photo" && (
             <div
               className="relative w-full rounded-xl overflow-hidden cursor-zoom-in"
@@ -292,23 +304,44 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
     }
     setPosting(true);
     try {
-      let mediaUrl = undefined;
-      let mediaType = undefined;
+      let mediaUrl: string | undefined = undefined;
+      let mediaType: string | undefined = undefined;
+      const token = localStorage.getItem("auth_token");
+
       if (mediaFile) {
-        // Use base64 optimize Image since local Replit object storage is not available on Windows
-        const compressedBase64 = await compressImage(mediaFile);
-        mediaUrl = compressedBase64;
-        mediaType = "photo";
+        if (mediaFile.type.startsWith("video/")) {
+          // Upload video directly to object storage (too large for base64)
+          const urlRes = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ name: mediaFile.name, size: mediaFile.size, contentType: mediaFile.type }),
+          });
+          if (!urlRes.ok) throw new Error("Não foi possível gerar o link de upload.");
+          const { uploadURL, objectPath } = await urlRes.json();
+          const putRes = await fetch(uploadURL, {
+            method: "PUT",
+            headers: { "Content-Type": mediaFile.type },
+            body: mediaFile,
+          });
+          if (!putRes.ok) throw new Error("Falha ao enviar o vídeo.");
+          mediaUrl = objectPath;
+          mediaType = "video";
+        } else {
+          // Photo: compress to base64
+          const compressedBase64 = await compressImage(mediaFile);
+          mediaUrl = compressedBase64;
+          mediaType = "photo";
+        }
       }
 
       await fetch(`/api/creches/${crecheId}/feed`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("auth_token")}`
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({
-          type: mediaUrl ? "photo" : "note",
+          type: mediaType === "video" ? "video" : mediaUrl ? "photo" : "note",
           content,
           mediaUrl,
           mediaType,
@@ -349,7 +382,17 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
             
             {mediaFile && (
               <div className="relative mt-3 inline-block">
-                <img src={URL.createObjectURL(mediaFile)} className="h-32 rounded-lg object-cover border border-white/10" />
+                {mediaFile.type.startsWith("video/") ? (
+                  <video
+                    src={URL.createObjectURL(mediaFile)}
+                    className="h-32 rounded-lg border border-white/10 bg-black"
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <img src={URL.createObjectURL(mediaFile)} className="h-32 rounded-lg object-cover border border-white/10" />
+                )}
                 <button onClick={() => setMediaFile(null)} className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 shadow-lg">
                   <X className="h-3 w-3" />
                 </button>
@@ -384,7 +427,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
             <div className="flex items-center justify-between mt-4">
               <input 
                 type="file" 
-                accept="image/*"
+                accept="image/*,video/*"
                 className="hidden" 
                 ref={fileInputRef} 
                 onChange={e => e.target.files && setMediaFile(e.target.files[0])}
@@ -395,8 +438,10 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
                 onClick={() => fileInputRef.current?.click()}
                 className="text-primary hover:text-primary hover:bg-primary/10 rounded-full"
               >
-                <ImageIcon className="h-4 w-4 mr-2" /> 
-                Anexar Foto
+                {mediaFile?.type.startsWith("video/")
+                  ? <Video className="h-4 w-4 mr-2" />
+                  : <ImageIcon className="h-4 w-4 mr-2" />}
+                Foto / Vídeo
               </Button>
               <Button 
                 onClick={handlePost} 
