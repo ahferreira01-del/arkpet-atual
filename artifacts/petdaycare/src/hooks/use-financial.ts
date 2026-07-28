@@ -70,6 +70,7 @@ export function useAddBookingConsumable(crecheId: number) {
     onSuccess: (_, { bookingId }) => {
       queryClient.invalidateQueries({ queryKey: ["booking-consumables", crecheId, bookingId] });
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
     }
   });
 }
@@ -93,6 +94,8 @@ export function useFinancialCheckOut(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["listBookings"] });
       queryClient.invalidateQueries({ queryKey: ["getPet"] });
       queryClient.invalidateQueries({ queryKey: ["listPets"] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
     }
   });
 }
@@ -182,6 +185,7 @@ export function useUpdateInvoiceStatus(crecheId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
     }
   });
 }
@@ -207,6 +211,7 @@ export function usePayManualInvoice(crecheId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
     }
@@ -230,6 +235,7 @@ export function useApproveReceipt(crecheId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
     }

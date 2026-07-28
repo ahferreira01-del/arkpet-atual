@@ -141,7 +141,17 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
         .leftJoin(petsTable, eq(bookingsTable.petId, petsTable.id))
         .leftJoin(usersTable, eq(bookingsTable.tutorId, usersTable.id))
         .where(and(...conditions))
-        .orderBy(desc(bookingsTable.startDate))
+        .orderBy(
+          // Pending bookings first, then cancel_requested, then active, then the rest
+          sql`CASE ${bookingsTable.status}
+            WHEN 'pending'          THEN 0
+            WHEN 'cancel_requested' THEN 1
+            WHEN 'active'           THEN 2
+            WHEN 'completed'        THEN 3
+            WHEN 'cancelled'        THEN 4
+            ELSE 5 END`,
+          desc(bookingsTable.startDate),
+        )
         .limit(pageSize)
         .offset(offset),
 
@@ -197,10 +207,11 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
         throw new Error("Este tutor possui faturas em atraso. Regularize a situação para realizar novos agendamentos.");
       }
 
-      // Calcula duração (dias). Se endDate não for passado ou for igual, é 1 dia.
+      // Calcula duração (noites). Se endDate não for passado ou for igual, é 1 dia.
+      // Não somar +1: today→tomorrow = 1 noite.
       const start = new Date(startDate);
       const end = endDate ? new Date(endDate) : new Date(startDate);
-      const durationDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
+      const durationDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)));
 
       // 1. Criar o Booking com preço zero provisoriamente
       const [booking] = await tx
@@ -348,10 +359,21 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         let totalConsumedNormal = 0;
         let daysToBill = 0;
 
+        // Only attempt to consume package credits when the booking was explicitly
+        // created with packageMaxPets set (i.e. the tutor selected "Usar Diárias").
+        // Avulso/lodging bookings with packageMaxPets = null are always billed.
+        const usePackageCredits = existing.packageMaxPets != null;
+
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split("T")[0];
           
-          // 1. Tentar pegar carona (Piggyback)
+          if (!usePackageCredits) {
+            // Avulso/lodging booking: skip credit consumption entirely, bill this day.
+            daysToBill++;
+            continue;
+          }
+
+          // 1. Tentar pegar carona (Piggyback) — somente para pacotes multi-pet
           const piggybackCandidates = await tx
             .select({
               creditId: bookingCreditsTable.tutorCreditId,
@@ -367,7 +389,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               eq(bookingCreditsTable.consumedDate, dateStr),
               isNull(bookingCreditsTable.restoredAt),
               gt(tutorCreditsTable.maxPetsPerDay, 1),
-              existing.packageMaxPets != null ? eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets) : undefined
+              eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets!)
             ))
             .groupBy(bookingCreditsTable.tutorCreditId, tutorCreditsTable.maxPetsPerDay);
             
@@ -398,7 +420,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               and(
                 eq(tutorCreditsTable.tutorId, existing.tutorId),
                 eq(tutorCreditsTable.crecheId, crecheId),
-                existing.packageMaxPets != null ? eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets) : undefined,
+                eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets!),
                 sql`${tutorCreditsTable.usedCredits} < ${tutorCreditsTable.totalCredits}`,
                 or(isNull(tutorCreditsTable.expirationDate), gte(tutorCreditsTable.expirationDate, new Date().toISOString().split("T")[0]))
               )
@@ -421,7 +443,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
             });
             totalConsumedNormal++;
           } else {
-            // 3. Sem saldo. Faturar.
+            // 3. Sem saldo. Faturar dias excedentes.
             daysToBill++;
           }
         }

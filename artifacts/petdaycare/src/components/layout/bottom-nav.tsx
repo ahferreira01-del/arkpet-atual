@@ -43,15 +43,39 @@ function useBookingsBadge(user: UserProfile) {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      const pending = pendingRes.ok ? await pendingRes.json() : [];
-      const cancelRequested = cancelRes.ok ? await cancelRes.json() : [];
-      return (pending.length ?? 0) + (cancelRequested.length ?? 0);
+      // API returns { items, total, ... } — use .total, not .length
+      const pending = pendingRes.ok ? await pendingRes.json() : { total: 0 };
+      const cancelRequested = cancelRes.ok ? await cancelRes.json() : { total: 0 };
+      return (pending.total ?? pending.items?.length ?? 0) +
+             (cancelRequested.total ?? cancelRequested.items?.length ?? 0);
     },
     enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
     refetchInterval: 20_000,
     staleTime: 0,
   });
   return (data ?? 0) as number;
+}
+
+// Badge showing how many pending/overdue invoices the tutor has.
+// Invalidated by usePayManualInvoice, useApproveReceipt, etc.
+function useTutorInvoiceBadge(user: UserProfile) {
+  const token = localStorage.getItem("auth_token");
+  const { data } = useQuery({
+    queryKey: ["tutor-invoices", user?.crecheId, user?.id],
+    queryFn: async () => {
+      if (!user?.crecheId || !user?.id) return [];
+      const r = await fetch(
+        `/api/creches/${user.crecheId}/financial/invoices?tutorId=${user.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return r.ok ? r.json() : [];
+    },
+    enabled: !!user?.crecheId && user?.role === "tutor",
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+  const invoices: any[] = data?.data ?? (Array.isArray(data) ? data : []);
+  return invoices.filter((inv: any) => inv.status === "pending" || inv.status === "overdue").length;
 }
 
 // Uses React Query so invalidating ["chat-unread", crecheId] in the chat page
@@ -78,6 +102,7 @@ export function BottomNav({ user }: BottomNavProps) {
   const [location, setLocation] = useLocation();
   const unreadChat = useChatUnread(user);
   const bookingsBadge = useBookingsBadge(user);
+  const invoiceBadge = useTutorInvoiceBadge(user);
   const { logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -120,7 +145,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Pets", href: "/pets", icon: Dog },
           { name: "Reservas", href: "/bookings", icon: CalendarDays },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
-          { name: "Faturas", href: "/tutor/financial", icon: Receipt },
+          { name: "Faturas", href: "/tutor/financial", icon: Receipt, badge: invoiceBadge },
           { name: "Config.", href: "/settings", icon: Settings },
         ];
       default:

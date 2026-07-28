@@ -613,7 +613,8 @@ export default function NewBooking() {
                   const end = form.endDate ? new Date(form.endDate + "T12:00:00") : start;
                   let durationDays = 1;
                   if (start && end) {
-                    durationDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1);
+                    // Count nights, not endpoints: today→tomorrow = 1 night (no +1).
+                    durationDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)));
                   }
                   
                   const totalDaysRequested = durationDays * selectedPetIds.length;

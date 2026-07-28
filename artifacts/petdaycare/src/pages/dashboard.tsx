@@ -503,8 +503,9 @@ function TutorDashboard({ user }: { user: any }) {
 
   const handleLike = async (ev: TutorTimelineEvent) => {
     const token = localStorage.getItem("auth_token");
+    // Timeline events are stored in timeline_events — use the feed like endpoint
     await fetch(
-      `/api/creches/${crecheId}/pets/${ev.petId}/timeline/${ev.id}/like`,
+      `/api/creches/${crecheId}/feed/${ev.id}/like`,
       { method: "POST", headers: { Authorization: `Bearer ${token}` } }
     );
     queryClient.invalidateQueries({ queryKey: ["tutor-timeline"] });
@@ -549,7 +550,7 @@ function TutorDashboard({ user }: { user: any }) {
               <p className="text-xs text-destructive-foreground mt-0.5 leading-relaxed">Você possui faturas em atraso. Regularize para continuar agendando.</p>
             </div>
           </div>
-          <Link href="/financial">
+          <Link href="/tutor/financial">
             <Button size="sm" variant="destructive" className="shrink-0">Regularizar</Button>
           </Link>
         </div>
@@ -565,7 +566,7 @@ function TutorDashboard({ user }: { user: any }) {
               <p className="text-xs text-amber-400 mt-0.5 leading-relaxed">Você possui uma fatura vencendo nos próximos 5 dias.</p>
             </div>
           </div>
-          <Link href="/financial">
+          <Link href="/tutor/financial">
             <Button size="sm" variant="glass" className="shrink-0 text-amber-400 hover:text-amber-300">Pagar agora</Button>
           </Link>
         </div>

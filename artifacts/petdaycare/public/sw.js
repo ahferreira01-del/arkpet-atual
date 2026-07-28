@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v19";
+const CACHE_NAME = "arkpet-v20";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -189,8 +189,10 @@ function resolveTargetPath(data) {
     return "/pets";
   }
 
-  // ── Financial / settings ──────────────────────────────
-  if (type === "mensalidade") return "/settings";
+  // ── Financial ─────────────────────────────────────────
+  // "mensalidade" notifications come from invoice reminders — send the tutor
+  // directly to their wallet so they can see and pay the invoice.
+  if (type === "mensalidade") return "/tutor/financial";
 
   // ── Test push (sent from Settings) ───────────────────
   if (type === "test") return "/settings";

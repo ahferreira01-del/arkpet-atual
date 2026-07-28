@@ -259,6 +259,166 @@ function TaskCompleteModal({
   );
 }
 
+function StandalonePublishModal({
+  crecheId,
+  pets,
+  onClose,
+}: {
+  crecheId: number;
+  pets: any[];
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const addEventMutation = useAddFeedPost();
+  const [selectedPetId, setSelectedPetId] = useState<number | null>(null);
+  const [selectedType, setSelectedType] = useState("note");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const mediaDataRef = useRef<string | null>(null);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressing(true);
+    try {
+      const data = await compressImage(file);
+      mediaDataRef.current = data;
+      setPreview(data);
+    } catch {
+      mediaDataRef.current = null;
+      setPreview(null);
+    } finally {
+      setCompressing(false);
+    }
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!selectedPetId) {
+      toast({ title: "Atenção", description: "Selecione um pet.", variant: "destructive" });
+      return;
+    }
+    const fd = new FormData(e.currentTarget);
+    const content = (fd.get("content") as string) || null;
+
+    addEventMutation.mutate(
+      {
+        crecheId,
+        data: {
+          petIds: [selectedPetId],
+          type: selectedType as any,
+          content: content || `${eventTypes.find(t => t.value === selectedType)?.label || "Atualização"}.`,
+          mediaUrl: mediaDataRef.current || null,
+          mediaType: mediaDataRef.current ? "photo" : undefined,
+        } as any,
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries();
+          toast({ title: "Publicado!", description: "Atualização enviada para o tutor." });
+          onClose();
+        },
+        onError: () => {
+          toast({ title: "Erro", description: "Não foi possível publicar na linha do tempo.", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const checkedInPets = pets.filter((p: any) => p.isCheckedIn);
+  const allPetsToShow = checkedInPets.length > 0 ? checkedInPets : pets;
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Publicar na Timeline" description="Envie uma atualização direto para o tutor">
+      <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+        {/* Pet selector */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Pet</label>
+          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+            {allPetsToShow.map((pet: any) => (
+              <button
+                key={pet.id}
+                type="button"
+                onClick={() => setSelectedPetId(pet.id)}
+                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all text-left ${
+                  selectedPetId === pet.id
+                    ? "bg-primary/20 text-primary border-primary/50"
+                    : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10"
+                }`}
+              >
+                {pet.name}
+                {pet.isCheckedIn && <span className="ml-1 text-emerald-400 text-xs">✓</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Event type */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Tipo</label>
+          <div className="flex flex-wrap gap-2">
+            {eventTypes.map((t) => (
+              <button key={t.value} type="button" onClick={() => setSelectedType(t.value)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                  selectedType === t.value
+                    ? "bg-primary text-white border-primary shadow-[0_0_10px_rgba(139,92,246,0.4)]"
+                    : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"
+                }`}>
+                {t.emoji} {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Photo */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto (opcional)</label>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          <input id="standalone-camera" type="file" accept="image/*" capture="environment" className="hidden" onChange={handleFileChange} />
+          {preview ? (
+            <div className="relative rounded-xl overflow-hidden border border-white/10">
+              <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
+              <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
+                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
+                <X className="h-4 w-4 text-white" />
+              </button>
+            </div>
+          ) : compressing ? (
+            <div className="w-full h-20 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center">
+              <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => fileRef.current?.click()}
+                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
+                <ImageIcon className="h-4 w-4" /><span className="text-xs">Galeria</span>
+              </button>
+              <button type="button" onClick={() => document.getElementById("standalone-camera")?.click()}
+                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
+                <Camera className="h-4 w-4" /><span className="text-xs">Câmera</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Caption */}
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Mensagem</label>
+          <textarea name="content" placeholder="Ex: Está adorando o dia aqui!" rows={2}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary/50 transition-colors" />
+        </div>
+
+        <Button type="submit" disabled={addEventMutation.isPending || !selectedPetId} className="w-full gap-2">
+          <Sparkles className="h-4 w-4" />
+          {addEventMutation.isPending ? "Publicando..." : "Publicar na Timeline"}
+        </Button>
+      </form>
+    </Modal>
+  );
+}
+
 export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
@@ -272,6 +432,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
     return params.get("filter") !== "all";
   });
   const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
   useEffect(() => {
     if (!highlightTaskId) return;
@@ -362,8 +523,15 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
         />
       )}
 
-      {/* Filter toggle */}
+      {/* Filter toggle + publish button */}
       <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setShowPublishModal(true)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          Publicar
+        </button>
         <button
           onClick={() => setOnlyPresent(true)}
           className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
@@ -498,6 +666,15 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
           task={taskToComplete}
           crecheId={crecheId}
           onClose={() => setTaskToComplete(null)}
+        />
+      )}
+
+      {/* Standalone Publish Modal */}
+      {showPublishModal && (
+        <StandalonePublishModal
+          crecheId={crecheId}
+          pets={pets || []}
+          onClose={() => setShowPublishModal(false)}
         />
       )}
     </div>

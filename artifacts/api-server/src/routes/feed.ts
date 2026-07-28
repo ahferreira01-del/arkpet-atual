@@ -271,6 +271,37 @@ router.post("/:eventId/comments", async (req: AuthRequest, res) => {
   res.json({ ok: true, comment });
 });
 
+// Editar legenda (somente criador ou admin)
+router.patch("/:eventId", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+
+  const crecheId = parseInt(String(req.params.crecheId));
+  const eventId  = parseInt(String(req.params.eventId));
+  const { content } = req.body;
+
+  if (content === undefined) { res.status(400).json({ error: "Campo 'content' obrigatório" }); return; }
+
+  const [existing] = await db.select({ authorId: timelineEventsTable.authorId })
+    .from(timelineEventsTable)
+    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!existing) { res.status(404).json({ error: "Evento não encontrado" }); return; }
+
+  // Only the author or a creche_admin can edit
+  if (req.user.role !== "creche_admin" && existing.authorId !== req.user.id) {
+    res.status(403).json({ error: "Sem permissão para editar este post" }); return;
+  }
+
+  const [updated] = await db.update(timelineEventsTable)
+    .set({ content })
+    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .returning();
+
+  res.json({ ok: true, event: updated });
+});
+
 // Deletar
 router.delete("/:eventId", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }

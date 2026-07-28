@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal } from "lucide-react";
+import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal, Pencil } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 // Assume we have pets from a query
@@ -49,6 +49,10 @@ function FeedCard({
   // The full base64/URL is fetched on demand when the user taps "Ver foto".
   const [loadedMedia, setLoadedMedia] = useState<string | null>(null);
   const [mediaLoading, setMediaLoading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(event.content || "");
+  const [editSaving, setEditSaving] = useState(false);
+  const queryClient = useQueryClient();
 
   const displayMedia = event.mediaUrl || loadedMedia;
   const hasMedia = event.hasMedia ?? !!event.mediaUrl;
@@ -89,6 +93,7 @@ function FeedCard({
   const relTime = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
   const token = localStorage.getItem("auth_token");
   const canDelete = user?.role === "creche_admin" || user?.role === "staff";
+  const canEdit = user?.role === "creche_admin" || user?.role === "staff";
 
   const handleLike = async () => {
     try {
@@ -101,6 +106,21 @@ function FeedCard({
       setLikeCount(prev => data.liked ? prev + 1 : prev - 1);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleEditSave = async () => {
+    setEditSaving(true);
+    try {
+      await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editContent }),
+      });
+      queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) });
+      setEditing(false);
+    } finally {
+      setEditSaving(false);
     }
   };
 
@@ -148,10 +168,39 @@ function FeedCard({
       {/* Content */}
       {(event.content || event.mediaUrl) && (
         <div className="p-4">
-          {event.content && (
-            <p className="text-sm text-white/90 whitespace-pre-wrap mb-4 leading-relaxed">
-              {event.content}
-            </p>
+          {editing ? (
+            <div className="mb-4 space-y-2">
+              <Textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                rows={3}
+                className="w-full text-sm"
+                autoFocus
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleEditSave} disabled={editSaving}>
+                  {editSaving ? "Salvando..." : "Salvar"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setEditContent(event.content || ""); }}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          ) : event.content && (
+            <div className="relative group/caption mb-4">
+              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed pr-7">
+                {event.content}
+              </p>
+              {canEdit && (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="absolute top-0 right-0 opacity-0 group-hover/caption:opacity-100 transition-opacity h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                  title="Editar legenda"
+                >
+                  <Pencil className="h-3 w-3 text-white/60" />
+                </button>
+              )}
+            </div>
           )}
 
           {/* Loading placeholder while media fetches automatically */}
