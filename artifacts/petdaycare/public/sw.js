@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v20";
+const CACHE_NAME = "arkpet-v21";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -70,7 +70,8 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        if (response.ok) {
+        // Cache API only supports GET — skip caching for any other method
+        if (response.ok && request.method === "GET") {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
