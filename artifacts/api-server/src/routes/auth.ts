@@ -5,6 +5,7 @@ import { eq, and, gt, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { hashPassword, verifyPassword, generateToken, needsRehash } from "../lib/auth.js";
 import { encrypt } from "../lib/crypto.js";
+import { generateMediaToken } from "../lib/mediaToken.js";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { sendSelfSignupWelcomeEmail, sendPasswordResetEmail } from "../services/email.js";
 import { passwordResetTokensTable } from "@workspace/db/schema";
@@ -42,9 +43,11 @@ router.post("/login", loginLimiter, async (req, res) => {
       console.error("[auth] password rehash failed:", err);
     }
   }
-  const token = generateToken(user.id, user.role);
+  const token      = generateToken(user.id, user.role);
+  const mediaToken = generateMediaToken(user.id, user.crecheId);
   res.json({
     token,
+    mediaToken,
     user: {
       id: user.id,
       name: user.name,
@@ -168,9 +171,11 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
       crecheName: result.creche.name,
     }).catch((err) => console.error("[auth] welcome email failed:", err));
 
-    const token = generateToken(result.user.id, result.user.role);
+    const token      = generateToken(result.user.id, result.user.role);
+    const mediaToken = generateMediaToken(result.user.id, result.user.crecheId);
     res.status(201).json({
       token,
+      mediaToken,
       user: {
         id: result.user.id,
         name: result.user.name,

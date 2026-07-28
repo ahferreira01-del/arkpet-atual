@@ -13,7 +13,7 @@ import {
   useListUsers,
   ListTasksStatus,
 } from "@workspace/api-client-react";
-import { FeedTab } from "@/components/feed-tab";
+import { FeedPage } from "@/features/feed/components/FeedPage";
 import { Tabs } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -160,7 +160,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
             {
               id: "timeline",
               label: "Timeline",
-              content: <FeedTab crecheId={crecheId} />
+              content: <FeedPage crecheId={crecheId} userRole={user?.role ?? ""} userId={user?.id ?? 0} />
             },
             {
               id: "dashboard",
@@ -289,7 +289,7 @@ function StaffDashboard({ user }: { user: any }) {
           {
             id: "timeline",
             label: "Timeline",
-            content: <FeedTab crecheId={crecheId} />,
+            content: <FeedPage crecheId={crecheId} userRole={user?.role ?? ""} userId={user?.id ?? 0} />,
           },
           {
             id: "tasks",

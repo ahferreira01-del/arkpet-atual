@@ -31,6 +31,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data?.token) {
           localStorage.setItem("auth_token", data.token);
         }
+        if (data?.mediaToken) {
+          localStorage.setItem("media_token", data.mediaToken);
+        }
         queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         setTimeout(() => setLocation("/"), 100);
         toast({ title: "Bem-vindo!", description: "Login realizado com sucesso." });
@@ -71,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     mutation: {
       onSettled: () => {
         localStorage.removeItem("auth_token");
+        localStorage.removeItem("media_token");
         queryClient.setQueryData(getGetMeQueryKey(), null);
         queryClient.clear();
         setLocation("/login");

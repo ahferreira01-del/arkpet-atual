@@ -7,6 +7,8 @@ import {
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { ObjectPermission } from "../lib/objectAcl.js";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { verifyMediaToken } from "../lib/mediaToken.js";
+import { validateUpload } from "../middlewares/validateUpload.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -52,7 +54,7 @@ router.post("/storage/uploads/request-url", authenticate, async (req: AuthReques
  * Avoids the sidecar-signed URL (which returns 401 in production).
  * Client sends the raw file bytes as the request body with Content-Type set.
  */
-router.post("/storage/uploads/direct", authenticate, raw({ type: "*/*", limit: "100mb" }), async (req: AuthRequest, res: Response) => {
+router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type: "*/*", limit: "100mb" }), async (req: AuthRequest, res: Response) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
   try {
     const contentType = (req.headers["content-type"] as string) || "application/octet-stream";
@@ -108,10 +110,48 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
  * GET /storage/objects/*
  *
  * Serve object entities from PRIVATE_OBJECT_DIR.
- * These are served from a separate path from /public-objects and can optionally
- * be protected with authentication or ACL checks based on the use case.
+ * Accepts authentication via:
+ *   1. Authorization: Bearer <accessToken>  (standard API auth)
+ *   2. ?mt=<mediaToken>                     (for <img>/<video> tags in the
+ *                                            feed that cannot send headers)
  */
-router.get("/storage/objects/*path", authenticate, async (req: AuthRequest, res: Response) => {
+router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => {
+  // --- Auth: Bearer header OR ?mt= media token ---
+  const mtParam = req.query["mt"];
+  if (mtParam && typeof mtParam === "string") {
+    const payload = verifyMediaToken(mtParam);
+    if (!payload) {
+      res.status(401).json({ error: "Token de mídia inválido ou expirado" });
+      return;
+    }
+    // Attach a minimal user object so downstream ACL checks work
+    req.user = { id: payload.userId, role: "media_reader", crecheId: payload.crecheId, name: "", email: "" };
+  } else {
+    // Fall through to standard Bearer authentication
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+    // Reuse the authenticate middleware logic inline to avoid async middleware chaining
+    const { verifyToken } = await import("../lib/auth.js");
+    const token = authHeader.slice(7);
+    const tokenPayload = verifyToken(token);
+    if (!tokenPayload) {
+      res.status(401).json({ error: "Token inválido" });
+      return;
+    }
+    const { db: dbConn } = await import("@workspace/db");
+    const { usersTable } = await import("@workspace/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const [user] = await dbConn.select().from(usersTable).where(eq(usersTable.id, tokenPayload.userId)).limit(1);
+    if (!user || user.isActive === false) {
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+    req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
+  }
+
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;

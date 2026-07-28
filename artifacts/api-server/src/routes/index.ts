@@ -11,7 +11,7 @@ import pushRouter from "./push.js";
 import walksRouter from "./walks.js";
 import storageRouter from "./storage.js";
 import tutorTimelineRouter from "./tutor-timeline.js";
-import feedRouter from "./feed.js";
+import feedRouter from "./feed-v2.js";
 import billingRouter from "./billing.js";
 import financialRouter from "./financial.js";
 import financialAnalyticsRouter from "./financial-analytics.js";
