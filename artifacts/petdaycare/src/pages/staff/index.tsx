@@ -14,7 +14,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { compressImage } from "@/lib/utils";
+import { compressImage, uploadFileDirect } from "@/lib/utils";
 import { todayBrazil } from "@/lib/date-utils";
 
 const priorityLabel: Record<string, string> = {
@@ -80,17 +80,8 @@ function TaskCompleteModal({
     try {
       if (file.type.startsWith("video/")) {
         // Upload video to object storage
-        const token = localStorage.getItem("auth_token");
-        const urlRes = await fetch("/api/storage/uploads/request-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-        });
-        if (!urlRes.ok) throw new Error("Erro ao gerar link de upload");
-        const { uploadURL, objectPath } = await urlRes.json();
-        const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-        if (!putRes.ok) throw new Error("Falha ao enviar vídeo");
-        mediaDataRef.current = objectPath;
+        const token = localStorage.getItem("auth_token") ?? "";
+        mediaDataRef.current = await uploadFileDirect(file, token);
         mediaTypeRef.current = "video";
         setPreview(URL.createObjectURL(file));
       } else {
@@ -318,17 +309,8 @@ function StandalonePublishModal({
     setCompressing(true);
     try {
       if (file.type.startsWith("video/")) {
-        const token = localStorage.getItem("auth_token");
-        const urlRes = await fetch("/api/storage/uploads/request-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-        });
-        if (!urlRes.ok) throw new Error("Erro ao gerar link de upload");
-        const { uploadURL, objectPath } = await urlRes.json();
-        const putRes = await fetch(uploadURL, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
-        if (!putRes.ok) throw new Error("Falha ao enviar vídeo");
-        mediaDataRef.current = objectPath;
+        const token = localStorage.getItem("auth_token") ?? "";
+        mediaDataRef.current = await uploadFileDirect(file, token);
         mediaTypeRef.current = "video";
         setPreview(URL.createObjectURL(file));
       } else {

@@ -6,7 +6,7 @@ import {
   useCheckIn,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { resolvePhotoUrl } from "@/lib/utils";
+import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useTutorInvoices } from "@/hooks/use-financial";
@@ -22,29 +22,6 @@ import { OverviewTab } from "./components/overview-tab";
 import { PlanTab } from "./components/plan-tab";
 import { QrTab } from "./components/qr-tab";
 import { MedicalTab } from "./components/medical-tab";
-
-
-async function requestPetPhotoUpload(
-  file: File,
-  token: string,
-): Promise<{ uploadURL: string; objectPath: string }> {
-  const res = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type || "image/jpeg" }),
-  });
-  if (!res.ok) throw new Error("Não foi possível iniciar o upload. Verifique sua conexão.");
-  return res.json();
-}
-
-async function uploadFileToStorage(uploadURL: string, file: File): Promise<void> {
-  const res = await fetch(uploadURL, {
-    method: "PUT",
-    body: file,
-    headers: { "Content-Type": file.type || "image/jpeg" },
-  });
-  if (!res.ok) throw new Error("Erro ao enviar a foto. Tente novamente.");
-}
 
 const speciesMap: Record<string, string> = { dog: 'Cachorro', cat: 'Gato', bird: 'Pássaro', other: 'Outro' };
 const genderMap: Record<string, string> = { male: "Macho", female: "Fêmea", unknown: "Desconhecido" };
@@ -78,8 +55,7 @@ export default function PetDetail({ id }: { id: number }) {
     setUploadingPhoto(true);
     try {
       const token = localStorage.getItem("auth_token") ?? "";
-      const { uploadURL, objectPath } = await requestPetPhotoUpload(file, token);
-      await uploadFileToStorage(uploadURL, file);
+      const objectPath = await uploadFileDirect(file, token);
       updatePetMutation.mutate(
         { crecheId, petId: id, data: { photoUrl: objectPath } },
         {

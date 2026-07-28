@@ -9,7 +9,7 @@ import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, 
 import { PageHeader } from "@/components/layout/page-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { cn, uploadFileDirect } from "@/lib/utils";
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -31,21 +31,7 @@ export default function Settings() {
 
     setUploadingLogo(true);
     try {
-      const res = await fetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-      });
-      if (!res.ok) throw new Error("Erro ao gerar link de upload");
-      const { uploadURL, objectPath } = await res.json();
-      
-      const uploadRes = await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!uploadRes.ok) throw new Error("Erro ao fazer upload do arquivo");
-      
+      const objectPath = await uploadFileDirect(file, token);
       updateMutation.mutate({
         crecheId,
         data: { logoUrl: `/api/storage/public-objects/${objectPath}` }

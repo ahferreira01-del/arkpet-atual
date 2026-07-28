@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { Router, raw, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
 import {
   RequestUploadUrlBody,
@@ -42,6 +42,30 @@ router.post("/storage/uploads/request-url", authenticate, async (req: AuthReques
   } catch (error) {
     console.error("Error generating upload URL", error);
     res.status(500).json({ error: "Failed to generate upload URL" });
+  }
+});
+
+/**
+ * POST /storage/uploads/direct
+ *
+ * Upload a file directly through the API server to object storage.
+ * Avoids the sidecar-signed URL (which returns 401 in production).
+ * Client sends the raw file bytes as the request body with Content-Type set.
+ */
+router.post("/storage/uploads/direct", authenticate, raw({ type: "*/*", limit: "100mb" }), async (req: AuthRequest, res: Response) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+  try {
+    const contentType = (req.headers["content-type"] as string) || "application/octet-stream";
+    const buffer = req.body as Buffer;
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      res.status(400).json({ error: "Arquivo vazio ou inválido" });
+      return;
+    }
+    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType);
+    res.json({ objectPath });
+  } catch (err) {
+    console.error("Error uploading file directly", err);
+    res.status(500).json({ error: "Failed to upload file" });
   }
 });
 

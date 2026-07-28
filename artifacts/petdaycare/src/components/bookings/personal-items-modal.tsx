@@ -3,7 +3,7 @@ import { Camera, CheckCircle, Package, PackageX, Loader2, AlertTriangle } from "
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
+import { cn, uploadFileDirect } from "@/lib/utils";
 
 interface PersonalItemsModalProps {
   booking: {
@@ -17,31 +17,6 @@ interface PersonalItemsModalProps {
 
 type Step = "ask" | "camera" | "preview" | "uploading" | "saving" | "done";
 
-async function requestUploadUrl(file: File, token: string): Promise<{ uploadURL: string; objectPath: string }> {
-  const res = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      name: file.name,
-      size: file.size,
-      contentType: file.type || "image/jpeg",
-    }),
-  });
-  if (!res.ok) throw new Error("Erro ao obter URL de upload");
-  return res.json();
-}
-
-async function uploadToStorage(file: File, uploadURL: string): Promise<void> {
-  const res = await fetch(uploadURL, {
-    method: "PUT",
-    body: file,
-    headers: { "Content-Type": file.type || "image/jpeg" },
-  });
-  if (!res.ok) throw new Error("Erro ao enviar foto");
-}
 
 async function savePersonalItems(
   crecheId: number,
@@ -115,9 +90,7 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
     setStep("uploading");
     try {
       const token = localStorage.getItem("auth_token") ?? "";
-      const { uploadURL, objectPath } = await requestUploadUrl(photoFile, token);
-      setStep("uploading");
-      await uploadToStorage(photoFile, uploadURL);
+      const objectPath = await uploadFileDirect(photoFile, token);
       setStep("saving");
       await savePersonalItems(booking.crecheId, booking.id, true, objectPath, token);
       setStep("done");

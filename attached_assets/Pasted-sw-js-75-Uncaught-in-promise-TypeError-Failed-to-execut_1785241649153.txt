@@ -1,0 +1,58 @@
+sw.js:75 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at sw.js:75:57
+(anonymous) @ sw.js:75
+Promise.then
+(anonymous) @ sw.js:75
+Promise.then
+(anonymous) @ sw.js:72
+network request
+AsyncCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1445
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1478
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1620
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1968
+OnInitCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2336
+FireActivateEventImpl @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2646
+FireActivateEvent @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2661
+Initialize @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2724
+AddRunnerWsm @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2745
+InitCallCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2470
+AsyncCallCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1552
+onload @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1426
+XMLHttpRequest.send
+AsyncCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1445
+InitCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1540
+InitCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1636
+StartCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2444
+Start @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1455
+Start @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1608
+Init @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2418
+StartSession @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2555
+(anonymous) @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:4129
+(anonymous) @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:4130
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fpets%2Fmanifest.json' (redirected from 'https://ark-pet-qas.replit.app/pets/manifest.json') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+manifest.json:1 Manifest: Line: 1, column: 1, Syntax error.
+index-cTV7qKvT.js:21 [PWA] Service Worker registrado: https://ark-pet-qas.replit.app/
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fpets%2Fmanifest.json' (redirected from 'https://ark-pet-qas.replit.app/pets/manifest.json') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+manifest.json:1 Manifest: Line: 1, column: 1, Syntax error.
+sw.js:75 Uncaught (in promise) TypeError: Failed to execute 'put' on 'Cache': Request method 'POST' is unsupported
+    at sw.js:75:57
+(anonymous) @ sw.js:75
+Promise.then
+(anonymous) @ sw.js:75
+Promise.then
+(anonymous) @ sw.js:72
+network request
+AsyncCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1445
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1478
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1620
+Call @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:1968
+OnInitCall @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2336
+FireDeactivateEventImpl @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2615
+FireDeactivateEvent @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2627
+TimerCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2637
+TimerCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:427
+setTimeout
+SetTimeout @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:423
+ProcessDeactivate @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2634
+OnBlur @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:2695
+EventListenerCallback @ main.js?attr=uEXMI2Hvxf5JmY49Qu9Zb3LlTG3yu2ZdF9_BV3QVGLlhJFNKL1yr_wQDFj1xaYdvZ_7eD_DOUA8_oW9mgu88-g:332

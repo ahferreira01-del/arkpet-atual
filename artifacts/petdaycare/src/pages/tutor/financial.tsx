@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { uploadFileDirect } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, CreditCard, Eye, Package, ShoppingCart, QrCode, Copy } from "lucide-react";
 import { format } from "date-fns";
@@ -48,24 +49,10 @@ export default function TutorFinancial() {
     toast({ title: "Enviando comprovante...", description: "Aguarde um momento." });
 
     try {
-      // 1. Solicitar URL assinada de upload
-      const urlRes = await fetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-      });
-      if (!urlRes.ok) throw new Error("Não foi possível gerar o link de upload. Tente novamente.");
-      const { uploadURL, objectPath } = await urlRes.json();
+      // 1. Upload direto via servidor (sem URL assinada — funciona em produção)
+      const objectPath = await uploadFileDirect(file, token!);
 
-      // 2. Fazer upload do arquivo para o storage
-      const putRes = await fetch(uploadURL, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!putRes.ok) throw new Error("Falha ao enviar o arquivo. Tente novamente.");
-
-      // 3. Registrar o comprovante na fatura
+      // 2. Registrar o comprovante na fatura
       const receiptRes = await fetch(`/api/creches/${crecheId}/financial/invoices/${uploadingFor}/upload-receipt`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

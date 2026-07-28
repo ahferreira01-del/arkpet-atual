@@ -56,6 +56,27 @@ export function resolvePhotoUrl(photoUrl: string | null | undefined): string | n
   return photoUrl;
 }
 
+/**
+ * Upload a file directly to the API server, which streams it to object storage.
+ * Replaces the two-step request-url + PUT flow that breaks in production (sidecar 401).
+ */
+export async function uploadFileDirect(file: File, token: string): Promise<string> {
+  const res = await fetch("/api/storage/uploads/direct", {
+    method: "POST",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+      Authorization: `Bearer ${token}`,
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Falha ao enviar arquivo. Tente novamente.");
+  }
+  const { objectPath } = await res.json();
+  return objectPath as string;
+}
+
 export function formatCurrency(amount: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",

@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListFeed, getListFeedQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { compressImage } from "@/lib/utils";
+import { compressImage, uploadFileDirect } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -310,21 +310,8 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
 
       if (mediaFile) {
         if (mediaFile.type.startsWith("video/")) {
-          // Upload video directly to object storage (too large for base64)
-          const urlRes = await fetch("/api/storage/uploads/request-url", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ name: mediaFile.name, size: mediaFile.size, contentType: mediaFile.type }),
-          });
-          if (!urlRes.ok) throw new Error("Não foi possível gerar o link de upload.");
-          const { uploadURL, objectPath } = await urlRes.json();
-          const putRes = await fetch(uploadURL, {
-            method: "PUT",
-            headers: { "Content-Type": mediaFile.type },
-            body: mediaFile,
-          });
-          if (!putRes.ok) throw new Error("Falha ao enviar o vídeo.");
-          mediaUrl = objectPath;
+          // Upload video direto via servidor (sem URL assinada — funciona em produção)
+          mediaUrl = await uploadFileDirect(mediaFile, token!);
           mediaType = "video";
         } else {
           // Photo: compress to base64

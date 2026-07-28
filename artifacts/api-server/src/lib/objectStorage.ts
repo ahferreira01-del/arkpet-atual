@@ -221,6 +221,22 @@ export class ObjectStorageService {
       await file.delete();
     }
   }
+
+  /**
+   * Upload a Buffer directly to private object storage without needing a
+   * sidecar-signed URL. Works in both dev and deployed environments.
+   * Returns the normalized objectPath (e.g. /objects/uploads/<uuid>).
+   */
+  async uploadBuffer(buffer: Buffer, contentType: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const entityDir = privateObjectDir.endsWith("/") ? privateObjectDir : privateObjectDir + "/";
+    const uuid = randomUUID();
+    const objectEntityPath = `${entityDir}uploads/${uuid}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const file = objectStorageClient.bucket(bucketName).file(objectName);
+    await file.save(buffer, { contentType, resumable: false });
+    return `/objects/uploads/${uuid}`;
+  }
 }
 
 function parseObjectPath(path: string): {
