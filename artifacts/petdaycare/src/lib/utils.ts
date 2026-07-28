@@ -57,10 +57,21 @@ export function resolvePhotoUrl(photoUrl: string | null | undefined): string | n
 }
 
 /**
- * Upload a file directly to the API server, which streams it to object storage.
- * Replaces the two-step request-url + PUT flow that breaks in production (sidecar 401).
+ * Upload a file:
+ * - Images (image/*): compressed to base64 WebP on the client — zero server round-trip,
+ *   works everywhere regardless of GCS/sidecar availability.
+ * - Other files (video, PDF, …): sent as raw bytes to the server-side direct-upload endpoint.
+ *
+ * Returns a string that can be stored in the DB as a photo/media URL:
+ * - images  → "data:image/webp;base64,…"
+ * - others  → "/objects/uploads/<uuid>"
  */
 export async function uploadFileDirect(file: File, token: string): Promise<string> {
+  if (file.type.startsWith("image/")) {
+    return compressImage(file);
+  }
+
+  // Non-image files (video, PDF, …) — server-side upload
   const res = await fetch("/api/storage/uploads/direct", {
     method: "POST",
     headers: {

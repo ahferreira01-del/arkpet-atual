@@ -306,7 +306,12 @@ router.get("/invoices/:invoiceId/receipt-url", requireFinancialAccess, async (re
     if (!invoice || !invoice.receiptPhotoPath) {
       res.status(404).json({ error: "Comprovante não encontrado" }); return;
     }
-    
+
+    // data: URIs are stored directly in the DB (base64 upload path) — return as-is
+    if (invoice.receiptPhotoPath.startsWith("data:")) {
+      res.json({ url: invoice.receiptPhotoPath }); return;
+    }
+
     const url = await objectStorageService.getSignedReadURL(invoice.receiptPhotoPath, 300);
     
     await logFinancialAudit({
