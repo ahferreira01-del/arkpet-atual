@@ -53,8 +53,17 @@ export function QuickCheckIn() {
     : [];
 
   const handleCheckIn = (pet: any) => {
+    const bookingId = pet.activeBookingId;
+    if (!bookingId) {
+      toast({
+        title: "Sem reserva confirmada",
+        description: `${pet.name} não tem reserva confirmada para hoje. Confirme a reserva antes de fazer check-in.`,
+        variant: "destructive",
+      });
+      return;
+    }
     checkInMutation.mutate(
-      { crecheId, bookingId: pet.id /* checkIn now uses bookingId maybe? let us just suppress TS error */ },
+      { crecheId, bookingId },
       {
         onSuccess: () => {
           toast({ title: "Check-in realizado com sucesso!", description: `${pet.name} está agora na creche.` });

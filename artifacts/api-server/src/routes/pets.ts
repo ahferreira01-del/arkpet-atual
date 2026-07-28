@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { petsTable, usersTable, vaccinesTable, medicationsTable, crechesTable, bookingsTable } from "@workspace/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { checkPetLimit } from "../middlewares/checkPetLimit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
@@ -56,7 +56,32 @@ router.get("/", async (req: AuthRequest, res) => {
     .leftJoin(usersTable, eq(petsTable.tutorId, usersTable.id))
     .where(and(...conditions));
 
-  res.json({ items: pets, total: pets.length });
+  // Attach the active confirmed booking ID to each pet so the frontend
+  // can do check-in without a separate round-trip.
+  const petIds = pets.map((p) => p.id);
+  let activeBookingMap: Record<number, number> = {};
+  if (petIds.length > 0) {
+    const activeBookings = await db
+      .select({ id: bookingsTable.id, petId: bookingsTable.petId })
+      .from(bookingsTable)
+      .where(
+        and(
+          eq(bookingsTable.crecheId, crecheId),
+          eq(bookingsTable.status, "confirmed"),
+          inArray(bookingsTable.petId, petIds),
+        ),
+      );
+    for (const b of activeBookings) {
+      activeBookingMap[b.petId] = b.id;
+    }
+  }
+
+  const items = pets.map((p) => ({
+    ...p,
+    activeBookingId: activeBookingMap[p.id] ?? null,
+  }));
+
+  res.json({ items, total: items.length });
 });
 
 router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthRequest, res) => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v21";
+const CACHE_NAME = "arkpet-v22";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -71,8 +71,14 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache API only supports GET — skip caching for any other method
-        if (response.ok && request.method === "GET") {
+        // Cache API only supports GET — skip caching for any other method.
+        // Also skip opaque/redirect responses (type !== "basic") to prevent
+        // the Replit __replshield redirect from poisoning the cache.
+        if (
+          response.ok &&
+          request.method === "GET" &&
+          response.type === "basic"
+        ) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
