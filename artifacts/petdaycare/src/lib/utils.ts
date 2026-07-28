@@ -71,36 +71,23 @@ export async function uploadFileDirect(file: File, token: string): Promise<strin
     return compressImage(file);
   }
 
-  // Non-image files (video, PDF, …): presigned URL flow
-  // Step 1 — ask the server to generate a presigned PUT URL via sidecar
-  const urlRes = await fetch("/api/storage/uploads/request-url", {
+  // Non-image files (video, PDF, …): upload directly through the API server.
+  // The presigned-URL / sidecar flow returns 401 in production, so we POST
+  // the raw bytes to /api/storage/uploads/direct which uses the GCS SDK
+  // server-side (no sidecar signing required).
+  const uploadRes = await fetch("/api/storage/uploads/direct", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": file.type || "application/octet-stream",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      name: file.name,
-      size: file.size,
-      contentType: file.type || "application/octet-stream",
-    }),
-  });
-  if (!urlRes.ok) {
-    const err = await urlRes.json().catch(() => ({}));
-    throw new Error((err as any).error || "Falha ao iniciar upload. Tente novamente.");
-  }
-  const { uploadURL, objectPath } = await urlRes.json();
-
-  // Step 2 — upload directly to GCS using the presigned URL (no server involvement)
-  const uploadRes = await fetch(uploadURL, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
   if (!uploadRes.ok) {
-    throw new Error("Falha ao enviar o arquivo. Tente novamente.");
+    const err = await uploadRes.json().catch(() => ({}));
+    throw new Error((err as any).error || "Falha ao enviar o arquivo. Tente novamente.");
   }
-
+  const { objectPath } = await uploadRes.json();
   return objectPath as string;
 }
 

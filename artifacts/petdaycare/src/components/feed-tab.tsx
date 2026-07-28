@@ -63,19 +63,44 @@ function FeedCard({
     setMediaLoading(true);
     try {
       const token = localStorage.getItem("auth_token");
+      // Step 1 — fetch the event detail to get the media URL
       const res = await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
+      if (!res.ok) return;
+      const data = await res.json();
+      const url: string | undefined = data.mediaUrl;
+      if (!url) return;
+
+      // Step 2 — if it's an /api/storage/ path the browser cannot load it
+      // without auth headers (img/video tags don't send them). Fetch the
+      // binary with auth and create a local blob URL instead.
+      if (url.startsWith("/api/storage/")) {
+        const mediaRes = await fetch(url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!mediaRes.ok) return;
+        const blob = await mediaRes.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setLoadedMedia(blobUrl);
+      } else {
+        setLoadedMedia(url);
       }
     } catch {
-      // silent
+      // silent — media just won't show
     } finally {
       setMediaLoading(false);
     }
   }, [crecheId, event.id, loadedMedia, mediaLoading]);
+
+  // Revoke blob URLs on unmount to avoid memory leaks
+  React.useEffect(() => {
+    return () => {
+      if (loadedMedia && loadedMedia.startsWith("blob:")) {
+        URL.revokeObjectURL(loadedMedia);
+      }
+    };
+  }, [loadedMedia]);
 
   // Auto-load media as soon as the card mounts
   React.useEffect(() => {

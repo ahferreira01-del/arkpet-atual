@@ -52,15 +52,13 @@ router.get("/:eventId", async (req: AuthRequest, res) => {
     .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
     .where(eq(timelineEventPetsTable.eventId, eventId));
 
-  // Convert object-storage paths to short-lived signed URLs so the browser
-  // can play/display the media without needing auth headers.
+  // Convert /objects/ paths to the API serving URL.
+  // Presigned sidecar URLs return 401 in production, so we serve through
+  // the authenticated /api/storage/objects/* endpoint instead. The frontend
+  // fetches this URL with an Authorization header and creates a blob URL.
   let mediaUrl: string | null | undefined = event.mediaUrl;
   if (mediaUrl && mediaUrl.startsWith("/objects/")) {
-    try {
-      mediaUrl = await objectStorageService.getSignedReadURL(mediaUrl, 600);
-    } catch {
-      // keep raw path — caller can decide what to do
-    }
+    mediaUrl = `/api/storage${mediaUrl}`;
   }
 
   res.json({ ...event, mediaUrl, pets });
