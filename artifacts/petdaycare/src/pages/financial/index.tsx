@@ -264,7 +264,8 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                             return;
                           }
                           refundItemMutation.mutate({ invoiceId: invoiceId!, invoiceItemId: item.id, quantity: refundQty }, {
-                            onSuccess: () => alert("Estorno/Devolução realizado com sucesso.")
+                            onSuccess: () => alert("Estorno/Devolução realizado com sucesso."),
+                            onError: (err: any) => alert(`Erro ao estornar: ${err?.message ?? "Tente novamente."}`),
                           });
                         }}
                         className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors opacity-0 group-hover:opacity-100"

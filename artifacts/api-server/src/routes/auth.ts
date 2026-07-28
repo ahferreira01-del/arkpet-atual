@@ -58,7 +58,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   });
 });
 
-router.post("/register", authenticate, requireRole("master_admin"), async (req, res) => {
+router.post("/register", authenticate, requireRole("master_admin"), sensitiveLimiter, async (req, res) => {
   const { name, email, password, role, crecheId, cpf, phone } = req.body;
   if (!name || !email || !password || !role) {
     res.status(400).json({ error: "Missing required fields" });

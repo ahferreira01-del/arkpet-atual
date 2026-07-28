@@ -325,14 +325,19 @@ p { color: #94a3b8; line-height: 1.6; margin: 0 0 16px; }
   <p style="font-size:13px;color:#64748b">Este link expira em 1 hora. Se você não solicitou a redefinição, ignore este e-mail com segurança.</p>
 </div></div></body></html>`.trim();
 
-  const { error } = await resend.client.emails.send({
-    from: resend.fromEmail,
-    to: params.email,
-    subject: "Redefinição de senha — ArkPet",
-    html,
-  });
-  if (error) {
-    console.error("[email] Erro ao enviar e-mail de redefinição de senha:", error);
-    throw new Error(`Falha ao enviar e-mail de redefinição de senha: ${error.message}`);
+  try {
+    const { error } = await resend.client.emails.send({
+      from: resend.fromEmail,
+      to: params.email,
+      subject: "Redefinição de senha — ArkPet",
+      html,
+    });
+    if (error) {
+      console.error("[email] Erro ao enviar e-mail de redefinição de senha:", error);
+      throw new Error(`Falha ao enviar e-mail de redefinição de senha: ${error.message}`);
+    }
+  } catch (err: any) {
+    console.error("[email] Exceção ao enviar e-mail de redefinição de senha:", err);
+    throw new Error(`Falha ao enviar e-mail de redefinição de senha: ${err?.message ?? String(err)}`);
   }
 }

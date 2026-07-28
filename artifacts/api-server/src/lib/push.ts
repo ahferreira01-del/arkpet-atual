@@ -84,7 +84,10 @@ export async function sendPushToUser(userId: number, payload: PushPayload) {
     return;
   }
   console.log(`[push] Sending to userId=${userId}, ${subs.length} sub(s), tag="${payload.tag}"`);
-  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  const results = await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.error(`[push] Failed sub[${i}] userId=${userId}:`, r.reason);
+  });
 }
 
 export async function sendPushToRole(
@@ -111,7 +114,10 @@ export async function sendPushToRole(
     return;
   }
   console.log(`[push] Sending to role=${role} crecheId=${crecheId}, ${subs.length} sub(s), tag="${payload.tag}"`);
-  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  const results = await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.error(`[push] Failed sub[${i}] role=${role}:`, r.reason);
+  });
 }
 
 export async function sendPushToUsers(userIds: number[], payload: PushPayload) {
@@ -127,5 +133,8 @@ export async function sendPushToUsers(userIds: number[], payload: PushPayload) {
     return;
   }
   console.log(`[push] Sending to ${userIds.length} user(s), ${subs.length} sub(s), tag="${payload.tag}"`);
-  await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  const results = await Promise.allSettled(subs.map((sub) => sendToSubscription(sub, payload)));
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.error(`[push] Failed sub[${i}] users=[${userIds.join(",")}]:`, r.reason);
+  });
 }

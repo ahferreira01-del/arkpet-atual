@@ -89,6 +89,9 @@ export default function PetDetail({ id }: { id: number }) {
       return r.json();
     },
     onSuccess: () => { setOnTheWayOpen(false); },
+    onError: (err: any) => {
+      toast({ title: "Erro ao notificar tutor", description: err?.message ?? "Tente novamente.", variant: "destructive" });
+    },
   });
 
   const handleEditProfile = (e: React.FormEvent<HTMLFormElement>) => {
@@ -425,7 +428,13 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
       onClick={() =>
         checkInMutation.mutate(
           { crecheId, bookingId } as any,
-          { onSuccess: () => queryClient.invalidateQueries() }
+          {
+            onSuccess: () => queryClient.invalidateQueries(),
+            onError: (err: any) => {
+              const msg = err?.response?.data?.error ?? err?.message ?? "Tente novamente.";
+              alert(msg);
+            },
+          }
         )
       }
       isLoading={checkInMutation.isPending}
