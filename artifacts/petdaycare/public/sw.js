@@ -71,22 +71,24 @@ self.addEventListener("fetch", (event) => {
     return; // Let the browser handle it without SW interference
   }
 
+  // Never intercept API calls. Re-issuing them from the SW context causes the
+  // Replit __replshield redirect to fail with CORS — the browser can follow
+  // that redirect natively but the SW cannot.
   if (url.pathname.startsWith("/api")) {
-    event.respondWith(fetch(request));
+    return;
+  }
+
+  // For same-origin app-shell assets: network-first, cache on success.
+  // Skip non-GET, skip cross-origin, skip opaque/redirect responses
+  // (type !== "basic") so the __replshield redirect never poisons the cache.
+  if (request.method !== "GET" || url.origin !== self.location.origin) {
     return;
   }
 
   event.respondWith(
     fetch(request)
       .then((response) => {
-        // Cache API only supports GET — skip caching for any other method.
-        // Also skip opaque/redirect responses (type !== "basic") to prevent
-        // the Replit __replshield redirect from poisoning the cache.
-        if (
-          response.ok &&
-          request.method === "GET" &&
-          response.type === "basic"
-        ) {
+        if (response.ok && response.type === "basic") {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }

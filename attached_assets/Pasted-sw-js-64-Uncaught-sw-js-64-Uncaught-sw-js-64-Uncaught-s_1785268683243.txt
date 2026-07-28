@@ -1,0 +1,541 @@
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+sw.js:64 Uncaught 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+The FetchEvent for "<URL>" resulted in a network error response: the promise was rejected.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fversion' (redirected from 'https://ark-pet-qas.replit.app/api/version') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fversion' (redirected from 'https://ark-pet-qas.replit.app/api/version') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fversion' (redirected from 'https://ark-pet-qas.replit.app/api/version') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fversion' (redirected from 'https://ark-pet-qas.replit.app/api/version') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) 
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fversion' (redirected from 'https://ark-pet-qas.replit.app/api/version') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fauth%2Fme' (redirected from 'https://ark-pet-qas.replit.app/api/auth/me') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fchat%2Funread' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/chat/unread') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fbilling%2Fsubscription' (redirected from 'https://ark-pet-qas.replit.app/api/billing/subscription') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dcancel_requested' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=cancel_requested') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstats' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/stats') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings%3Fstatus%3Dpending' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings?status=pending') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fpets' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/pets') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fbookings' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/bookings') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ffeed' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/feed') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Ftasks%3Fstatus%3Dpending%26date%3D2026-07-28' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/tasks?status=pending&date=2026-07-28') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+Access to fetch at 'https://replit.com/__replshield?redirect=https%3A%2F%2Fark-pet-qas.replit.app%2Fapi%2Fcreches%2F3%2Fstaff' (redirected from 'https://ark-pet-qas.replit.app/api/creches/3/staff') from origin 'https://ark-pet-qas.replit.app' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+sw.js:67   Uncaught (in promise) TypeError: Failed to fetch
+    at sw.js:67:23
+(anonymous) @ sw.js:67
+index-DtoIHwM0.js:21 [PWA] Service Worker registrado: https://ark-pet-qas.replit.app/
+/api/storage/uploads/direct:1  Failed to load resource: the server responded with a status of 500 ()
