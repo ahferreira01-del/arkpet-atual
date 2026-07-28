@@ -6,7 +6,9 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed-stripe": "tsx ./src/seed-stripe.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:offline": "node offline-test.mjs",
+    "pwa-audit": "node pwa-audit.mjs"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
