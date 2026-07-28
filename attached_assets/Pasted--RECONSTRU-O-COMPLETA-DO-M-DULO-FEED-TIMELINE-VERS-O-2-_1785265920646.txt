@@ -1,0 +1,842 @@
+# RECONSTRUÇÃO COMPLETA DO MÓDULO FEED / TIMELINE (VERSÃO 2)
+
+Você atuará como um Arquiteto de Software Sênior especializado em React, TypeScript, Node.js, PostgreSQL, UX/UI Mobile First, Clean Architecture e sistemas SaaS Multi-Tenant.
+
+Sua missão é desenvolver uma NOVA VERSÃO (V2) do módulo Feed/Timeline da plataforma.
+
+Esta tarefa NÃO consiste em corrigir bugs da implementação existente.
+
+Esta tarefa NÃO consiste em refatorar o módulo atual.
+
+Esta tarefa consiste em RECONSTRUIR COMPLETAMENTE o módulo Feed do zero, mantendo apenas as regras de negócio necessárias.
+
+#######################################################################
+## IMPORTANTE - DESCARTAR IMPLEMENTAÇÃO ANTIGA
+#######################################################################
+
+A IMPLEMENTAÇÃO ATUAL DO MÓDULO FEED/TIMELINE DEVE SER CONSIDERADA OBSOLETA.
+
+Considere que a implementação antiga será completamente descartada.
+
+NÃO tente corrigir bugs existentes.
+
+NÃO tente adaptar componentes existentes.
+
+NÃO tente aproveitar Hooks existentes.
+
+NÃO tente aproveitar Services.
+
+NÃO tente aproveitar lógica de Upload.
+
+NÃO tente aproveitar lógica de Feed.
+
+NÃO tente aproveitar lógica de Renderização.
+
+NÃO tente aproveitar estados.
+
+NÃO tente aproveitar useEffect.
+
+NÃO tente aproveitar componentes.
+
+NÃO tente aproveitar helpers.
+
+NÃO tente aproveitar utilitários.
+
+NÃO tente aproveitar código legado.
+
+NÃO faça remendos.
+
+NÃO faça adaptações.
+
+NÃO faça correções incrementais.
+
+Utilize a implementação atual APENAS para compreender:
+
+- regras de negócio
+- permissões
+- integrações
+- estrutura do banco
+- contratos das APIs (quando fizer sentido)
+
+Após compreender essas regras, considere que TODO O CÓDIGO ANTIGO NÃO EXISTE MAIS.
+
+Toda a implementação deverá ser NOVA.
+
+Caso encontre código que aparentemente possa ser reaproveitado, IGNORE e implemente novamente utilizando boas práticas.
+
+O objetivo desta tarefa NÃO É REFATORAR.
+
+O objetivo desta tarefa NÃO É CORRIGIR BUGS.
+
+O objetivo desta tarefa É RECONSTRUIR COMPLETAMENTE O MÓDULO.
+
+#######################################################################
+## OBJETIVO
+#######################################################################
+
+Criar um Feed moderno semelhante ao Instagram/Facebook, porém privado para uma Creche de Pets.
+
+O Staff/Admin deverá conseguir:
+
+- publicar fotos
+- publicar vídeos
+- escrever legenda
+- marcar vários pets em uma publicação
+- editar legenda
+- excluir publicação
+
+Os Tutores deverão conseguir:
+
+- visualizar apenas as publicações relacionadas aos seus pets
+- curtir
+- comentar
+
+Nunca publicar.
+
+#######################################################################
+## FUNCIONALIDADE PRINCIPAL
+#######################################################################
+
+Cada publicação poderá conter:
+
+- legenda
+- uma foto OU um vídeo
+- um ou vários pets marcados
+
+Quando um post for publicado:
+
+- os pets serão relacionados
+- os tutores serão identificados
+- Push Notifications serão enviadas
+- o post aparecerá imediatamente no Feed
+
+#######################################################################
+## ARQUITETURA
+#######################################################################
+
+Implementar utilizando Clean Architecture.
+
+Separar responsabilidades.
+
+Exemplo:
+
+Feed
+
+├── pages
+
+├── components
+
+├── hooks
+
+├── services
+
+├── api
+
+├── dto
+
+├── types
+
+├── upload
+
+├── cache
+
+├── utils
+
+├── context
+
+├── styles
+
+Nenhum componente poderá possuir múltiplas responsabilidades.
+
+#######################################################################
+## FLUXO DA PUBLICAÇÃO
+#######################################################################
+
+O fluxo deverá ser exatamente este.
+
+Abrir Feed
+
+↓
+
+Novo Post
+
+↓
+
+Digitar legenda
+
+↓
+
+Selecionar Foto OU Vídeo
+
+↓
+
+Selecionar um ou mais Pets
+
+↓
+
+Validar dados
+
+↓
+
+Upload da mídia
+
+↓
+
+Receber objectPath
+
+↓
+
+POST Feed
+
+↓
+
+Salvar publicação
+
+↓
+
+Relacionar Pets
+
+↓
+
+Enviar Push Notification
+
+↓
+
+Retornar DTO completo
+
+↓
+
+Adicionar imediatamente ao topo do Feed
+
+Sem refresh.
+
+Sem novo GET.
+
+Sem recarregar página.
+
+#######################################################################
+## INTERFACE
+#######################################################################
+
+Criar uma interface completamente nova.
+
+Cabeçalho
+
+Feed da Creche
+
+Botão
+
+Novo Post
+
+Área de criação
+
+Campo
+
+Legenda
+
+Textarea
+
+Botões
+
+Adicionar Foto
+
+Adicionar Vídeo
+
+Após selecionar arquivo
+
+Mostrar Preview.
+
+Imagem
+
+Vídeo
+
+Botão Remover.
+
+#######################################################################
+## SELEÇÃO DE PETS
+#######################################################################
+
+Mostrar apenas pets em Check-in.
+
+Campo de pesquisa.
+
+Lista de pets.
+
+Ao selecionar
+
+Criar Chips.
+
+Exemplo
+
+Thor ✕
+
+Luna ✕
+
+Bob ✕
+
+Permitir múltiplos pets.
+
+Sem limite de seleção.
+
+#######################################################################
+## VALIDAÇÃO
+#######################################################################
+
+Botão Publicar somente deverá ficar habilitado quando existir:
+
+Pelo menos um Pet selecionado
+
+E
+
+Legenda OU Mídia.
+
+Caso contrário permanecer desabilitado.
+
+#######################################################################
+## UPLOAD
+#######################################################################
+
+Eliminar COMPLETAMENTE Base64.
+
+Nenhuma imagem poderá ser enviada em Base64.
+
+Todo upload deverá utilizar Object Storage.
+
+Foto
+
+↓
+
+Compressão
+
+↓
+
+WebP
+
+↓
+
+Blob
+
+↓
+
+Upload
+
+↓
+
+Storage
+
+↓
+
+ObjectPath
+
+Vídeo
+
+↓
+
+Upload direto
+
+↓
+
+Storage
+
+↓
+
+ObjectPath
+
+Após isso
+
+POST Feed.
+
+#######################################################################
+## PAYLOAD
+#######################################################################
+
+O POST deverá enviar apenas
+
+{
+  "type":"photo",
+  "content":"Hoje foi dia de piscina",
+  "mediaUrl":"/objects/uploads/uuid.webp",
+  "mediaType":"photo",
+  "petIds":[10,15,18]
+}
+
+Nenhum outro dado deverá ser enviado.
+
+#######################################################################
+## BACKEND
+#######################################################################
+
+Ao publicar
+
+1 Salvar evento
+
+2 Salvar relação dos pets
+
+3 Enviar Push
+
+4 Retornar DTO completo
+
+Nunca retornar apenas sucesso.
+
+#######################################################################
+## DTO
+#######################################################################
+
+O DTO deverá conter todas as informações necessárias para renderizar o Card.
+
+Exemplo
+
+- id
+- type
+- content
+- mediaUrl
+- mediaType
+- author
+- pets
+- createdAt
+- likes
+- comments
+- views
+- isLiked
+
+O frontend não deverá precisar fazer outra consulta para completar informações.
+
+#######################################################################
+## FEED
+#######################################################################
+
+O Feed deverá consumir apenas
+
+GET /feed
+
+O GET deverá retornar todas as informações necessárias.
+
+Eliminar totalmente o fluxo atual onde o frontend faz:
+
+GET Feed
+
+↓
+
+GET Detalhe
+
+↓
+
+Buscar Blob
+
+↓
+
+Trocar URL
+
+Esse comportamento deverá deixar de existir.
+
+#######################################################################
+## CARD
+#######################################################################
+
+Cada Card deverá conter
+
+Emoji do tipo
+
+Nome dos Pets
+
+Legenda
+
+Imagem OU Vídeo
+
+Curtir
+
+Comentários
+
+Visualizações
+
+Autor
+
+Tempo relativo
+
+Botão Editar
+
+Botão Excluir
+
+#######################################################################
+## IMAGENS
+#######################################################################
+
+Renderizar diretamente
+
+<img src="mediaUrl">
+
+Sem Blob.
+
+Sem Base64.
+
+Sem fetch adicional.
+
+#######################################################################
+## VÍDEOS
+#######################################################################
+
+Renderizar
+
+<video controls preload="metadata">
+
+Com miniatura.
+
+#######################################################################
+## CACHE
+#######################################################################
+
+Implementar cache utilizando React Query ou TanStack Query.
+
+Caso a mídia já tenha sido carregada anteriormente
+
+Não baixar novamente.
+
+#######################################################################
+## LAZY LOADING
+#######################################################################
+
+Utilizar IntersectionObserver.
+
+Carregar mídia apenas quando o Card entrar na tela.
+
+#######################################################################
+## ATUALIZAÇÃO
+#######################################################################
+
+Após publicar
+
+Inserir imediatamente o retorno do POST no topo da lista.
+
+Nunca executar novo GET apenas para atualizar o Feed.
+
+#######################################################################
+## CURTIDAS
+#######################################################################
+
+Atualização otimista.
+
+Caso API falhe
+
+Reverter automaticamente.
+
+#######################################################################
+## COMENTÁRIOS
+#######################################################################
+
+Modal.
+
+Listagem.
+
+Novo comentário.
+
+Atualização automática do contador.
+
+#######################################################################
+## EXCLUSÃO
+#######################################################################
+
+Somente
+
+Autor
+
+Staff
+
+Admin
+
+Poderão excluir.
+
+Após excluir
+
+Remover imediatamente do Feed.
+
+#######################################################################
+## PERMISSÕES
+#######################################################################
+
+Tutor
+
+Visualizar
+
+Curtir
+
+Comentar
+
+Nunca publicar.
+
+Staff
+
+Publicar
+
+Editar
+
+Excluir
+
+Curtir
+
+Comentar
+
+Admin
+
+Mesmo comportamento do Staff.
+
+#######################################################################
+## FILTRO DOS TUTORES
+#######################################################################
+
+Se uma publicação possuir
+
+Thor
+
+Luna
+
+Bob
+
+E o Tutor possuir apenas Thor
+
+Ele deverá visualizar apenas Thor.
+
+Jamais exibir nomes de pets pertencentes a outros tutores.
+
+#######################################################################
+## PUSH NOTIFICATION
+#######################################################################
+
+Após publicar
+
+Identificar todos os TutorId.
+
+Eliminar duplicados.
+
+Enviar Push.
+
+Caso o Push falhe
+
+A publicação NÃO poderá falhar.
+
+#######################################################################
+## SEGURANÇA
+#######################################################################
+
+Corrigir obrigatoriamente
+
+- autenticação em todas as rotas
+- autorização baseada em perfil
+- validação da creche do usuário
+- validação de acesso às mídias
+- validação de comentários
+- proteção contra acesso entre tenants
+
+#######################################################################
+## PERFORMANCE
+#######################################################################
+
+Evitar
+
+Re-renderizações
+
+Fetch duplicado
+
+Memory Leak
+
+Blob URL
+
+Loop infinito
+
+Estados duplicados
+
+useEffect desnecessários
+
+Requisições paralelas
+
+Código morto
+
+#######################################################################
+## QUALIDADE DO CÓDIGO
+#######################################################################
+
+Todo código deverá ser
+
+Fortemente tipado
+
+Modular
+
+Escalável
+
+Componentizado
+
+Responsabilidade única
+
+Sem duplicação
+
+Sem código morto
+
+Sem comentários desnecessários
+
+Preparado para futuras evoluções como:
+
+- múltiplas mídias por post
+- stories
+- favoritos
+- compartilhamento
+- cache offline
+
+#######################################################################
+## BANCO
+#######################################################################
+
+Continuar utilizando
+
+- timeline_events
+- timeline_event_pets
+- timeline_likes
+- timeline_views
+- timeline_comments
+
+Ignorar completamente
+
+petId legado.
+
+Nunca utilizá-lo.
+
+Caso seja possível
+
+Remover toda dependência dessa coluna.
+
+#######################################################################
+## PROCESSO OBRIGATÓRIO
+#######################################################################
+
+ANTES DE ESCREVER QUALQUER CÓDIGO
+
+1. Analisar a implementação antiga apenas para entender as regras de negócio.
+
+2. Identificar problemas da arquitetura atual.
+
+3. Identificar limitações da implementação antiga.
+
+4. Propor uma arquitetura completamente nova.
+
+5. Criar um plano de implementação.
+
+6. Listar todos os componentes novos.
+
+7. Listar Hooks.
+
+8. Listar Services.
+
+9. Listar DTOs.
+
+10. Listar APIs.
+
+11. Listar estados.
+
+12. Listar testes necessários.
+
+13. Apresentar esse plano para validação.
+
+NÃO iniciar a implementação antes da aprovação da arquitetura.
+
+#######################################################################
+## IMPLEMENTAÇÃO
+#######################################################################
+
+Após aprovação
+
+Implementar em etapas pequenas.
+
+Ao final de cada etapa
+
+Executar testes.
+
+Corrigir problemas.
+
+Validar funcionamento.
+
+Somente então seguir para a próxima etapa.
+
+#######################################################################
+## VALIDAÇÃO FINAL
+#######################################################################
+
+A implementação somente será considerada concluída quando:
+
+✅ Staff conseguir publicar fotos.
+
+✅ Staff conseguir publicar vídeos.
+
+✅ Staff conseguir marcar múltiplos pets.
+
+✅ Upload funcionar corretamente.
+
+✅ Preview funcionar.
+
+✅ Publicação aparecer imediatamente no Feed.
+
+✅ Imagens aparecerem corretamente.
+
+✅ Vídeos aparecerem corretamente.
+
+✅ Tutor visualizar apenas seus pets.
+
+✅ Staff visualizar todos os pets.
+
+✅ Curtidas funcionarem.
+
+✅ Comentários funcionarem.
+
+✅ Exclusão funcionar.
+
+✅ Push Notification funcionar.
+
+✅ Não existir erro no console.
+
+✅ Não existir warning.
+
+✅ Não existir código legado reutilizado.
+
+✅ Não existir Base64.
+
+✅ Não existir GET adicional para carregar mídia.
+
+✅ Desktop funcionando.
+
+✅ Mobile funcionando.
+
+#######################################################################
+## RELATÓRIO FINAL
+#######################################################################
+
+Ao concluir o trabalho, apresentar um relatório contendo:
+
+- Arquitetura implementada.
+- Componentes criados.
+- Hooks criados.
+- Services criados.
+- APIs utilizadas ou alteradas.
+- Fluxo completo da publicação.
+- Fluxo completo de exibição.
+- Testes executados.
+- Problemas encontrados.
+- Problemas corrigidos.
+- Melhorias implementadas.
+- Sugestões para futuras evoluções.
+
+#######################################################################
+## REGRA FINAL
+#######################################################################
+
+EM HIPÓTESE ALGUMA reutilize código da implementação antiga.
+
+Caso durante o desenvolvimento você perceba que está aproveitando componentes, hooks, services ou lógica existentes, interrompa essa abordagem e substitua imediatamente por uma implementação nova.
+
+A implementação final deverá ser tratada como uma VERSÃO 2 (V2), independente da VERSÃO 1.
+
+A única coisa que pode ser aproveitada da implementação antiga são:
+
+- Regras de negócio.
+- Estrutura do banco (quando fizer sentido).
+- Integrações necessárias com os demais módulos do sistema.
+
+Todo o restante deverá ser reescrito do zero.
+
+O resultado esperado é um módulo Feed completamente novo, limpo, organizado, escalável, desacoplado, de fácil manutenção e preparado para futuras funcionalidades.
