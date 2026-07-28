@@ -79,9 +79,20 @@ function TaskCompleteModal({
     setCompressing(true);
     try {
       if (file.type.startsWith("video/")) {
-        // Upload video to object storage
         const token = localStorage.getItem("auth_token") ?? "";
-        mediaDataRef.current = await uploadFileDirect(file, token);
+        try {
+          mediaDataRef.current = await uploadFileDirect(file, token);
+        } catch {
+          toast({
+            title: "Upload de vídeo indisponível",
+            description: "Não foi possível enviar o vídeo. Tente publicar uma foto.",
+            variant: "destructive",
+          });
+          mediaDataRef.current = null;
+          mediaTypeRef.current = null;
+          setPreview(null);
+          return;
+        }
         mediaTypeRef.current = "video";
         setPreview(URL.createObjectURL(file));
       } else {

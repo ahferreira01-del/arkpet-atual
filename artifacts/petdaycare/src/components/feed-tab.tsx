@@ -310,8 +310,17 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
 
       if (mediaFile) {
         if (mediaFile.type.startsWith("video/")) {
-          // Upload video direto via servidor (sem URL assinada — funciona em produção)
-          mediaUrl = await uploadFileDirect(mediaFile, token!);
+          try {
+            mediaUrl = await uploadFileDirect(mediaFile, token!);
+          } catch {
+            toast({
+              title: "Upload de vídeo indisponível",
+              description: "Não foi possível enviar o vídeo no momento. Tente publicar uma foto.",
+              variant: "destructive",
+            });
+            setPosting(false);
+            return;
+          }
           mediaType = "video";
         } else {
           // Photo: compress to base64
