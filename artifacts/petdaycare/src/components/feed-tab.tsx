@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal, Pencil } from "lucide-react";
+import { Camera, Sparkles, ImageIcon, X, Trash2, CheckCircle2, MoreHorizontal, Pencil, Video } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 // Assume we have pets from a query
@@ -423,7 +423,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
             <div className="flex items-center justify-between mt-4">
               <input 
                 type="file" 
-                accept="image/*"
+                accept="image/*,video/*"
                 className="hidden" 
                 ref={fileInputRef} 
                 onChange={e => e.target.files && setMediaFile(e.target.files[0])}
@@ -434,8 +434,10 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
                 onClick={() => fileInputRef.current?.click()}
                 className="text-primary hover:text-primary hover:bg-primary/10 rounded-full"
               >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                Foto
+                {mediaFile?.type.startsWith("video/")
+                  ? <Video className="h-4 w-4 mr-2" />
+                  : <ImageIcon className="h-4 w-4 mr-2" />}
+                Foto / Vídeo
               </Button>
               <Button 
                 onClick={handlePost} 
