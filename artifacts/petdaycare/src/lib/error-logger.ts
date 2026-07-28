@@ -15,7 +15,7 @@
 
 export interface ErrorEntry {
   ts: string;          // ISO timestamp
-  type: "uncaught" | "unhandledrejection" | "boundary" | "manual";
+  type: "uncaught" | "unhandledrejection" | "boundary" | "manual" | "console_error" | "console_warn";
   message: string;
   stack?: string;
   url?: string;
@@ -129,21 +129,83 @@ export function clearLocalErrorLog(): void {
   }
 }
 
+// ── Dedup guard — avoid flooding the server with the same error ───────────────
+const recentMessages = new Map<string, number>(); // message → last sent ts
+const DEDUP_MS = 10_000; // suppress same message within 10 s
+
+function isDuplicate(message: string): boolean {
+  const now = Date.now();
+  const last = recentMessages.get(message);
+  if (last && now - last < DEDUP_MS) return true;
+  recentMessages.set(message, now);
+  // Prevent unbounded growth
+  if (recentMessages.size > 200) {
+    const oldest = recentMessages.keys().next().value;
+    if (oldest) recentMessages.delete(oldest);
+  }
+  return false;
+}
+
 /**
- * Register global window error handlers.
+ * Register global window error handlers AND patch console.error / console.warn
+ * so every error that appears in DevTools is also forwarded to the API.
  * Call once at app startup (main.tsx).
  */
 export function initErrorLogger(): void {
+  // ── 1. Uncaught JS errors ──────────────────────────────────────────────────
   window.addEventListener("error", (event) => {
     const message = event.message || "Unknown error";
     const stack = event.error?.stack;
     logError("uncaught", message, stack);
   });
 
+  // ── 2. Unhandled promise rejections ───────────────────────────────────────
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
     const message = safeStringify(reason);
     const stack = reason instanceof Error ? reason.stack : undefined;
     logError("unhandledrejection", message, stack);
   });
+
+  // ── 3. console.error / console.warn patch ─────────────────────────────────
+  // Save originals BEFORE overriding so we don't recurse.
+  const _origError = console.error.bind(console);
+  const _origWarn  = console.warn.bind(console);
+
+  console.error = (...args: unknown[]) => {
+    _origError(...args); // always show in DevTools
+    try {
+      // Skip our own logger messages to prevent recursion
+      const first = String(args[0] ?? "");
+      if (first.startsWith("[ErrorLogger]")) return;
+      const message = args.map(safeStringify).join(" ").slice(0, 2000);
+      if (!isDuplicate(message)) {
+        const entry = buildEntry("console_error", message);
+        const log = readLog();
+        log.push(entry);
+        writeLog(log);
+        sendToApi(entry);
+      }
+    } catch {
+      // Never throw inside a console patch
+    }
+  };
+
+  console.warn = (...args: unknown[]) => {
+    _origWarn(...args); // always show in DevTools
+    try {
+      const first = String(args[0] ?? "");
+      if (first.startsWith("[ErrorLogger]")) return;
+      const message = args.map(safeStringify).join(" ").slice(0, 2000);
+      if (!isDuplicate(message)) {
+        const entry = buildEntry("console_warn", message);
+        const log = readLog();
+        log.push(entry);
+        writeLog(log);
+        sendToApi(entry);
+      }
+    } catch {
+      // Never throw
+    }
+  };
 }
