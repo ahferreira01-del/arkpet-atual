@@ -283,45 +283,61 @@ function StaffDashboard({ user }: { user: any }) {
         </Link>
       </div>
 
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-display font-semibold flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-400" /> Próximas Tarefas
-            </h2>
-            <Link href="/staff">
-              <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button>
-            </Link>
-          </div>
-          {isLoading ? (
-            <div className="text-center py-4 text-muted-foreground">Carregando...</div>
-          ) : activeTasks.length ? (
-            <div className="space-y-2.5">
-              {activeTasks.slice(0, 6).map((task) => (
-                <Link key={task.id} href="/staff">
-                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all cursor-pointer group">
-                    <div className="min-w-0">
-                      <p className="font-medium text-white text-sm">{task.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {task.petName && <span className="text-primary mr-2">{task.petName}</span>}
-                        {format(new Date(task.scheduledFor), "HH:mm")}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs">
-                        {task.priority === "high" ? "Alta" : task.priority === "medium" ? "Média" : "Baixa"}
-                      </Badge>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+      <Tabs
+        defaultTab="timeline"
+        tabs={[
+          {
+            id: "timeline",
+            label: "Timeline",
+            content: <FeedTab crecheId={crecheId} />,
+          },
+          {
+            id: "tasks",
+            label: "Tarefas",
+            content: (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-lg font-display font-semibold flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-amber-400" /> Próximas Tarefas
+                    </h2>
+                    <Link href="/staff">
+                      <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button>
+                    </Link>
                   </div>
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon={CheckCircle2} title="Tudo em dia!" description="Sem tarefas pendentes." />
-          )}
-        </CardContent>
-      </Card>
+                  {isLoading ? (
+                    <div className="text-center py-4 text-muted-foreground">Carregando...</div>
+                  ) : activeTasks.length ? (
+                    <div className="space-y-2.5">
+                      {activeTasks.slice(0, 6).map((task) => (
+                        <Link key={task.id} href="/staff">
+                          <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all cursor-pointer group">
+                            <div className="min-w-0">
+                              <p className="font-medium text-white text-sm">{task.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {task.petName && <span className="text-primary mr-2">{task.petName}</span>}
+                                {format(new Date(task.scheduledFor), "HH:mm")}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs">
+                                {task.priority === "high" ? "Alta" : task.priority === "medium" ? "Média" : "Baixa"}
+                              </Badge>
+                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <EmptyState icon={CheckCircle2} title="Tudo em dia!" description="Sem tarefas pendentes." />
+                  )}
+                </CardContent>
+              </Card>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

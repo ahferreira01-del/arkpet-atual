@@ -307,13 +307,18 @@ async function signObjectURL({
     method,
     expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
   };
+
+  // Include the Replit identity token so the sidecar can authenticate
+  // the request in the deployed (production) environment.
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const identity = process.env.REPL_IDENTITY;
+  if (identity) headers["Authorization"] = `Bearer ${identity}`;
+
   const response = await fetch(
     `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(30_000),
     }

@@ -1082,7 +1082,7 @@ export default function Bookings() {
                   </div>
                   <div className="rounded-xl overflow-hidden border border-white/10 aspect-[4/3]">
                     <img
-                      src={`/api/storage${photoUrl}`}
+                      src={resolvePhotoUrl(photoUrl) ?? ""}
                       alt="Itens pessoais registrados no check-in"
                       className="w-full h-full object-cover"
                     />

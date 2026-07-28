@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useListFeed, getListFeedQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { compressImage, uploadFileDirect } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
@@ -194,7 +195,7 @@ function FeedCard({
               {canEdit && (
                 <button
                   onClick={() => setEditing(true)}
-                  className="absolute top-0 right-0 opacity-0 group-hover/caption:opacity-100 transition-opacity h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center"
+                  className="absolute top-0 right-0 h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
                   title="Editar legenda"
                 >
                   <Pencil className="h-3 w-3 text-white/60" />
