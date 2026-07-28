@@ -11,7 +11,6 @@
 import { Router, type Request, type Response } from "express";
 import { appendFile, mkdir } from "fs/promises";
 import path from "path";
-import { fileURLToPath } from "url";
 
 const router = Router();
 
@@ -32,8 +31,9 @@ function isRateLimited(ip: string): boolean {
 }
 
 // ── Log file path ────────────────────────────────────────────────────────────
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOG_DIR  = path.resolve(__dirname, "../../logs");
+// Use process.cwd() — works in both ESM and CJS bundles (import.meta.url is
+// undefined in the CJS build output and would throw at module load time).
+const LOG_DIR  = path.resolve(process.cwd(), "logs");
 const LOG_FILE = path.join(LOG_DIR, "client-errors.log");
 
 let dirReady = false;

@@ -4,21 +4,18 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // Standard for GCM
 const AUTH_TAG_LENGTH = 16;
 
-// Note: ENCRYPTION_KEY must be a 32-byte hex string or base64 string
+// Returns a stable 32-byte AES key.
+// Priority: ENCRYPTION_KEY env var → SESSION_SECRET env var (always available in prod).
+// Any input is SHA-256-hashed to guarantee exactly 32 bytes regardless of length.
 function getEncryptionKey(): Buffer {
-  const keyStr = process.env.ENCRYPTION_KEY;
+  const keyStr = process.env.ENCRYPTION_KEY ?? process.env.SESSION_SECRET;
   if (!keyStr) {
-    throw new Error("ENCRYPTION_KEY is not defined");
+    throw new Error(
+      "No encryption key available: set ENCRYPTION_KEY or SESSION_SECRET.",
+    );
   }
-  // Try to parse as hex or base64. Let's assume hex of 32 bytes (64 chars) or directly 32 chars string.
-  if (keyStr.length === 64) {
-    return Buffer.from(keyStr, "hex");
-  }
-  if (keyStr.length === 32) {
-    return Buffer.from(keyStr, "utf8");
-  }
-  // Default to a 32-byte derived key for safety if length is weird
-  return crypto.createHash("sha256").update(String(keyStr)).digest();
+  // SHA-256 of the key material → always 32 bytes, safe for AES-256-GCM.
+  return crypto.createHash("sha256").update(keyStr).digest();
 }
 
 export function encrypt(text: string): string {

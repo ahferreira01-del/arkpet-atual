@@ -21,12 +21,6 @@ if (!rawPort) {
   );
 }
 
-if (!process.env.ENCRYPTION_KEY) {
-  throw new Error(
-    'ENCRYPTION_KEY não definida nos Secrets. ' +
-    'O servidor não pode iniciar sem ela.'
-  );
-}
 
 const port = Number(rawPort);
 
