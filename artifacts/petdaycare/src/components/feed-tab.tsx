@@ -4,6 +4,7 @@ import { useListFeed, getListFeedQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { compressImage, uploadFileDirect } from "@/lib/utils";
+import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -72,18 +73,16 @@ function FeedCard({
       const url: string | undefined = data.mediaUrl;
       if (!url) return;
 
-      // Step 2 — if it's an /api/storage/ path the browser cannot load it
-      // without auth headers (img/video tags don't send them). Fetch the
-      // binary with auth and create a local blob URL instead.
-      if (url.startsWith("/api/storage/")) {
-        const mediaRes = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!mediaRes.ok) return;
-        const blob = await mediaRes.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        setLoadedMedia(blobUrl);
+      // V2 objectPaths start with "/objects/" — convert to the authenticated
+      // storage endpoint using the media token so <img>/<video> can load them.
+      if (url.startsWith("/objects/")) {
+        setLoadedMedia(buildMediaSrc(url, getMediaToken()));
+      } else if (url.startsWith("/api/storage/")) {
+        // Legacy: already a full API path — append media token
+        const mt = encodeURIComponent(getMediaToken());
+        setLoadedMedia(`${url}${url.includes("?") ? "&" : "?"}mt=${mt}`);
       } else {
+        // base64 or blob URL — use directly
         setLoadedMedia(url);
       }
     } catch {

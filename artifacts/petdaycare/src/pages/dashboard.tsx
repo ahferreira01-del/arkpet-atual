@@ -14,6 +14,7 @@ import {
   ListTasksStatus,
 } from "@workspace/api-client-react";
 import { FeedPage } from "@/features/feed/components/FeedPage";
+import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 import { Tabs } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -422,7 +423,14 @@ function TimelineEventCard({
       });
       if (res.ok) {
         const data = await res.json();
-        if (data.mediaUrl) setLoadedMedia(data.mediaUrl);
+        const url: string | undefined = data.mediaUrl;
+        if (!url) return;
+        // V2 objectPaths start with "/objects/" — convert to authenticated storage URL
+        if (url.startsWith("/objects/")) {
+          setLoadedMedia(buildMediaSrc(url, getMediaToken()));
+        } else {
+          setLoadedMedia(url);
+        }
       }
     } catch {
       // silent
