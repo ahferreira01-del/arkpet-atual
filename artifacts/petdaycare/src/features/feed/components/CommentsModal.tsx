@@ -41,7 +41,7 @@ export function CommentsModal({ postId, crecheId, onClose }: CommentsModalProps)
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Sheet */}
-      <div className="relative w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[85dvh] sm:max-h-[70vh] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
+      <div className="relative w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-72px-env(safe-area-inset-bottom,0px))] sm:max-h-[70vh] mb-[calc(72px+env(safe-area-inset-bottom,0px))] sm:mb-0 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
           <h2 className="font-semibold text-white text-sm">
@@ -96,7 +96,6 @@ export function CommentsModal({ postId, crecheId, onClose }: CommentsModalProps)
             placeholder="Escreva um comentário…"
             className="flex-1 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             maxLength={500}
-            autoFocus
           />
           <button
             type="submit"

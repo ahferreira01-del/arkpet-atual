@@ -89,7 +89,7 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
       {/* Modal */}
       <form
         onSubmit={handleSubmit}
-        className="relative w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92dvh] sm:max-h-[85vh] animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        className="relative w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-72px-env(safe-area-inset-bottom,0px))] sm:max-h-[85vh] mb-[calc(72px+env(safe-area-inset-bottom,0px))] sm:mb-0 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
