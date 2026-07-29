@@ -58,29 +58,81 @@ export class ObjectStorageService {
     return null;
   }
 
-  async downloadObject(localFilePath: string, cacheTtlSec: number = 3600): Promise<Response> {
+  /**
+   * Guess content-type from file extension.
+   */
+  private getContentType(localFilePath: string): string {
+    const ext = path.extname(localFilePath).toLowerCase();
+    if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+    if (ext === ".png")  return "image/png";
+    if (ext === ".webp") return "image/webp";
+    if (ext === ".mp4")  return "video/mp4";
+    if (ext === ".mov")  return "video/mp4";   // Safari plays .mov best as video/mp4
+    if (ext === ".webm") return "video/webm";
+    if (ext === ".pdf")  return "application/pdf";
+    return "application/octet-stream";
+  }
+
+  /**
+   * Serve a file from the local filesystem, honouring HTTP Range requests
+   * (required by Safari / iOS for video playback).
+   *
+   * @param range  Value of the incoming `Range` header, e.g. "bytes=0-1023"
+   */
+  async downloadObject(
+    localFilePath: string,
+    cacheTtlSec: number = 3600,
+    range?: string,
+  ): Promise<Response> {
     try {
       const stats = await fsp.stat(localFilePath);
+      const contentType = this.getContentType(localFilePath);
+      const fileSize = stats.size;
+
+      // ── Range request (Safari / iOS video) ───────────────────────────────
+      if (range) {
+        const match = range.match(/bytes=(\d*)-(\d*)/);
+        if (match) {
+          const start = match[1] !== "" ? parseInt(match[1], 10) : 0;
+          const end   = match[2] !== "" ? parseInt(match[2], 10) : fileSize - 1;
+
+          if (start > end || end >= fileSize) {
+            // Unsatisfiable range
+            return new Response(null, {
+              status: 416,
+              headers: { "Content-Range": `bytes */${fileSize}` },
+            });
+          }
+
+          const chunkSize = end - start + 1;
+          const nodeStream = fs.createReadStream(localFilePath, { start, end });
+          const webStream  = Readable.toWeb(nodeStream) as ReadableStream;
+
+          return new Response(webStream, {
+            status: 206,
+            headers: {
+              "Content-Type":   contentType,
+              "Content-Range":  `bytes ${start}-${end}/${fileSize}`,
+              "Accept-Ranges":  "bytes",
+              "Content-Length": String(chunkSize),
+              "Cache-Control":  `public, max-age=${cacheTtlSec}`,
+            },
+          });
+        }
+      }
+
+      // ── Full file ─────────────────────────────────────────────────────────
       const nodeStream = fs.createReadStream(localFilePath);
-      const webStream = Readable.toWeb(nodeStream) as ReadableStream;
+      const webStream  = Readable.toWeb(nodeStream) as ReadableStream;
 
-      // Simplistic content-type guessing based on extension
-      const ext = path.extname(localFilePath).toLowerCase();
-      let contentType = "application/octet-stream";
-      if (ext === ".jpg" || ext === ".jpeg") contentType = "image/jpeg";
-      else if (ext === ".png") contentType = "image/png";
-      else if (ext === ".webp") contentType = "image/webp";
-      else if (ext === ".mp4") contentType = "video/mp4";
-      else if (ext === ".webm") contentType = "video/webm";
-      else if (ext === ".pdf") contentType = "application/pdf";
-
-      const headers: Record<string, string> = {
-        "Content-Type": contentType,
-        "Cache-Control": `public, max-age=${cacheTtlSec}`,
-        "Content-Length": String(stats.size),
-      };
-
-      return new Response(webStream, { headers });
+      return new Response(webStream, {
+        headers: {
+          "Content-Type":   contentType,
+          "Accept-Ranges":  "bytes",
+          "Content-Length": String(fileSize),
+          "Cache-Control":  `public, max-age=${cacheTtlSec}`,
+        },
+      });
     } catch (err) {
       throw new ObjectNotFoundError();
     }
@@ -156,15 +208,34 @@ export class ObjectStorageService {
     }
   }
 
+  /** Map MIME type → file extension so the file can be served with the right Content-Type. */
+  private extForContentType(contentType: string): string {
+    const mime = contentType.split(";")[0].trim().toLowerCase();
+    const map: Record<string, string> = {
+      "image/jpeg":      ".jpg",
+      "image/jpg":       ".jpg",
+      "image/png":       ".png",
+      "image/webp":      ".webp",
+      "video/mp4":       ".mp4",
+      "video/quicktime": ".mov",
+      "video/webm":      ".webm",
+      "application/pdf": ".pdf",
+    };
+    return map[mime] ?? "";
+  }
+
   async uploadBuffer(
     buffer: Buffer,
     contentType: string,
     _ownerId?: string,
     crecheId?: string,
   ): Promise<string> {
-    const uuid = randomUUID();
-    const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
-    const entityDir = this.getPrivateObjectDir();
+    const uuid    = randomUUID();
+    const ext     = this.extForContentType(contentType);
+    const subPath = crecheId
+      ? `uploads/c${crecheId}/${uuid}${ext}`
+      : `uploads/${uuid}${ext}`;
+    const entityDir   = this.getPrivateObjectDir();
     const localFilePath = path.join(this.getAbsoluteStoragePath(entityDir), subPath);
 
     await fsp.mkdir(path.dirname(localFilePath), { recursive: true });

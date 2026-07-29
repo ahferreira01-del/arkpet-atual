@@ -90,7 +90,7 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
       return;
     }
 
-    const response = await objectStorageService.downloadObject(file);
+    const response = await objectStorageService.downloadObject(file, 3600, req.headers.range);
 
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
@@ -176,7 +176,7 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       }
       // Authorized — skip the GCS-metadata ACL check and go straight to download
       const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-      const response   = await objectStorageService.downloadObject(objectFile);
+      const response   = await objectStorageService.downloadObject(objectFile, 3600, req.headers.range);
       res.status(response.status);
       response.headers.forEach((value, key) => res.setHeader(key, value));
       if (response.body) {
@@ -206,7 +206,7 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       return;
     }
     // ------------------------------------------------------------------
-    const response = await objectStorageService.downloadObject(objectFile);
+    const response = await objectStorageService.downloadObject(objectFile, 3600, req.headers.range);
 
     res.status(response.status);
     response.headers.forEach((value, key) => res.setHeader(key, value));
