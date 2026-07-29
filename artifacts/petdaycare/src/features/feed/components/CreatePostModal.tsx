@@ -136,7 +136,7 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-white/5 shrink-0 space-y-3">
+        <div className="px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/5 shrink-0 space-y-3">
           {/* Upload progress bar */}
           {isPending && uploadPercent !== undefined && (
             <div className="space-y-1">
@@ -163,8 +163,8 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
             </p>
           )}
 
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
+            <p className="text-xs text-muted-foreground text-center sm:text-left">
               {selectedPets.length === 0
                 ? "Selecione pelo menos um pet"
                 : !content.trim() && !mediaFile
@@ -174,7 +174,7 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
             <Button
               type="submit"
               disabled={!isValid || isPending}
-              className="rounded-full px-6 shadow-lg shadow-primary/20 shrink-0"
+              className="w-full sm:w-auto rounded-full px-6 shadow-lg shadow-primary/20 shrink-0"
             >
               {isPending ? (
                 <span className="flex items-center gap-2">
