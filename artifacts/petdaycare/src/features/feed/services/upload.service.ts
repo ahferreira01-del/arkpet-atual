@@ -138,40 +138,11 @@ export async function uploadToStorage(
   crecheId: number,
   onProgress?: (percent: number) => void,
 ): Promise<UploadResult> {
-  // Step 1 — ask the API server for a presigned PUT URL
-  const urlRes = await fetch("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      name: "upload",
-      size: blob.size,
-      contentType,
-    }),
-  });
-
-  if (!urlRes.ok) {
-    let message = "Falha ao preparar upload. Tente novamente.";
-    try {
-      const err = await urlRes.json() as { error?: string };
-      if (err.error) message = err.error;
-    } catch { /* ignore */ }
-    throw new Error(message);
-  }
-
-  const { uploadURL, objectPath } = await urlRes.json() as {
-    uploadURL: string;
-    objectPath: string;
-  };
-
-  // Step 2 — PUT the bytes directly to GCS via the presigned URL.
-  // XHR is used instead of fetch so we can report upload progress.
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadURL);
+    xhr.open("POST", "/api/storage/uploads/direct");
     xhr.setRequestHeader("Content-Type", contentType);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
@@ -181,9 +152,19 @@ export async function uploadToStorage(
 
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        resolve({ objectPath });
+        try {
+          const res = JSON.parse(xhr.responseText);
+          resolve({ objectPath: res.objectPath });
+        } catch {
+          reject(new Error("Resposta inválida do servidor."));
+        }
       } else {
-        reject(new Error(`Falha ao enviar arquivo para o armazenamento (${xhr.status}).`));
+        let errorMsg = `Falha ao enviar arquivo (${xhr.status}).`;
+        try {
+          const errRes = JSON.parse(xhr.responseText);
+          if (errRes.error) errorMsg = errRes.error;
+        } catch {}
+        reject(new Error(errorMsg));
       }
     };
 
