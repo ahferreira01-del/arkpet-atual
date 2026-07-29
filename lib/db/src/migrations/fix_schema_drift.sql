@@ -1,9 +1,15 @@
 -- Schema drift fix: columns/tables defined in Drizzle schema but missing from DB
 -- Applied 2026-07-27
 
--- Enums
-CREATE TYPE IF NOT EXISTS creche_delivery_type AS ENUM ('fixed', 'on_demand');
-CREATE TYPE IF NOT EXISTS pet_size AS ENUM ('small', 'medium', 'large');
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'creche_delivery_type') THEN
+        CREATE TYPE creche_delivery_type AS ENUM ('fixed', 'on_demand');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'pet_size') THEN
+        CREATE TYPE pet_size AS ENUM ('small', 'medium', 'large');
+    END IF;
+END$$;
 
 -- creches
 ALTER TABLE creches
