@@ -74,10 +74,53 @@ export async function validateMediaFile(file: File): Promise<MediaValidationResu
 // Image compression → WebP Blob (no base64 at any point)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const IMAGE_QUALITY = 0.82;
+const IMAGE_QUALITY = 0.90;
 const IMAGE_MAX_DIMENSION = 1920;
 
+/**
+ * Compress a photo to WebP, respecting EXIF orientation.
+ *
+ * iPhone photos are stored as landscape with an EXIF rotation tag — drawing
+ * them directly onto a canvas produces a sideways/rotated result.
+ * `createImageBitmap({ imageOrientation: "from-image" })` decodes the frame
+ * already rotated correctly (Safari ≥ 15.4, Chrome ≥ 64, Firefox ≥ 93).
+ * We fall back to the plain <img> path for older browsers where the option
+ * is not supported; those users may still see rotation issues but the upload
+ * will not break.
+ */
 export async function compressToWebPBlob(file: File): Promise<Blob> {
+  // ── preferred path: EXIF-aware bitmap ────────────────────────────────────
+  try {
+    const bitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+    } as ImageBitmapOptions);
+
+    let { width, height } = bitmap;
+    if (width > IMAGE_MAX_DIMENSION || height > IMAGE_MAX_DIMENSION) {
+      const ratio = Math.min(IMAGE_MAX_DIMENSION / width, IMAGE_MAX_DIMENSION / height);
+      width  = Math.round(width  * ratio);
+      height = Math.round(height * ratio);
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width  = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas não disponível");
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
+        "image/webp",
+        IMAGE_QUALITY,
+      );
+    });
+  } catch {
+    // ── fallback: plain <img> (no EXIF correction) ──────────────────────────
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -100,20 +143,13 @@ export async function compressToWebPBlob(file: File): Promise<Blob> {
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error("Falha ao comprimir imagem")); return; }
-          resolve(blob);
-        },
+        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
         "image/webp",
         IMAGE_QUALITY,
       );
     };
 
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Falha ao carregar imagem"));
-    };
-
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Falha ao carregar imagem")); };
     img.src = objectUrl;
   });
 }
