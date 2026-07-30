@@ -271,10 +271,28 @@ export class ObjectStorageService {
   }
 
   // ── Path normalization ────────────────────────────────────────────────────
+  // Converts a GCS signed URL back to the short /objects/... path stored in DB.
+  // Input:  "https://storage.googleapis.com/bucket/.private/uploads/c3/uuid.webp?X-Goog-..."
+  // Output: "/objects/uploads/c3/uuid.webp"
   normalizeObjectEntityPath(rawPath: string): string {
-    if (!rawPath.startsWith("http")) return rawPath;
-    const url = new URL(rawPath);
-    return url.pathname.replace("/api/storage", "");
+    if (!rawPath.startsWith("https://storage.googleapis.com/")) return rawPath;
+    // pathname: /bucket/.private/uploads/c3/uuid.webp
+    const pathname = new URL(rawPath).pathname;
+    // Strip leading slash: bucket/.private/uploads/c3/uuid.webp
+    const withoutLeadingSlash = pathname.slice(1);
+    // PRIVATE_OBJECT_DIR e.g. /bucket/.private → strip leading slash → bucket/.private
+    const privateDir = this.getPrivateObjectDir().replace(/^\//, "");
+    if (privateDir && withoutLeadingSlash.startsWith(privateDir + "/")) {
+      // subPath: uploads/c3/uuid.webp
+      const subPath = withoutLeadingSlash.slice(privateDir.length + 1);
+      return `/objects/${subPath}`;
+    }
+    // Fallback: strip bucket name only
+    const firstSlash = withoutLeadingSlash.indexOf("/");
+    if (firstSlash !== -1) {
+      return `/objects/${withoutLeadingSlash.slice(firstSlash + 1)}`;
+    }
+    return rawPath;
   }
 
   // ── ACL (no-op — access is enforced by path-based auth in storage.ts) ─────

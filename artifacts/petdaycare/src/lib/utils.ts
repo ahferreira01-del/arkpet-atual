@@ -57,31 +57,85 @@ export function resolvePhotoUrl(photoUrl: string | null | undefined): string | n
 }
 
 /**
- * Upload a file:
- * - Images (image/*): compressed to base64 WebP on the client — zero server round-trip,
- *   works everywhere regardless of GCS/sidecar availability.
- * - Other files (video, PDF, …): sent as raw bytes to the server-side direct-upload endpoint.
- *
- * Returns a string that can be stored in the DB as a photo/media URL:
- * - images  → "data:image/webp;base64,…"
- * - others  → "/objects/uploads/<uuid>"
+ * Compress an image File to a WebP Blob (not base64).
+ * Uses createImageBitmap for EXIF-aware rotation (iOS/Safari), falls back to
+ * FileReader + <img> on older browsers.
  */
-export async function uploadFileDirect(file: File, token: string): Promise<string> {
-  if (file.type.startsWith("image/")) {
-    return compressImage(file);
+async function compressImageToBlob(file: File, maxWidth = 1080, quality = 0.82): Promise<Blob> {
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+    } as ImageBitmapOptions);
+    const ratio = Math.min(1, maxWidth / bitmap.width);
+    const canvas = document.createElement("canvas");
+    canvas.width  = Math.round(bitmap.width  * ratio);
+    canvas.height = Math.round(bitmap.height * ratio);
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
+        "image/webp",
+        quality,
+      );
+    });
   }
 
-  // Non-image files (video, PDF, …): upload directly through the API server.
-  // The presigned-URL / sidecar flow returns 401 in production, so we POST
-  // the raw bytes to /api/storage/uploads/direct which uses the GCS SDK
-  // server-side (no sidecar signing required).
+  // Legacy fallback (older browsers without createImageBitmap)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width  = Math.round(img.width  * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
+          "image/webp",
+          quality,
+        );
+      };
+      img.onerror = reject;
+      img.src = ev.target!.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Upload a file to Replit Object Storage via the server-side /direct endpoint.
+ *
+ * - Images (image/*): compressed client-side to WebP, then uploaded as blob
+ * - Other files (video, PDF, …): sent as raw bytes
+ *
+ * Always returns an objectPath ("/objects/uploads/…") suitable for DB storage.
+ * Legacy base64 data: URIs are no longer produced by this function.
+ */
+export async function uploadFileDirect(file: File, token: string): Promise<string> {
+  let body: Blob;
+  let contentType: string;
+
+  if (file.type.startsWith("image/")) {
+    body = await compressImageToBlob(file);
+    contentType = "image/webp";
+  } else {
+    body = file;
+    contentType = file.type || "application/octet-stream";
+  }
+
   const uploadRes = await fetch("/api/storage/uploads/direct", {
     method: "POST",
     headers: {
-      "Content-Type": file.type || "application/octet-stream",
+      "Content-Type": contentType,
       Authorization: `Bearer ${token}`,
     },
-    body: file,
+    body,
   });
   if (!uploadRes.ok) {
     const err = await uploadRes.json().catch(() => ({}));

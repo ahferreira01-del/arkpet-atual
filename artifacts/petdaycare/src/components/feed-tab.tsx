@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useListFeed, getListFeedQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { compressImage, uploadFileDirect } from "@/lib/utils";
+import { uploadFileDirect } from "@/lib/utils";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
@@ -335,25 +335,18 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
       const token = localStorage.getItem("auth_token");
 
       if (mediaFile) {
-        if (mediaFile.type.startsWith("video/")) {
-          try {
-            mediaUrl = await uploadFileDirect(mediaFile, token!);
-          } catch {
-            toast({
-              title: "Upload de vídeo indisponível",
-              description: "Não foi possível enviar o vídeo no momento. Tente publicar uma foto.",
-              variant: "destructive",
-            });
-            setPosting(false);
-            return;
-          }
-          mediaType = "video";
-        } else {
-          // Photo: compress to base64
-          const compressedBase64 = await compressImage(mediaFile);
-          mediaUrl = compressedBase64;
-          mediaType = "photo";
+        try {
+          mediaUrl = await uploadFileDirect(mediaFile, token!);
+        } catch {
+          toast({
+            title: "Upload indisponível",
+            description: "Não foi possível enviar o arquivo no momento. Tente novamente.",
+            variant: "destructive",
+          });
+          setPosting(false);
+          return;
         }
+        mediaType = mediaFile.type.startsWith("video/") ? "video" : "photo";
       }
 
       await fetch(`/api/creches/${crecheId}/feed`, {
