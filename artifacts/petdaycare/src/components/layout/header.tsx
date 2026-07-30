@@ -52,41 +52,6 @@ export function Header({ user }: HeaderProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <button className="text-gray-400 hover:text-white transition-colors">
-          <Search className="h-6 w-6" />
-        </button>
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-          </button>
-          <span className="absolute -top-1 -right-1 h-[18px] min-w-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center leading-none">
-            3
-          </span>
-
-          {/* Dropdown Logout */}
-          {menuOpen && (
-            <div className="absolute right-0 top-[calc(100%+15px)] z-50 w-56 bg-card rounded-2xl shadow-xl border border-white/5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="px-4 py-3 border-b border-white/5">
-                <p className="text-sm font-semibold text-white truncate">{user.name}</p>
-                <p className="text-xs text-primary mt-0.5">{ROLE_LABELS[user.role] || user.role}</p>
-              </div>
-              <div className="p-2">
-                <button
-                  onClick={() => { setMenuOpen(false); logout(); }}
-                  className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:bg-white/5 hover:text-white transition-all duration-150"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sair da conta
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
     </header>
   );
 }

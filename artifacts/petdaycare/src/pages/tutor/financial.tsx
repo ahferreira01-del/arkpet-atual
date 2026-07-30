@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useGetCreche } from "@workspace/api-client-react";
-import { useTutorInvoices, useStripeCheckout, usePackagesBalance, useListOrders } from "@/hooks/use-financial";
+import { useTutorInvoices, useStripeCheckout, usePackagesBalance, useListOrders, useServiceCredits } from "@/hooks/use-financial";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { uploadFileDirect } from "@/lib/utils";
 import { useLocation } from "wouter";
-import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, CreditCard, Eye, Package, ShoppingCart, QrCode, Copy } from "lucide-react";
+import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, Eye, Package, ShoppingCart, QrCode, Copy, Scissors, CalendarCheck, Printer } from "lucide-react";
+import { ThermalReceiptModal } from "@/components/modals/ThermalReceiptModal";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useInvoiceItems } from "@/hooks/use-financial";
@@ -34,6 +35,7 @@ export default function TutorFinancial() {
   
   const [uploadingFor, setUploadingFor] = useState<number | null>(null);
   const [detailsFor, setDetailsFor] = useState<number | null>(null);
+  const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
   const [pixInvoice, setPixInvoice] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,10 +51,8 @@ export default function TutorFinancial() {
     toast({ title: "Enviando comprovante...", description: "Aguarde um momento." });
 
     try {
-      // 1. Upload direto via servidor (sem URL assinada — funciona em produção)
       const objectPath = await uploadFileDirect(file, token!);
 
-      // 2. Registrar o comprovante na fatura
       const receiptRes = await fetch(`/api/creches/${crecheId}/financial/invoices/${uploadingFor}/upload-receipt`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -76,17 +76,6 @@ export default function TutorFinancial() {
     }
   };
 
-  const handlePayOnline = (invoiceId: number) => {
-    stripeMutation.mutate({ invoiceId }, {
-      onSuccess: (data: any) => {
-        if (data.checkoutUrl) window.open(data.checkoutUrl, "_blank");
-      },
-      onError: (err: any) => {
-        toast({ title: "Erro", description: err.message, variant: "destructive" });
-      }
-    });
-  };
-
   const handleViewReceipt = async (invoiceId: number) => {
     try {
       const token = localStorage.getItem("auth_token");
@@ -102,89 +91,108 @@ export default function TutorFinancial() {
   };
 
   const { data: packagesData, isLoading: isLoadingPackages } = usePackagesBalance(crecheId);
+  const { data: serviceCreditsData, isLoading: isLoadingServiceCredits } = useServiceCredits(crecheId);
   const availableCredits = packagesData?.availableCredits || 0;
 
-  if (isLoading || isLoadingPackages || isLoadingOrders) return <div className="p-8 text-center text-muted-foreground">Carregando carteira...</div>;
+  if (isLoading || isLoadingPackages || isLoadingOrders || isLoadingServiceCredits) return <div className="p-8 text-center text-muted-foreground flex flex-col items-center justify-center min-h-[60vh]">Carregando carteira...</div>;
 
   const invoiceList = invoices?.data || (Array.isArray(invoices) ? invoices : []);
   const openInvoices = invoiceList.filter((inv: any) => inv.status !== "paid");
   const paidInvoices = invoiceList.filter((inv: any) => inv.status === "paid");
 
-  const renderInvoiceList = (list: any[]) => {
+  // ArkListTile para Faturas
+  const renderInvoiceList = (list: any[], isHistory = false) => {
     if (list.length === 0) {
       return (
-        <div className="p-8 rounded-2xl border border-white/5 bg-white/5 text-center flex flex-col items-center justify-center space-y-3">
-          <CheckCircle2 className="h-10 w-10 text-emerald-400 opacity-50" />
+        <div className="p-12 rounded-3xl border border-white/5 bg-white/5 text-center flex flex-col items-center justify-center space-y-4">
+          <CheckCircle2 className="h-16 w-16 text-emerald-400 opacity-20" />
           <div>
-            <p className="text-white font-medium">Tudo em dia!</p>
-            <p className="text-sm text-muted-foreground">Você não possui faturas em aberto no momento.</p>
+            <p className="text-white font-medium text-lg">{isHistory ? "Nenhum histórico" : "Tudo em dia!"}</p>
+            <p className="text-sm text-muted-foreground">{isHistory ? "Nenhum pagamento registrado no seu histórico." : "Você não possui faturas pendentes no momento."}</p>
           </div>
         </div>
       );
     }
 
-    return list.map((inv: any) => (
-      <Card key={inv.id} className="border-white/10 bg-black/40 hover:bg-black/60 transition-colors mb-4">
-        <CardContent className="p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    return list.map((inv: any) => {
+      const isPaid = inv.status === "paid";
+      const isOverdue = inv.status === "overdue";
+      const isAwaiting = inv.status === "awaiting_confirmation";
+      const dateLabel = isPaid && inv.updatedAt ? `Pago em ${format(new Date(inv.updatedAt), "dd/MM", { locale: ptBR })}` : `Venc: ${format(new Date(inv.dueDate), "dd/MM", { locale: ptBR })}`;
+      
+      return (
+        <div key={inv.id} className="group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 mb-3 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] transition-all">
+          <div className="flex items-start gap-4">
+            <div className={`h-12 w-12 rounded-full flex items-center justify-center shrink-0 ${isPaid ? 'bg-emerald-500/10 text-emerald-400' : isOverdue ? 'bg-red-500/10 text-red-400' : isAwaiting ? 'bg-amber-500/10 text-amber-400' : 'bg-primary/10 text-primary'}`}>
+              <Receipt className="h-6 w-6" />
+            </div>
             <div>
-              <div className="flex items-center gap-3 mb-1">
-                <h4 className="font-medium text-white text-lg">Fatura #{inv.id}</h4>
-                {inv.status === "overdue" && <Badge variant="destructive">Vencida</Badge>}
+              <div className="flex items-center gap-2 mb-1">
+                <h4 className="font-semibold text-white text-base">Fatura #{inv.id}</h4>
+                {isOverdue && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-400">Vencida</span>}
+                {isAwaiting && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400">Em Análise</span>}
+                {isPaid && <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400">Paga</span>}
               </div>
-              <p className="text-sm text-muted-foreground">
-                Vencimento: {format(new Date(inv.dueDate), "dd/MM/yyyy", { locale: ptBR })}
+              <p className="text-sm text-muted-foreground font-medium">
+                {dateLabel}
               </p>
             </div>
-            <div className="flex flex-col sm:items-end justify-center w-full sm:w-auto gap-3">
-              <div className="flex items-center gap-2 pr-2">
-                <p className="text-2xl font-bold text-white">{formatBRL(inv.amount ? Number(inv.amount) : inv.totalAmount)}</p>
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-white" onClick={() => setDetailsFor(inv.id)}>
-                  <Eye className="h-4 w-4 mr-1" /> Detalhes
+          </div>
+          
+          <div className="flex flex-col sm:items-end justify-center w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t border-white/5 sm:border-0">
+            <p className="text-xl font-bold text-white mb-2">{formatBRL(inv.amount ? Number(inv.amount) : inv.totalAmount)}</p>
+            
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-white flex-1 sm:flex-none bg-white/5 hover:bg-white/10" onClick={() => setDetailsFor(inv.id)}>
+                <Eye className="mr-1.5 h-3.5 w-3.5" /> Detalhes
+              </Button>
+              {isPaid && inv.receiptPhotoPath && (
+                <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.id)} className="h-8 text-xs text-muted-foreground hover:text-white flex-1 sm:flex-none bg-white/5 hover:bg-white/10">
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Comprovante
                 </Button>
-              </div>
-              {inv.status === "awaiting_confirmation" ? (
-                <Badge variant="outline" className="text-amber-400 border-amber-500/30 self-end">
-                  Em análise
-                </Badge>
-              ) : (
-                <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                  <Button 
-                    onClick={() => setPixInvoice(inv)}
-                    variant="outline"
-                    className="w-full sm:w-auto border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                  >
-                    <QrCode className="mr-2 h-4 w-4" /> Pagar via Pix
-                  </Button>
-                </div>
+              )}
+              {isPaid && (
+                <Button variant="ghost" size="sm" onClick={() => setReceiptModalId(inv.id)} className="h-8 text-xs text-emerald-400 hover:text-emerald-300 flex-1 sm:flex-none bg-emerald-500/10 hover:bg-emerald-500/20">
+                  <Printer className="mr-1.5 h-3.5 w-3.5" /> Recibo NFC-e
+                </Button>
+              )}
+              {!isPaid && !isAwaiting && (
+                <Button 
+                  size="sm"
+                  onClick={() => setPixInvoice(inv)}
+                  className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white flex-1 sm:flex-none shadow-lg shadow-emerald-500/20"
+                >
+                  <QrCode className="mr-1.5 h-3.5 w-3.5" /> Pagar Fatura
+                </Button>
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
-    ));
+        </div>
+      );
+    });
   };
 
   const getOrderStatusInfo = (status: string) => {
     switch(status) {
-      case 'pending_payment': return { label: 'Aguardando Pagamento', color: 'text-amber-400', border: 'border-amber-400/30' };
-      case 'paid': return { label: 'Pagamento Aprovado', color: 'text-emerald-400', border: 'border-emerald-400/30' };
-      case 'preparing': return { label: 'Em Preparação', color: 'text-blue-400', border: 'border-blue-400/30' };
-      case 'ready_for_pickup': return { label: 'Pronto para Retirada', color: 'text-purple-400', border: 'border-purple-400/30' };
-      case 'delivering': return { label: 'Saiu para Entrega', color: 'text-indigo-400', border: 'border-indigo-400/30' };
-      case 'delivered': return { label: 'Concluído', color: 'text-emerald-500', border: 'border-emerald-500/30' };
-      case 'cancelled': return { label: 'Cancelado', color: 'text-red-400', border: 'border-red-400/30' };
-      default: return { label: status, color: 'text-muted-foreground', border: 'border-white/10' };
+      case 'pending_payment': return { label: 'Aguardando Pagamento', color: 'text-amber-400 bg-amber-400/10' };
+      case 'paid': return { label: 'Pagamento Aprovado', color: 'text-emerald-400 bg-emerald-400/10' };
+      case 'preparing': return { label: 'Em Preparação', color: 'text-blue-400 bg-blue-400/10' };
+      case 'ready_for_pickup': return { label: 'Pronto para Retirada', color: 'text-purple-400 bg-purple-400/10' };
+      case 'delivering': return { label: 'Saiu para Entrega', color: 'text-indigo-400 bg-indigo-400/10' };
+      case 'delivered': return { label: 'Concluído', color: 'text-emerald-500 bg-emerald-500/10' };
+      case 'cancelled': return { label: 'Cancelado', color: 'text-red-400 bg-red-400/10' };
+      default: return { label: status, color: 'text-muted-foreground bg-white/10' };
     }
   };
 
+  // ArkListTile para Timeline de Pedidos
   const renderOrdersList = (list: any[]) => {
     if (list.length === 0) {
       return (
-        <div className="p-8 rounded-2xl border border-white/5 bg-white/5 text-center flex flex-col items-center justify-center space-y-3">
-          <Package className="h-10 w-10 text-emerald-400 opacity-50" />
+        <div className="p-12 rounded-3xl border border-white/5 bg-white/5 text-center flex flex-col items-center justify-center space-y-4">
+          <Package className="h-16 w-16 text-emerald-400 opacity-20" />
           <div>
-            <p className="text-white font-medium">Nenhum pedido ainda!</p>
+            <p className="text-white font-medium text-lg">Nenhum pedido ainda!</p>
             <p className="text-sm text-muted-foreground">Que tal visitar nossa Lojinha e fazer sua primeira compra?</p>
           </div>
         </div>
@@ -195,63 +203,51 @@ export default function TutorFinancial() {
       const statusInfo = getOrderStatusInfo(order.status);
       
       return (
-        <Card key={order.id} className="border-white/10 bg-black/40 mb-4 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="p-5 border-b border-white/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <p className="font-medium text-white text-lg">Pedido #{order.id}</p>
-                <p className="text-sm text-muted-foreground">Realizado em {format(new Date(order.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</p>
-              </div>
-              <div className="flex flex-col items-end gap-2">
-                <Badge variant="outline" className={`${statusInfo.color} ${statusInfo.border} px-3 py-1 text-xs uppercase tracking-wider`}>
-                  {statusInfo.label}
-                </Badge>
-                <p className="text-lg font-bold text-white">{formatBRL(Number(order.total))}</p>
-              </div>
+        <div key={order.id} className="group relative flex flex-col p-4 mb-3 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] transition-all">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+               <div className={`h-12 w-12 rounded-full flex items-center justify-center shrink-0 bg-white/5 text-white`}>
+                 <Package className="h-5 w-5 text-muted-foreground" />
+               </div>
+               <div>
+                  <h4 className="font-semibold text-white text-base">Pedido #{order.id}</h4>
+                  <p className="text-sm text-muted-foreground font-medium">{format(new Date(order.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}</p>
+               </div>
             </div>
-            
-            <div className="p-5 bg-white/[0.02]">
-              <p className="text-sm font-semibold text-white mb-3">Itens do Pedido:</p>
-              <div className="space-y-3">
-                {order.items?.map((item: any, idx: number) => (
-                  <div key={idx} className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-md bg-white/10 flex items-center justify-center shrink-0 overflow-hidden">
-                      {item.mediaUrls?.[0] ? (
-                        <img src={item.mediaUrls[0]} alt="item" className="w-full h-full object-cover" />
-                      ) : (
-                        <Package className="h-5 w-5 text-white/50" />
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-white font-medium">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.quantity}x {formatBRL(Number(item.unitPrice))}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              
-              {order.status === 'pending_payment' && order.invoiceId && (
-                <div className="mt-6 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <p className="text-sm text-amber-400 flex-1">Este pedido está aguardando confirmação do pagamento (Pix).</p>
-                  <Button 
-                    variant="outline" 
-                    className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300 w-full sm:w-auto"
-                    onClick={() => {
-                      const invoice = (invoices?.data || invoices)?.find((i:any) => i.id === order.invoiceId);
-                      if (invoice) {
-                        const tabsEl = document.querySelector('[role="tablist"] [value="invoices"]') as HTMLElement;
-                        if (tabsEl) tabsEl.click();
-                        setPixInvoice(invoice);
-                      }
-                    }}
-                  >
-                    <QrCode className="mr-2 h-4 w-4" /> Anexar Comprovante
-                  </Button>
+            <div className="flex flex-col items-end">
+               <p className="text-lg font-bold text-white mb-1.5">{formatBRL(Number(order.total))}</p>
+               <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${statusInfo.color}`}>{statusInfo.label}</span>
+            </div>
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-white/5 pl-0 sm:pl-[64px]">
+            <div className="space-y-1.5">
+              {order.items?.map((item: any, idx: number) => (
+                <div key={idx} className="flex justify-between items-center text-sm">
+                  <span className="text-white/70 font-medium"><span className="text-muted-foreground mr-1">{item.quantity}x</span> {item.name}</span>
+                  <span className="text-muted-foreground">{formatBRL(Number(item.unitPrice))}</span>
                 </div>
-              )}
+              ))}
             </div>
-          </CardContent>
-        </Card>
+            {order.status === 'pending_payment' && order.invoiceId && (
+               <Button 
+                 variant="ghost" 
+                 size="sm"
+                 className="mt-4 w-full sm:w-auto text-amber-400 hover:text-amber-300 bg-amber-400/5 hover:bg-amber-400/10"
+                 onClick={() => {
+                   const invoice = (invoices?.data || invoices)?.find((i:any) => i.id === order.invoiceId);
+                   if (invoice) {
+                     const tabsEl = document.querySelector('[role="tablist"] [value="invoices"]') as HTMLElement;
+                     if (tabsEl) tabsEl.click();
+                     setPixInvoice(invoice);
+                   }
+                 }}
+               >
+                 <QrCode className="mr-2 h-4 w-4" /> Anexar Comprovante do Pedido
+               </Button>
+            )}
+          </div>
+        </div>
       );
     });
   };
@@ -262,38 +258,74 @@ export default function TutorFinancial() {
       label: "Visão Geral",
       content: (
         <div className="space-y-8 focus-visible:outline-none focus-visible:ring-0">
-          <Card className="bg-gradient-to-br from-emerald-500/20 via-emerald-500/5 to-transparent border-emerald-500/30 shadow-[0_0_40px_rgba(16,185,129,0.15)] overflow-hidden relative">
-            <div className="absolute right-0 top-0 w-64 h-64 bg-emerald-500/10 blur-3xl rounded-full translate-x-1/3 -translate-y-1/3 pointer-events-none" />
-            <CardContent className="p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between h-full gap-6">
+          
+          {/* ArkSummaryCard */}
+          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-primary/20 via-primary/5 to-transparent border border-primary/20 p-6 sm:p-8 shadow-2xl shadow-primary/5">
+            <div className="absolute right-0 top-0 w-96 h-96 bg-primary/20 blur-[100px] rounded-full translate-x-1/3 -translate-y-1/3 pointer-events-none" />
+            
+            <div className="flex flex-col sm:flex-row justify-between sm:items-end mb-8 gap-4">
               <div>
-                <p className="text-sm font-medium text-emerald-400 mb-2 uppercase tracking-wider">Diárias Disponíveis</p>
-                <div className="flex items-baseline gap-2">
-                  <p className="text-6xl font-display font-bold text-white tracking-tight">{availableCredits}</p>
-                  <p className="text-muted-foreground font-medium text-lg">diárias</p>
-                </div>
-                <p className="text-sm text-muted-foreground mt-2">Liberadas para agendamentos imediatos.</p>
+                <p className="text-muted-foreground text-sm uppercase tracking-widest font-semibold mb-1">Meus Benefícios</p>
+                <h2 className="text-2xl sm:text-3xl font-display font-bold text-white">Créditos Disponíveis</h2>
               </div>
-              <div className="w-full sm:w-auto">
-                <Button 
-                  size="lg" 
-                  className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-600 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] border-0" 
-                  onClick={() => navigate('/tutor/store')}
-                >
-                  <ShoppingCart className="mr-2 h-5 w-5" /> Acessar Lojinha
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <div className="bg-black/20 backdrop-blur-md rounded-2xl p-5 sm:p-6 border border-white/10 flex flex-col justify-between">
+                  <div className="flex items-center justify-between mb-4">
+                    <p className="text-sm font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-2"><CalendarCheck className="h-4 w-4"/> Pacotes de Diárias</p>
+                    <Button onClick={() => navigate('/tutor/store')} variant="outline" size="sm" className="h-8 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10">
+                       Lojinha
+                    </Button>
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                     <p className="text-6xl font-display font-bold text-white tracking-tight">{availableCredits}</p>
+                     <p className="text-muted-foreground font-medium text-lg">diárias</p>
+                  </div>
+               </div>
+               
+               {serviceCreditsData?.data && serviceCreditsData.data.length > 0 ? (
+                 <div className="bg-black/20 backdrop-blur-md rounded-2xl p-5 sm:p-6 border border-white/10 flex flex-col justify-start">
+                     <p className="text-sm font-semibold text-purple-400 uppercase tracking-wider flex items-center gap-2 mb-4"><Scissors className="h-4 w-4"/> Serviços Pré-pagos</p>
+                     <div className="space-y-3">
+                       {serviceCreditsData.data.map((credit: any) => {
+                         const remaining = credit.totalCredits - credit.usedCredits;
+                         return (
+                            <div key={credit.id} className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5">
+                               <span className="text-white font-medium text-sm flex items-center gap-2">
+                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                 {credit.itemName}
+                               </span>
+                               <span className="bg-purple-500/10 border border-purple-500/20 text-purple-300 px-2 py-1 rounded-md text-xs font-bold uppercase tracking-wider">{remaining} disp.</span>
+                            </div>
+                         )
+                       })}
+                     </div>
+                 </div>
+               ) : (
+                 <div className="bg-black/10 backdrop-blur-md rounded-2xl p-5 sm:p-6 border border-white/5 border-dashed flex flex-col justify-center items-center text-center opacity-70 min-h-[160px]">
+                    <Scissors className="h-8 w-8 text-muted-foreground mb-3 opacity-50" />
+                    <p className="text-sm font-medium text-white mb-1">Sem serviços avulsos</p>
+                    <p className="text-xs text-muted-foreground">Compre banhos e extras antecipados na lojinha para economizar.</p>
+                 </div>
+               )}
+            </div>
+          </div>
+          
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Receipt className="h-5 w-5 text-amber-400" /> Faturas Recentes
-            </h3>
-            {renderInvoiceList(openInvoices.slice(0, 2))}
-            {openInvoices.length > 2 && (
-              <p className="text-sm text-muted-foreground text-center">
-                Você tem mais {openInvoices.length - 2} fatura(s) em aberto. Acesse a aba Faturas.
-              </p>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold flex items-center gap-2 text-white">
+                <Receipt className="h-5 w-5 text-amber-400" /> Próximos Pagamentos
+              </h3>
+            </div>
+            {renderInvoiceList(openInvoices.slice(0, 3))}
+            {openInvoices.length > 3 && (
+              <Button variant="ghost" className="w-full mt-2 text-muted-foreground hover:text-white bg-white/5" onClick={() => {
+                const tabsEl = document.querySelector('[role="tablist"] [value="invoices"]') as HTMLElement;
+                if (tabsEl) tabsEl.click();
+              }}>
+                Ver todas as {openInvoices.length} faturas pendentes
+              </Button>
             )}
           </div>
         </div>
@@ -304,9 +336,9 @@ export default function TutorFinancial() {
       label: "Faturas",
       content: (
         <div className="space-y-4 focus-visible:outline-none focus-visible:ring-0">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-semibold text-white">Todas as Faturas Pendentes</h3>
-            <Badge variant="outline" className="border-amber-500/30 text-amber-400">{openInvoices.length} pendentes</Badge>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">Abertas e Pendentes</h3>
+            <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20">{openInvoices.length} {openInvoices.length === 1 ? 'pendente' : 'pendentes'}</span>
           </div>
           {renderInvoiceList(openInvoices)}
         </div>
@@ -317,39 +349,10 @@ export default function TutorFinancial() {
       label: "Histórico",
       content: (
         <div className="space-y-4 focus-visible:outline-none focus-visible:ring-0">
-          <h3 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground mb-4">
-            <History className="h-5 w-5" /> Histórico de Pagamentos
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-white mb-4">
+            <History className="h-5 w-5 text-primary" /> Histórico Financeiro
           </h3>
-          {paidInvoices.length > 0 ? (
-            <div className="space-y-2">
-              {paidInvoices.map((inv: any) => (
-                <div key={inv.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border border-white/5 bg-white/5 gap-3">
-                  <div>
-                    <p className="font-medium text-white text-sm">Fatura #{inv.id}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Pago em {inv.updatedAt ? format(new Date(inv.updatedAt), "dd/MM/yyyy", { locale: ptBR }) : "Desconhecido"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 justify-between sm:justify-end">
-                    <p className="font-medium text-emerald-400 mr-2">{formatBRL(inv.amount ? Number(inv.amount) : inv.totalAmount)}</p>
-                    <Button variant="ghost" size="sm" onClick={() => setDetailsFor(inv.id)} className="h-8 text-xs text-muted-foreground hover:text-white">
-                      <Eye className="mr-1 h-3 w-3" /> Detalhes
-                    </Button>
-                    {inv.receiptPhotoPath && (
-                      <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.id)} className="h-8 text-xs text-muted-foreground hover:text-white">
-                        <ExternalLink className="mr-1 h-3 w-3" /> Recibo
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-8 rounded-2xl border border-white/5 bg-white/5 text-center flex flex-col items-center justify-center space-y-3">
-              <Receipt className="h-10 w-10 text-muted-foreground opacity-50" />
-              <p className="text-sm text-muted-foreground">Nenhum pagamento registrado no seu histórico.</p>
-            </div>
-          )}
+          {renderInvoiceList(paidInvoices, true)}
         </div>
       )
     },
@@ -358,8 +361,8 @@ export default function TutorFinancial() {
       label: "Meus Pedidos",
       content: (
         <div className="space-y-4 focus-visible:outline-none focus-visible:ring-0">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-semibold text-white">Acompanhamento de Pedidos</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">Acompanhamento da Lojinha</h3>
           </div>
           {renderOrdersList(orders || [])}
         </div>
@@ -368,10 +371,12 @@ export default function TutorFinancial() {
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-12">
-      <div>
-        <h1 className="text-4xl font-display font-bold text-white tracking-tight">Minha Carteira</h1>
-        <p className="text-muted-foreground mt-1">Gerencie seu saldo de diárias e suas faturas.</p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-3xl mx-auto pb-12">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-display font-bold text-white tracking-tight">Minha Carteira</h1>
+          <p className="text-muted-foreground mt-1 text-sm">Gerencie faturas, créditos e pacotes da creche.</p>
+        </div>
       </div>
 
       <Tabs defaultTab="overview" tabs={tabsConfig} />
@@ -391,6 +396,10 @@ export default function TutorFinancial() {
           invoiceId={detailsFor} 
           crecheId={crecheId} 
         />
+      )}
+
+      {receiptModalId && (
+        <ThermalReceiptModal invoiceId={receiptModalId} onClose={() => setReceiptModalId(null)} />
       )}
 
       {pixInvoice && (
@@ -413,32 +422,27 @@ function InvoiceDetailsModal({ isOpen, onClose, invoiceId, crecheId }: { isOpen:
   const { data: items, isLoading } = useInvoiceItems(crecheId, invoiceId);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Detalhes da Fatura #${invoiceId}`}>
+    <Modal isOpen={isOpen} onClose={onClose} title={`Recibo da Fatura #${invoiceId}`}>
       <div className="space-y-4">
         {isLoading ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Carregando detalhes...</div>
+          <div className="p-8 text-center text-sm text-muted-foreground flex items-center justify-center">Carregando detalhes...</div>
         ) : !items || items.length === 0 ? (
-          <div className="p-4 text-center text-sm text-muted-foreground">Nenhum item encontrado nesta fatura.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">Nenhum item encontrado nesta fatura.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 bg-black/20 p-4 rounded-2xl border border-white/5">
             {items.map((item: any) => (
-              <div key={item.id} className="flex justify-between items-center p-3 rounded-lg border border-white/10 bg-white/5">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                    <Package className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">{item.description}</p>
-                    <p className="text-xs text-muted-foreground">Qtd: {item.quantity}</p>
-                  </div>
+              <div key={item.id} className="flex justify-between items-center py-3 border-b border-white/5 last:border-0">
+                <div className="flex flex-col">
+                  <p className="text-sm font-semibold text-white">{item.description}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Qtd: {item.quantity}</p>
                 </div>
-                <span className="font-medium text-white">{formatBRL(Number(item.amount))}</span>
+                <span className="font-bold text-white">{formatBRL(Number(item.amount))}</span>
               </div>
             ))}
           </div>
         )}
-        <div className="pt-4 border-t border-white/10 flex justify-end">
-          <Button onClick={onClose}>Fechar</Button>
+        <div className="pt-2 flex justify-end">
+          <Button onClick={onClose} className="w-full sm:w-auto">Fechar</Button>
         </div>
       </div>
     </Modal>
@@ -459,10 +463,8 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
 
   React.useEffect(() => {
     if (isOpen) {
-      // Gera o payload do Pix
       const payload = generatePixPayload(pixKey, pixName, "BRASIL", amount, `FAT${invoice?.id || '00'}`);
       setPixPayload(payload);
-      // Converte para QR Code
       QRCode.toDataURL(payload, { width: 256, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
         .then(url => setQrCodeUrl(url))
         .catch(console.error);
@@ -471,40 +473,40 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
 
   const handleCopy = () => {
     navigator.clipboard.writeText(pixPayload);
-    toast({ title: "BR Code Copiado (Pix Copia e Cola)!", description: "Cole no aplicativo do seu banco para pagar." });
+    toast({ title: "Código Copiado!", description: "Cole no aplicativo do seu banco para pagar." });
   };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={`Pagamento via Pix`}>
       <div className="space-y-6 text-center pt-2">
         
-        <div className="bg-white p-4 rounded-2xl inline-block mx-auto border-4 border-emerald-500/20 shadow-lg shadow-emerald-500/10">
+        <div className="bg-white p-4 rounded-3xl inline-block mx-auto border-4 border-emerald-500/20 shadow-lg shadow-emerald-500/10">
           {qrCodeUrl ? (
-            <img src={qrCodeUrl} alt="QR Code Pix" className="h-40 w-40 object-contain" />
+            <img src={qrCodeUrl} alt="QR Code Pix" className="h-44 w-44 object-contain" />
           ) : (
-            <QrCode className="h-40 w-40 text-slate-900" />
+            <QrCode className="h-44 w-44 text-slate-900 opacity-10" />
           )}
         </div>
         
         <div>
-          <p className="text-3xl font-display font-bold text-white">{formatBRL(invoice?.amount ? Number(invoice.amount) : invoice?.totalAmount || 0)}</p>
-          <p className="text-sm font-medium text-white mt-2">{pixName}</p>
-          <p className="text-sm text-muted-foreground mt-1 px-4">Escaneie o QR Code acima pelo app do seu banco ou copie a chave Pix abaixo.</p>
+          <p className="text-4xl font-display font-bold text-white tracking-tight">{formatBRL(invoice?.amount ? Number(invoice.amount) : invoice?.totalAmount || 0)}</p>
+          <p className="text-sm font-medium text-emerald-400 mt-2 uppercase tracking-wider">{pixName}</p>
+          <p className="text-sm text-muted-foreground mt-2 px-4 leading-relaxed">Abra o app do seu banco e escaneie o código QR acima ou utilize o código Copia e Cola abaixo.</p>
         </div>
         
-        <div className="bg-black/40 p-3 rounded-xl border border-white/10 flex items-center justify-between gap-3">
-          <span className="text-emerald-400 font-mono text-sm truncate flex-1 text-left pl-2 opacity-80">{pixPayload}</span>
-          <Button variant="secondary" size="sm" onClick={handleCopy} className="shrink-0">
-            <Copy className="h-4 w-4 mr-2" /> Pix Copia e Cola
+        <div className="bg-white/5 p-2 pr-2 pl-4 rounded-2xl border border-white/10 flex items-center justify-between gap-3">
+          <span className="text-white font-mono text-xs truncate flex-1 text-left opacity-70">{pixPayload}</span>
+          <Button variant="secondary" size="sm" onClick={handleCopy} className="shrink-0 bg-white/10 hover:bg-white/20 text-white rounded-xl">
+            <Copy className="h-4 w-4 mr-2" /> Copiar Código
           </Button>
         </div>
 
-        <div className="pt-6 border-t border-white/10 flex flex-col gap-3">
-          <Button onClick={onUploadClick} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-6 text-base shadow-lg shadow-emerald-500/20">
-            <UploadCloud className="mr-2 h-5 w-5" /> Já paguei, anexar comprovante
+        <div className="pt-6 flex flex-col gap-3">
+          <Button onClick={onUploadClick} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-6 rounded-2xl text-base shadow-lg shadow-emerald-500/20">
+            <UploadCloud className="mr-2 h-5 w-5" /> Já paguei, enviar comprovante
           </Button>
-          <Button variant="ghost" onClick={onClose} className="w-full text-muted-foreground hover:text-white">
-            Cancelar
+          <Button variant="ghost" onClick={onClose} className="w-full text-muted-foreground hover:text-white rounded-2xl py-6">
+            Pagar mais tarde
           </Button>
         </div>
       </div>

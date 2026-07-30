@@ -4,7 +4,8 @@ import {
   invoicesTable,
   invoiceItemsTable,
   financialAuditLogsTable,
-  catalogueItemsTable
+  catalogueItemsTable,
+  tutorServiceCreditsTable
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 import { logFinancialAudit } from "./audit.js";
@@ -32,8 +33,12 @@ export async function releasePurchasedCredits(
     item.description.toLowerCase().includes("diária") ||
     item.description.toLowerCase().includes("diarias")
   );
+  
+  const serviceItems = items.filter((item: typeof invoiceItemsTable.$inferSelect) => 
+    item.itemType === "service"
+  );
 
-  if (packageItems.length === 0) return; 
+  if (packageItems.length === 0 && serviceItems.length === 0) return; 
 
   let creditsAdded = false;
 
@@ -71,6 +76,26 @@ export async function releasePurchasedCredits(
     creditsAdded = true;
   }
   
+  for (const serviceItem of serviceItems) {
+    const catalogueItems = await tx.select().from(catalogueItemsTable).where(
+      and(
+        eq(catalogueItemsTable.crecheId, invoice.crecheId),
+        eq(catalogueItemsTable.name, serviceItem.description),
+        eq(catalogueItemsTable.type, "service")
+      )
+    ).limit(1);
+    
+    if (catalogueItems.length > 0) {
+      await tx.insert(tutorServiceCreditsTable).values({
+        crecheId: invoice.crecheId,
+        tutorId: invoice.tutorId,
+        catalogueItemId: catalogueItems[0].id,
+        totalCredits: serviceItem.quantity || 1,
+      });
+      creditsAdded = true;
+    }
+  }
+  
   if (!creditsAdded) return;
 
   await tx.update(invoicesTable)
@@ -83,6 +108,6 @@ export async function releasePurchasedCredits(
     action: "credits_purchase",
     referenceId: invoiceId,
     referenceType: "invoices",
-    details: `Créditos de pacotes liberados para tutor #${invoice.tutorId} após pagamento da fatura #${invoiceId}.`,
+    details: `Créditos liberados para tutor #${invoice.tutorId} após pagamento da fatura #${invoiceId}.`,
   }, tx);
 }

@@ -116,6 +116,35 @@ export const tutorCreditsRelations = relations(tutorCreditsTable, ({ one }) => (
   }),
 }));
 
+// 3.5. Carteira de Serviços Avulsos (Service Wallet)
+export const tutorServiceCreditsTable = pgTable("tutor_service_credits", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  tutorId: integer("tutor_id").notNull(),
+  catalogueItemId: integer("catalogue_item_id").notNull(),
+  totalCredits: integer("total_credits").notNull(),
+  usedCredits: integer("used_credits").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  checkUsedServiceCreditsZero: check("check_used_service_credits_zero", sql`${table.usedCredits} >= 0`),
+  checkUsedServiceCreditsMax: check("check_used_service_credits_max", sql`${table.usedCredits} <= ${table.totalCredits}`)
+}));
+
+export const tutorServiceCreditsRelations = relations(tutorServiceCreditsTable, ({ one }) => ({
+  creche: one(crechesTable, {
+    fields: [tutorServiceCreditsTable.crecheId],
+    references: [crechesTable.id],
+  }),
+  tutor: one(usersTable, {
+    fields: [tutorServiceCreditsTable.tutorId],
+    references: [usersTable.id],
+  }),
+  item: one(catalogueItemsTable, {
+    fields: [tutorServiceCreditsTable.catalogueItemId],
+    references: [catalogueItemsTable.id],
+  }),
+}));
+
 // Tabela de ligação: rastreia de qual pacote a reserva consumiu o crédito
 export const bookingCreditsTable = pgTable("booking_credits", {
   id: serial("id").primaryKey(),
@@ -148,9 +177,13 @@ export const invoicesTable = pgTable("invoices", {
   paymentMethod: paymentMethodEnum("payment_method"),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
   receiptPhotoPath: text("receipt_photo_path"), // Caminho privado no storage ou data URI base64 (sem limite de tamanho)
+  cycleStart: date("cycle_start"),
+  cycleEnd: date("cycle_end"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => [
+  uniqueIndex("tutor_cycle_unique_idx").on(t.tutorId, t.cycleStart, t.cycleEnd)
+]);
 
 export const invoicesRelations = relations(invoicesTable, ({ one, many }) => ({
   creche: one(crechesTable, {
@@ -175,6 +208,11 @@ export const invoiceItemsTable = pgTable("invoice_items", {
   description: varchar("description", { length: 255 }).notNull(), // Ex: "Diária Daycare", "Banho Porte G", "Ração BarkBox"
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
   quantity: integer("quantity").default(1).notNull(),
+  itemDate: timestamp("item_date"),
+  petId: integer("pet_id"),
+  bookingId: integer("booking_id"),
+  orderId: integer("order_id"),
+  itemType: varchar("item_type", { length: 50 }),
 });
 
 export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({

@@ -4,6 +4,7 @@ import {
   catalogueItemsTable, 
   invoicesTable, 
   tutorCreditsTable, 
+  tutorServiceCreditsTable,
   transactionsTable,
   financialAuditLogsTable,
   expensesTable,
@@ -13,17 +14,19 @@ import {
   ordersTable,
   orderItemsTable,
   crechesTable,
+  petsTable,
 } from "@workspace/db/schema";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 const objectStorageService = new ObjectStorageService();
 import { eq, and, desc, asc, sql, gte, lte, count, lt, or, isNull, ne } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
-import { processManualPayment, approveReceipt, voidInvoice, refundInvoice, calculateDueDate, hasOverdueInvoices } from "../services/billing.js";
+import { processManualPayment, approveReceipt, voidInvoice, refundInvoice, calculateDueDate, hasOverdueInvoices, BillingService } from "../services/billing.js";
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { logFinancialAudit } from "../services/audit.js";
 import { sendLowStockAlertEmail } from "../services/email.js";
+import { decrypt } from "../lib/crypto.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -327,6 +330,59 @@ router.get("/invoices/:invoiceId/receipt-url", requireFinancialAccess, async (re
   } catch(err) { next(err); }
 });
 
+router.get("/invoices/:invoiceId/receipt-data", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const crecheId = Number(req.params.crecheId);
+    const invoiceId = Number(req.params.invoiceId);
+    
+    // Auth check: Admin or the Tutor who owns the invoice
+    if (req.user!.role === "tutor") {
+      const [inv] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.tutorId, req.user!.id)));
+      if (!inv) { res.status(403).json({ error: "Não autorizado" }); return; }
+    } else {
+      if (req.user!.crecheId !== crecheId && req.user!.role !== "master_admin") {
+        res.status(403).json({ error: "Não autorizado" }); return;
+      }
+    }
+
+    // 1. Get Invoice & Tutor
+    const [invoiceData] = await db.select({
+      invoice: invoicesTable,
+      tutorName: usersTable.name,
+      tutorCpf: usersTable.cpf,
+    })
+    .from(invoicesTable)
+    .leftJoin(usersTable, eq(invoicesTable.tutorId, usersTable.id))
+    .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
+
+    if (!invoiceData) { res.status(404).json({ error: "Fatura não encontrada" }); return; }
+
+    // 2. Get Invoice Items
+    const items = await db.select().from(invoiceItemsTable).where(eq(invoiceItemsTable.invoiceId, invoiceId));
+
+    // 3. Get Creche Info
+    const [creche] = await db.select({
+      name: crechesTable.name,
+      address: crechesTable.address,
+      phone: crechesTable.phone
+    }).from(crechesTable).where(eq(crechesTable.id, crecheId));
+
+    // Decrypt CPF if exists
+    let decryptedCpf = null;
+    if (invoiceData.tutorCpf) {
+      try { decryptedCpf = decrypt(invoiceData.tutorCpf); } catch(e) {}
+    }
+
+    res.json({
+      invoice: invoiceData.invoice,
+      tutor: { name: invoiceData.tutorName, cpf: decryptedCpf },
+      items,
+      creche
+    });
+
+  } catch(err) { next(err); }
+});
+
 const stockAdjustmentSchema = z.object({
   delta: z.number().int().refine(v => v !== 0, { message: "delta não pode ser zero" }),
   reason: z.string().min(1).max(255),
@@ -576,9 +632,15 @@ router.get("/invoices/:invoiceId/items", async (req: AuthRequest, res: Response,
         description: invoiceItemsTable.description,
         quantity: invoiceItemsTable.quantity,
         amount: invoiceItemsTable.amount,
+        itemDate: invoiceItemsTable.itemDate,
+        itemType: invoiceItemsTable.itemType,
+        petId: invoiceItemsTable.petId,
+        petName: petsTable.name,
       })
       .from(invoiceItemsTable)
-      .where(eq(invoiceItemsTable.invoiceId, invoiceId));
+      .leftJoin(petsTable, eq(invoiceItemsTable.petId, petsTable.id))
+      .where(eq(invoiceItemsTable.invoiceId, invoiceId))
+      .orderBy(asc(invoiceItemsTable.itemDate), asc(invoiceItemsTable.id));
       
     res.json(items);
   } catch (err) {
@@ -675,6 +737,52 @@ router.post("/invoices/:invoiceId/refund", requireFinancialAccess, async (req: A
 // 3. PACOTES DE CRÉDITOS
 // ==========================================
 
+router.get("/service-credits", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const crecheId = Number(req.params.crecheId);
+    const { page, pageSize, offset } = getPaginationParams(req.query);
+    
+    let baseConditions = sql`${tutorServiceCreditsTable.crecheId} = ${crecheId}`;
+    if (req.user!.role === "tutor") {
+      baseConditions = and(baseConditions, eq(tutorServiceCreditsTable.tutorId, req.user!.id));
+    }
+    
+    // Only return credits that haven't been fully used
+    baseConditions = and(baseConditions, sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`);
+
+    const [data, [{ total }]] = await Promise.all([
+      db
+        .select({
+          id: tutorServiceCreditsTable.id,
+          tutorId: tutorServiceCreditsTable.tutorId,
+          catalogueItemId: tutorServiceCreditsTable.catalogueItemId,
+          totalCredits: tutorServiceCreditsTable.totalCredits,
+          usedCredits: tutorServiceCreditsTable.usedCredits,
+          createdAt: tutorServiceCreditsTable.createdAt,
+          itemName: catalogueItemsTable.name,
+          itemType: catalogueItemsTable.type,
+        })
+        .from(tutorServiceCreditsTable)
+        .leftJoin(catalogueItemsTable, eq(tutorServiceCreditsTable.catalogueItemId, catalogueItemsTable.id))
+        .where(baseConditions)
+        .orderBy(desc(tutorServiceCreditsTable.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      db.select({ total: count() }).from(tutorServiceCreditsTable).where(baseConditions)
+    ]);
+    
+    res.json({
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get("/packages", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
@@ -758,23 +866,14 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
       return;
     }
 
-    // 2. Criar fatura para o tutor
-    const [tutorRec] = await db.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
-
-    const [invoice] = await db.insert(invoicesTable).values({
+    // 2. Adicionar ao ciclo consolidado via BillingService
+    const invoiceId = await BillingService.addCharge({
       crecheId,
       tutorId,
       amount: item.basePrice,
-      dueDate: calculateDueDate(tutorRec?.mensalidadeDia, new Date()),
-      status: 'pending',
-    }).returning();
-
-    // 3. Criar item da fatura
-    await db.insert(invoiceItemsTable).values({
-      invoiceId: invoice.id,
       description: `${item.name} — ${item.creditsAmount} diárias`,
-      amount: item.basePrice,
-      quantity: 1,
+      type: "package",
+      itemDate: new Date()
     });
 
     // 4. Log de auditoria
@@ -782,9 +881,9 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
       crecheId,
       userId: tutorId,
       action: 'credits_purchase',
-      referenceId: invoice.id,
+      referenceId: invoiceId,
       referenceType: 'invoices',
-      details: `Pacote "${item.name}" solicitado. ${item.creditsAmount} créditos aguardando pagamento. Fatura #${invoice.id} gerada.`,
+      details: `Pacote "${item.name}" solicitado. ${item.creditsAmount} créditos aguardando pagamento. Adicionado à fatura consolidada #${invoiceId}.`,
     }, db);
 
     let checkoutUrl: string | null = null;
@@ -1191,39 +1290,34 @@ router.post("/pos-sale", requireFinancialAccess, validate(posSaleSchema), async 
         }
       }
 
-      let dueDateStr = new Date().toISOString().split('T')[0];
-      if (isPending && tutorId) {
-        const [tutorRec] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
-        dueDateStr = calculateDueDate(tutorRec?.mensalidadeDia, new Date());
-      }
+      let invoiceId: number | null = null;
+      const isAvulso = !isPending || !tutorId;
 
-      // Create Invoice
-      const [invoice] = await tx.insert(invoicesTable).values({
-        crecheId,
-        tutorId: tutorId || null,
-        amount: subtotal.toString(),
-        status: isPending ? "pending" : "paid",
-        dueDate: dueDateStr,
-      }).returning();
-
-      // Create Invoice Items
-      await tx.insert(invoiceItemsTable).values(
-        orderItemsToInsert.map(oi => ({
-          invoiceId: invoice.id,
-          description: oi.description,
+      for (const oi of orderItemsToInsert) {
+        invoiceId = await BillingService.addCharge({
+          crecheId,
+          tutorId: tutorId || 0, // 0 for anonymous
+          amount: oi.amount,
           quantity: oi.quantity,
-          amount: oi.amount
-        }))
-      );
+          description: oi.description,
+          type: "pos_sale",
+          isAvulso: isAvulso,
+          itemDate: new Date(),
+          tx: tx,
+        });
+      }
 
       if (stockTransactions.length > 0) {
         await tx.insert(catalogueStockTransactionsTable).values(stockTransactions);
       }
 
       if (!isPending) {
+        // Since it's avulso, we might want to mark it paid right now because the BillingService creates it as pending
+        await tx.update(invoicesTable).set({ status: 'paid' }).where(eq(invoicesTable.id, invoiceId!));
+        
         await tx.insert(transactionsTable).values({
           crecheId,
-          invoiceId: invoice.id,
+          invoiceId: invoiceId!,
           type: "income",
           amount: subtotal.toString(),
           transactionDate: new Date().toISOString().split('T')[0],
@@ -1232,7 +1326,8 @@ router.post("/pos-sale", requireFinancialAccess, validate(posSaleSchema), async 
         });
       }
 
-      res.status(201).json({ invoice });
+      const [updatedInvoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, invoiceId!)).limit(1);
+      res.status(201).json({ invoice: updatedInvoice });
     });
   } catch (err: any) {
     if (err.message && err.message.includes("Estoque")) {

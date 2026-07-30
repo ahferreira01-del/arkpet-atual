@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Camera, ShieldAlert, BarChart3, Receipt, FileText, PackageOpen, ShoppingBag, Plus, MoreHorizontal, CircleDollarSign, ShoppingCart } from "lucide-react";
+import { Camera, ShieldAlert, BarChart3, Receipt, FileText, PackageOpen, ShoppingBag, Plus, MoreHorizontal, CircleDollarSign, ShoppingCart, Printer } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { LayoutDashboard, Activity, ArrowRight, ChevronDown, CheckCircle, Clock 
 import { CommandPalette } from "@/components/financial/command-palette";
 import { CatalogueSmartIndicators } from "@/components/financial/smart-indicators";
 import { FinancialProvider, useFinancialContext } from "@/components/financial/financial-context";
+import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 
 function formatBRL(value: number) {
   return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -237,6 +238,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                 const unitPrice = Number(item.amount);
                 const qty = item.quantity || 1;
                 const lineTotal = unitPrice * qty;
+                const formattedDate = item.itemDate ? new Date(item.itemDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '';
                 return (
                   <div key={item.id} className="py-3 flex justify-between items-center group">
                     <div className="flex items-center">
@@ -244,9 +246,13 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                         <PackageOpen className="w-5 h-5 text-slate-400" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800">{item.description}</p>
-                        <p className="text-xs text-slate-500">
-                          {qty} unidade(s) x {formatBRL(unitPrice)}
+                        <p className="text-sm font-bold text-slate-800">
+                          {item.description}
+                          {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{item.petName}</span>}
+                        </p>
+                        <p className="text-xs text-slate-500 flex items-center space-x-2 mt-1">
+                          {formattedDate && <span>{formattedDate} &bull;</span>}
+                          <span>{qty} unidade(s) x {formatBRL(unitPrice)}</span>
                         </p>
                       </div>
                     </div>
@@ -299,7 +305,8 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
   const approveReceiptMutation = useApproveReceipt(crecheId);
   const { toast } = useToast();
   
-  const [payModal, setPayModal] = useState<{open: boolean, invoiceId: number | null}>({ open: false, invoiceId: null });
+  const [payModal, setPayModal] = useState<{ open: boolean; invoiceId: number | null }>({ open: false, invoiceId: null });
+  const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
   const [detailsModal, setDetailsModal] = useState<{open: boolean, invoiceId: number | null}>({ open: false, invoiceId: null });
   const [paymentMethod, setPaymentMethod] = useState("pix");
 
@@ -399,9 +406,14 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
               </Button>
             )}
             {inv.status === "paid" && (
-              <Button variant="ghost" size="sm" onClick={() => handleRefund(inv.id)} disabled={refundMutation.isPending} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
-                Estornar
-              </Button>
+              <>
+                <Button variant="ghost" size="sm" onClick={() => setReceiptModalId(inv.id)} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10">
+                  <Printer className="mr-1.5 h-3.5 w-3.5" /> Recibo NFC-e
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleRefund(inv.id)} disabled={refundMutation.isPending} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+                  Estornar
+                </Button>
+              </>
             )}
             {(inv.status === "pending" || inv.status === "overdue") && (
               <>
@@ -468,6 +480,9 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
         issueDate={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.createdAt}
         tutorName={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.tutorName}
       />
+      {receiptModalId && (
+        <ThermalReceiptModal invoiceId={receiptModalId} onClose={() => setReceiptModalId(null)} />
+      )}
     </div>
   );
 }
@@ -937,7 +952,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
             <CardContent className="p-0">
               <div className="h-32 bg-white/5 relative flex items-center justify-center overflow-hidden">
                 {item.mediaUrls && item.mediaUrls.length > 0 ? (
-                  <img src={item.mediaUrls[0]} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  <img src={buildMediaSrc(item.mediaUrls[0], getMediaToken())} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                 ) : (
                   <PackageOpen className="h-10 w-10 text-white/20 group-hover:scale-110 transition-transform" />
                 )}
@@ -1287,7 +1302,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                 <div className="flex gap-2 pt-2 border-t border-white/5">
                   {inv.receiptPhotoPath && (
                     <Button variant="ghost" size="sm" onClick={() => {
-                      window.open(`/api/files/download/${inv.receiptPhotoPath}?t=${Date.now()}`, '_blank');
+                      window.open(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()), '_blank');
                     }} className="flex-1 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
                       Ver Comprovante
                     </Button>
@@ -1326,7 +1341,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                     <td className="px-6 py-4 text-right space-x-2">
                       {inv.receiptPhotoPath && (
                         <Button variant="ghost" size="sm" onClick={() => {
-                          window.open(`/api/files/download/${inv.receiptPhotoPath}?t=${Date.now()}`, '_blank');
+                          window.open(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()), '_blank');
                         }} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
                           Ver Comprovante
                         </Button>
@@ -1609,20 +1624,14 @@ function FinancialDashboardContent() {
 
   const TAB_GROUPS = [
     {
-      id: "visao",
-      label: "Visão Geral",
-      items: [
-        { id: "reports", label: "Central de Relatórios", icon: <FileText className="h-4 w-4" />, content: <ReportsCentralTab crecheId={crecheId} /> }
-      ]
-    },
-    {
       id: "operacional",
       label: "Operacional",
       items: [
         { id: "cashflow", label: "Movimentações", icon: <BarChart3 className="h-4 w-4" />, content: <CashFlowTab crecheId={crecheId} /> },
         { id: "receivables", label: "A Receber", icon: <Receipt className="h-4 w-4" />, content: <ReceivablesTab crecheId={crecheId} /> },
         { id: "defaulters", label: "Inadimplência", icon: <FileText className="h-4 w-4 text-red-400" />, content: <DefaultersTab crecheId={crecheId} /> },
-        { id: "payables", label: "A Pagar", icon: <FileText className="h-4 w-4" />, content: <PayablesTab crecheId={crecheId} /> }
+        { id: "payables", label: "A Pagar", icon: <FileText className="h-4 w-4" />, content: <PayablesTab crecheId={crecheId} /> },
+        { id: "reports", label: "Central de Relatórios", icon: <FileText className="h-4 w-4" />, content: <ReportsCentralTab crecheId={crecheId} /> }
       ]
     },
     {
@@ -1726,6 +1735,8 @@ function FinancialDashboardContent() {
     </div>
   );
 }
+
+import { ThermalReceiptModal } from "@/components/modals/ThermalReceiptModal";
 
 export default function FinancialDashboard() {
   return (

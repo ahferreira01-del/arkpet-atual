@@ -41,6 +41,7 @@ const TutorFinancial = React.lazy(() => import("./pages/tutor/financial"));
 const TutorStore = React.lazy(() => import("./pages/tutor/store"));
 const Terms = React.lazy(() => import("./pages/terms"));
 const Privacy = React.lazy(() => import("./pages/privacy"));
+const ThermalReceipt = React.lazy(() => import("./pages/thermal-receipt"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -296,6 +297,10 @@ function App() {
                   <AppLayout>
                     <TutorStore />
                   </AppLayout>
+                </Route>
+
+                <Route path="/receipt/:invoiceId">
+                  <ThermalReceipt />
                 </Route>
 
                 <Route component={NotFound} />

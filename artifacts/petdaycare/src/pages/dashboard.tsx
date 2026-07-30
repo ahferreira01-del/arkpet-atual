@@ -410,7 +410,11 @@ function TimelineEventCard({
 
   const [loadedMedia, setLoadedMedia] = React.useState<string | null>(null);
   const [mediaLoading, setMediaLoading] = React.useState(false);
-  const displayMedia = ev.mediaUrl || loadedMedia;
+  const rawMedia = ev.mediaUrl || loadedMedia;
+  const mediaToken = localStorage.getItem("media_token") || "";
+  const displayMedia = rawMedia && rawMedia.startsWith("/api/storage") && mediaToken 
+    ? `${rawMedia}?mt=${encodeURIComponent(mediaToken)}` 
+    : rawMedia;
   const hasMedia = ev.hasMedia ?? !!ev.mediaUrl;
 
   const handleLoadMedia = React.useCallback(async () => {

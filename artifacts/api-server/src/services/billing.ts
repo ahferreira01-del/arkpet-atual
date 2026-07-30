@@ -1,5 +1,5 @@
 import { db } from "@workspace/db";
-import { invoicesTable, transactionsTable, financialAuditLogsTable } from "@workspace/db/schema";
+import { invoicesTable, transactionsTable, financialAuditLogsTable, invoiceItemsTable, usersTable } from "@workspace/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { ordersTable } from "@workspace/db/schema";
@@ -203,4 +203,128 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
 
     return invoice;
   });
+}
+
+export class BillingService {
+  /**
+   * Calculates the exact boundaries of a billing cycle based on the tutor's due date.
+   */
+  static getCycleDates(mensalidadeDia: number | null | undefined, txDateStr: string = new Date().toISOString().split('T')[0]) {
+    const txDate = new Date(txDateStr + "T12:00:00Z");
+    const day = mensalidadeDia || 10;
+    
+    let endMonth = txDate.getUTCMonth();
+    let endYear = txDate.getUTCFullYear();
+    
+    if (txDate.getUTCDate() > day) {
+      endMonth++;
+      if (endMonth > 11) {
+        endMonth = 0;
+        endYear++;
+      }
+    }
+    
+    // The cycle end date is the 'mensalidade_dia' of the cycleEndMonth
+    const lastDayOfMonth = new Date(Date.UTC(endYear, endMonth + 1, 0)).getUTCDate();
+    const actualDay = Math.min(day, lastDayOfMonth);
+    const endDate = new Date(Date.UTC(endYear, endMonth, actualDay));
+    
+    // Cycle start is the day after the previous cycle's end
+    let startMonth = endMonth - 1;
+    let startYear = endYear;
+    if (startMonth < 0) {
+      startMonth = 11;
+      startYear--;
+    }
+    const lastDayOfStartMonth = new Date(Date.UTC(startYear, startMonth + 1, 0)).getUTCDate();
+    const actualStartDay = Math.min(day, lastDayOfStartMonth);
+    const startDate = new Date(Date.UTC(startYear, startMonth, actualStartDay + 1));
+    
+    return {
+      cycleStart: startDate.toISOString().split("T")[0],
+      cycleEnd: endDate.toISOString().split("T")[0],
+      dueDate: endDate.toISOString().split("T")[0],
+    };
+  }
+
+  static async addCharge(params: {
+    crecheId: number;
+    tutorId: number;
+    amount: number | string;
+    description: string;
+    type?: string;
+    petId?: number;
+    bookingId?: number;
+    orderId?: number;
+    itemDate?: Date;
+    quantity?: number;
+    tx?: any; // Accept a tx object to reuse it
+  }) {
+    const amountVal = typeof params.amount === 'string' ? parseFloat(params.amount) : params.amount;
+    const quantity = params.quantity || 1;
+    const totalItemAmount = amountVal * quantity;
+    const itemDateStr = (params.itemDate || new Date()).toISOString().split('T')[0];
+    
+    const executeLogic = async (txClient: any) => {
+      let invoiceId: number;
+
+      const [tutor] = await txClient.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, params.tutorId));
+      const cycle = this.getCycleDates(tutor?.mensalidadeDia, itemDateStr);
+      
+      const [existing] = await txClient.select().from(invoicesTable)
+        .where(
+          and(
+            eq(invoicesTable.tutorId, params.tutorId),
+            eq(invoicesTable.cycleStart, cycle.cycleStart),
+            eq(invoicesTable.cycleEnd, cycle.cycleEnd)
+          )
+        )
+        .for('update');
+      
+      if (existing) {
+        const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
+        
+        let newStatus = existing.status;
+        if (existing.status === 'paid' || existing.status === 'refunded' || existing.status === 'voided') {
+            newStatus = 'pending';
+        }
+
+        await txClient.update(invoicesTable)
+          .set({ amount: newTotal, status: newStatus, updatedAt: new Date() })
+          .where(eq(invoicesTable.id, existing.id));
+        invoiceId = existing.id;
+      } else {
+        const [newInv] = await txClient.insert(invoicesTable).values({
+            crecheId: params.crecheId,
+            tutorId: params.tutorId,
+            cycleStart: cycle.cycleStart,
+            cycleEnd: cycle.cycleEnd,
+            dueDate: cycle.dueDate,
+            amount: totalItemAmount.toFixed(2),
+            status: "pending"
+        }).returning();
+        invoiceId = newInv.id;
+      }
+
+      await txClient.insert(invoiceItemsTable).values({
+         invoiceId: invoiceId,
+         description: params.description,
+         amount: amountVal.toString(),
+         quantity: quantity,
+         itemDate: params.itemDate || new Date(),
+         petId: params.petId,
+         bookingId: params.bookingId,
+         orderId: params.orderId,
+         itemType: params.type || "service",
+      });
+
+      return invoiceId;
+    };
+
+    if (params.tx) {
+        return await executeLogic(params.tx);
+    } else {
+        return await db.transaction(executeLogic);
+    }
+  }
 }

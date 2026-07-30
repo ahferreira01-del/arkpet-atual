@@ -383,6 +383,50 @@ router.post("/", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /:id — Fetch details for a specific event (backward compatibility for V1 frontend)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/:id", async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const eventId  = parseInt(String(req.params.id), 10);
+  const userId   = req.user.id;
+
+  const [event] = await db
+    .select({
+      id:          timelineEventsTable.id,
+      crecheId:    timelineEventsTable.crecheId,
+      authorId:    timelineEventsTable.authorId,
+      authorName:  usersTable.name,
+      type:        timelineEventsTable.type,
+      content:     timelineEventsTable.content,
+      mediaUrl:    timelineEventsTable.mediaUrl,
+      mediaType:   timelineEventsTable.mediaType,
+      createdAt:   timelineEventsTable.createdAt,
+      likeCount:   sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${timelineEventsTable.id})::int`,
+      isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${timelineEventsTable.id} AND user_id = ${userId})`,
+    })
+    .from(timelineEventsTable)
+    .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
+    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!event) { res.status(404).json({ error: "Evento não encontrado" }); return; }
+
+  const pets = await db
+    .select({ petId: petsTable.id, petName: petsTable.name, petPhoto: petsTable.photoUrl })
+    .from(timelineEventPetsTable)
+    .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
+    .where(eq(timelineEventPetsTable.eventId, eventId));
+
+  let mediaUrl: string | null | undefined = event.mediaUrl;
+  if (mediaUrl && mediaUrl.startsWith("/objects/")) {
+    mediaUrl = `/api/storage${mediaUrl}`;
+  }
+
+  res.json({ ...event, mediaUrl, pets });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PATCH /:id — Edit caption (author or creche_admin)
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch("/:id", async (req: AuthRequest, res) => {

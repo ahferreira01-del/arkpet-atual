@@ -234,7 +234,7 @@ export default function TutorsPage() {
   const [createdName, setCreatedName] = useState<string | null>(null);
   const [selectedTutor, setSelectedTutor] = useState<any | null>(null);
 
-  const [form, setForm] = useState({ name: "", email: "", password: generateTempPassword(), mensalidadeDia: "" });
+  const [form, setForm] = useState({ name: "", email: "", cpf: "", password: generateTempPassword(), mensalidadeDia: "" });
 
   const filtered = (tutors ?? []).filter(
     (t) =>
@@ -248,13 +248,14 @@ export default function TutorsPage() {
     try {
       const payload = {
         ...form,
-        mensalidadeDia: form.mensalidadeDia ? parseInt(form.mensalidadeDia) : null,
+        mensalidadeDia: form.mensalidadeDia ? parseInt(form.mensalidadeDia) : undefined,
+        cpf: form.cpf.trim() || undefined,
       };
       const created = await createMutation.mutateAsync(payload);
       setCreatedPassword(form.password);
       setCreatedName(created.name || form.name);
       setShowModal(false);
-      setForm({ name: "", email: "", password: generateTempPassword(), mensalidadeDia: "" });
+      setForm({ name: "", email: "", cpf: "", password: generateTempPassword(), mensalidadeDia: "" });
       toast({ title: "Tutor criado!", description: `${form.name} foi cadastrado com sucesso.` });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -440,6 +441,14 @@ export default function TutorsPage() {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-white mb-1.5">CPF <span className="text-muted-foreground font-normal ml-1">(opcional)</span></label>
+            <Input
+              placeholder="000.000.000-00"
+              value={form.cpf}
+              onChange={(e) => setForm((f) => ({ ...f, cpf: e.target.value }))}
             />
           </div>
           <div>

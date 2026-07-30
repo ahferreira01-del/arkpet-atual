@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useListPets, useCreateBooking } from "@workspace/api-client-react";
-import { useListCatalogue, usePackagesBalance } from "@/hooks/use-financial";
+import { useListCatalogue, usePackagesBalance, useServiceCredits } from "@/hooks/use-financial";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,7 @@ export default function NewBooking() {
   const { data: catalogue, isLoading: catalogueLoading } =
     useListCatalogue(crecheId);
   const { data: packagesData } = usePackagesBalance(crecheId);
+  const { data: serviceCreditsData } = useServiceCredits(crecheId);
   const createMutation = useCreateBooking();
 
   const [step, setStep] = useState(1);
@@ -428,17 +429,33 @@ export default function NewBooking() {
                               )}
                             </div>
                           ) : (
-                            <p className="text-2xl font-bold text-emerald-400">
-                              {(service.price / 100).toLocaleString("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              })}
-                              {service.pricingBySize && (
-                                <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
-                                  *Variável por porte
-                                </span>
-                              )}
-                            </p>
+                            <div>
+                              <p className="text-2xl font-bold text-emerald-400">
+                                {(service.price / 100).toLocaleString("pt-BR", {
+                                  style: "currency",
+                                  currency: "BRL",
+                                })}
+                                {service.pricingBySize && (
+                                  <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
+                                    *Variável por porte
+                                  </span>
+                                )}
+                              </p>
+                              {(() => {
+                                const walletCredit = serviceCreditsData?.data?.find(
+                                  (c: any) => c.catalogueItemId === service.id && c.usedCredits < c.totalCredits
+                                );
+                                if (walletCredit) {
+                                  const remaining = walletCredit.totalCredits - walletCredit.usedCredits;
+                                  return (
+                                    <div className="mt-2 inline-flex items-center rounded-md bg-purple-500/10 px-2 py-1 text-xs font-medium text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                                      {remaining} {remaining === 1 ? 'Pré-pago disponível' : 'Pré-pagos disponíveis'}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
                           )}
                         </div>
                       </CardContent>
@@ -635,9 +652,34 @@ export default function NewBooking() {
                   });
 
                   let totalCost = 0;
-                  if (!isPackage) {
-                     totalCost = selectedPetIds.reduce((acc, id) => acc + getPetPrice(id).price, 0) * durationDays;
-                  } else if (excessDays > 0) {
+                  let originalCost = 0;
+                  let discountCost = 0;
+                  let availableServiceCredits = 0;
+                  let creditsToUse = 0;
+
+                  if (!isPackage && selectedService) {
+                     const allCosts: number[] = [];
+                     for (let i = 0; i < durationDays; i++) {
+                       for (const petId of selectedPetIds) {
+                         allCosts.push(getPetPrice(petId).price);
+                       }
+                     }
+                     originalCost = allCosts.reduce((acc, cost) => acc + cost, 0);
+
+                     const walletCredit = serviceCreditsData?.data?.find(
+                       (c: any) => c.catalogueItemId === selectedService.id && c.usedCredits < c.totalCredits
+                     );
+                     if (walletCredit) {
+                       availableServiceCredits = walletCredit.totalCredits - walletCredit.usedCredits;
+                     }
+                     
+                     creditsToUse = Math.min(allCosts.length, availableServiceCredits);
+                     
+                     allCosts.sort((a, b) => b - a);
+                     discountCost = allCosts.slice(0, creditsToUse).reduce((acc, cost) => acc + cost, 0);
+                     
+                     totalCost = originalCost - discountCost;
+                  } else if (isPackage && excessDays > 0) {
                      // Estimativa simplificada baseada no preço base da diária avulsa, se existir
                      totalCost = excessDays * (fallbackDayUseService?.basePrice || 0);
                   }
@@ -693,6 +735,25 @@ export default function NewBooking() {
                                 </div>
                               );
                             })}
+                            
+                            {!isPackage && discountCost > 0 && (
+                                <div className="flex justify-between items-center p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 mt-2">
+                                  <div>
+                                    <p className="text-sm font-medium text-purple-400 flex items-center gap-1.5">
+                                      Créditos Pré-pagos Usados
+                                    </p>
+                                    <p className="text-[10px] text-purple-400/80 uppercase tracking-wide mt-0.5">
+                                      {creditsToUse} {creditsToUse === 1 ? 'crédito aplicado' : 'créditos aplicados'}
+                                    </p>
+                                  </div>
+                                  <span className="font-semibold text-purple-400">
+                                    - {(discountCost / 100).toLocaleString("pt-BR", {
+                                      style: "currency",
+                                      currency: "BRL",
+                                    })}
+                                  </span>
+                                </div>
+                            )}
                           </div>
 
                           <div className="pt-4 border-t border-white/10 flex justify-between items-end">

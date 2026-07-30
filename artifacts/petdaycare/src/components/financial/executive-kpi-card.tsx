@@ -27,7 +27,7 @@ export function ExecutiveKpiCard({
 }: ExecutiveKpiCardProps) {
   const formatValue = (val: number) => {
     if (formatAsCurrency) {
-      return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+      return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val / 100)
     }
     return new Intl.NumberFormat('pt-BR').format(val)
   }

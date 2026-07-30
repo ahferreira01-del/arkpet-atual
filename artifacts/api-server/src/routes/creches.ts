@@ -6,6 +6,7 @@ import { eq, and, count, sql, gte, lt } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { hashPassword } from "../lib/auth.js";
 import { sendWelcomeEmail } from "../services/email.js";
+import { encrypt, decrypt } from "../lib/crypto.js";
 
 const staffRoleEnum = z.enum(["creche_admin", "staff"]);
 
@@ -45,6 +46,7 @@ const createTutorSchema = z.object({
   email: z.string().email("email inválido"),
   password: z.string().optional().nullable(),
   mensalidadeDia: z.number().int().min(1).max(31).optional().nullable(),
+  cpf: z.string().optional().nullable(),
 });
 
 const router = Router();
@@ -80,6 +82,7 @@ router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin
       email: usersTable.email,
       isActive: usersTable.isActive,
       mensalidadeDia: usersTable.mensalidadeDia,
+      cpf: usersTable.cpf,
       createdAt: usersTable.createdAt,
     })
     .from(usersTable)
@@ -101,7 +104,13 @@ router.get("/:crecheId/tutors/manage", requireRole("master_admin", "creche_admin
     if (row.tutorId != null) countMap[row.tutorId] = Number(row.count);
   }
 
-  res.json(tutors.map((t) => ({ ...t, petCount: countMap[t.id] ?? 0 })));
+  res.json(tutors.map((t) => {
+    let decryptedCpf = null;
+    if (t.cpf) {
+      try { decryptedCpf = decrypt(t.cpf); } catch (e) {}
+    }
+    return { ...t, cpf: decryptedCpf, petCount: countMap[t.id] ?? 0 };
+  }));
 });
 
 // POST create tutor
@@ -115,13 +124,14 @@ router.post("/:crecheId/tutors", requireRole("master_admin", "creche_admin", "st
     res.status(400).json({ error: "Dados inválidos", details: parsedTutor.error.flatten().fieldErrors });
     return;
   }
-  const { name, email, password, mensalidadeDia } = parsedTutor.data;
+  const { name, email, password, mensalidadeDia, cpf } = parsedTutor.data;
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing) { res.status(409).json({ error: "E-mail já cadastrado" }); return; }
   const [user] = await db.insert(usersTable).values({
     name, email, passwordHash: hashPassword(password || "ArkPet@123"),
     role: "tutor", crecheId, mustChangePassword: true, isActive: true,
     mensalidadeDia: mensalidadeDia ? parseInt(String(mensalidadeDia)) : null,
+    cpf: cpf ? encrypt(cpf) : null,
   }).returning();
   // Send welcome email (non-blocking)
   sendWelcomeEmail({ name: user.name, email: user.email, role: "tutor", tempPassword: password as string }).catch(() => {});

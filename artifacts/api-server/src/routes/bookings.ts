@@ -18,13 +18,14 @@ import {
   tutorCreditsTable,
   bookingCreditsTable,
   financialAuditLogsTable,
+  tutorServiceCreditsTable,
 } from "@workspace/db/schema";
 import { eq, and, desc, gte, gt, sql, or, isNull, asc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { logFinancialAudit } from "../services/audit.js";
-import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
+import { hasOverdueInvoices, BillingService } from "../services/billing.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
@@ -280,8 +281,12 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
     }
 
     res.status(201).json(enriched);
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    if (err.message) {
+      res.status(400).json({ error: err.message });
+    } else {
+      next(err);
+    }
   }
 });
 
@@ -498,24 +503,58 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
              } else {
                unitPrice = Number(catalogueItem.basePrice);
              }
+             
+             // Check if we have service credits (carteira de serviços)
+             if (catalogueItem.type === "service") {
+               const availableServiceCredits = await tx
+                 .select()
+                 .from(tutorServiceCreditsTable)
+                 .where(and(
+                   eq(tutorServiceCreditsTable.tutorId, existing.tutorId!),
+                   eq(tutorServiceCreditsTable.crecheId, crecheId),
+                   eq(tutorServiceCreditsTable.catalogueItemId, catalogueItem.id),
+                   sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`
+                 ))
+                 .orderBy(asc(tutorServiceCreditsTable.createdAt))
+                 .for("update");
+                 
+               for (const credit of availableServiceCredits) {
+                 if (daysToBill <= 0) break;
+                 
+                 const remainingInCredit = credit.totalCredits - credit.usedCredits;
+                 const toConsume = Math.min(remainingInCredit, daysToBill);
+                 
+                 await tx.update(tutorServiceCreditsTable)
+                   .set({ usedCredits: sql`${tutorServiceCreditsTable.usedCredits} + ${toConsume}` })
+                   .where(eq(tutorServiceCreditsTable.id, credit.id));
+                   
+                 daysToBill -= toConsume;
+                 
+                 await logFinancialAudit({
+                   crecheId,
+                   userId: req.user.id,
+                   action: "credits_deduct",
+                   referenceId: bookingId,
+                   referenceType: "bookings",
+                   details: `Consumo de ${toConsume} crédito(s) de serviço (${catalogueItem.name}) da Carteira de Serviços.`
+                 }, tx);
+               }
+             }
           }
           
           const subtotal = unitPrice * daysToBill;
           if (subtotal > 0) {
-            const [tutor] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, existing.tutorId!)).limit(1);
-            const [invoice] = await tx.insert(invoicesTable).values({
+            await BillingService.addCharge({
               crecheId,
-              tutorId: existing.tutorId,
-              bookingId,
-              amount: String(subtotal),
-              status: "pending",
-              dueDate: calculateDueDate(tutor?.mensalidadeDia, new Date(existing.startDate)),
-            }).returning();
-            await tx.insert(invoiceItemsTable).values({
-              invoiceId: invoice.id,
-              description: catalogueItem ? catalogueItem.name : existing.type,
-              amount: String(unitPrice),
+              tutorId: existing.tutorId!,
+              amount: unitPrice,
               quantity: daysToBill,
+              description: catalogueItem ? catalogueItem.name : existing.type,
+              type: existing.type,
+              petId: existing.petId,
+              bookingId: bookingId,
+              itemDate: new Date(existing.startDate),
+              tx: tx,
             });
           }
           
@@ -1050,37 +1089,36 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
         }
       }
 
-      // 4. Gerar Fatura se houver valor ou se usou crédito
+      // 4. Gerar Fatura via BillingService
       if (totalAmount > 0 || creditsUsed > 0) {
-        const [tutor] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, existing.tutorId!)).limit(1);
-
-        const [invoice] = await tx
-          .insert(invoicesTable)
-          .values({
-            crecheId,
-            tutorId: existing.tutorId!,
-            amount: String(totalAmount),
-            status: totalAmount === 0 ? "paid" : "pending",
-            dueDate: calculateDueDate(tutor?.mensalidadeDia, new Date()),
-          })
-          .returning();
-
-        // 4.1 Inserir Item Base (Reserva)
-        await tx.insert(invoiceItemsTable).values({
-          invoiceId: invoice.id,
-          description: `Reserva #${bookingId} (${creditsUsed > 0 ? "Pacote de Diárias" : existing.type === "day_use" ? "Day Use" : existing.type})`,
-          quantity: 1,
-          amount: String(creditsUsed > 0 ? 0 : basePrice),
+        const invoiceId = await BillingService.addCharge({
+           crecheId,
+           tutorId: existing.tutorId!,
+           amount: creditsUsed > 0 ? 0 : basePrice,
+           description: `Reserva #${bookingId} (${creditsUsed > 0 ? "Pacote de Diárias" : existing.type === "day_use" ? "Day Use" : existing.type})`,
+           type: existing.type,
+           petId: existing.petId,
+           bookingId: bookingId,
+           itemDate: new Date(),
+           tx: tx,
         });
 
-        // 4.2 Inserir Itens Consumíveis
+        // 4.2 Inserir Itens Consumíveis via BillingService
         for (const item of consumables) {
-          await tx.insert(invoiceItemsTable).values({
-            invoiceId: invoice.id,
-            description: item.itemName || `Consumível #${item.itemId}`,
-            quantity: item.quantity,
-            amount: item.chargedPrice,
-          });
+          if (Number(item.chargedPrice) > 0) {
+            await BillingService.addCharge({
+              crecheId,
+              tutorId: existing.tutorId!,
+              amount: Number(item.chargedPrice),
+              quantity: item.quantity,
+              description: item.itemName || `Consumível #${item.itemId}`,
+              type: "consumable",
+              petId: existing.petId,
+              bookingId: bookingId,
+              itemDate: new Date(),
+              tx: tx,
+            });
+          }
         }
 
         // 5. Auditoria
@@ -1088,9 +1126,9 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
           crecheId,
           userId: req.user!.id,
           action: "invoice_create",
-          referenceId: invoice.id,
+          referenceId: invoiceId,
           referenceType: "invoices",
-          details: `Fatura #${invoice.id} gerada automaticamente no check-out da reserva #${bookingId}. Total: ${totalAmount}. Créditos usados: ${creditsUsed}.`,
+          details: `Fatura consolidada atualizada no check-out da reserva #${bookingId}. Total base da reserva: ${basePrice}. Créditos usados: ${creditsUsed}.`,
         }, tx);
       }
     });

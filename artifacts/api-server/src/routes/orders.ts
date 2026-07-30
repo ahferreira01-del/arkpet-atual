@@ -4,12 +4,13 @@ import {
   ordersTable,
   orderItemsTable,
   catalogueItemsTable,
-  invoicesTable,
-  invoiceItemsTable,
   catalogueStockTransactionsTable,
+  invoicesTable,
   usersTable,
   crechesTable,
+  tutorServiceCreditsTable,
 } from "@workspace/db/schema";
+import { BillingService } from "../services/billing.js";
 import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { validate } from "../middlewares/validate.js";
@@ -116,49 +117,44 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
 
       const total = subtotal + Number(deliveryFee);
 
-      let dueDateStr = new Date().toISOString().split('T')[0];
-      if (!(await hasOverdueInvoices(tutorId))) {
-        const [tutorRec] = await tx.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
-        dueDateStr = calculateDueDate(tutorRec?.mensalidadeDia, new Date());
-      } else {
-        // If they have overdue invoices, we force payment today (no faturado)
-        dueDateStr = new Date().toISOString().split('T')[0];
-      }
+      let firstInvoiceId: number | null = null;
 
-      // 2. Create Invoice
-      const [invoice] = await tx.insert(invoicesTable).values({
-        crecheId,
-        tutorId,
-        amount: total.toString(),
-        status: "pending",
-        dueDate: dueDateStr,
-      }).returning();
-
-      // 3. Create Invoice Items
+      // 2. Add Charges via BillingService and grant service credits
       for (const reqItem of orderItemsToInsert) {
         const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-        await tx.insert(invoiceItemsTable).values({
-          invoiceId: invoice.id,
-          description: catItem!.name,
+        
+        const invId = await BillingService.addCharge({
+          crecheId,
+          tutorId,
+          amount: reqItem.unitPrice,
           quantity: reqItem.quantity,
-          amount: reqItem.unitPrice
+          description: catItem!.name,
+          type: catItem?.type === "service" ? "service" : "product",
+          itemDate: new Date(),
+          tx: tx
         });
+        if (!firstInvoiceId) firstInvoiceId = invId;
       }
       
       if (Number(deliveryFee) > 0) {
-        await tx.insert(invoiceItemsTable).values({
-          invoiceId: invoice.id,
-          description: "Taxa de Entrega",
+        const invId = await BillingService.addCharge({
+          crecheId,
+          tutorId,
+          amount: deliveryFee.toString(),
           quantity: 1,
-          amount: deliveryFee.toString()
+          description: "Taxa de Entrega",
+          type: "fee",
+          itemDate: new Date(),
+          tx: tx
         });
+        if (!firstInvoiceId) firstInvoiceId = invId;
       }
 
-      // 4. Create Order
+      // 3. Create Order
       const [order] = await tx.insert(ordersTable).values({
         crecheId,
         tutorId,
-        invoiceId: invoice.id,
+        invoiceId: firstInvoiceId!,
         status: "pending_payment",
         deliveryMethod,
         deliveryAddress,
@@ -176,6 +172,12 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
           unitPrice: oi.unitPrice,
           totalPrice: oi.totalPrice
         });
+      }
+
+      let invoice = null;
+      if (firstInvoiceId) {
+        const [fetchedInvoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, firstInvoiceId));
+        invoice = fetchedInvoice;
       }
 
       res.status(201).json({ order, invoice });

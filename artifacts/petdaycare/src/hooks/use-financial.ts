@@ -214,6 +214,7 @@ export function usePayManualInvoice(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
     }
   });
 }
@@ -238,6 +239,7 @@ export function useApproveReceipt(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
     }
   });
 }
@@ -388,6 +390,24 @@ export function usePackagesBalance(crecheId: number) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error("Erro ao carregar saldo de pacotes");
+      return res.json();
+    }
+  });
+}
+
+export function useServiceCredits(crecheId: number, params?: { page?: number; pageSize?: number }) {
+  return useQuery({
+    queryKey: ["service-credits", crecheId, params?.page, params?.pageSize],
+    queryFn: async () => {
+      const token = localStorage.getItem("auth_token");
+      const url = new URL(window.location.origin + `/api/creches/${crecheId}/financial/service-credits`);
+      if (params?.page) url.searchParams.append("page", params.page.toString());
+      if (params?.pageSize) url.searchParams.append("pageSize", params.pageSize.toString());
+      
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao carregar carteira de serviços");
       return res.json();
     }
   });
