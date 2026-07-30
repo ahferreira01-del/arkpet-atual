@@ -1,14 +1,20 @@
 import { randomUUID } from "crypto";
 import { Readable } from "stream";
 import { File, Storage } from "@google-cloud/storage";
+import {
+  canAccessObject,
+  getObjectAclPolicy,
+  ObjectAclPolicy,
+  ObjectPermission,
+  setObjectAclPolicy,
+} from "./objectAcl.js";
 
-// ── Minimal ACL stubs kept for backward-compat imports ───────────────────────
-export enum ObjectPermission { READ = "READ", WRITE = "WRITE" }
-export interface ObjectAclPolicy { visibility?: "public" | "private" }
-
-// ── Sidecar-authenticated GCS client ─────────────────────────────────────────
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
+// ── GCS client — Replit sidecar external-account credentials ─────────────────
+// IMPORTANT: Do NOT change this setup. The sidecar is the Replit-managed
+// identity broker. The external_account flow works for READ operations.
+// WRITE operations must use presigned PUT URLs via signObjectURL() below.
 export const objectStorageClient = new Storage({
   credentials: {
     audience: "replit",
@@ -33,19 +39,25 @@ export class ObjectNotFoundError extends Error {
   }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function parseGcsPath(fullPath: string): { bucketName: string; objectName: string } {
-  // Handles: gs://bucket/path, /bucket/path, bucket/path
-  const cleaned = fullPath.replace(/^gs:\/\//, "").replace(/^\//, "");
-  const slash = cleaned.indexOf("/");
-  if (slash === -1) return { bucketName: cleaned, objectName: "" };
-  return {
-    bucketName: cleaned.slice(0, slash),
-    objectName: cleaned.slice(slash + 1),
-  };
+// ── Backward-compat re-exports ────────────────────────────────────────────────
+export { ObjectPermission };
+export type { ObjectAclPolicy };
+
+// ── parseObjectPath ───────────────────────────────────────────────────────────
+// Expects leading-slash paths: "/bucket/objectName"
+// Works with PRIVATE_OBJECT_DIR = "/bucket-id/.private"
+function parseObjectPath(path: string): { bucketName: string; objectName: string } {
+  if (!path.startsWith("/")) path = `/${path}`;
+  const parts = path.split("/");
+  // parts[0] is "" (from leading slash), parts[1] is bucketName
+  if (parts.length < 3) throw new Error("Invalid path: must contain at least a bucket name");
+  const bucketName = parts[1];
+  const objectName = parts.slice(2).join("/");
+  return { bucketName, objectName };
 }
 
-async function signGcsUrl({
+// ── signObjectURL — always uses the sidecar, bypasses STS ────────────────────
+async function signObjectURL({
   bucketName,
   objectName,
   method,
@@ -71,13 +83,15 @@ async function signGcsUrl({
     },
   );
   if (!response.ok) {
-    throw new Error(`Failed to sign GCS URL (${response.status})`);
+    throw new Error(
+      `Failed to sign object URL (${response.status}) — ensure you are running on Replit`,
+    );
   }
-  const { signed_url } = await response.json();
-  return signed_url;
+  const { signed_url: signedURL } = await response.json();
+  return signedURL;
 }
 
-/** Map content-type → file extension */
+// ── Content-type → extension helper ──────────────────────────────────────────
 function extForContentType(contentType: string): string {
   const mime = contentType.split(";")[0].trim().toLowerCase();
   const map: Record<string, string> = {
@@ -100,7 +114,7 @@ export class ObjectStorageService {
   getPublicObjectSearchPaths(): string[] {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
     const paths = Array.from(
-      new Set(pathsStr.split(",").map((p) => p.trim()).filter((p) => p.length > 0))
+      new Set(pathsStr.split(",").map((p) => p.trim()).filter((p) => p.length > 0)),
     );
     return paths.length > 0 ? paths : [];
   }
@@ -109,11 +123,11 @@ export class ObjectStorageService {
     return process.env.PRIVATE_OBJECT_DIR || "";
   }
 
-  // ── Public-object search (for /storage/public-objects/* route) ────────────
+  // ── Public-asset search ────────────────────────────────────────────────────
   async searchPublicObject(filePath: string): Promise<File | null> {
     for (const searchPath of this.getPublicObjectSearchPaths()) {
       const fullPath = `${searchPath}/${filePath}`;
-      const { bucketName, objectName } = parseGcsPath(fullPath);
+      const { bucketName, objectName } = parseObjectPath(fullPath);
       const file = objectStorageClient.bucket(bucketName).file(objectName);
       try {
         const [exists] = await file.exists();
@@ -125,10 +139,10 @@ export class ObjectStorageService {
     return null;
   }
 
-  // ── Download (streaming, with HTTP Range support for Safari/iOS video) ─────
+  // ── Download — streaming, with HTTP Range support (iOS video) ─────────────
   async downloadObject(
     file: File,
-    cacheTtlSec: number = 3600,
+    cacheTtlSec = 3600,
     range?: string,
   ): Promise<Response> {
     let metadata: Record<string, any>;
@@ -139,15 +153,17 @@ export class ObjectStorageService {
       throw new ObjectNotFoundError();
     }
 
+    const aclPolicy = await getObjectAclPolicy(file).catch(() => null);
+    const isPublic = aclPolicy?.visibility === "public";
     const contentType = (metadata.contentType as string) || "application/octet-stream";
     const fileSize = Number(metadata.size ?? 0);
 
-    // ── Range request (required by Safari / iOS for video) ──────────────────
+    // Range request (required by Safari/iOS for video)
     if (range) {
       const match = range.match(/bytes=(\d*)-(\d*)/);
       if (match) {
         const start = match[1] !== "" ? parseInt(match[1], 10) : 0;
-        const end   = match[2] !== "" ? parseInt(match[2], 10) : fileSize - 1;
+        const end   = match[2] !== "" ? parseInt(match[2], 10) : Math.max(0, fileSize - 1);
 
         if (fileSize > 0 && (start > end || end >= fileSize)) {
           return new Response(null, {
@@ -167,27 +183,27 @@ export class ObjectStorageService {
             "Content-Range":  `bytes ${start}-${end}/${fileSize}`,
             "Accept-Ranges":  "bytes",
             "Content-Length": String(chunkSize),
-            "Cache-Control":  `public, max-age=${cacheTtlSec}`,
+            "Cache-Control":  `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
           },
         });
       }
     }
 
-    // ── Full file ────────────────────────────────────────────────────────────
+    // Full file
     const nodeStream = file.createReadStream();
     const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-
     const headers: Record<string, string> = {
       "Content-Type":  contentType,
       "Accept-Ranges": "bytes",
-      "Cache-Control": `public, max-age=${cacheTtlSec}`,
+      "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
     };
     if (fileSize > 0) headers["Content-Length"] = String(fileSize);
 
     return new Response(webStream, { headers });
   }
 
-  // ── Upload a buffer directly to GCS (used by feed, financial, migrate) ─────
+  // ── Server-side buffer upload via presigned PUT (avoids STS write errors) ──
+  // Used by POST /storage/uploads/direct and financial receipt uploads.
   async uploadBuffer(
     buffer: Buffer,
     contentType: string,
@@ -201,30 +217,51 @@ export class ObjectStorageService {
       : `uploads/${uuid}${ext}`;
 
     const privateDir = this.getPrivateObjectDir();
-    const fullPath   = privateDir ? `${privateDir}/${subPath}` : subPath;
-    const { bucketName, objectName } = parseGcsPath(fullPath);
+    const fullPath   = privateDir ? `${privateDir}/${subPath}` : `/${subPath}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
 
-    const gcsFile = objectStorageClient.bucket(bucketName).file(objectName);
-    await gcsFile.save(buffer, {
-      contentType,
-      resumable: false,
-      metadata: { cacheControl: "public, max-age=3600" },
+    // Presigned PUT — goes through sidecar, bypasses STS (which fails for writes)
+    const signedUrl = await signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 900 });
+    const uploadRes = await fetch(signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: buffer,
     });
+    if (!uploadRes.ok) {
+      throw new Error(`GCS upload failed: ${uploadRes.status} ${uploadRes.statusText}`);
+    }
 
     return `/objects/${subPath}`;
   }
 
-  // ── Resolve an objectPath (/objects/…) → GCS File handle ─────────────────
-  async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (!objectPath.startsWith("/objects/")) {
-      throw new ObjectNotFoundError();
-    }
-    const relPath    = objectPath.slice("/objects/".length);
-    const privateDir = this.getPrivateObjectDir();
-    const fullPath   = privateDir ? `${privateDir}/${relPath}` : relPath;
-    const { bucketName, objectName } = parseGcsPath(fullPath);
+  // ── Presigned upload URL for client-side direct-to-GCS uploads ────────────
+  async getObjectEntityUploadURL(crecheId?: string): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR not set");
 
+    const uuid    = randomUUID();
+    const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
+    const fullPath = `${privateObjectDir}/${subPath}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+
+    return signObjectURL({ bucketName, objectName, method: "PUT", ttlSec: 900 });
+  }
+
+  // ── Resolve objectPath (/objects/…) → GCS File handle ────────────────────
+  async getObjectEntityFile(objectPath: string): Promise<File> {
+    if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
+
+    const parts = objectPath.slice(1).split("/");
+    if (parts.length < 2) throw new ObjectNotFoundError();
+
+    const entityId = parts.slice(1).join("/"); // strip leading "objects"
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+    const fullPath = `${entityDir}${entityId}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
     const file = objectStorageClient.bucket(bucketName).file(objectName);
+
     try {
       const [exists] = await file.exists();
       if (!exists) throw new ObjectNotFoundError();
@@ -235,79 +272,85 @@ export class ObjectStorageService {
     return file;
   }
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+  // ── Delete via presigned URL (avoids STS write errors) ───────────────────
   async deleteObject(file: File): Promise<void> {
     try {
-      await file.delete();
+      // file.name is the GCS object name; file.bucket.name is the bucket
+      const bucketName = (file as any).bucket?.name ?? (file as any).parent?.name ?? "";
+      const objectName = file.name;
+      if (!bucketName || !objectName) {
+        await file.delete().catch(() => undefined);
+        return;
+      }
+      const signedUrl = await signObjectURL({
+        bucketName,
+        objectName,
+        method: "DELETE",
+        ttlSec: 300,
+      });
+      await fetch(signedUrl, { method: "DELETE" }).catch(() => undefined);
     } catch {
       // ignore — object may already be gone
     }
   }
 
-  // ── Presigned upload URL for client-side direct uploads ───────────────────
-  async getObjectEntityUploadURL(crecheId?: string): Promise<string> {
-    const uuid    = randomUUID();
-    const subPath = crecheId ? `uploads/c${crecheId}/${uuid}` : `uploads/${uuid}`;
-
-    const privateDir = this.getPrivateObjectDir();
-    const fullPath   = privateDir ? `${privateDir}/${subPath}` : subPath;
-    const { bucketName, objectName } = parseGcsPath(fullPath);
-
-    return signGcsUrl({ bucketName, objectName, method: "PUT", ttlSec: 900 });
-  }
-
-  // ── Signed read URL (for short-lived media tokens) ────────────────────────
-  async getSignedReadURL(objectPath: string, ttlSec: number = 300): Promise<string> {
-    if (!objectPath.startsWith("/objects/")) return `/api${objectPath}`;
-    const relPath    = objectPath.slice("/objects/".length);
-    const privateDir = this.getPrivateObjectDir();
-    const fullPath   = privateDir ? `${privateDir}/${relPath}` : relPath;
-    const { bucketName, objectName } = parseGcsPath(fullPath);
-    try {
-      return await signGcsUrl({ bucketName, objectName, method: "GET", ttlSec });
-    } catch {
-      return `/api${objectPath}`;
-    }
-  }
-
-  // ── Path normalization ────────────────────────────────────────────────────
-  // Converts a GCS signed URL back to the short /objects/... path stored in DB.
-  // Input:  "https://storage.googleapis.com/bucket/.private/uploads/c3/uuid.webp?X-Goog-..."
-  // Output: "/objects/uploads/c3/uuid.webp"
+  // ── Normalize GCS signed URL → /objects/… path for DB storage ────────────
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) return rawPath;
-    // pathname: /bucket/.private/uploads/c3/uuid.webp
-    const pathname = new URL(rawPath).pathname;
-    // Strip leading slash: bucket/.private/uploads/c3/uuid.webp
-    const withoutLeadingSlash = pathname.slice(1);
-    // PRIVATE_OBJECT_DIR e.g. /bucket/.private → strip leading slash → bucket/.private
-    const privateDir = this.getPrivateObjectDir().replace(/^\//, "");
-    if (privateDir && withoutLeadingSlash.startsWith(privateDir + "/")) {
-      // subPath: uploads/c3/uuid.webp
-      const subPath = withoutLeadingSlash.slice(privateDir.length + 1);
-      return `/objects/${subPath}`;
-    }
-    // Fallback: strip bucket name only
-    const firstSlash = withoutLeadingSlash.indexOf("/");
-    if (firstSlash !== -1) {
-      return `/objects/${withoutLeadingSlash.slice(firstSlash + 1)}`;
-    }
-    return rawPath;
+
+    const url = new URL(rawPath);
+    const rawObjectPath = url.pathname; // /bucket/.private/uploads/c3/uuid.webp
+
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+
+    if (!rawObjectPath.startsWith(entityDir)) return rawObjectPath;
+
+    const entityId = rawObjectPath.slice(entityDir.length); // uploads/c3/uuid.webp
+    return `/objects/${entityId}`;
   }
 
-  // ── ACL (no-op — access is enforced by path-based auth in storage.ts) ─────
+  // ── ACL helpers ───────────────────────────────────────────────────────────
   async trySetObjectEntityAclPolicy(
     rawPath: string,
-    _aclPolicy: ObjectAclPolicy,
+    aclPolicy: ObjectAclPolicy,
   ): Promise<string> {
-    return this.normalizeObjectEntityPath(rawPath);
+    const normalizedPath = this.normalizeObjectEntityPath(rawPath);
+    if (!normalizedPath.startsWith("/")) return normalizedPath;
+    const objectFile = await this.getObjectEntityFile(normalizedPath);
+    await setObjectAclPolicy(objectFile, aclPolicy);
+    return normalizedPath;
   }
 
-  async canAccessObjectEntity(_opts: {
+  async canAccessObjectEntity({
+    userId,
+    objectFile,
+    requestedPermission,
+  }: {
     userId?: string;
     objectFile: File;
     requestedPermission?: ObjectPermission;
   }): Promise<boolean> {
-    return true;
+    return canAccessObject({
+      userId,
+      objectFile,
+      requestedPermission: requestedPermission ?? ObjectPermission.READ,
+    });
+  }
+
+  // ── Signed read URL (for short-lived media tokens / CDN offloading) ────────
+  async getSignedReadURL(objectPath: string, ttlSec = 300): Promise<string> {
+    try {
+      if (!objectPath.startsWith("/objects/")) return `/api${objectPath}`;
+      const parts = objectPath.slice(1).split("/");
+      const entityId = parts.slice(1).join("/");
+      let entityDir = this.getPrivateObjectDir();
+      if (!entityDir.endsWith("/")) entityDir = `${entityDir}/`;
+      const fullPath = `${entityDir}${entityId}`;
+      const { bucketName, objectName } = parseObjectPath(fullPath);
+      return await signObjectURL({ bucketName, objectName, method: "GET", ttlSec });
+    } catch {
+      return `/api${objectPath}`;
+    }
   }
 }
