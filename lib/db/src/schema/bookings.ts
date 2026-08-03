@@ -2,7 +2,9 @@ import { pgTable, serial, text, integer, timestamp, pgEnum, date, boolean, real,
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const bookingTypeEnum = pgEnum("booking_type", ["day_use", "lodging", "banho", "hospedagem_banho", "visita", "pacote_4dias", "pacote_8dias", "pacote_20dias", "visita_taxi", "creche_taxi"]);
+// Note: booking_type was previously a pgEnum but was changed to plain text so
+// that creche admins can create services with arbitrary names (e.g. "tosa",
+// "tosa_completa", etc.) without requiring schema migrations for each new type.
 export const bookingStatusEnum = pgEnum("booking_status", ["pending", "confirmed", "active", "completed", "cancelled", "cancel_requested"]);
 
 export const bookingsTable = pgTable("bookings", {
@@ -10,7 +12,7 @@ export const bookingsTable = pgTable("bookings", {
   crecheId: integer("creche_id").notNull(),
   petId: integer("pet_id").notNull(),
   tutorId: integer("tutor_id").notNull(),
-  type: bookingTypeEnum("type").notNull(),
+  type: text("type").notNull(),
   status: bookingStatusEnum("status").notNull().default("pending"),
   startDate: date("start_date").notNull(),
   endDate: date("end_date"),
