@@ -332,17 +332,30 @@ function StandalonePublishModal({
     const file = e.target.files?.[0];
     if (!file) return;
     setCompressing(true);
+    const token = localStorage.getItem("auth_token") ?? "";
     try {
       if (file.type.startsWith("video/")) {
-        const token = localStorage.getItem("auth_token") ?? "";
         mediaDataRef.current = await uploadFileDirect(file, token);
         mediaTypeRef.current = "video";
         setPreview(URL.createObjectURL(file));
       } else {
-        const data = await compressImage(file);
-        mediaDataRef.current = data;
+        // Mostra preview local imediatamente, depois faz upload para object storage
+        const localPreview = await compressImage(file);
+        setPreview(localPreview);
+        try {
+          mediaDataRef.current = await uploadFileDirect(file, token);
+        } catch {
+          toast({
+            title: "Erro no upload da foto",
+            description: "Não foi possível enviar a imagem. Verifique sua conexão e tente novamente.",
+            variant: "destructive",
+          });
+          mediaDataRef.current = null;
+          mediaTypeRef.current = null;
+          setPreview(null);
+          return;
+        }
         mediaTypeRef.current = "photo";
-        setPreview(data);
       }
     } catch {
       mediaDataRef.current = null;
@@ -351,7 +364,7 @@ function StandalonePublishModal({
     } finally {
       setCompressing(false);
     }
-  }, []);
+  }, [toast]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -517,7 +530,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
   const { toast } = useToast();
 
   const checkedInPetIds = new Set(
-    (pets || []).filter((p) => p.isCheckedIn).map((p) => p.id)
+    (pets || []).filter((p: any) => p.isCheckedIn).map((p: any) => p.id)
   );
   const presentCount = checkedInPetIds.size;
 

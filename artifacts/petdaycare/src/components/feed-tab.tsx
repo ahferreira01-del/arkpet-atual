@@ -45,26 +45,56 @@ function FeedCard({
   onDeleted: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [liked, setLiked] = useState<boolean>(event.isLikedByUser ?? false);
+  // V2 uses isLiked; V1 used isLikedByUser
+  const [liked, setLiked] = useState<boolean>(event.isLiked ?? event.isLikedByUser ?? false);
   const [likeCount, setLikeCount] = useState<number>(event.likeCount ?? 0);
-  // Lazy-load: mediaUrl is stripped from the list payload to keep it small.
-  // The full base64/URL is fetched on demand when the user taps "Ver foto".
+  // Lazy-load: for V1 posts (base64 mediaUrl), the full URL is fetched on demand.
+  // For V2 posts (objectPath in mediaItems), we build the src directly.
   const [loadedMedia, setLoadedMedia] = useState<string | null>(null);
+  const [loadedMediaType, setLoadedMediaType] = useState<"photo" | "video" | null>(null);
   const [mediaLoading, setMediaLoading] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(event.content || "");
   const [editSaving, setEditSaving] = useState(false);
   const queryClient = useQueryClient();
 
-  const displayMedia = event.mediaUrl || loadedMedia;
-  const hasMedia = event.hasMedia ?? !!event.mediaUrl;
+  // V2 format: mediaItems array with objectPaths served via /objects/
+  // V1 format: event.mediaUrl (base64) and event.hasMedia flag
+  const mediaFromItems: { objectPath: string; type: "photo" | "video" } | undefined =
+    (event.mediaItems as any[])?.[0];
+
+  // For V2 objectPaths: build an authenticated src URL immediately (no fetch needed)
+  const mediaItemSrc = mediaFromItems
+    ? buildMediaSrc(mediaFromItems.objectPath, getMediaToken())
+    : null;
+
+  // displayMedia: V2 inline → V1 lazy-loaded → V1 inline (legacy)
+  const displayMedia = mediaItemSrc || event.mediaUrl || loadedMedia;
+
+  // displayMediaType: prefer V2 mediaItems → V1 event.mediaType → lazy-loaded detail → event.type fallback
+  const displayMediaType: "photo" | "video" | null =
+    mediaFromItems?.type ??
+    event.mediaType ??
+    loadedMediaType ??
+    (event.type === "video" ? "video" : event.type === "photo" ? "photo" : null);
+
+  // hasMedia: true if there's a V2 mediaItem, a V1 hasMedia flag, a V1 mediaUrl, or
+  // the type implies media (photo/video events always have media in this app)
+  const hasMedia =
+    !!mediaFromItems ||
+    event.hasMedia === true ||
+    !!event.mediaUrl ||
+    event.type === "photo" ||
+    event.type === "video";
+
+  // Author name: V2 puts it in event.author.name; V1 put it in event.authorName directly
+  const authorName = event.author?.name || event.authorName || "";
 
   const handleLoadMedia = React.useCallback(async () => {
     if (mediaLoading || loadedMedia) return;
     setMediaLoading(true);
     try {
       const token = localStorage.getItem("auth_token");
-      // Step 1 — fetch the event detail to get the media URL
       const res = await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -72,6 +102,11 @@ function FeedCard({
       const data = await res.json();
       const url: string | undefined = data.mediaUrl;
       if (!url) return;
+
+      // Save mediaType from the detail so we can render video vs photo correctly
+      if (data.mediaType === "video" || data.mediaType === "photo") {
+        setLoadedMediaType(data.mediaType);
+      }
 
       // V2 objectPaths start with "/objects/" — convert to the authenticated
       // storage endpoint using the media token so <img>/<video> can load them.
@@ -101,9 +136,10 @@ function FeedCard({
     };
   }, [loadedMedia]);
 
-  // Auto-load media as soon as the card mounts
+  // Auto-load media as soon as the card mounts.
+  // Only needed when there's no V2 mediaItem and no inline mediaUrl (i.e. old base64 posts).
   React.useEffect(() => {
-    if (hasMedia && !event.mediaUrl && !loadedMedia) {
+    if (hasMedia && !mediaItemSrc && !event.mediaUrl && !loadedMedia) {
       handleLoadMedia();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -191,7 +227,7 @@ function FeedCard({
       </div>
 
       {/* Content */}
-      {(event.content || event.mediaUrl) && (
+      {(event.content || hasMedia) && (
         <div className="p-4">
           {editing ? (
             <div className="mb-4 space-y-2">
@@ -236,7 +272,7 @@ function FeedCard({
             </div>
           )}
 
-          {displayMedia && event.mediaType === "video" && (
+          {displayMedia && displayMediaType === "video" && (
             <div className="w-full rounded-xl overflow-hidden bg-black">
               <video
                 src={displayMedia}
@@ -248,7 +284,7 @@ function FeedCard({
             </div>
           )}
 
-          {displayMedia && event.mediaType === "photo" && (
+          {displayMedia && (displayMediaType === "photo" || !displayMediaType) && (
             <div
               className="relative w-full rounded-xl overflow-hidden cursor-zoom-in"
               style={{ maxHeight: expanded ? "none" : "300px" }}
@@ -286,7 +322,7 @@ function FeedCard({
         </button>
 
         <div className="text-xs text-muted-foreground flex items-center gap-2">
-          <span>{event.authorName}</span>
+          <span>{authorName}</span>
         </div>
       </div>
     </div>
@@ -313,7 +349,8 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const events = (feedData || []).filter((evt: any) => {
+  // API now returns { posts, nextCursor } (V2). Support both shapes for safety.
+  const events = ((feedData as any)?.posts ?? (Array.isArray(feedData) ? feedData : [])).filter((evt: any) => {
     if (filterType !== "all" && evt.type !== filterType) return false;
     if (filterPet !== "all") {
       const hasPet = evt.pets?.some((p: any) => p.petId.toString() === filterPet);

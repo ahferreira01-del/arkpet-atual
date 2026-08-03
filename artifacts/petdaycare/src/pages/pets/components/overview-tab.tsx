@@ -9,6 +9,7 @@ import { useListBookings } from "@workspace/api-client-react";
 import { useBookingConsumables, useDeleteBookingConsumable } from "@/hooks/use-financial";
 import { parseLocalDate } from "@/lib/date-utils";
 import { ptBR } from "date-fns/locale";
+import { resolvePhotoUrl } from "@/lib/utils";
 
 const statusMap: Record<string, string> = { active: "Ativo", inactive: "Inativo", suspended: "Suspenso", archived: "Arquivado" };
 export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: number; petId: number }) {
@@ -145,7 +146,7 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
             </div>
             <div className="rounded-xl overflow-hidden border border-white/10 max-w-sm">
               <img
-                src={`/api/storage${pet.lastCheckinPhotoUrl}`}
+                src={resolvePhotoUrl(pet.lastCheckinPhotoUrl)!}
                 alt="Itens pessoais registrados no check-in"
                 className="w-full object-cover"
               />
