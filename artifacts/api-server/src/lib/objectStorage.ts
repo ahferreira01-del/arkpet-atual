@@ -42,10 +42,14 @@ const bucketInit: Promise<void> = (async () => {
     });
     if (r.ok) {
       const j = (await r.json()) as { bucketId?: string };
-      if (j.bucketId) {
+      if (typeof j.bucketId === "string" && j.bucketId.length > 0) {
         resolvedBucketId = j.bucketId;
         console.log(`[objectStorage] Bucket padrão resolvido via sidecar: ${resolvedBucketId}`);
+      } else {
+        console.warn("[objectStorage] Sidecar não tem bucket padrão configurado; usando env vars.");
       }
+    } else {
+      console.warn(`[objectStorage] Sidecar default-bucket respondeu ${r.status}; usando env vars.`);
     }
   } catch {
     console.warn("[objectStorage] Sidecar default-bucket indisponível; usando env vars.");
@@ -343,6 +347,7 @@ export class ObjectStorageService {
     rawPath: string,
     aclPolicy: ObjectAclPolicy,
   ): Promise<string> {
+    await bucketInit;
     const normalizedPath = this.normalizeObjectEntityPath(rawPath);
     if (!normalizedPath.startsWith("/")) return normalizedPath;
     const objectFile = await this.getObjectEntityFile(normalizedPath);
