@@ -14,28 +14,29 @@ process.on("uncaughtException", (err) => {
 });
 
 const rawPort = process.env["PORT"] ?? "8080";
-
 const port = Number(rawPort);
 
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-initializeDatabase().then(() => {
-  startScheduler();
-  startMensalidadeScheduler();
-  startScheduledPlanChangeApplicator();
-  startPastDueSuspender();
-  startReceiptCleanupJob();
-  app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
-    // Stripe init (product/price seeding + sync) runs after the server is
-    // already serving requests so it never blocks the health check.
-    initStripe().catch((err) =>
-      console.error("[startup] Falha ao inicializar Stripe:", err),
-    );
-  });
-}).catch((err) => {
-  console.error("[startup] Falha na inicialização:", err);
-  process.exit(1);
+// Open the port FIRST so the Replit health-check probe gets a 200 immediately.
+// DB init and schedulers run after — a transient startup error must never
+// prevent the port from opening (autoscale deploy would fail the promote step).
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+
+  initializeDatabase()
+    .then(() => {
+      startScheduler();
+      startMensalidadeScheduler();
+      startScheduledPlanChangeApplicator();
+      startPastDueSuspender();
+      startReceiptCleanupJob();
+      // Stripe init runs after DB so price seeding has the schema ready.
+      return initStripe();
+    })
+    .catch((err) => {
+      console.error("[startup] Falha na inicialização (servidor continua ativo):", err);
+    });
 });
