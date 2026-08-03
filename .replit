@@ -65,4 +65,4 @@ PASSWORD_SALT = "pet_daycare_salt"
 PASSWORD_SALT = "e291003a802680c2022dd7c4fc6adc7b"
 
 [objectStorage]
-defaultBucketID = "replit-objstore-43c9158b-d5c3-466c-bf36-231e83860906"
+defaultBucketID = "replit-objstore-fd9e0fa7-7179-4885-b97a-d3a26c556e3c"

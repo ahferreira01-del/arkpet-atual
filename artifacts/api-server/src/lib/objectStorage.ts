@@ -30,6 +30,28 @@ export const objectStorageClient = new Storage({
   projectId: "",
 });
 
+// ── Default bucket resolution ────────────────────────────────────────────────
+// The env secrets (PRIVATE_OBJECT_DIR etc.) can go stale if the bucket is
+// re-provisioned. The sidecar's default-bucket endpoint is the source of truth,
+// so we prefer it and fall back to env vars only if it is unavailable.
+let resolvedBucketId: string | null = null;
+const bucketInit: Promise<void> = (async () => {
+  try {
+    const r = await fetch(`${REPLIT_SIDECAR_ENDPOINT}/object-storage/default-bucket`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (r.ok) {
+      const j = (await r.json()) as { bucketId?: string };
+      if (j.bucketId) {
+        resolvedBucketId = j.bucketId;
+        console.log(`[objectStorage] Bucket padrão resolvido via sidecar: ${resolvedBucketId}`);
+      }
+    }
+  } catch {
+    console.warn("[objectStorage] Sidecar default-bucket indisponível; usando env vars.");
+  }
+})();
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -112,6 +134,7 @@ export class ObjectStorageService {
   constructor() {}
 
   getPublicObjectSearchPaths(): string[] {
+    if (resolvedBucketId) return [`/${resolvedBucketId}/public`];
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
     const paths = Array.from(
       new Set(pathsStr.split(",").map((p) => p.trim()).filter((p) => p.length > 0)),
@@ -120,11 +143,13 @@ export class ObjectStorageService {
   }
 
   getPrivateObjectDir(): string {
+    if (resolvedBucketId) return `/${resolvedBucketId}/.private`;
     return process.env.PRIVATE_OBJECT_DIR || "";
   }
 
   // ── Public-asset search ────────────────────────────────────────────────────
   async searchPublicObject(filePath: string): Promise<File | null> {
+    await bucketInit;
     for (const searchPath of this.getPublicObjectSearchPaths()) {
       const fullPath = `${searchPath}/${filePath}`;
       const { bucketName, objectName } = parseObjectPath(fullPath);
@@ -211,6 +236,7 @@ export class ObjectStorageService {
     crecheId?: string,
   ): Promise<string> {
     const uuid    = randomUUID();
+    await bucketInit;
     const ext     = extForContentType(contentType);
     const subPath = crecheId
       ? `uploads/c${crecheId}/${uuid}${ext}`
@@ -236,6 +262,7 @@ export class ObjectStorageService {
 
   // ── Presigned upload URL for client-side direct-to-GCS uploads ────────────
   async getObjectEntityUploadURL(crecheId?: string): Promise<string> {
+    await bucketInit;
     const privateObjectDir = this.getPrivateObjectDir();
     if (!privateObjectDir) throw new Error("PRIVATE_OBJECT_DIR not set");
 
@@ -249,6 +276,7 @@ export class ObjectStorageService {
 
   // ── Resolve objectPath (/objects/…) → GCS File handle ────────────────────
   async getObjectEntityFile(objectPath: string): Promise<File> {
+    await bucketInit;
     if (!objectPath.startsWith("/objects/")) throw new ObjectNotFoundError();
 
     const parts = objectPath.slice(1).split("/");
@@ -340,6 +368,7 @@ export class ObjectStorageService {
 
   // ── Signed read URL (for short-lived media tokens / CDN offloading) ────────
   async getSignedReadURL(objectPath: string, ttlSec = 300): Promise<string> {
+    await bucketInit;
     try {
       if (!objectPath.startsWith("/objects/")) return `/api${objectPath}`;
       const parts = objectPath.slice(1).split("/");
