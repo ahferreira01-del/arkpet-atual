@@ -411,10 +411,21 @@ function TimelineEventCard({
   const [loadedMedia, setLoadedMedia] = React.useState<string | null>(null);
   const [mediaLoading, setMediaLoading] = React.useState(false);
   const rawMedia = ev.mediaUrl || loadedMedia;
-  const mediaToken = localStorage.getItem("media_token") || "";
-  const displayMedia = rawMedia && rawMedia.startsWith("/api/storage") && mediaToken 
-    ? `${rawMedia}?mt=${encodeURIComponent(mediaToken)}` 
-    : rawMedia;
+  // Convert raw media path to an authenticated displayable URL.
+  // /objects/...      → build authenticated storage URL (new object-storage posts)
+  // /api/storage/...  → append ?mt= media token (lazy-loaded detail response)
+  // data:... / other  → use directly (base64 or blob)
+  const displayMedia = (() => {
+    if (!rawMedia) return null;
+    if (rawMedia.startsWith("/objects/")) {
+      return buildMediaSrc(rawMedia, getMediaToken());
+    }
+    const mt = localStorage.getItem("media_token") || "";
+    if (rawMedia.startsWith("/api/storage") && mt) {
+      return `${rawMedia}${rawMedia.includes("?") ? "&" : "?"}mt=${encodeURIComponent(mt)}`;
+    }
+    return rawMedia; // base64 / blob
+  })();
   const hasMedia = ev.hasMedia ?? !!ev.mediaUrl;
 
   const handleLoadMedia = React.useCallback(async () => {
