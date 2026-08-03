@@ -77,9 +77,9 @@ function TaskCompleteModal({
     const file = e.target.files?.[0];
     if (!file) return;
     setCompressing(true);
+    const token = localStorage.getItem("auth_token") ?? "";
     try {
       if (file.type.startsWith("video/")) {
-        const token = localStorage.getItem("auth_token") ?? "";
         try {
           mediaDataRef.current = await uploadFileDirect(file, token);
         } catch {
@@ -96,10 +96,24 @@ function TaskCompleteModal({
         mediaTypeRef.current = "video";
         setPreview(URL.createObjectURL(file));
       } else {
-        const data = await compressImage(file);
-        mediaDataRef.current = data;
+        // Show local preview immediately while uploading
+        const localPreview = await compressImage(file);
+        setPreview(localPreview);
+        try {
+          // Upload to storage — returns an objectPath suitable for the DB/feed
+          mediaDataRef.current = await uploadFileDirect(file, token);
+        } catch {
+          toast({
+            title: "Erro no upload da foto",
+            description: "Não foi possível enviar a imagem. Verifique sua conexão e tente novamente.",
+            variant: "destructive",
+          });
+          mediaDataRef.current = null;
+          mediaTypeRef.current = null;
+          setPreview(null);
+          return;
+        }
         mediaTypeRef.current = "photo";
-        setPreview(data);
       }
     } catch {
       mediaDataRef.current = null;
@@ -108,7 +122,7 @@ function TaskCompleteModal({
     } finally {
       setCompressing(false);
     }
-  }, []);
+  }, [toast]);
 
   const completeOnly = () => {
     completeTaskMutation.mutate(

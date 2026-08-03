@@ -488,7 +488,15 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
           }
 
           if (!catalogueItem) {
-            throw new Error(`Saldo insuficiente e não foi possível faturar diárias excedentes: O serviço '${existing.type === "day_use" ? "Day Use / Creche" : existing.type}' não está cadastrado no catálogo de preços.`);
+            // No matching catalogue item — confirm the booking with price = 0 and log a warning.
+            // This is intentionally non-fatal: refusing to confirm because of a missing price
+            // configuration would block the admin from managing bookings entirely.
+            console.warn(
+              `[bookings] confirm: no catalogue item found for type="${existing.type}" ` +
+              `(crecheId=${crecheId}). Confirming with price=0.`
+            );
+            updates.price = 0;
+            daysToBill = 0; // skip billing block below
           }
 
           let unitPrice = 0;
@@ -633,7 +641,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       const [booking] = await tx
         .update(bookingsTable)
         .set(updates)
-        .where(eq(bookingsTable.id, bookingId))
+        .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.crecheId, crecheId)))
         .returning();
 
       // Enriquecer

@@ -25,6 +25,7 @@ import { CommandPalette } from "@/components/financial/command-palette";
 import { CatalogueSmartIndicators } from "@/components/financial/smart-indicators";
 import { FinancialProvider, useFinancialContext } from "@/components/financial/financial-context";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
+import { uploadFileDirect } from "@/lib/utils";
 
 function formatBRL(value: number) {
   return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -797,6 +798,8 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [historyItem, setHistoryItem] = useState<{ id: number; name: string } | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageFileRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     name: "",
     type: "product",
@@ -1077,8 +1080,59 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
               />
             </div>
             <div>
-              <label className="text-sm">URL da Imagem</label>
-              <Input value={form.imageUrl} onChange={e => setForm({...form, imageUrl: e.target.value})} placeholder="https://exemplo.com/foto.jpg" />
+              <label className="text-sm">Foto do Item</label>
+              <input
+                ref={imageFileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setImageUploading(true);
+                  try {
+                    const token = localStorage.getItem("auth_token") ?? "";
+                    const objectPath = await uploadFileDirect(file, token);
+                    setForm(f => ({ ...f, imageUrl: objectPath }));
+                  } catch (err: any) {
+                    toast({ title: "Erro no upload", description: err.message || "Não foi possível enviar a imagem.", variant: "destructive" });
+                  } finally {
+                    setImageUploading(false);
+                    if (imageFileRef.current) imageFileRef.current.value = "";
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2 mt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="border border-white/10 gap-2"
+                  disabled={imageUploading}
+                  onClick={() => imageFileRef.current?.click()}
+                >
+                  <Camera className="h-4 w-4" />
+                  {imageUploading ? "Enviando…" : "Selecionar foto"}
+                </Button>
+                {form.imageUrl && (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <img
+                      src={buildMediaSrc(form.imageUrl, getMediaToken())}
+                      alt="preview"
+                      className="h-8 w-8 rounded object-cover shrink-0"
+                      onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <span className="text-xs text-muted-foreground truncate">{form.imageUrl.split("/").pop()}</span>
+                    <button
+                      type="button"
+                      className="text-xs text-red-400 hover:text-red-300 shrink-0"
+                      onClick={() => setForm(f => ({ ...f, imageUrl: "" }))}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="text-sm">Preço (R$) *</label>

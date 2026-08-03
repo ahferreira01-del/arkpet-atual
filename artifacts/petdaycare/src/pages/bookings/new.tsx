@@ -149,19 +149,16 @@ export default function NewBooking() {
     // Type backend expects (e.g., 'day_use', 'lodging') or fallback to exact name matching
     // We map the catalogue item name into a safe slug format, or use it directly
     // depending on the backend logic. The backend receives `type` and `price`.
-    let typePayload = selectedService.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-    const validTypes = ["day_use", "lodging", "banho", "hospedagem_banho", "visita", "pacote_4dias", "pacote_8dias", "pacote_20dias", "visita_taxi", "creche_taxi"];
-    const nameLower = selectedService.name.toLowerCase();
-    // Keyword matching ordered from most-specific to least-specific
-    if (nameLower.includes("hospedagem") && nameLower.includes("banho")) typePayload = "hospedagem_banho";
-    else if (nameLower.includes("hospedagem") || nameLower.includes("lodging")) typePayload = "lodging";
-    else if (nameLower.includes("banho") || nameLower.includes("tosa") || nameLower.includes("grooming")) typePayload = "banho";
-    else if (nameLower.includes("visita") && nameLower.includes("taxi")) typePayload = "visita_taxi";
-    else if (nameLower.includes("creche") && nameLower.includes("taxi")) typePayload = "creche_taxi";
-    else if (nameLower.includes("visita")) typePayload = "visita";
-    else if (nameLower.includes("daycare") || nameLower.includes("creche") || nameLower.includes("day") || nameLower.includes("diaria") || nameLower.includes("diária")) typePayload = "day_use";
-    if (!validTypes.includes(typePayload)) typePayload = "day_use";
-    if (selectedService.type === "package") typePayload = "day_use";
+    // Derive a stable slug from the service name so the backend can look up the
+    // catalogue item by name matching (i.name.toLowerCase().replace(/\s+/g, "_")).
+    // Never default to "day_use" — each service must keep its own identity.
+    const typePayload = selectedService.name
+      .toLowerCase()
+      .normalize("NFD")                    // decompose accented chars
+      .replace(/[\u0300-\u036f]/g, "")     // strip accent marks
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      || "servico";                        // only fallback when name is entirely non-ASCII
     try {
       await Promise.all(
         selectedPetIds.map((petId) => {

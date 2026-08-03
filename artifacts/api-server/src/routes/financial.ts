@@ -73,7 +73,12 @@ const catalogueItemSchema = z.object({
   category: z.string().max(100).optional().nullable(),
   sku: z.string().max(50).optional().nullable(),
   barcode: z.string().max(255).optional().nullable(),
-  mediaUrls: z.array(z.string().url()).optional().nullable(),
+  mediaUrls: z.array(
+    z.string().refine(
+      (v) => v.startsWith("/objects/") || v.startsWith("/api/") || z.string().url().safeParse(v).success,
+      { message: "Cada URL deve ser uma URL válida ou um caminho de objeto (/objects/...)" }
+    )
+  ).optional().nullable(),
   costPrice: z.number().nonnegative().optional().nullable(),
 }).refine(
   (data) => data.type !== 'package' || (data.creditsAmount && data.creditsAmount > 0),
