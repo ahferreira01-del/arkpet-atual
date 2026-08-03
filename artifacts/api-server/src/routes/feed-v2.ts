@@ -103,42 +103,57 @@ async function fetchAggregates(eventIds: number[], userId: number) {
     return { likeMap: {}, commentMap: {}, viewMap: {}, likedSet: new Set<number>() };
   }
 
-  const [likeRows, commentRows, viewRows, userLikeRows] = await Promise.all([
-    db
-      .select({ eventId: timelineLikesTable.eventId, cnt: sql<number>`cast(count(*) as int)` })
-      .from(timelineLikesTable)
-      .where(inArray(timelineLikesTable.eventId, eventIds))
-      .groupBy(timelineLikesTable.eventId),
-
-    db
-      .select({ eventId: timelineCommentsTable.eventId, cnt: sql<number>`cast(count(*) as int)` })
-      .from(timelineCommentsTable)
-      .where(inArray(timelineCommentsTable.eventId, eventIds))
-      .groupBy(timelineCommentsTable.eventId),
-
-    db
-      .select({ eventId: timelineViewsTable.eventId, cnt: sql<number>`cast(count(*) as int)` })
-      .from(timelineViewsTable)
-      .where(inArray(timelineViewsTable.eventId, eventIds))
-      .groupBy(timelineViewsTable.eventId),
-
-    db
-      .select({ eventId: timelineLikesTable.eventId })
-      .from(timelineLikesTable)
-      .where(
-        and(
-          inArray(timelineLikesTable.eventId, eventIds),
-          eq(timelineLikesTable.userId, userId),
-        ),
+  // Single query: one pass over each table per event_id, returned as one row per
+  // event. Eliminates 3 of the 4 round-trips the old implementation made.
+  const rows = await db.execute(sql`
+    WITH
+      lk AS (
+        SELECT event_id,
+               COUNT(*)::int                                             AS like_count,
+               COUNT(*) FILTER (WHERE user_id = ${userId})::int         AS user_liked
+        FROM   timeline_likes
+        WHERE  event_id = ANY(${sql.raw(`ARRAY[${eventIds.join(",")}]::int[]`)})
+        GROUP BY event_id
       ),
-  ]);
+      cm AS (
+        SELECT event_id, COUNT(*)::int AS comment_count
+        FROM   timeline_comments
+        WHERE  event_id = ANY(${sql.raw(`ARRAY[${eventIds.join(",")}]::int[]`)})
+        GROUP BY event_id
+      ),
+      vw AS (
+        SELECT event_id, COUNT(*)::int AS view_count
+        FROM   timeline_views
+        WHERE  event_id = ANY(${sql.raw(`ARRAY[${eventIds.join(",")}]::int[]`)})
+        GROUP BY event_id
+      ),
+      ids AS (SELECT unnest(${sql.raw(`ARRAY[${eventIds.join(",")}]::int[]`)}) AS event_id)
+    SELECT
+      ids.event_id,
+      COALESCE(lk.like_count, 0)    AS like_count,
+      COALESCE(lk.user_liked, 0)    AS user_liked,
+      COALESCE(cm.comment_count, 0) AS comment_count,
+      COALESCE(vw.view_count, 0)    AS view_count
+    FROM ids
+    LEFT JOIN lk ON lk.event_id = ids.event_id
+    LEFT JOIN cm ON cm.event_id = ids.event_id
+    LEFT JOIN vw ON vw.event_id = ids.event_id
+  `);
 
-  return {
-    likeMap:    Object.fromEntries(likeRows.map((r) => [r.eventId, r.cnt])),
-    commentMap: Object.fromEntries(commentRows.map((r) => [r.eventId, r.cnt])),
-    viewMap:    Object.fromEntries(viewRows.map((r) => [r.eventId, r.cnt])),
-    likedSet:   new Set(userLikeRows.map((r) => r.eventId)),
-  };
+  const likeMap:    Record<number, number>  = {};
+  const commentMap: Record<number, number>  = {};
+  const viewMap:    Record<number, number>  = {};
+  const likedSet = new Set<number>();
+
+  for (const r of rows.rows as any[]) {
+    const id = Number(r.event_id);
+    likeMap[id]    = Number(r.like_count);
+    commentMap[id] = Number(r.comment_count);
+    viewMap[id]    = Number(r.view_count);
+    if (Number(r.user_liked) > 0) likedSet.add(id);
+  }
+
+  return { likeMap, commentMap, viewMap, likedSet };
 }
 
 // ── Router ────────────────────────────────────────────────────────────────────
@@ -235,7 +250,7 @@ router.get("/", async (req: AuthRequest, res) => {
 
   const eventIds = page.map((e: any) => e.id as number);
 
-  // Batch-fetch all pets for these events (2 separate queries)
+  // Batch-fetch all pets for these events
   const allPets = await db
     .select({
       eventId:  timelineEventPetsTable.eventId,
@@ -247,15 +262,10 @@ router.get("/", async (req: AuthRequest, res) => {
     .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
     .where(inArray(timelineEventPetsTable.eventId, eventIds));
 
-  // For tutors: resolve their pet IDs once (same list computed above for staff
-  // we skip the filtering step)
+  // For tutors: reuse the pet IDs already resolved above (no second DB query)
   let tutorPetIdSet: Set<number> | null = null;
   if (isTutor) {
-    const tp = await db
-      .select({ id: petsTable.id })
-      .from(petsTable)
-      .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.tutorId, userId)));
-    tutorPetIdSet = new Set(tp.map((p) => p.id));
+    tutorPetIdSet = new Set(tutorPetIds);
   }
 
   // Batch aggregates

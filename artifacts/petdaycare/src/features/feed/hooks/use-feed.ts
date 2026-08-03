@@ -16,7 +16,7 @@ export function useFeed(crecheId: number) {
       listFeed(crecheId, token, pageParam as number | null),
     initialPageParam: null as number | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    staleTime: 2 * 60 * 1000,  // 2 minutes
-    gcTime:    30 * 60 * 1000, // 30 minutes
+    staleTime: 5 * 60 * 1000,  // 5 minutes — reduced background refetches
+    gcTime:    60 * 60 * 1000, // 1 hour   — keep pages in memory longer
   });
 }

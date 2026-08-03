@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { Loader2, Camera, RefreshCw, ChevronDown } from "lucide-react";
+import { Loader2, Camera, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FeedCard } from "./FeedCard";
 import type { FeedPost } from "../types/feed.types";
@@ -29,6 +29,26 @@ export function FeedList({
   onRetry,
   onLoadMore,
 }: FeedListProps) {
+  // Intersection Observer: auto-load more when the sentinel enters the viewport
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: "300px" }, // trigger 300px before the element reaches the viewport
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, onLoadMore]);
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -80,23 +100,13 @@ export function FeedList({
         />
       ))}
 
-      {/* Load more */}
-      {hasNextPage && (
-        <div className="flex justify-center pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onLoadMore}
-            disabled={isFetchingNextPage}
-            className="gap-2 text-muted-foreground hover:text-white rounded-full"
-          >
-            {isFetchingNextPage ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-            {isFetchingNextPage ? "Carregando…" : "Carregar mais"}
-          </Button>
+      {/* Sentinel element — Intersection Observer loads next page automatically */}
+      <div ref={sentinelRef} className="h-1" aria-hidden />
+
+      {/* Visible spinner while loading next page */}
+      {isFetchingNextPage && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         </div>
       )}
     </div>
