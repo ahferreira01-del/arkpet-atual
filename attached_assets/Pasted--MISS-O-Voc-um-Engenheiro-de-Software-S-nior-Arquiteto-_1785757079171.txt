@@ -1,0 +1,490 @@
+# MISSÃO
+
+Você é um Engenheiro de Software Sênior, Arquiteto de Software e Especialista em Debugging.
+
+Sua missão é corrigir TODOS os problemas descritos abaixo preservando integralmente a arquitetura atual do sistema.
+
+IMPORTANTE:
+
+- NÃO criar gambiarras.
+- NÃO alterar regras de negócio que não estejam relacionadas aos problemas.
+- NÃO quebrar funcionalidades existentes.
+- NÃO alterar layout desnecessariamente.
+- NÃO modificar APIs públicas sem necessidade.
+- NÃO remover funcionalidades.
+- NÃO criar duplicação de código.
+- Manter Clean Architecture.
+- Manter SOLID.
+- Manter DRY.
+- Manter KISS.
+- Manter tipagem forte.
+- Preservar compatibilidade com todo o sistema.
+
+Antes de alterar qualquer arquivo, faça uma análise completa do fluxo atual.
+
+Identifique a causa raiz de cada problema antes de implementar qualquer correção.
+
+Toda alteração deve possuir tratamento de erros, logs claros e validações.
+
+------------------------------------------------------------
+PROBLEMA 01
+FINANCEIRO
+Comprovantes enviados pelo tutor não podem ser aprovados
+------------------------------------------------------------
+
+Problema
+
+Quando o tutor envia um comprovante de pagamento, o administrador visualiza o comprovante, porém a aprovação não funciona.
+
+Objetivo
+
+Corrigir completamente o fluxo de aprovação.
+
+Verificar:
+
+• Frontend
+    - botão Aprovar
+    - chamada da API
+    - payload enviado
+    - tratamento de erros
+    - atualização automática da tela
+
+• Backend
+    - endpoint responsável
+    - autenticação
+    - autorização
+    - validação de permissões
+    - atualização do status
+    - persistência em banco
+
+• Banco de dados
+    - status atualizado corretamente
+    - approved_at
+    - approved_by
+    - histórico
+
+Garantir que:
+
+Tutor envia comprovante
+
+↓
+
+Admin aprova
+
+↓
+
+Status muda imediatamente
+
+↓
+
+Banco atualizado
+
+↓
+
+Tela atualizada
+
+↓
+
+Tutor visualiza pagamento aprovado
+
+Caso exista qualquer exceção, retornar mensagens amigáveis e registrar logs completos.
+
+------------------------------------------------------------
+PROBLEMA 02
+UPLOAD DE FOTOS DOS SERVIÇOS
+------------------------------------------------------------
+
+Problema
+
+Ao cadastrar ou editar um serviço e inserir fotos, nenhuma imagem é salva.
+
+Objetivo
+
+Corrigir toda a pipeline de upload.
+
+Validar:
+
+Frontend
+
+- seleção da imagem
+- compressão
+- preview
+- upload
+- envio da URL
+
+Backend
+
+- endpoint
+- validação
+- storage
+- content-type
+- mime-type
+- geração da URL
+- persistência
+
+Banco
+
+- salvar URL corretamente
+
+Garantir:
+
+Selecionar foto
+
+↓
+
+Upload
+
+↓
+
+Storage
+
+↓
+
+URL
+
+↓
+
+Salvar serviço
+
+↓
+
+Imagem exibida normalmente
+
+Adicionar tratamento para:
+
+- timeout
+- arquivos inválidos
+- tamanho máximo
+- erro de upload
+- perda de conexão
+
+------------------------------------------------------------
+PROBLEMA 03
+UPLOAD DE FOTO AO FINALIZAR TAREFAS
+------------------------------------------------------------
+
+Problema
+
+Ao finalizar uma tarefa, Staff/Admin adicionam uma foto, porém o envio falha e impede a conclusão.
+
+Objetivo
+
+Corrigir completamente o fluxo.
+
+Validar
+
+Frontend
+
+- captura
+- seleção
+- compressão
+- upload
+- envio da URL
+
+Backend
+
+- upload
+- armazenamento
+- persistência
+
+Fluxo esperado
+
+Selecionar foto
+
+↓
+
+Upload
+
+↓
+
+Receber URL
+
+↓
+
+Associar à tarefa
+
+↓
+
+Finalizar tarefa
+
+↓
+
+Atualizar timeline
+
+↓
+
+Atualizar feed
+
+Nunca permitir que uma tarefa seja finalizada com upload inconsistente.
+
+Caso o upload falhe:
+
+- informar erro
+- permitir nova tentativa
+- preservar os dados preenchidos
+
+------------------------------------------------------------
+PROBLEMA 04
+TODOS OS SERVIÇOS ESTÃO VIRANDO DAY USE
+------------------------------------------------------------
+
+Problema
+
+Independentemente do serviço escolhido:
+
+Banho
+
+Táxi
+
+Tosa
+
+Hospedagem
+
+Consulta
+
+Adestramento
+
+etc.
+
+Todos estão sendo gravados como Day Use.
+
+Objetivo
+
+Encontrar onde o tipo do serviço está sendo sobrescrito.
+
+Analisar completamente:
+
+Frontend
+
+↓
+
+DTO
+
+↓
+
+Request
+
+↓
+
+Controller
+
+↓
+
+Service
+
+↓
+
+Repository
+
+↓
+
+Banco
+
+Validar:
+
+- enums
+- mapeamentos
+- conversões
+- serializers
+- desserializers
+- defaults
+- valores nulos
+
+Cada serviço deve manter exatamente seu tipo original.
+
+Exemplo:
+
+Banho
+→ BANHO
+
+Táxi
+→ TAXI
+
+Tosa
+→ TOSA
+
+Hospedagem
+→ HOSPEDAGEM
+
+Day Use
+→ DAY_USE
+
+Jamais utilizar valores fixos.
+
+Jamais sobrescrever o tipo.
+
+------------------------------------------------------------
+PROBLEMA 05
+ERRO AO ACEITAR RESERVAS
+------------------------------------------------------------
+
+Problema
+
+Ao tentar aceitar uma reserva, ocorre erro e ela permanece pendente.
+
+Objetivo
+
+Corrigir completamente o fluxo.
+
+Validar
+
+Frontend
+
+- botão Aceitar
+- chamada API
+- payload
+- loading
+- atualização
+
+Backend
+
+- endpoint
+- autenticação
+- autorização
+- tenant
+- regras de negócio
+- conflitos
+- transações
+
+Banco
+
+- atualização do status
+- integridade
+
+Fluxo esperado
+
+Reserva
+
+↓
+
+Pendente
+
+↓
+
+Aceitar
+
+↓
+
+Confirmada
+
+↓
+
+Atualização automática da lista
+
+↓
+
+Notificação ao tutor (caso exista)
+
+Implementar rollback caso alguma operação falhe.
+
+------------------------------------------------------------
+ANÁLISE OBRIGATÓRIA
+------------------------------------------------------------
+
+Antes de corrigir:
+
+1. Mapear todo o fluxo atual.
+
+2. Identificar exatamente onde ocorre cada falha.
+
+3. Informar a causa raiz.
+
+4. Explicar por que o problema acontece.
+
+5. Somente depois implementar.
+
+------------------------------------------------------------
+VALIDAÇÕES OBRIGATÓRIAS
+------------------------------------------------------------
+
+Após implementar:
+
+Executar testes completos.
+
+Validar:
+
+✓ Upload de imagens
+
+✓ Aprovação de comprovantes
+
+✓ Aceitação de reservas
+
+✓ Cadastro de serviços
+
+✓ Tipos dos serviços
+
+✓ Persistência
+
+✓ Banco
+
+✓ APIs
+
+✓ Feed
+
+✓ Timeline
+
+✓ Logs
+
+✓ Tratamento de exceções
+
+✓ Atualização automática da interface
+
+✓ Regressão
+
+Garantir que nenhuma funcionalidade existente seja afetada.
+
+------------------------------------------------------------
+QUALIDADE DE CÓDIGO
+------------------------------------------------------------
+
+Toda implementação deve:
+
+• seguir Clean Architecture
+
+• seguir SOLID
+
+• seguir DRY
+
+• seguir KISS
+
+• evitar duplicação
+
+• evitar código morto
+
+• evitar ifs desnecessários
+
+• utilizar boas práticas
+
+• manter baixo acoplamento
+
+• manter alta coesão
+
+• manter código legível
+
+• manter tipagem forte
+
+• respeitar toda a arquitetura existente
+
+------------------------------------------------------------
+ENTREGA ESPERADA
+------------------------------------------------------------
+
+Ao finalizar, apresentar um relatório contendo:
+
+1. Causa raiz de cada problema.
+
+2. Arquivos modificados.
+
+3. Alterações realizadas.
+
+4. Justificativa técnica de cada alteração.
+
+5. Possíveis impactos.
+
+6. Testes executados.
+
+7. Resultado dos testes.
+
+8. Garantia de que não houve quebra de funcionalidades existentes.
+
+Não considere a tarefa concluída enquanto TODOS os cinco problemas estiverem corrigidos, validados e funcionando de ponta a ponta.
