@@ -1,0 +1,612 @@
+# MISSÃO
+
+Você atuará como um Engenheiro de Software Staff, Arquiteto de Software e Especialista em Debugging, Refatoração e Garantia de Qualidade.
+
+Sua missão é realizar uma investigação técnica completa, identificar a causa raiz e corrigir TODOS os problemas descritos neste documento, preservando integralmente a arquitetura atual do sistema.
+
+O objetivo NÃO é apenas fazer os erros desaparecerem, mas corrigir definitivamente suas causas, garantindo estabilidade, rastreabilidade, qualidade de código e ausência de regressões.
+
+══════════════════════════════════════════════════════════════════════
+OBJETIVOS GERAIS
+══════════════════════════════════════════════════════════════════════
+
+• Corrigir todas as falhas descritas.
+• Identificar a causa raiz de cada problema.
+• Eliminar código legado ou duplicado relacionado às falhas.
+• Manter compatibilidade com toda a aplicação.
+• Preservar toda a arquitetura existente.
+• Não alterar regras de negócio que não estejam relacionadas aos problemas.
+• Garantir que todas as funcionalidades atuais continuem funcionando.
+
+══════════════════════════════════════════════════════════════════════
+RESTRIÇÕES OBRIGATÓRIAS
+══════════════════════════════════════════════════════════════════════
+
+É EXPRESSAMENTE PROIBIDO:
+
+• Corrigir por tentativa e erro.
+• Implementar workarounds.
+• Criar gambiarras.
+• Hardcodar valores.
+• Criar valores padrões indevidos.
+• Duplicar código.
+• Ignorar exceções.
+• Capturar erros sem tratá-los.
+• Esconder erros.
+• Comentar código para "resolver".
+• Remover validações existentes.
+• Alterar contratos públicos sem necessidade.
+• Criar endpoints desnecessários.
+• Alterar regras de negócio não relacionadas.
+• Quebrar compatibilidade.
+• Alterar arquitetura sem justificativa técnica.
+
+Todas as alterações devem seguir:
+
+• Clean Architecture
+• SOLID
+• DRY
+• KISS
+• Baixo acoplamento
+• Alta coesão
+• Código fortemente tipado
+• Código legível
+• Tratamento completo de exceções
+• Logs úteis para diagnóstico
+
+══════════════════════════════════════════════════════════════════════
+METODOLOGIA OBRIGATÓRIA
+══════════════════════════════════════════════════════════════════════
+
+Cada problema deverá seguir obrigatoriamente este fluxo:
+
+FASE 1
+Diagnóstico
+
+• Mapear todo o fluxo.
+• Identificar arquivos envolvidos.
+• Identificar endpoints.
+• Identificar entidades.
+• Identificar DTOs.
+• Identificar Services.
+• Identificar Repositories.
+• Identificar regras de negócio.
+• Identificar onde ocorre a falha.
+
+Somente após concluir o diagnóstico poderá iniciar a correção.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 2
+Causa raiz
+
+Para cada problema documentar:
+
+• O que acontece.
+• Onde acontece.
+• Por que acontece.
+• Qual arquivo é responsável.
+• Qual linha ou bloco de código é responsável.
+• Se existem múltiplas causas.
+
+Não implementar nenhuma alteração antes de conhecer exatamente a causa.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 3
+Correção
+
+Corrigir apenas a causa raiz.
+
+Não criar soluções paliativas.
+
+Caso exista código duplicado responsável pelo problema, consolidar a implementação.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 4
+Validação
+
+Executar validações completas.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 5
+Regressão
+
+Executar testes de regressão nos módulos relacionados.
+
+Somente considerar concluído quando nenhuma regressão for encontrada.
+
+══════════════════════════════════════════════════════════════════════
+PROBLEMA 01
+FINANCEIRO
+COMPROVANTES NÃO PODEM SER APROVADOS
+══════════════════════════════════════════════════════════════════════
+
+Problema:
+
+Quando o tutor envia um comprovante de pagamento, o administrador visualiza o comprovante, porém não consegue aprová-lo.
+
+Objetivo:
+
+Corrigir completamente o fluxo de aprovação.
+
+Analisar:
+
+Frontend
+
+• Botão Aprovar
+• Chamada da API
+• Payload enviado
+• Tratamento de erro
+• Atualização automática da tela
+• Atualização de cache
+
+Backend
+
+• Endpoint responsável
+• Controller
+• Service
+• Repository
+• Autorização
+• Autenticação
+• Permissões
+• Regras de negócio
+• Transações
+• Logs
+
+Banco
+
+• Persistência
+• Status
+• approved_at
+• approved_by
+• Histórico
+• Auditoria
+
+Critério de aceite:
+
+✓ Tutor envia comprovante
+
+✓ Admin visualiza
+
+✓ Admin aprova
+
+✓ Status atualizado
+
+✓ Banco atualizado
+
+✓ Histórico preservado
+
+✓ Interface atualizada automaticamente
+
+✓ Tutor visualiza pagamento aprovado
+
+✓ Nenhum erro no console
+
+✓ Nenhuma exceção
+
+══════════════════════════════════════════════════════════════════════
+PROBLEMA 02
+UPLOAD DE FOTOS DOS SERVIÇOS
+══════════════════════════════════════════════════════════════════════
+
+Problema:
+
+Ao cadastrar ou editar um serviço, as fotos não são salvas.
+
+Investigar toda a pipeline.
+
+Frontend
+
+• Seleção
+• Compressão
+• Preview
+• Conversão
+• Upload
+
+Backend
+
+• Endpoint
+• Upload
+• Storage
+• Bucket
+• Content-Type
+• Mime-Type
+• Permissões
+• Geração da URL
+
+Banco
+
+• Persistência
+• Relacionamentos
+
+Critério de aceite:
+
+✓ Selecionar foto
+
+✓ Preview
+
+✓ Upload realizado
+
+✓ Arquivo salvo
+
+✓ URL gerada
+
+✓ Banco atualizado
+
+✓ Foto exibida posteriormente
+
+✓ Nenhuma imagem corrompida
+
+✓ Nenhum erro de upload
+
+Validar obrigatoriamente:
+
+• extensão
+
+• mime-type
+
+• content-type
+
+• tamanho
+
+• autenticação
+
+• autorização
+
+• timeout
+
+• perda de conexão
+
+• retry
+
+══════════════════════════════════════════════════════════════════════
+PROBLEMA 03
+UPLOAD DE FOTO AO FINALIZAR TAREFAS
+══════════════════════════════════════════════════════════════════════
+
+Problema:
+
+Ao finalizar uma tarefa com foto, o upload falha.
+
+Analisar:
+
+Frontend
+
+• Captura
+• Seleção
+• Compressão
+• Upload
+• Finalização
+
+Backend
+
+• Upload
+• Persistência
+• Associação com tarefa
+
+Critério de aceite:
+
+✓ Selecionar foto
+
+✓ Upload
+
+✓ URL retornada
+
+✓ Tarefa finalizada
+
+✓ Timeline atualizada
+
+✓ Feed atualizado
+
+✓ Foto exibida
+
+Caso o upload falhe:
+
+✓ Exibir erro amigável
+
+✓ Permitir nova tentativa
+
+✓ Não perder dados preenchidos
+
+══════════════════════════════════════════════════════════════════════
+PROBLEMA 04
+SERVIÇOS SENDO SALVOS COMO DAY USE
+══════════════════════════════════════════════════════════════════════
+
+Problema:
+
+Todos os serviços estão sendo gravados como Day Use.
+
+Exemplos:
+
+Banho
+
+Táxi
+
+Tosa
+
+Hotel
+
+Consulta
+
+Adestramento
+
+Todos viram Day Use.
+
+Investigar:
+
+Frontend
+
+DTO
+
+Mapper
+
+Serializer
+
+Controller
+
+Service
+
+Repository
+
+Banco
+
+Enums
+
+Valores padrões
+
+Conversões
+
+Critério de aceite:
+
+Banho → BANHO
+
+Táxi → TAXI
+
+Tosa → TOSA
+
+Hotel → HOSPEDAGEM
+
+Consulta → CONSULTA
+
+Adestramento → ADESTRAMENTO
+
+Day Use → DAY_USE
+
+Jamais utilizar valores hardcoded.
+
+Jamais sobrescrever o tipo recebido.
+
+══════════════════════════════════════════════════════════════════════
+PROBLEMA 05
+ACEITAR RESERVAS
+══════════════════════════════════════════════════════════════════════
+
+Problema:
+
+Ao aceitar uma reserva ocorre erro.
+
+Objetivo:
+
+Corrigir completamente o fluxo.
+
+Analisar:
+
+Frontend
+
+• Botão
+
+• Loading
+
+• Payload
+
+• Atualização da interface
+
+Backend
+
+• Endpoint
+
+• Controller
+
+• Service
+
+• Repository
+
+• Permissões
+
+• Tenant
+
+• Regras de negócio
+
+• Conflitos
+
+• Transações
+
+Banco
+
+• Atualização de status
+
+• Integridade
+
+Critério de aceite:
+
+✓ Reserva PENDING
+
+↓
+
+✓ Aceitar
+
+↓
+
+✓ CONFIRMED
+
+↓
+
+✓ Banco atualizado
+
+↓
+
+✓ Agenda atualizada
+
+↓
+
+✓ Interface atualizada
+
+↓
+
+✓ Tutor visualiza alteração
+
+↓
+
+✓ Nenhuma duplicação
+
+↓
+
+✓ Nenhuma inconsistência
+
+══════════════════════════════════════════════════════════════════════
+VALIDAÇÕES DE REGRESSÃO (OBRIGATÓRIAS)
+══════════════════════════════════════════════════════════════════════
+
+Após TODA correção executar testes completos.
+
+Financeiro
+
+✓ Aprovação funciona
+
+✓ Histórico permanece íntegro
+
+✓ Auditoria preservada
+
+Uploads
+
+✓ Upload de serviços
+
+✓ Upload de tarefas
+
+✓ Upload do feed
+
+✓ Upload do tutor
+
+✓ Upload do administrador
+
+Feed
+
+✓ Carregar pelo menos 5 cards
+
+✓ Todas as imagens aparecem
+
+✓ Todos os vídeos reproduzem
+
+✓ Nenhum erro no console
+
+✓ Nenhuma requisição 4xx
+
+✓ Nenhuma requisição 5xx
+
+Reservas
+
+✓ Criar reserva
+
+✓ Aceitar reserva
+
+✓ Cancelar reserva
+
+✓ Reabrir tela
+
+✓ Persistência correta
+
+Serviços
+
+✓ Todos os tipos corretos
+
+✓ Nenhum Day Use indevido
+
+Banco
+
+✓ Integridade referencial
+
+✓ Sem registros órfãos
+
+✓ Sem inconsistências
+
+API
+
+✓ Nenhum endpoint quebrado
+
+✓ Nenhum contrato alterado
+
+Interface
+
+✓ Nenhuma tela quebrada
+
+✓ Nenhum erro de renderização
+
+Logs
+
+✓ Nenhuma exceção não tratada
+
+✓ Logs claros
+
+✓ Sem erros silenciosos
+
+══════════════════════════════════════════════════════════════════════
+QUALIDADE FINAL
+══════════════════════════════════════════════════════════════════════
+
+Antes de concluir, garantir que:
+
+✓ Projeto compila sem erros.
+
+✓ Nenhum erro de TypeScript/Dart/Kotlin/etc.
+
+✓ Nenhum erro de lint.
+
+✓ Nenhum erro de build.
+
+✓ Nenhuma exceção em runtime.
+
+✓ Nenhuma regressão detectada.
+
+✓ Nenhum TODO relacionado aos problemas.
+
+✓ Nenhum FIXME relacionado às alterações.
+
+✓ Nenhum código morto criado.
+
+✓ Nenhuma duplicação introduzida.
+
+✓ Todas as funcionalidades continuam operando normalmente.
+
+══════════════════════════════════════════════════════════════════════
+RELATÓRIO FINAL OBRIGATÓRIO
+══════════════════════════════════════════════════════════════════════
+
+Ao finalizar, apresentar um relatório técnico estruturado contendo, para CADA problema:
+
+1. Resumo do problema.
+
+2. Causa raiz identificada.
+
+3. Fluxo analisado.
+
+4. Arquivos modificados.
+
+5. Funções/métodos alterados.
+
+6. Justificativa técnica de cada alteração.
+
+7. Possíveis impactos.
+
+8. Testes executados.
+
+9. Resultado de cada teste (PASSOU/FALHOU).
+
+10. Validação de regressão.
+
+11. Riscos residuais (caso existam).
+
+A tarefa somente poderá ser considerada concluída quando TODOS os cinco problemas estiverem corrigidos, todos os critérios de aceite forem atendidos e nenhuma regressão for identificada.
