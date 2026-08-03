@@ -352,18 +352,12 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
     });
   };
 
-  const handleViewReceipt = async (id: number) => {
-    try {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/creches/${crecheId}/financial/invoices/${id}/receipt-url`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Comprovante não encontrado");
-      const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
-    }
+  // Opens receipt synchronously so browsers don't block the popup.
+  // buildMediaSrc appends ?mt= so the storage endpoint accepts the request
+  // without an Authorization header (which <a>/<window.open> cannot send).
+  const handleViewReceipt = (receiptPhotoPath: string) => {
+    const url = buildMediaSrc(receiptPhotoPath, getMediaToken());
+    window.open(url, "_blank");
   };
 
   const invoiceList = invoicesData?.data || (Array.isArray(invoicesData) ? invoicesData : []);
@@ -397,7 +391,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
               Detalhes
             </Button>
             {inv.receiptPhotoPath && (
-              <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.id)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
+              <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.receiptPhotoPath)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
                 Ver Comprovante
               </Button>
             )}
@@ -829,9 +823,9 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       price: (item.basePrice / 100).toString(),
       stockQuantity: item.stockQuantity?.toString() || "",
       reorderThreshold: item.reorderThreshold != null ? item.reorderThreshold.toString() : "",
-      priceSmall: item.pricingBySize?.small ? (item.pricingBySize.small).toString() : "",
-      priceMedium: item.pricingBySize?.medium ? (item.pricingBySize.medium).toString() : "",
-      priceLarge: item.pricingBySize?.large ? (item.pricingBySize.large).toString() : "",
+      priceSmall: item.pricingBySize?.small ? (item.pricingBySize.small / 100).toString() : "",
+      priceMedium: item.pricingBySize?.medium ? (item.pricingBySize.medium / 100).toString() : "",
+      priceLarge: item.pricingBySize?.large ? (item.pricingBySize.large / 100).toString() : "",
       creditsAmount: item.creditsAmount?.toString() || "",
       maxPetsPerDay: item.maxPetsPerDay?.toString() || "1",
       category: item.category || "",
@@ -1591,7 +1585,7 @@ function OrdersTab({ crecheId }: { crecheId: number }) {
         <h3 className="font-medium text-white">Pedidos da Loja</h3>
       </div>
       
-      <div className="grid grid-cols-1 gap-4">
+      <div className="overflow-y-auto max-h-[70vh] pr-1 grid grid-cols-1 gap-4">
         {orders?.length === 0 && <p className="text-muted-foreground">Nenhum pedido encontrado.</p>}
         {orders?.map((order: any) => (
           <Card key={order.id} className="bg-white/5 border-white/10">

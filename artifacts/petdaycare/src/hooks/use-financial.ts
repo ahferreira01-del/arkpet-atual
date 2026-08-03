@@ -214,7 +214,8 @@ export function usePayManualInvoice(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      // Must include crecheId to match useListOrders key: ["orders", crecheId]
+      queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
     }
   });
 }
@@ -239,7 +240,8 @@ export function useApproveReceipt(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      // Must include crecheId to match useListOrders key: ["orders", crecheId]
+      queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
     }
   });
 }
