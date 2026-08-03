@@ -22,6 +22,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, desc, gte, gt, sql, or, isNull, asc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { normalizeServiceType } from "../utils/service-name.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { logFinancialAudit } from "../services/audit.js";
@@ -512,39 +513,60 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
                unitPrice = Number(catalogueItem.basePrice);
              }
              
-             // Check if we have service credits (carteira de serviços)
+             // Check if we have service credits (carteira de serviços).
+             // Matching is done by normalized base service type so that a
+             // "Banho Pequeno" credit covers a "Banho Grande" booking (same
+             // service, different porte). Size qualifier words are stripped
+             // before comparison via normalizeServiceType().
              if (catalogueItem.type === "service") {
-               const availableServiceCredits = await tx
-                 .select()
+               const bookingServiceType = normalizeServiceType(catalogueItem.name);
+
+               // Fetch ALL available service credits for this tutor/creche,
+               // joined with the catalogue item to get the item name for matching.
+               const candidateCredits = await tx
+                 .select({
+                   id: tutorServiceCreditsTable.id,
+                   totalCredits: tutorServiceCreditsTable.totalCredits,
+                   usedCredits: tutorServiceCreditsTable.usedCredits,
+                   itemName: catalogueItemsTable.name,
+                 })
                  .from(tutorServiceCreditsTable)
+                 .innerJoin(
+                   catalogueItemsTable,
+                   eq(catalogueItemsTable.id, tutorServiceCreditsTable.catalogueItemId),
+                 )
                  .where(and(
                    eq(tutorServiceCreditsTable.tutorId, existing.tutorId!),
                    eq(tutorServiceCreditsTable.crecheId, crecheId),
-                   eq(tutorServiceCreditsTable.catalogueItemId, catalogueItem.id),
                    sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`
                  ))
-                 .orderBy(asc(tutorServiceCreditsTable.createdAt))
+                 .orderBy(asc(tutorServiceCreditsTable.id))
                  .for("update");
-                 
-               for (const credit of availableServiceCredits) {
+
+               // Keep only credits whose base service type matches (e.g. all "banho" variants)
+               const matchingCredits = candidateCredits.filter(
+                 c => normalizeServiceType(c.itemName) === bookingServiceType,
+               );
+
+               for (const credit of matchingCredits) {
                  if (daysToBill <= 0) break;
-                 
+
                  const remainingInCredit = credit.totalCredits - credit.usedCredits;
                  const toConsume = Math.min(remainingInCredit, daysToBill);
-                 
+
                  await tx.update(tutorServiceCreditsTable)
                    .set({ usedCredits: sql`${tutorServiceCreditsTable.usedCredits} + ${toConsume}` })
                    .where(eq(tutorServiceCreditsTable.id, credit.id));
-                   
+
                  daysToBill -= toConsume;
-                 
+
                  await logFinancialAudit({
                    crecheId,
                    userId: req.user.id,
                    action: "credits_deduct",
                    referenceId: bookingId,
                    referenceType: "bookings",
-                   details: `Consumo de ${toConsume} crédito(s) de serviço (${catalogueItem.name}) da Carteira de Serviços.`
+                   details: `Consumo de ${toConsume} crédito(s) de serviço (${credit.itemName} → ${catalogueItem.name}) da Carteira de Serviços.`
                  }, tx);
                }
              }

@@ -16,6 +16,7 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { releasePurchasedCredits } from "../services/credits.js";
+import { normalizeServiceType } from "../utils/service-name.js";
 import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
 import { sendLowStockAlertEmail } from "../services/email.js";
 
@@ -297,24 +298,80 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
     }
 
     if (status === 'cancelled' && order.status !== 'cancelled') {
-      // Estornar estoque
+      // Restore stock and revoke any service credits that were already released.
       const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+
+      // Build catalogue info for each order item (needed for type check and stock)
+      const catIds = [...new Set(items.map(i => i.catalogueItemId))];
+      const catItems = catIds.length
+        ? await db.select().from(catalogueItemsTable).where(inArray(catalogueItemsTable.id, catIds))
+        : [];
+
       for (const item of items) {
-        await db.update(catalogueItemsTable)
-          .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${item.quantity}` })
-          .where(eq(catalogueItemsTable.id, item.catalogueItemId));
-          
-        await db.insert(catalogueStockTransactionsTable).values({
-          itemId: item.catalogueItemId,
-          crecheId,
-          type: 'in',
-          quantity: item.quantity,
-          reason: 'Cancelamento de Pedido',
-          userId: req.user!.id
-        });
+        const catItem = catItems.find(c => c.id === item.catalogueItemId);
+
+        // Restore physical stock only for product-type items (services have no stock to restore)
+        if (catItem?.type !== 'service') {
+          await db.update(catalogueItemsTable)
+            .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${item.quantity}` })
+            .where(eq(catalogueItemsTable.id, item.catalogueItemId));
+
+          await db.insert(catalogueStockTransactionsTable).values({
+            itemId: item.catalogueItemId,
+            crecheId,
+            type: 'in',
+            quantity: item.quantity,
+            reason: 'Cancelamento de Pedido',
+            userId: req.user!.id
+          });
+        }
       }
-      
-      // Cancelar invoice
+
+      // Revoke service credits for this order if they were already released.
+      // We look for service items in the order and take back the granted credits
+      // (up to what remains unused — used credits cannot be reverted).
+      if (order.invoiceId) {
+        const [inv] = await db.select({ creditsReleased: invoicesTable.creditsReleased, tutorId: invoicesTable.tutorId })
+          .from(invoicesTable).where(eq(invoicesTable.id, order.invoiceId));
+
+        if (inv?.creditsReleased && inv.tutorId) {
+          for (const item of items) {
+            const catItem = catItems.find(c => c.id === item.catalogueItemId);
+            if (catItem?.type !== 'service') continue;
+
+            // Find the corresponding credit rows for this tutor/item, newest first
+            // (most likely to be the ones created by this order)
+            const creditRows = await db
+              .select()
+              .from(tutorServiceCreditsTable)
+              .where(and(
+                eq(tutorServiceCreditsTable.tutorId, inv.tutorId),
+                eq(tutorServiceCreditsTable.crecheId, crecheId),
+                eq(tutorServiceCreditsTable.catalogueItemId, item.catalogueItemId),
+              ))
+              .orderBy(desc(tutorServiceCreditsTable.id));
+
+            let toRevoke = item.quantity; // total credits to take back
+            for (const row of creditRows) {
+              if (toRevoke <= 0) break;
+              const revokable = row.totalCredits - row.usedCredits; // only unused credits can be revoked
+              const actualRevoke = Math.min(revokable, toRevoke);
+              if (actualRevoke <= 0) continue;
+              await db.update(tutorServiceCreditsTable)
+                .set({ totalCredits: row.totalCredits - actualRevoke })
+                .where(eq(tutorServiceCreditsTable.id, row.id));
+              toRevoke -= actualRevoke;
+            }
+          }
+
+          // Mark invoice credits as no longer released so a re-payment would re-grant them
+          await db.update(invoicesTable)
+            .set({ creditsReleased: false })
+            .where(eq(invoicesTable.id, order.invoiceId));
+        }
+      }
+
+      // Void the invoice
       if (order.invoiceId) {
         await db.update(invoicesTable)
           .set({ status: 'voided' })

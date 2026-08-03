@@ -21,6 +21,24 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+// Strips size qualifiers (pequeno/médio/grande) so "Banho Pequeno" and
+// "Banho Grande" both resolve to "banho" for credit-matching purposes.
+const SIZE_WORDS = new Set([
+  'pequeno','pequena','medio','media','mediano','mediana',
+  'grande','small','medium','large','mini','maxi','plus','p','m','g','gg','xg',
+]);
+function normalizeServiceType(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 0 && !SIZE_WORDS.has(w))
+    .join('_');
+  return slug || 'servico';
+}
+
 const STEPS = [
   { id: 1, title: "Escolher Pets" },
   { id: 2, title: "Serviço" },
@@ -439,11 +457,19 @@ export default function NewBooking() {
                                 )}
                               </p>
                               {(() => {
-                                const walletCredit = serviceCreditsData?.data?.find(
-                                  (c: any) => c.catalogueItemId === service.id && c.usedCredits < c.totalCredits
+                                // Match credits by normalized base service type so that a
+                                // "Banho Pequeno" credit shows on "Banho Grande" cards too.
+                                const baseType = normalizeServiceType(service.name);
+                                const matchingCredits = serviceCreditsData?.data?.filter(
+                                  (c: any) =>
+                                    normalizeServiceType(c.itemName) === baseType &&
+                                    c.usedCredits < c.totalCredits
+                                ) ?? [];
+                                const remaining = matchingCredits.reduce(
+                                  (sum: number, c: any) => sum + (c.totalCredits - c.usedCredits),
+                                  0,
                                 );
-                                if (walletCredit) {
-                                  const remaining = walletCredit.totalCredits - walletCredit.usedCredits;
+                                if (remaining > 0) {
                                   return (
                                     <div className="mt-2 inline-flex items-center rounded-md bg-purple-500/10 px-2 py-1 text-xs font-medium text-purple-400 ring-1 ring-inset ring-purple-500/30">
                                       {remaining} {remaining === 1 ? 'Pré-pago disponível' : 'Pré-pagos disponíveis'}
