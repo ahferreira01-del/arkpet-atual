@@ -680,27 +680,50 @@ export default function NewBooking() {
                   let availableServiceCredits = 0;
                   let creditsToUse = 0;
 
+                  // Track how many day-slots of each pet are covered by service credits
+                  const creditsByPet = new Map<number, number>();
+
                   if (!isPackage && selectedService) {
-                     const allCosts: number[] = [];
+                     // Build cost entries preserving petId so credits can be attributed per-pet
+                     const costEntries: Array<{ petId: number; cost: number }> = [];
                      for (let i = 0; i < durationDays; i++) {
                        for (const petId of selectedPetIds) {
-                         allCosts.push(getPetPrice(petId).price);
+                         costEntries.push({ petId, cost: getPetPrice(petId).price });
                        }
                      }
-                     originalCost = allCosts.reduce((acc, cost) => acc + cost, 0);
+                     originalCost = costEntries.reduce((acc, e) => acc + e.cost, 0);
 
-                     const walletCredit = serviceCreditsData?.data?.find(
-                       (c: any) => c.catalogueItemId === selectedService.id && c.usedCredits < c.totalCredits
+                     // Match credits by normalized service type (same logic as server):
+                     // "Banho Pequeno" credits cover "Banho Grande" bookings, etc.
+                     // Aggregate ALL matching records (not just first) in FIFO order (asc id).
+                     const bookingServiceType = normalizeServiceType(selectedService.name);
+                     const matchingServiceCredits = ((serviceCreditsData?.data ?? []) as any[])
+                       .filter((c: any) => normalizeServiceType(c.itemName) === bookingServiceType)
+                       .sort((a: any, b: any) => a.id - b.id); // FIFO: server consumes in asc(id) order
+
+                     availableServiceCredits = matchingServiceCredits.reduce(
+                       (acc: number, c: any) => acc + (c.totalCredits - c.usedCredits), 0
                      );
-                     if (walletCredit) {
-                       availableServiceCredits = walletCredit.totalCredits - walletCredit.usedCredits;
+
+                     // Server processes each pet booking independently and sequentially,
+                     // consuming up to durationDays credits per pet in order.
+                     // Replicate the same FIFO allocation here for an accurate preview.
+                     let creditPool = availableServiceCredits;
+                     for (const petId of selectedPetIds) {
+                       const creditsForThisPet = Math.min(durationDays, creditPool);
+                       if (creditsForThisPet > 0) creditsByPet.set(petId, creditsForThisPet);
+                       creditPool -= creditsForThisPet;
+                       if (creditPool <= 0) break;
                      }
-                     
-                     creditsToUse = Math.min(allCosts.length, availableServiceCredits);
-                     
-                     allCosts.sort((a, b) => b - a);
-                     discountCost = allCosts.slice(0, creditsToUse).reduce((acc, cost) => acc + cost, 0);
-                     
+
+                     creditsToUse = availableServiceCredits - creditPool;
+
+                     // discountCost = sum of prices for each credited pet-day slot
+                     for (const [petId, creditedDays] of creditsByPet) {
+                       const { price } = getPetPrice(petId);
+                       discountCost += price * creditedDays;
+                     }
+
                      totalCost = originalCost - discountCost;
                   } else if (isPackage && excessDays > 0) {
                      // Estimativa simplificada baseada no preço base da diária avulsa, se existir
@@ -735,25 +758,40 @@ export default function NewBooking() {
                           <div className="space-y-3 mb-6">
                             {selectedPetIds.map((petId) => {
                               const { price, usedSize, pet } = getPetPrice(petId);
-                              const petCost = isPackage ? 0 : price * durationDays;
+                              const petCreditsUsed = isPackage ? 0 : (creditsByPet.get(petId) || 0);
+                              const petCreditedDays = Math.min(durationDays, petCreditsUsed);
+                              const petPaidDays = durationDays - petCreditedDays;
+                              const petCost = isPackage ? 0 : price * petPaidDays;
+                              const fullyByCredit = !isPackage && petCreditedDays === durationDays;
+                              const partiallyByCredit = !isPackage && petCreditedDays > 0 && petPaidDays > 0;
                               return (
                                 <div
                                   key={petId}
-                                  className="flex justify-between items-center p-3 rounded-xl bg-black/20 border border-white/5"
+                                  className={`flex justify-between items-center p-3 rounded-xl border ${fullyByCredit ? "bg-purple-500/10 border-purple-500/20" : partiallyByCredit ? "bg-purple-500/5 border-purple-500/10" : "bg-black/20 border-white/5"}`}
                                 >
                                   <div>
-                                    <p className="text-sm font-medium text-white">
+                                    <p className="text-sm font-medium text-white flex items-center gap-2">
                                       {pet?.name}
+                                      {fullyByCredit && (
+                                        <span className="text-[10px] font-semibold bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                          Crédito
+                                        </span>
+                                      )}
+                                      {partiallyByCredit && (
+                                        <span className="text-[10px] font-semibold bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                          {petCreditedDays}d crédito
+                                        </span>
+                                      )}
                                     </p>
                                     <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
                                       {isPackage ? "Consumo de Diária" : (usedSize ? "Calculado por porte" : "Valor Base")} {durationDays > 1 && !isPackage && `(x${durationDays} dias)`}
                                     </p>
                                   </div>
-                                  <span className="font-semibold text-white">
-                                    {isPackage ? "--" : (petCost / 100).toLocaleString("pt-BR", {
-                                      style: "currency",
-                                      currency: "BRL",
-                                    })}
+                                  <span className={`font-semibold ${fullyByCredit ? "text-purple-300" : "text-white"}`}>
+                                    {isPackage ? "--" : fullyByCredit
+                                      ? (0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                                      : (petCost / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                                    }
                                   </span>
                                 </div>
                               );
@@ -763,10 +801,10 @@ export default function NewBooking() {
                                 <div className="flex justify-between items-center p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 mt-2">
                                   <div>
                                     <p className="text-sm font-medium text-purple-400 flex items-center gap-1.5">
-                                      Créditos Pré-pagos Usados
+                                      🎟️ Crédito pré-pago aplicado
                                     </p>
                                     <p className="text-[10px] text-purple-400/80 uppercase tracking-wide mt-0.5">
-                                      {creditsToUse} {creditsToUse === 1 ? 'crédito aplicado' : 'créditos aplicados'}
+                                      {creditsToUse} {creditsToUse === 1 ? `crédito de ${selectedService?.name}` : `créditos de ${selectedService?.name}`}
                                     </p>
                                   </div>
                                   <span className="font-semibold text-purple-400">
