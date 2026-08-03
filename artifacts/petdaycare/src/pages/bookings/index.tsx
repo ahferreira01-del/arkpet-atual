@@ -456,7 +456,7 @@ export default function Bookings() {
       { crecheId, bookingId, data: { status: newStatus } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
+          queryClient.invalidateQueries();
           toast({
             title: statusSuccessMessages[newStatus] ?? "Status atualizado.",
           });
