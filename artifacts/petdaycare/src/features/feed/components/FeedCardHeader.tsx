@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { FeedPost } from "../types/feed.types";
@@ -21,6 +22,7 @@ interface FeedCardHeaderProps {
 }
 
 export function FeedCardHeader({ post }: FeedCardHeaderProps) {
+  const [imgError, setImgError] = useState(false);
   const meta = EVENT_META[post.type] ?? { emoji: "📌", label: post.type };
   const petNames = post.pets.map((p) => p.petName).join(", ");
   const relTime = formatDistanceToNow(new Date(post.createdAt), {
@@ -31,7 +33,7 @@ export function FeedCardHeader({ post }: FeedCardHeaderProps) {
   // Build avatar: prefer the first pet's photo; fall back to event-type emoji
   const firstPet = post.pets[0];
   const firstPhoto = firstPet?.petPhoto;
-  const avatarSrc = firstPhoto
+  const avatarSrc = !imgError && firstPhoto
     ? (firstPhoto.startsWith("/objects/")
         ? buildMediaSrc(firstPhoto, getMediaToken())
         : firstPhoto)
@@ -45,7 +47,7 @@ export function FeedCardHeader({ post }: FeedCardHeaderProps) {
             src={avatarSrc}
             alt={firstPet?.petName ?? "pet"}
             className="h-full w-full object-cover rounded-full"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            onError={() => setImgError(true)}
           />
         ) : (
           meta.emoji
