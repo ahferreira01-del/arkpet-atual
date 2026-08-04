@@ -1273,7 +1273,13 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
       visita_taxi: "Visita + Táxi",
       creche_taxi: "Creche + Táxi",
     };
-    const serviceLabel = typeLabels[booking.type] ?? "Serviço";
+    // Convert unknown slugs (e.g. "banho_tosa", "creche_diaria") into human-readable
+    // labels so push notifications and invoice descriptions are never shown as raw slugs.
+    const serviceLabel = typeLabels[booking.type] ??
+      String(booking.type)
+        .split("_")
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
     sendPushToUser(booking.tutorId, {
       title: `✅ ${serviceLabel} concluído — ${enriched.petName ?? "Seu pet"}`,
       body: `O serviço de ${serviceLabel} de ${enriched.petName ?? "seu pet"} foi finalizado. O pet continua na creche.`,

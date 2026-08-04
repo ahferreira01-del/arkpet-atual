@@ -36,6 +36,7 @@ export default function TutorFinancial() {
   const [uploadingFor, setUploadingFor] = useState<number | null>(null);
   const [detailsFor, setDetailsFor] = useState<number | null>(null);
   const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [pixInvoice, setPixInvoice] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,7 +85,7 @@ export default function TutorFinancial() {
       });
       if (!res.ok) throw new Error("Comprovante não encontrado");
       const data = await res.json();
-      if (data.url) window.open(data.url, "_blank");
+      if (data.url) setReceiptPreviewUrl(data.url);
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     }
@@ -413,6 +414,18 @@ export default function TutorFinancial() {
             setTimeout(() => fileInputRef.current?.click(), 150);
           }}
         />
+      )}
+
+      {receiptPreviewUrl && (
+        <Modal isOpen onClose={() => setReceiptPreviewUrl(null)} title="Comprovante de Pagamento">
+          <div className="flex justify-center p-2">
+            <img
+              src={receiptPreviewUrl}
+              alt="Comprovante"
+              className="max-w-full max-h-[75vh] rounded-lg object-contain"
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );

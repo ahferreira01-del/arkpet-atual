@@ -77,7 +77,11 @@ export default function NewBooking() {
   const availablePets = isTutor
     ? pets?.filter((p) => p.tutorId === user?.id)
     : pets;
-  const rawServices = catalogue?.filter((item: any) => item.type === "service") || [];
+  // Include both "service" and "day_use" catalogue items in the selector.
+  // "day_use" is a canonical catalogue type distinct from generic services.
+  const rawServices = catalogue?.filter((item: any) =>
+    item.type === "service" || item.type === "day_use"
+  ) || [];
   const services = [...rawServices];
   
   if (packagesData?.packages && packagesData.packages.length > 0) {
@@ -164,19 +168,19 @@ export default function NewBooking() {
   const handleConfirm = async () => {
     if (!selectedService) return;
 
-    // Type backend expects (e.g., 'day_use', 'lodging') or fallback to exact name matching
-    // We map the catalogue item name into a safe slug format, or use it directly
-    // depending on the backend logic. The backend receives `type` and `price`.
-    // Derive a stable slug from the service name so the backend can look up the
-    // catalogue item by name matching (i.name.toLowerCase().replace(/\s+/g, "_")).
-    // Never default to "day_use" — each service must keep its own identity.
-    const typePayload = selectedService.name
-      .toLowerCase()
-      .normalize("NFD")                    // decompose accented chars
-      .replace(/[\u0300-\u036f]/g, "")     // strip accent marks
-      .replace(/\s+/g, "_")
-      .replace(/[^a-z0-9_]/g, "")
-      || "servico";                        // only fallback when name is entirely non-ASCII
+    // Use the catalogue item's canonical type directly when it is a known
+    // non-"service" type (e.g. "day_use"). For generic "service" catalogue
+    // items, derive a stable slug from the name so the confirmation step can
+    // look up the item by name-slug matching (i.name.toLowerCase().replace(/\s+/g, "_")).
+    const typePayload = selectedService.type !== "service"
+      ? selectedService.type
+      : selectedService.name
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, "_")
+          .replace(/[^a-z0-9_]/g, "")
+        || "servico";
     try {
       await Promise.all(
         selectedPetIds.map((petId) => {
@@ -669,7 +673,7 @@ export default function NewBooking() {
                   }
                   
                   const fallbackDayUseService = catalogue?.find((s: any) => {
-                    if (s.type !== "service") return false;
+                    if (s.type !== "service" && s.type !== "day_use") return false;
                     const name = s.name.toLowerCase();
                     return name.includes("creche") || name.includes("day") || name.includes("diária");
                   });

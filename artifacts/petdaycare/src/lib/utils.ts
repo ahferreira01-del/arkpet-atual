@@ -150,11 +150,16 @@ export async function uploadFileDirect(file: File, token: string): Promise<strin
   return objectPath as string;
 }
 
-export function formatCurrency(amount: number) {
-  return new Intl.NumberFormat("en-US", {
+/**
+ * Format a centavo (integer cents) amount as a Brazilian Real currency string.
+ * Convention: all financial values in this system are stored as integer centavos
+ * (e.g. 5000 = R$ 50,00). This function divides by 100 before formatting.
+ */
+export function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("pt-BR", {
     style: "currency",
-    currency: "USD",
-  }).format(amount);
+    currency: "BRL",
+  }).format(cents / 100);
 }
 
 export function getInitials(name: string) {

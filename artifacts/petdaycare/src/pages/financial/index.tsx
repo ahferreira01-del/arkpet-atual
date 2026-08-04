@@ -115,7 +115,7 @@ function CashFlowTab({ crecheId }: { crecheId: number }) {
                 <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
                   <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `R$ ${value}`} />
+                  <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatBRL(value)} />
                   <RechartsTooltip 
                     cursor={{ fill: 'rgba(255,255,255,0.05)' }} 
                     contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px' }}
@@ -309,6 +309,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
   const [payModal, setPayModal] = useState<{ open: boolean; invoiceId: number | null }>({ open: false, invoiceId: null });
   const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
   const [detailsModal, setDetailsModal] = useState<{open: boolean, invoiceId: number | null}>({ open: false, invoiceId: null });
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("pix");
 
   // Filters
@@ -356,8 +357,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
   // buildMediaSrc appends ?mt= so the storage endpoint accepts the request
   // without an Authorization header (which <a>/<window.open> cannot send).
   const handleViewReceipt = (receiptPhotoPath: string) => {
-    const url = buildMediaSrc(receiptPhotoPath, getMediaToken());
-    window.open(url, "_blank");
+    setPreviewUrl(buildMediaSrc(receiptPhotoPath, getMediaToken()));
   };
 
   const invoiceList = invoicesData?.data || (Array.isArray(invoicesData) ? invoicesData : []);
@@ -475,6 +475,17 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
         issueDate={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.createdAt}
         tutorName={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.tutorName}
       />
+      {previewUrl && (
+        <Modal isOpen onClose={() => setPreviewUrl(null)} title="Comprovante de Pagamento">
+          <div className="flex justify-center p-2">
+            <img
+              src={previewUrl}
+              alt="Comprovante"
+              className="max-w-full max-h-[75vh] rounded-lg object-contain"
+            />
+          </div>
+        </Modal>
+      )}
       {receiptModalId && (
         <ThermalReceiptModal invoiceId={receiptModalId} onClose={() => setReceiptModalId(null)} />
       )}
@@ -515,8 +526,12 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
       return;
     }
 
+    // All financial values are stored as integer centavos.
+    // Convert the user-entered BRL reals to centavos before persisting.
+    const amountCents = Math.round(val * 100);
+
     if (editingId) {
-      updateMutation.mutate({ id: editingId, ...form, amount: val }, {
+      updateMutation.mutate({ id: editingId, ...form, amount: amountCents }, {
         onSuccess: () => {
           toast({ title: "Sucesso", description: "Despesa atualizada com sucesso." });
           setModalOpen(false);
@@ -526,7 +541,7 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
         onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
       });
     } else {
-      createMutation.mutate({ ...form, amount: val }, {
+      createMutation.mutate({ ...form, amount: amountCents }, {
         onSuccess: () => {
           toast({ title: "Sucesso", description: "Despesa registrada." });
           setModalOpen(false);
@@ -1057,6 +1072,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
               >
                 <option value="product" className="bg-zinc-900">Produto</option>
                 <option value="service" className="bg-zinc-900">Serviço</option>
+                <option value="day_use" className="bg-zinc-900">Day Use</option>
                 <option value="package" className="bg-zinc-900">Pacote de Diárias</option>
               </select>
             </div>
@@ -1184,7 +1200,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
               </div>
             )}
 
-            {form.type === "service" && (
+            {(form.type === "service" || form.type === "day_use") && (
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-xs">Preço Pequeno (opcional)</label>
@@ -1318,6 +1334,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
   const { data: invoicesData, isLoading } = useListAllInvoices(crecheId);
   const approveReceiptMutation = useApproveReceipt(crecheId);
   const { toast } = useToast();
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleApproveReceipt = (id: number) => {
     approveReceiptMutation.mutate(id, {
@@ -1331,6 +1348,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
 
   if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando comprovantes...</div>;
   return (
+    <>
     <Card>
       <CardContent className="p-6">
         <h3 className="font-medium text-white mb-6">Comprovantes Pendentes de Aprovação</h3>
@@ -1350,7 +1368,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                 <div className="flex gap-2 pt-2 border-t border-white/5">
                   {inv.receiptPhotoPath && (
                     <Button variant="ghost" size="sm" onClick={() => {
-                      window.open(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()), '_blank');
+                      setPreviewUrl(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()));
                     }} className="flex-1 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
                       Ver Comprovante
                     </Button>
@@ -1389,7 +1407,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                     <td className="px-6 py-4 text-right space-x-2">
                       {inv.receiptPhotoPath && (
                         <Button variant="ghost" size="sm" onClick={() => {
-                          window.open(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()), '_blank');
+                          setPreviewUrl(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()));
                         }} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
                           Ver Comprovante
                         </Button>
@@ -1412,6 +1430,19 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
         </div>
       </CardContent>
     </Card>
+
+    {previewUrl && (
+      <Modal isOpen onClose={() => setPreviewUrl(null)} title="Comprovante de Pagamento">
+        <div className="flex justify-center p-2">
+          <img
+            src={previewUrl}
+            alt="Comprovante"
+            className="max-w-full max-h-[75vh] rounded-lg object-contain"
+          />
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 

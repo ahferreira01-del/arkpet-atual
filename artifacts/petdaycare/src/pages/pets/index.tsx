@@ -113,6 +113,10 @@ export default function PetsDirectory() {
       if (!r.ok) { const e = await r.json(); throw new Error(e.error || "Erro ao criar tutor"); }
       return r.json();
     },
+    onSuccess: () => {
+      // Refresh the tutor/pet list so the new tutor appears immediately.
+      queryClient.invalidateQueries();
+    },
   });
 
   const filteredPets = pets?.filter((p: any) => {
