@@ -305,10 +305,20 @@ router.post("/invoices/:invoiceId/stripe-checkout", async (req: AuthRequest, res
   }
 });
 
-router.get("/invoices/:invoiceId/receipt-url", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
+router.get("/invoices/:invoiceId/receipt-url", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
     const invoiceId = Number(req.params.invoiceId);
+
+    // Tutors may only view their own invoices; admins/staff see any invoice in their creche.
+    if (req.user!.role === "tutor") {
+      const [owned] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
+        .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.tutorId, req.user!.id)));
+      if (!owned) { res.status(403).json({ error: "Não autorizado" }); return; }
+    } else if (req.user!.role !== "master_admin" && req.user!.crecheId !== crecheId) {
+      res.status(403).json({ error: "Não autorizado" }); return;
+    }
+
     const [invoice] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
     
     if (!invoice || !invoice.receiptPhotoPath) {

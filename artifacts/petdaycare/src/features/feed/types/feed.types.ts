@@ -37,6 +37,7 @@ export interface PostAuthor {
 export interface PostPet {
   petId: number;
   petName: string;
+  petPhoto?: string | null;
 }
 
 /** Full feed post DTO returned by the API */

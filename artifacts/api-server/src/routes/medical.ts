@@ -32,7 +32,7 @@ router.get("/vaccines/:petId", async (req: AuthRequest, res) => {
 router.post("/vaccines", async (req: AuthRequest, res) => {
   try {
     const crecheId = req.user!.crecheId!;
-    const { petId, name, appliedDate, nextDueDate, veterinarian, notes } = req.body;
+    const { petId, name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl } = req.body;
 
     if (!petId || !name || !appliedDate) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -46,6 +46,7 @@ router.post("/vaccines", async (req: AuthRequest, res) => {
       nextDueDate: nextDueDate ? (typeof nextDueDate === "string" ? nextDueDate : new Date(nextDueDate).toISOString().split('T')[0]) : null,
       veterinarian,
       notes,
+      receiptUrl: receiptUrl ?? null,
     }).returning();
 
     res.status(201).json(vaccine);

@@ -14,3 +14,5 @@
 - [Object storage bucket link](object-storage-bucket-link.md) — sidecar 401 "no allowed resources" = missing [objectStorage] section in .replit; reload/republish needed after restoring it.
 - [GitHub remote divergence](github-remote-divergence.md) — origin/master is a Render/Vercel lineage with local-fs storage; never auto-push/rebase, reconcile deliberately.
 - [pg Pool crash on dropped connection](pg-pool-error-handler.md) — pool MUST have a pool.on("error") listener; a DB-terminated idle connection emits unhandled 'error' that crashes the whole API and takes down all logins.
+- [Billing avulso isolation](billing-avulso-isolation.md) — POS immediate-pay charges MUST pass isAvulso:true to addCharge; omitting it re-opens and inflates the tutor's monthly invoice.
+- [Booking state machine by type](booking-state-machine-by-type.md) — SERVICE_BOOKING_TYPES (banho) use checkin→complete-service flow; never check-out or consumables. Extend set when adding new service types.

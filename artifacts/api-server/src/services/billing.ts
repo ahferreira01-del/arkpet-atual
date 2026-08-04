@@ -258,6 +258,7 @@ export class BillingService {
     orderId?: number;
     itemDate?: Date;
     quantity?: number;
+    isAvulso?: boolean; // When true, creates a standalone invoice instead of merging into the monthly cycle
     tx?: any; // Accept a tx object to reuse it
   }) {
     const amountVal = typeof params.amount === 'string' ? parseFloat(params.amount) : params.amount;
@@ -268,42 +269,57 @@ export class BillingService {
     const executeLogic = async (txClient: any) => {
       let invoiceId: number;
 
-      const [tutor] = await txClient.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, params.tutorId));
-      const cycle = this.getCycleDates(tutor?.mensalidadeDia, itemDateStr);
-      
-      const [existing] = await txClient.select().from(invoicesTable)
-        .where(
-          and(
-            eq(invoicesTable.tutorId, params.tutorId),
-            eq(invoicesTable.cycleStart, cycle.cycleStart),
-            eq(invoicesTable.cycleEnd, cycle.cycleEnd)
-          )
-        )
-        .for('update');
-      
-      if (existing) {
-        const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-        
-        let newStatus = existing.status;
-        if (existing.status === 'paid' || existing.status === 'refunded' || existing.status === 'voided') {
-            newStatus = 'pending';
-        }
-
-        await txClient.update(invoicesTable)
-          .set({ amount: newTotal, status: newStatus, updatedAt: new Date() })
-          .where(eq(invoicesTable.id, existing.id));
-        invoiceId = existing.id;
-      } else {
+      if (params.isAvulso) {
+        // Avulso charges get their own standalone invoice so they never
+        // re-open or inflate the tutor's monthly cycle invoice.
         const [newInv] = await txClient.insert(invoicesTable).values({
+          crecheId: params.crecheId,
+          tutorId: params.tutorId,
+          cycleStart: itemDateStr,
+          cycleEnd: itemDateStr,
+          dueDate: itemDateStr,
+          amount: totalItemAmount.toFixed(2),
+          status: "pending",
+        }).returning();
+        invoiceId = newInv.id;
+      } else {
+        const [tutor] = await txClient.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, params.tutorId));
+        const cycle = this.getCycleDates(tutor?.mensalidadeDia, itemDateStr);
+        
+        const [existing] = await txClient.select().from(invoicesTable)
+          .where(
+            and(
+              eq(invoicesTable.tutorId, params.tutorId),
+              eq(invoicesTable.cycleStart, cycle.cycleStart),
+              eq(invoicesTable.cycleEnd, cycle.cycleEnd)
+            )
+          )
+          .for('update');
+        
+        if (existing) {
+          const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
+          
+          let newStatus = existing.status;
+          if (existing.status === 'paid' || existing.status === 'refunded' || existing.status === 'voided') {
+            newStatus = 'pending';
+          }
+
+          await txClient.update(invoicesTable)
+            .set({ amount: newTotal, status: newStatus, updatedAt: new Date() })
+            .where(eq(invoicesTable.id, existing.id));
+          invoiceId = existing.id;
+        } else {
+          const [newInv] = await txClient.insert(invoicesTable).values({
             crecheId: params.crecheId,
             tutorId: params.tutorId,
             cycleStart: cycle.cycleStart,
             cycleEnd: cycle.cycleEnd,
             dueDate: cycle.dueDate,
             amount: totalItemAmount.toFixed(2),
-            status: "pending"
-        }).returning();
-        invoiceId = newInv.id;
+            status: "pending",
+          }).returning();
+          invoiceId = newInv.id;
+        }
       }
 
       await txClient.insert(invoiceItemsTable).values({

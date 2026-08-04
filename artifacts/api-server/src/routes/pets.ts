@@ -195,6 +195,14 @@ router.put("/:petId", async (req: AuthRequest, res) => {
     ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pet.tutorId)).limit(1)
     : [{ name: null }];
   res.json({ ...pet, tutorName: tutor?.name ?? null });
+
+  // Fire-and-forget: if a care plan changed while the pet is checked in,
+  // regenerate today's tasks immediately so staff see them without waiting for midnight.
+  if (pet?.isCheckedIn && (feedingSchedule !== undefined || walkSchedule !== undefined)) {
+    import("../lib/scheduler.js")
+      .then(({ generateTasksForPetToday }) => generateTasksForPetToday(petId, crecheId))
+      .catch((err: unknown) => console.error("[pets] plan task regen failed:", err));
+  }
 });
 
 router.get("/:petId/vaccines", async (req: AuthRequest, res) => {

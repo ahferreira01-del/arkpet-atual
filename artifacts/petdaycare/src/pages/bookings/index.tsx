@@ -50,6 +50,12 @@ const bookingTypeLabel: Record<string, string> = {
   creche_taxi: "Creche + Táxi",
 };
 
+// Service bookings (grooming, etc.) follow a different operational flow:
+// confirmed → "Iniciar Serviço" (checkin) → active → "Concluir Serviço" (complete-service)
+// They don't have check-out or consumables — the pet leaves after the service.
+const SERVICE_BOOKING_TYPES = new Set(["banho"]);
+const isServiceBooking = (type: string) => SERVICE_BOOKING_TYPES.has(type);
+
 const statusVariant: Record<BookingStatus, any> = {
   pending: "warning",
   confirmed: "success",
@@ -696,6 +702,13 @@ export default function Bookings() {
                       )}
                     </div>
 
+                    {/* Row 3b: Observations */}
+                    {booking.notes && (
+                      <p className="text-xs text-muted-foreground/80 bg-white/5 rounded px-2.5 py-1.5 italic">
+                        💬 {booking.notes}
+                      </p>
+                    )}
+
                     {/* Row 4: Horizontal Action Buttons */}
                     <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
                       {(booking.status === "confirmed" || booking.status === "active") && (
@@ -751,7 +764,8 @@ export default function Bookings() {
                                 onClick={() => handleCheckIn(booking)}
                                 isLoading={checkInMutation.isPending}
                               >
-                                <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                                <LogIn className="mr-1.5 h-3.5 w-3.5" />
+                                {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
                               </Button>
                             )}
                             {booking.status === "confirmed" && isPetPresent(booking.petId) && (
@@ -765,7 +779,18 @@ export default function Bookings() {
                                 <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
                               </Button>
                             )}
-                            {booking.status === "active" && (
+                            {booking.status === "active" && isServiceBooking(booking.type) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
+                                onClick={() => handleCompleteService(booking)}
+                                isLoading={completeServiceMutation.isPending}
+                              >
+                                <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                              </Button>
+                            )}
+                            {booking.status === "active" && !isServiceBooking(booking.type) && (
                               <>
                                 <Button
                                   size="sm"
@@ -854,6 +879,9 @@ export default function Bookings() {
                               Check-out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
                             </p>
                           )}
+                          {booking.notes && (
+                            <p className="text-xs text-muted-foreground mt-1 italic">💬 {booking.notes}</p>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
@@ -920,7 +948,8 @@ export default function Bookings() {
                                     onClick={() => handleCheckIn(booking)}
                                     isLoading={checkInMutation.isPending}
                                   >
-                                    <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                                    <LogIn className="mr-1.5 h-3.5 w-3.5" />
+                                    {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
                                   </Button>
                                 )}
                                 {booking.status === "confirmed" && isPetPresent(booking.petId) && (
@@ -934,7 +963,18 @@ export default function Bookings() {
                                     <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
                                   </Button>
                                 )}
-                                {booking.status === "active" && (
+                                {booking.status === "active" && isServiceBooking(booking.type) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                    onClick={() => handleCompleteService(booking)}
+                                    isLoading={completeServiceMutation.isPending}
+                                  >
+                                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                                  </Button>
+                                )}
+                                {booking.status === "active" && !isServiceBooking(booking.type) && (
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
