@@ -468,12 +468,26 @@ function TimelineEventCard({
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
         <div className="h-9 w-9 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
           {ev.petPhotoUrl ? (
-            <img src={ev.petPhotoUrl} alt={ev.petName} className="h-full w-full object-cover" />
-          ) : (
-            <div className="h-full w-full flex items-center justify-center">
-              <Dog className="h-4 w-4 text-white/60" />
-            </div>
-          )}
+            <img
+              src={
+                ev.petPhotoUrl.startsWith("/objects/")
+                  ? buildMediaSrc(ev.petPhotoUrl, getMediaToken())
+                  : ev.petPhotoUrl
+              }
+              alt={ev.petName}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                (e.currentTarget.nextElementSibling as HTMLElement | null)?.style.setProperty("display", "flex");
+              }}
+            />
+          ) : null}
+          <div
+            className="h-full w-full items-center justify-center"
+            style={{ display: ev.petPhotoUrl ? "none" : "flex" }}
+          >
+            <Dog className="h-4 w-4 text-white/60" />
+          </div>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
