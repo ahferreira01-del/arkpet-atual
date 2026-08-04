@@ -1,6 +1,5 @@
 import { Router } from "express";
 import healthRouter from "./health.js";
-import tempResetRouter from "./temp-reset.js";
 import authRouter from "./auth.js";
 import crechesRouter from "./creches.js";
 import petsRouter from "./pets.js";
@@ -47,7 +46,6 @@ router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);
 router.use(logsRouter);
-router.use(tempResetRouter);
 
 // ── Versão do app ────────────────────────────────────────────────────────────
 // Deve ser bumped junto com CACHE_NAME em public/sw.js a cada deploy que
