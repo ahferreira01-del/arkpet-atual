@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (data?.mediaToken) {
           localStorage.setItem("media_token", data.mediaToken);
+          window.dispatchEvent(new Event("media_token_refresh"));
         }
         queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
         setTimeout(() => setLocation("/"), 100);
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const data = await res.json();
         if (data?.mediaToken) {
           localStorage.setItem("media_token", data.mediaToken);
+          window.dispatchEvent(new Event("media_token_refresh"));
           console.log("[media-token] refreshed, new expiry in 24 h");
         }
       } catch {

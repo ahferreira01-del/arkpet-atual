@@ -6,6 +6,7 @@ import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { resolvePhotoUrl } from "@/lib/utils";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function QuickCheckIn() {
@@ -102,11 +103,12 @@ export function QuickCheckIn() {
                 <div key={pet.id} className="p-3 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {pet.photoUrl ? (
-                        <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
-                      ) : (
-                        <Dog className="h-5 w-5 text-primary" />
-                      )}
+                      <PetAvatar
+                        photoUrl={pet.photoUrl}
+                        name={pet.name}
+                        className="h-full w-full object-cover"
+                        iconClassName="h-5 w-5 text-primary"
+                      />
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-white text-sm truncate">{pet.name}</p>

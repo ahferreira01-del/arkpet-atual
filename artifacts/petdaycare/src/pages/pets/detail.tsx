@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useTutorInvoices } from "@/hooks/use-financial";
@@ -153,12 +154,14 @@ export default function PetDetail({ id }: { id: number }) {
             <div className="h-full w-full flex items-center justify-center bg-black/60">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : pet.photoUrl ? (
-            <img src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
           ) : (
-            <div className="h-full w-full flex items-center justify-center bg-white/5">
-              <Dog className="h-16 w-16 text-white/30" />
-            </div>
+            <PetAvatar
+              photoUrl={pet.photoUrl}
+              name={pet.name}
+              species={pet.species}
+              className="h-full w-full object-cover"
+              iconClassName="h-16 w-16 text-white/30"
+            />
           )}
           {/* Hover overlay */}
           {!uploadingPhoto && (

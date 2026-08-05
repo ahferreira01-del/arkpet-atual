@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { resolvePhotoUrl } from "@/lib/utils";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useListPets, useCreatePet, useGetBillingSubscription, useGetCrecheStats, PetSpecies, PetGender } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch, useLocation } from "wouter";
@@ -284,13 +285,13 @@ export default function PetsDirectory() {
           {paginatedPets.map((pet) => (
             <Card key={pet.id} className={`group ${viewMode === "grid" ? "h-full flex flex-col" : "flex flex-row items-center py-2 px-4"} overflow-hidden bg-black/20 border-white/10 transition-all hover:bg-black/30`}>
               <div className={`${viewMode === "grid" ? "h-32 w-full border-b" : "h-14 w-14 rounded-full border shadow-inner"} bg-white/5 relative flex-shrink-0 border-white/10 overflow-hidden`}>
-                {pet.photoUrl ? (
-                  <img loading="lazy" src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Dog className={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-white/30`} />
-                  </div>
-                )}
+                <PetAvatar
+                  photoUrl={pet.photoUrl}
+                  name={pet.name}
+                  species={(pet as any).species}
+                  className="w-full h-full object-cover"
+                  iconClassName={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-white/30`}
+                />
                 {viewMode === "grid" && (
                   <div className="absolute top-3 right-3">
                     {pet.isCheckedIn ? (

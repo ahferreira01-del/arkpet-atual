@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useListPets, useCreateBooking } from "@workspace/api-client-react";
@@ -326,15 +327,12 @@ export default function NewBooking() {
                     >
                       <CardContent className="p-4 flex items-center gap-4">
                         <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
-                          {pet.photoUrl ? (
-                            <img
-                              src={pet.photoUrl}
-                              alt={pet.name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <Bone className="w-6 h-6 text-white/30" />
-                          )}
+                          <PetAvatar
+                            photoUrl={pet.photoUrl}
+                            name={pet.name}
+                            className="w-full h-full object-cover"
+                            iconClassName="w-6 h-6 text-white/30"
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-white truncate">

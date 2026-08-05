@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import { resolvePhotoUrl } from "@/lib/utils";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -225,17 +226,14 @@ export default function QrScanner() {
                 ) : (
                   <CheckCircle2 className="h-14 w-14 text-emerald-400 mx-auto" />
                 )}
-                {petInfo.photoUrl ? (
-                  <img
-                    src={resolvePhotoUrl(petInfo.photoUrl)!}
-                    alt={petInfo.name}
-                    className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/30 mx-auto"
+                <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/30 overflow-hidden flex items-center justify-center mx-auto">
+                  <PetAvatar
+                    photoUrl={petInfo.photoUrl}
+                    name={petInfo.name}
+                    className="h-full w-full object-cover"
+                    iconClassName="h-10 w-10 text-white/30"
                   />
-                ) : (
-                  <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/30 flex items-center justify-center mx-auto">
-                    <Dog className="h-10 w-10 text-white/30" />
-                  </div>
-                )}
+                </div>
                 <div>
                   <h2 className="text-xl font-display font-bold text-white">{petInfo.name}</h2>
                   <p className="text-muted-foreground text-sm capitalize">{petInfo.breed || petInfo.species}</p>
@@ -259,13 +257,14 @@ export default function QrScanner() {
                 <div className="h-14 w-14 rounded-full bg-emerald-500/20 border-2 border-emerald-400 mx-auto flex items-center justify-center">
                   <CheckCircle2 className="h-8 w-8 text-emerald-400" />
                 </div>
-                {petInfo.photoUrl ? (
-                  <img src={resolvePhotoUrl(petInfo.photoUrl)!} alt={petInfo.name} className="h-20 w-20 rounded-full object-cover border-4 border-emerald-400/40 mx-auto" />
-                ) : (
-                  <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/40 flex items-center justify-center mx-auto">
-                    <Dog className="h-10 w-10 text-white/30" />
-                  </div>
-                )}
+                <div className="h-20 w-20 rounded-full bg-white/10 border-4 border-emerald-400/40 overflow-hidden flex items-center justify-center mx-auto">
+                  <PetAvatar
+                    photoUrl={petInfo.photoUrl}
+                    name={petInfo.name}
+                    className="h-full w-full object-cover"
+                    iconClassName="h-10 w-10 text-white/30"
+                  />
+                </div>
                 <div>
                   <h2 className="text-xl font-display font-bold text-white">{petInfo.name}</h2>
                   <p className="text-xs font-semibold text-emerald-400 mt-1">✓ Check-in realizado com sucesso!</p>

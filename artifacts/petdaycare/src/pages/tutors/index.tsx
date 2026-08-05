@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { resolvePhotoUrl } from "@/lib/utils";
+import { PetAvatar } from "@/components/pet-avatar";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -160,11 +161,12 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
             >
               {/* Avatar */}
               <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-primary/20 flex items-center justify-center">
-                {pet.photoUrl ? (
-                  <img loading="lazy" src={resolvePhotoUrl(pet.photoUrl)!} alt={pet.name} className="h-full w-full object-cover" />
-                ) : (
-                  <Dog className="h-5 w-5 text-primary" />
-                )}
+                <PetAvatar
+                  photoUrl={pet.photoUrl}
+                  name={pet.name}
+                  className="h-full w-full object-cover"
+                  iconClassName="h-5 w-5 text-primary"
+                />
               </div>
 
               {/* Info */}
