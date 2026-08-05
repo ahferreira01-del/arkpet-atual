@@ -791,6 +791,226 @@ serviceItems = invoice_items onde:
 
 ---
 
+## APÊNDICE A — AUDITORIA DE INTEGRIDADE DO FLUXO FINANCEIRO
+
+> **Metodologia:** leitura de código, zero alterações. Cada achado é classificado em:
+> - 🔴 **CONFIRMADO** — bug demonstrável a partir do código, sem ambiguidade
+> - 🟠 **POTENCIAL** — gap que se torna bug sob condição específica (concorrência, sequência de operações)
+> - ✅ **SEGURO** — proteção existe e é suficiente para o cenário avaliado
+
+---
+
+### A1 — Invoice `paid` sem `transaction`
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-01 | ✅ SEGURO | `billing.ts` | 67, 112 | `processManualPayment` e `approveReceipt` usam `db.transaction()` — UPDATE de invoice + INSERT de transaction são atômicos |
+| IG-02 | ✅ SEGURO | `financialSync.ts` | ~18–35 | UPDATE de invoice + INSERT de transaction estão no mesmo `db.transaction()` |
+| IG-03 | 🔴 CONFIRMADO | `billing.ts` | 156–175 | `voidInvoice` **não** usa `db.transaction()`: faz `db.update` (L163) e depois `logFinancialAudit` (L165) separadamente. Se o audit log falhar, a invoice fica `voided` sem rastro de quem realizou a operação |
+
+---
+
+### A2 — Transaction sem invoice
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-04 | ✅ SEGURO | `financialSync.ts` | 18–20 | Invoice é buscada e validada (`if (!invoice)`) antes de iniciar a transação que insere em `transactionsTable` |
+| IG-05 | ✅ SEGURO | `billing.ts` | 67, 112, 178 | `processManualPayment`, `approveReceipt` e `refundInvoice` fazem SELECT da invoice dentro do próprio `db.transaction()` antes do INSERT |
+| IG-06 | 🟠 POTENCIAL | `financialSync.ts` | ~11, 28 | Webhook Stripe pode ser entregue múltiplas vezes (retry). `applyFinancialStripeEvent` **não verifica** se já existe uma transaction para aquele `stripePaymentIntentId` antes de inserir. Webhook duplicado gera transaction duplicada para a mesma invoice |
+
+---
+
+### A3 — Order sem invoice / Invoice sem order
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-07 | 🔴 CONFIRMADO | `orders.ts` | ~129–145 | `POST /orders` (loja e POS): o INSERT do pedido (`ordersTable`) e a criação da invoice (`BillingService.addCharge`) estão dentro de um `db.transaction()`. **Porém:** `addCharge` pode criar a invoice e depois o `orderItemsTable` INSERT falhar — deixando uma invoice avulsa sem itens de pedido vinculados. A ausência de FK reforça o risco |
+| IG-08 | 🟠 POTENCIAL | `billing.ts` | ~302–323 | `addCharge` com `isAvulso: true` cria invoice independente de qualquer pedido. Uma invoice avulsa pode existir sem nenhum `ordersTable` associado — isso é intencional para consumíveis de reserva, mas não para pedidos da loja |
+| IG-09 | 🟠 POTENCIAL | `billing.ts` | 163 | `voidInvoice` **não** atualiza o `ordersTable` correspondente. Um pedido pode ficar em `pending_payment` indefinidamente mesmo que a invoice tenha sido anulada |
+| IG-10 | 🟠 POTENCIAL | `billing.ts` | ~177 | `refundInvoice` não reverte o status do `ordersTable` — pedido fica em `paid` mesmo após reembolso |
+| IG-11 | 🟠 POTENCIAL | `orders.ts` | geral | Não há job de limpeza para pedidos em `pending_payment` que nunca receberam pagamento. Ficam no banco indefinidamente |
+
+---
+
+### A4 — Credits sem invoice / Pagamento aprovado sem liberar créditos
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-12 | 🟠 POTENCIAL | `credits.ts` | 24–25 | `releasePurchasedCredits` verifica se a invoice **existe**, mas **não verifica** se `invoice.status === 'paid'`. Se chamada com uma invoice `pending`, insere créditos indevidamente |
+| IG-13 | ✅ SEGURO | `billing.ts` | 101, 146 | `processManualPayment` (L101) e `approveReceipt` (L146) chamam `releasePurchasedCredits` dentro do `db.transaction()` — se falhar, o pagamento inteiro reverte |
+| IG-14 | 🔴 CONFIRMADO | `financialSync.ts` | ~35–40 | Webhook `checkout.session.completed` chama `releasePurchasedCredits` **somente** se `session.metadata.packagePurchase === 'true'`. Se a sessão Stripe foi criada sem esse metadata (ex: checkout genérico, legacy), créditos **nunca são liberados** mesmo com pagamento confirmado e invoice marcada como `paid` |
+| IG-15 | 🔴 CONFIRMADO | `billing.ts` | ~113, 68 | `approveReceipt` e `processManualPayment` selecionam a invoice **sem `FOR UPDATE`**. Dois admins aprovando o mesmo comprovante simultaneamente: ambos leem `status='pending'`, ambos marcam como `paid`, ambos chamam `releasePurchasedCredits` → créditos duplicados + duas transactions para uma invoice |
+
+---
+
+### A5 — Credits duplicados / Liberados duas vezes
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-16 | 🔴 CONFIRMADO | `credits.ts` | 19–25 | `releasePurchasedCredits` lê `invoice.creditsReleased` com SELECT simples (sem `FOR UPDATE`). Duas chamadas simultâneas (ex: admin clica duas vezes em "aprovar" ou webhook + aprovação manual concurrent) leem `creditsReleased=false` ao mesmo tempo, ambas inserem créditos, ambas atualizam o flag para `true` — resultado: créditos em dobro |
+| IG-17 | 🟠 POTENCIAL | `credits.ts` | 72, 94 | Não há constraint `UNIQUE` em `tutor_credits` ou `tutor_service_credits` por `invoiceId`. A única barreira é o flag `creditsReleased` — sem lock, é insuficiente (ver IG-16) |
+| IG-18 | 🟠 POTENCIAL | `financialSync.ts` + `billing.ts` | — | Stripe pode entregar `checkout.session.completed` e um admin pode aprovar manualmente o mesmo pagamento. Se os dois caminhos forem acionados para a mesma invoice (ex: Pix confirmado via Stripe após aprovação manual), `releasePurchasedCredits` é chamada duas vezes |
+
+---
+
+### A6 — Invoice_items órfãos
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-19 | 🟠 POTENCIAL | `billing.ts` | 156–175 | `voidInvoice` atualiza `invoicesTable.status` mas **não deleta os `invoice_items`**. Eles permanecem na tabela e são retornados por `GET /invoices/:id/items` mesmo para invoices anuladas |
+| IG-20 | 🟠 POTENCIAL | `billing.ts` | 177–200 | `refundInvoice` idem — items permanecem apontando para invoice reembolsada |
+| IG-21 | ✅ SEGURO | `financial.ts` | 1411–1421 | `refundInvoiceItem` é atômico: atualiza o valor da invoice e o item dentro do mesmo `db.transaction()` |
+| IG-22 | 🟠 POTENCIAL | `bookings.ts` | ~649–651 | Cancelamento de reserva faz `voidInvoice` (pendente), mas não deleta os `invoice_items` gerados pela reserva. Items ficam ligados a invoice voided indefinidamente |
+
+---
+
+### A7 — Orders órfãs
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-23 | 🟠 POTENCIAL | `orders.ts` | geral | Pedidos em `pending_payment` sem pagamento ficam no banco para sempre — não há TTL nem job de cleanup |
+| IG-24 | 🟠 POTENCIAL | `billing.ts` | 156–175 | `voidInvoice` não sincroniza o status do pedido. Pedido referenciado pela invoice voided continua em `pending_payment` |
+| IG-25 | 🟠 POTENCIAL | `billing.ts` | ~177 | `refundInvoice` não reverte o status do pedido para `refunded`. Pedido permanece `paid` |
+
+---
+
+### A8 — Transactions órfãs
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-26 | ✅ SEGURO | todo o codebase | — | Não há `DELETE` em `invoicesTable` em nenhum arquivo — apenas atualizações de status. Transactions não ficam órfãs por deleção de invoice |
+| IG-27 | 🔴 CONFIRMADO | `financialSync.ts` | ~11, 28 | Webhook retry do Stripe pode inserir transaction duplicada para o mesmo `stripePaymentIntentId` (não há `WHERE NOT EXISTS` ou verificação de duplicidade antes do INSERT) — ver IG-06 |
+
+---
+
+### A9 — Wallet inconsistente (dois sistemas de crédito)
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-28 | ✅ SEGURO | `bookings.ts` | 423–437, 526–544 | Créditos de diárias (`tutor_credits`) e de serviços (`tutor_service_credits`) são consumidos em blocos separados por `itemType`. Não há confusão entre os dois sistemas na confirmação |
+| IG-29 | 🟠 POTENCIAL | `credits.ts` | 36, 40 | A decisão de crédito de diária vs. serviço é feita por regex `di[aá]rias?` no nome do item de catálogo. Se um item for renomeado (ex: "Pacote de Diárias Premium"), o regex pode falhar e os créditos erram de tabela |
+| IG-30 | ✅ SEGURO | `financial.ts` | 767, 806 | Saldo exibido ao tutor é recalculado via `SUM(totalCredits - usedCredits)` em tempo real — não há cache |
+| IG-31 | 🔴 CONFIRMADO | `bookings.ts` | ~607–652 | **Cancelamento de reserva não restaura `tutor_service_credits`**. Créditos de pacote de diárias (`tutor_credits`) são restaurados (L638), mas créditos de serviço (consumidos em L557) são **silenciosamente perdidos** quando a reserva é cancelada |
+| IG-32 | 🟠 POTENCIAL | `financial.ts` | ~1363 | `refundInvoiceItem` restaura estoque do catálogo mas **não revoga créditos** concedidos se a invoice já estava `paid`. Tutor fica com créditos de um item que foi reembolsado |
+
+---
+
+### A10 — Booking consumindo créditos inexistentes
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-33 | ✅ SEGURO | `bookings.ts` | 423–437 | `tutorCreditsTable` é selecionada com `FOR UPDATE` antes da dedução. Guarda `usedCredits < totalCredits` em L431 |
+| IG-34 | ✅ SEGURO | `bookings.ts` | 526–544 | `tutorServiceCreditsTable` idem, guarda em L541 |
+| IG-35 | 🟠 POTENCIAL | `bookings.ts` | 454, 577 | Se não existe linha em `tutor_credits` para o tutor, o sistema não rejeita a reserva — faz fallback para cobrança extra via `BillingService.addCharge` (L577). Comportamento pode ser intencional mas não é documentado |
+
+---
+
+### A11 — Créditos negativos
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-36 | ✅ SEGURO | `bookings.ts` | 431, 541 | Guards impedem dedução quando `usedCredits >= totalCredits` |
+| IG-37 | 🟠 POTENCIAL | `bookings.ts` | 638–640 | Restauração no cancelamento usa `usedCredits - creditsConsumed` sem `GREATEST(0, ...)`. Se houve ajuste manual de créditos entre a reserva e o cancelamento, `usedCredits` pode ficar negativo |
+| IG-38 | 🟠 POTENCIAL | `orders.ts` | 350–366 | Revogação de créditos de serviço no cancelamento de pedido usa UPDATE direto sem `FOR UPDATE` em `tutor_service_credits`. Dois cancelamentos simultâneos do mesmo pedido podem revogar em dobro |
+
+---
+
+### A12 — Consumo duplicado (idempotência)
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-39 | ✅ SEGURO | `bookings.ts` | 327–337, 361 | Confirmação de reserva: SELECT da booking com `FOR UPDATE` (L337) → check de status `=== 'pending'` (L361) → dedução de créditos → update de status. Tudo dentro de `db.transaction()`. Segunda chamada encontra status diferente e sai sem deduplicar |
+| IG-40 | ✅ SEGURO | `bookings.ts` | 325–679 | Toda a confirmação está em `db.transaction()`. Se qualquer passo falhar (incluindo `addCharge`), todos os writes são revertidos |
+
+---
+
+### A13 — Rollback parcial
+
+| # | Severidade | Arquivo | Linha | Descrição |
+|---|---|---|---|---|
+| IG-41 | ✅ SEGURO | `billing.ts` | 67, 112, 178 | `processManualPayment`, `approveReceipt`, `refundInvoice`: todos os writes em `db.transaction()` |
+| IG-42 | 🔴 CONFIRMADO | `billing.ts` | 156–175 | `voidInvoice`: sem `db.transaction()`. `db.update` (L163) + `logFinancialAudit` (L165) são sequenciais. Falha no audit → invoice voided sem log |
+| IG-43 | ✅ SEGURO | `bookings.ts` | 325–679 | Confirmação: todos os writes (credits, booking_credits, addCharge, logFinancialAudit, booking status) dentro de `db.transaction()` |
+| IG-44 | ✅ SEGURO | `bookings.ts` | 325–679 | Cancelamento: restauração de créditos + voidInvoice + audit + status update dentro de `db.transaction()` |
+| IG-45 | 🟠 POTENCIAL | `orders.ts` | ~294 | `PUT /:orderId/status` (cancelamento/entrega): a revogação de créditos de serviço (L350–366) e o UPDATE do pedido estão em `db.transaction()`, mas sem `FOR UPDATE` no crédito — ver IG-38 |
+
+---
+
+### A14 — Locks ausentes — inventário completo
+
+| # | Severidade | Arquivo | Linha | Padrão | Pior caso |
+|---|---|---|---|---|---|
+| IG-46 | 🔴 CONFIRMADO | `credits.ts` | 19 | SELECT invoice sem `FOR UPDATE` antes de ler `creditsReleased` e inserir créditos | Double-release: dois aprovadores simultâneos inserem créditos em dobro |
+| IG-47 | 🔴 CONFIRMADO | `billing.ts` | 68, 113 | `processManualPayment` e `approveReceipt`: SELECT invoice sem `FOR UPDATE` antes de marcar paid | Invoice marcada `paid` duas vezes; duas transactions geradas para a mesma invoice |
+| IG-48 | ✅ SEGURO | `billing.ts` | 310 | `addCharge` (ciclo mensal): `.for('update')` no SELECT | — |
+| IG-49 | ✅ SEGURO | `bookings.ts` | 337, 437, 544 | Booking, tutorCredits e tutorServiceCredits todos com `FOR UPDATE` | — |
+| IG-50 | ✅ SEGURO | `orders.ts` | catalogue_items lock | `FOR UPDATE` no SELECT de catálogo para dedução de estoque | — |
+| IG-51 | 🟠 POTENCIAL | `orders.ts` | 350 | SELECT `tutor_service_credits` sem `FOR UPDATE` na revogação | Dois cancelamentos simultâneos: revogação em dobro |
+| IG-52 | 🟠 POTENCIAL | `financial.ts` | ~146, 221 | Checagem de nome duplicado em catalogue sem `FOR UPDATE` | Dois admins criando item com mesmo nome ao mesmo tempo: duplicata |
+| IG-53 | 🟠 POTENCIAL | `scheduler.ts` | ~188, 273 | `generateDailyTasks`: lê tasks existentes e insere novas sem lock | Sobreposição de cron (restart durante execução) gera tasks duplicadas |
+
+---
+
+### A15 — Resumo executivo de integridade
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ACHADOS DE INTEGRIDADE                         Total: 53       │
+│                                                                 │
+│  🔴 CONFIRMADOS                                     9          │
+│     IG-03  voidInvoice sem transaction              billing.ts  │
+│     IG-07  order+invoice não totalmente atômicos    orders.ts   │
+│     IG-14  Stripe não libera créditos s/ metadata   finSync.ts  │
+│     IG-15  approveReceipt sem FOR UPDATE → dup tx   billing.ts  │
+│     IG-16  releasePurchasedCredits sem FOR UPDATE   credits.ts  │
+│     IG-27  webhook retry insere transaction dup     finSync.ts  │
+│     IG-31  cancelamento reserva perde svc credits   bookings.ts │
+│     IG-42  voidInvoice sem tx → audit pode falhar   billing.ts  │
+│     IG-47  processManualPayment sem FOR UPDATE       billing.ts  │
+│                                                                 │
+│  🟠 POTENCIAIS                                     20          │
+│     IG-06  transaction dup por webhook retry                    │
+│     IG-08  invoice avulsa sem order                             │
+│     IG-09  voidInvoice não sync ordersTable                     │
+│     IG-10  refundInvoice não sync ordersTable                   │
+│     IG-11  pedidos pending_payment eternos                      │
+│     IG-12  releasePurchasedCredits s/ check status paid         │
+│     IG-17  sem UNIQUE constraint em credits/invoiceId           │
+│     IG-18  Stripe + aprovação manual → double release           │
+│     IG-19  invoice_items órfãos após voidInvoice                │
+│     IG-20  invoice_items órfãos após refundInvoice              │
+│     IG-22  invoice_items órfãos após cancel reserva             │
+│     IG-23  pedidos stale sem cleanup                            │
+│     IG-24  voidInvoice não sync order status                    │
+│     IG-25  refundInvoice não sync order status                  │
+│     IG-29  regex de crédito de diária pode falhar               │
+│     IG-32  refundInvoiceItem não revoga créditos                │
+│     IG-35  fallback silencioso quando não há créditos           │
+│     IG-37  restauração pode deixar usedCredits < 0              │
+│     IG-38  revogação svc credits sem FOR UPDATE                 │
+│     IG-51  idem em orders.ts PUT /status                        │
+│     IG-52  catalogue sem lock na checagem de duplicatas         │
+│     IG-53  scheduler pode gerar tasks duplicadas                │
+│                                                                 │
+│  ✅ SEGUROS                                        24          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### A16 — Mapa de riscos por fluxo
+
+| Fluxo | Risco principal | IGs |
+|---|---|---|
+| Aprovação de Pix/comprovante | Double-release de créditos; double-payment | IG-15, IG-16, IG-47 |
+| Webhook Stripe (checkout) | Créditos não liberados sem metadata; transaction duplicada | IG-14, IG-27 |
+| Cancelamento de reserva | Créditos de serviço perdidos permanentemente | IG-31 |
+| Anulação de invoice | Sem transação atômica; items e pedidos órfãos | IG-03, IG-19, IG-24, IG-42 |
+| Reembolso de item | Créditos não revogados após reembolso | IG-32 |
+| Cancelamento de pedido | Revogação de créditos sem lock | IG-38, IG-51 |
+| Criação de catálogo | Itens duplicados em requisições simultâneas | IG-52 |
+| Confirmação de reserva | Bem protegido (3 locks, 1 tx, idempotente) | IG-39, IG-40, IG-43 |
+
+---
+
 ## 14. MATRIZ DE DEPENDÊNCIAS — BACKEND
 
 ### 14.1 Grafo de importações dos serviços financeiros
