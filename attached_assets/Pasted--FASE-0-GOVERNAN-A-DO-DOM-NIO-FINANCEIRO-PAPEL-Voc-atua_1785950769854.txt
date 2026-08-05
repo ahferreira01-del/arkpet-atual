@@ -1,0 +1,471 @@
+# FASE 0 — GOVERNANÇA DO DOMÍNIO FINANCEIRO
+
+## PAPEL
+
+Você atuará como um **Arquiteto de Software Sênior**, especializado em sistemas financeiros SaaS, Domain-Driven Design (DDD), Event-Driven Architecture, sistemas transacionais e aplicações multi-tenant.
+
+Sua missão NÃO é corrigir bugs.
+
+Sua missão NÃO é refatorar código.
+
+Sua missão NÃO é otimizar performance.
+
+Sua missão é estabelecer uma **fonte única de verdade (Single Source of Truth)** para todo o módulo financeiro.
+
+---
+
+# REGRA ABSOLUTA
+
+É PROIBIDO:
+
+* alterar regras de negócio;
+* alterar comportamento do sistema;
+* alterar endpoints;
+* alterar contratos da API;
+* alterar banco de dados;
+* alterar nomes de tabelas;
+* alterar frontend;
+* alterar integrações;
+* alterar fluxos existentes.
+
+Todo o trabalho desta fase deve ser **100% documental**.
+
+Nenhum arquivo de código poderá ser modificado.
+
+---
+
+# OBJETIVO
+
+Mapear completamente o domínio financeiro e definir oficialmente:
+
+* responsabilidades;
+* limites;
+* dependências;
+* contratos;
+* fluxos;
+* eventos;
+* invariantes.
+
+Ao término desta fase deverá existir apenas **um fluxo oficial** para cada processo do sistema.
+
+---
+
+# ETAPA 1 — MAPEAMENTO DO DOMÍNIO
+
+Mapeie todas as entidades existentes.
+
+Exemplo:
+
+* Catalogue
+* CatalogueItem
+* Cart
+* Order
+* OrderItem
+* Invoice
+* InvoiceItem
+* Transaction
+* TutorCredits
+* TutorServiceCredits
+* Wallet
+* Booking
+* Payment
+* Refund
+* Audit
+* Notification
+
+Para cada entidade informar:
+
+* responsabilidade;
+* quem cria;
+* quem altera;
+* quem consulta;
+* quem depende;
+* quais tabelas utiliza;
+* quais services utilizam essa entidade;
+* quais endpoints trabalham nela.
+
+---
+
+# ETAPA 2 — RESPONSABILIDADE DOS MÓDULOS
+
+Documentar exatamente o que cada módulo pode e não pode fazer.
+
+Exemplo esperado:
+
+## OrderService
+
+Pode:
+
+* criar pedidos;
+* atualizar status do pedido.
+
+Não pode:
+
+* liberar créditos;
+* criar transações financeiras;
+* consumir créditos.
+
+---
+
+## BillingService
+
+Pode:
+
+* criar invoices;
+* adicionar charges;
+* receber pagamentos;
+* cancelar invoices;
+* refund.
+
+Não pode:
+
+* consumir créditos;
+* alterar bookings.
+
+---
+
+## CreditService
+
+Pode:
+
+* liberar créditos;
+* consumir créditos;
+* restaurar créditos;
+* consultar saldo.
+
+Não pode:
+
+* criar invoices;
+* criar pedidos;
+* atualizar pagamentos.
+
+---
+
+## WalletService
+
+Pode:
+
+* agregar créditos;
+* calcular saldo;
+* listar histórico.
+
+Não pode:
+
+* alterar invoices;
+* alterar pedidos.
+
+---
+
+## BookingService
+
+Pode:
+
+* solicitar consumo;
+* solicitar restauração.
+
+Não pode:
+
+* atualizar diretamente tutor_credits;
+* atualizar tutor_service_credits.
+
+---
+
+# ETAPA 3 — FLUXO OFICIAL
+
+Existe apenas um fluxo oficial.
+
+Mapear completamente.
+
+CATALOGUE
+
+↓
+
+CART
+
+↓
+
+ORDER
+
+↓
+
+ORDER_ITEM
+
+↓
+
+INVOICE
+
+↓
+
+PAYMENT
+
+↓
+
+TRANSACTION
+
+↓
+
+CREDIT RELEASE
+
+↓
+
+WALLET
+
+↓
+
+BOOKING
+
+↓
+
+CREDIT CONSUMPTION
+
+↓
+
+CHECKOUT
+
+Nenhum outro fluxo paralelo deverá existir sem ser identificado.
+
+---
+
+# ETAPA 4 — FLUXOS LEGADOS
+
+Encontrar todos os fluxos alternativos.
+
+Exemplos:
+
+* endpoints antigos;
+* endpoints duplicados;
+* purchase legacy;
+* release legacy;
+* pagamentos antigos;
+* rotinas obsoletas.
+
+Para cada um responder:
+
+Quem utiliza?
+
+Frontend utiliza?
+
+Existe chamada ativa?
+
+Pode ser removido?
+
+Deve permanecer?
+
+Marcar cada fluxo como:
+
+ACTIVE
+
+LEGACY
+
+OBSOLETE
+
+DEPRECATED
+
+---
+
+# ETAPA 5 — EVENTOS DO DOMÍNIO
+
+Mapear todos os eventos existentes.
+
+Exemplo:
+
+OrderCreated
+
+InvoiceCreated
+
+PaymentReceived
+
+InvoicePaid
+
+CreditsReleased
+
+CreditsConsumed
+
+CreditsRestored
+
+RefundProcessed
+
+InvoiceVoided
+
+OrderCancelled
+
+BookingConfirmed
+
+BookingCancelled
+
+Para cada evento responder:
+
+Quem dispara.
+
+Quem consome.
+
+Quem depende.
+
+Quem altera estado.
+
+---
+
+# ETAPA 6 — CONTRATOS ENTRE MÓDULOS
+
+Construir uma matriz completa.
+
+Exemplo:
+
+Order
+
+↓
+
+Billing
+
+↓
+
+Payment
+
+↓
+
+Credits
+
+↓
+
+Wallet
+
+↓
+
+Bookings
+
+↓
+
+Dashboard
+
+↓
+
+Notifications
+
+↓
+
+Reports
+
+Informar todas as dependências diretas e indiretas.
+
+Identificar dependências circulares.
+
+---
+
+# ETAPA 7 — INVARIANTES DO DOMÍNIO
+
+Definir regras que nunca podem ser quebradas.
+
+Exemplos:
+
+Uma invoice paga nunca pode voltar para pending.
+
+Uma transaction sempre pertence a uma invoice.
+
+Um crédito nunca pode ficar negativo.
+
+usedCredits nunca pode ser maior que totalCredits.
+
+Toda invoice paga deve possuir transaction.
+
+Toda transaction deve possuir invoice.
+
+Todo crédito liberado deve possuir origem.
+
+Toda restauração deve possuir consumo anterior.
+
+Nenhuma operação financeira pode ficar parcialmente aplicada.
+
+Adicionar todas as invariantes encontradas.
+
+---
+
+# ETAPA 8 — PONTOS DE ACOPLAMENTO
+
+Identificar todos os locais onde módulos acessam diretamente:
+
+* tabelas de outro domínio;
+* services de outro domínio;
+* funções internas;
+* lógica duplicada.
+
+Classificar:
+
+Baixo risco
+
+Médio risco
+
+Alto risco
+
+Crítico
+
+---
+
+# ETAPA 9 — PONTOS DE RISCO
+
+Encontrar:
+
+* lógica baseada em descrição;
+* regex críticas;
+* busca por nome;
+* update sem transação;
+* update concorrente;
+* ausência de lock;
+* duplicidade de responsabilidade;
+* código morto;
+* endpoints redundantes;
+* múltiplas fontes de verdade;
+* inconsistência de estados.
+
+---
+
+# ETAPA 10 — DOCUMENTAÇÃO FINAL
+
+Gerar um documento contendo:
+
+1. Arquitetura atual
+
+2. Fluxograma oficial
+
+3. Entidades
+
+4. Responsabilidades
+
+5. Eventos
+
+6. Contratos
+
+7. Dependências
+
+8. Fluxos legados
+
+9. Riscos
+
+10. Invariantes
+
+11. Recomendações para futuras refatorações
+
+---
+
+# CRITÉRIOS DE ACEITE
+
+Esta fase será considerada concluída somente se:
+
+✔ Nenhum arquivo de código foi modificado.
+
+✔ Nenhuma regra de negócio foi alterada.
+
+✔ Todos os fluxos estiverem documentados.
+
+✔ Todas as dependências estiverem identificadas.
+
+✔ Todos os eventos estiverem mapeados.
+
+✔ Todos os contratos estiverem definidos.
+
+✔ Todas as invariantes estiverem documentadas.
+
+✔ Todos os fluxos legados estiverem classificados.
+
+✔ Houver apenas uma definição oficial para cada processo do domínio financeiro.
+
+Ao final desta fase, o módulo financeiro deverá possuir uma especificação arquitetural completa, servindo como base obrigatória para todas as próximas refatorações e correções.
