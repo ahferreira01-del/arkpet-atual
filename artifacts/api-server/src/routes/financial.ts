@@ -887,7 +887,7 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
       crecheId,
       tutorId,
       amount: item.basePrice,
-      description: `${item.name} — ${item.creditsAmount} diárias`,
+      description: item.name, // Name already contains the credit count (e.g. "Pacote 10 diárias")
       type: "package",
       itemDate: new Date(),
       isAvulso: true,

@@ -29,9 +29,11 @@ export async function releasePurchasedCredits(
     .from(invoiceItemsTable)
     .where(eq(invoiceItemsTable.invoiceId, invoiceId));
 
+  // Match package items either by itemType (new purchases with isAvulso=true)
+  // or by description containing "diárias"/"diarias" (legacy items).
+  // Using regex avoids Unicode normalization pitfalls with accented chars.
   const packageItems = items.filter((item: typeof invoiceItemsTable.$inferSelect) =>
-    item.description.toLowerCase().includes("diária") ||
-    item.description.toLowerCase().includes("diarias")
+    item.itemType === "package" || /di[aá]rias?/i.test(item.description)
   );
   
   const serviceItems = items.filter((item: typeof invoiceItemsTable.$inferSelect) => 
