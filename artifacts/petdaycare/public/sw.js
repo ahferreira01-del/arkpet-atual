@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v23";
+const CACHE_NAME = "arkpet-v24";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -82,6 +82,30 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET, skip cross-origin, skip opaque/redirect responses
   // (type !== "basic") so the __replshield redirect never poisons the cache.
   if (request.method !== "GET" || url.origin !== self.location.origin) {
+    return;
+  }
+
+  // Hashed JS/CSS bundles in /assets/ must NEVER fall back to index.html.
+  // Returning HTML for a JS dynamic import causes "Failed to fetch dynamically
+  // imported module" — the browser can't parse HTML as a JS module.
+  // For these files we use strict network-first with no HTML fallback so that a
+  // 404 (stale chunk after deploy) surfaces cleanly to the error boundary,
+  // which then forces a hard reload to pull the fresh bundle set.
+  const isHashedAsset = url.pathname.startsWith("/assets/") &&
+    (url.pathname.endsWith(".js") || url.pathname.endsWith(".css"));
+
+  if (isHashedAsset) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response.ok && response.type === "basic") {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      })
+      // On network failure, try cache — but do NOT fall back to index.html
+      .catch(() => caches.match(request))
+    );
     return;
   }
 

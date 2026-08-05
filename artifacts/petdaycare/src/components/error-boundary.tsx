@@ -29,6 +29,16 @@ export class ErrorBoundary extends Component<Props, State> {
     this.reset = this.reset.bind(this);
   }
 
+  static isChunkLoadError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error);
+    return (
+      msg.includes("dynamically imported module") ||
+      msg.includes("Failed to fetch") ||
+      msg.includes("Importing a module script failed") ||
+      msg.includes("error loading dynamically imported module")
+    );
+  }
+
   static getDerivedStateFromError(error: unknown): State {
     const message =
       error instanceof Error ? error.message : String(error);
@@ -43,9 +53,22 @@ export class ErrorBoundary extends Component<Props, State> {
       "\n\nComponent Stack:\n" +
       info.componentStack;
     logError("boundary", message, stack);
+
+    // Stale PWA chunk: new deploy changed the hash, service worker is serving
+    // old HTML. Force a hard reload so the browser fetches fresh HTML + new
+    // chunk set. Guard against infinite reload loops with sessionStorage.
+    if (ErrorBoundary.isChunkLoadError(error)) {
+      const key = "arkpet_chunk_reload";
+      const attempts = parseInt(sessionStorage.getItem(key) ?? "0", 10);
+      if (attempts < 3) {
+        sessionStorage.setItem(key, String(attempts + 1));
+        window.location.reload();
+      }
+    }
   }
 
   reset(): void {
+    sessionStorage.removeItem("arkpet_chunk_reload");
     this.setState({ hasError: false, message: "" });
   }
 
