@@ -1,15 +1,7 @@
 import { db } from "@workspace/db";
-import {
-  tutorCreditsTable,
-  tutorServiceCreditsTable,
-  invoicesTable,
-  invoiceItemsTable,
-  catalogueItemsTable,
-  bookingCreditsTable,
-  bookingServiceCreditsTable,
-  bookingsTable,
-} from "@workspace/db/schema";
-import { eq, and, or, sql, isNull, asc, gte, gt } from "drizzle-orm";
+import { CreditRepository } from "../repositories/credit.repository.js";
+import { InvoiceRepository } from "../repositories/invoice.repository.js";
+import { CatalogueRepository } from "../repositories/catalogue.repository.js";
 import { logFinancialAudit } from "./audit.js";
 import { normalizeServiceType } from "../utils/service-name.js";
 
@@ -41,26 +33,18 @@ export async function releasePurchasedCredits(
   paidByUserId: number,
   tx: any
 ): Promise<void> {
-  const [invoice] = await tx
-    .select()
-    .from(invoicesTable)
-    .where(eq(invoicesTable.id, invoiceId))
-    .for("update");
-
+  const invoice = await InvoiceRepository.findByIdForUpdate(invoiceId, tx);
   if (!invoice) return;
   if (invoice.creditsReleased) return; // gate de idempotência
 
-  const items = await tx
-    .select()
-    .from(invoiceItemsTable)
-    .where(eq(invoiceItemsTable.invoiceId, invoiceId));
+  const items = await InvoiceRepository.findItemsByInvoiceId(invoiceId, tx);
 
   // Fase 14: decisão baseada em itemType — sem regex
   const packageItems = items.filter(
-    (item: typeof invoiceItemsTable.$inferSelect) => item.itemType === "package"
+    (item: any) => item.itemType === "package"
   );
   const serviceItems = items.filter(
-    (item: typeof invoiceItemsTable.$inferSelect) => item.itemType === "service"
+    (item: any) => item.itemType === "service"
   );
 
   if (packageItems.length === 0 && serviceItems.length === 0) return;
@@ -81,11 +65,7 @@ export async function releasePurchasedCredits(
     }
     // 2. Fallback: lookup por catalogueItemId (mais confiável que nome)
     else if (packageItem.catalogueItemId) {
-      const [catItem] = await tx
-        .select()
-        .from(catalogueItemsTable)
-        .where(eq(catalogueItemsTable.id, packageItem.catalogueItemId))
-        .limit(1);
+      const catItem = await CatalogueRepository.findById(packageItem.catalogueItemId, tx);
       if (catItem?.creditsAmount && catItem.creditsAmount > 0) {
         baseCredits = catItem.creditsAmount * (packageItem.quantity || 1);
         maxPetsPerDay = catItem.maxPetsPerDay ?? 1;
@@ -93,16 +73,7 @@ export async function releasePurchasedCredits(
     }
     // 3. Fallback legado: lookup por nome (deprecated — itens sem snapshot)
     else {
-      const [catItem] = await tx
-        .select()
-        .from(catalogueItemsTable)
-        .where(
-          and(
-            eq(catalogueItemsTable.crecheId, invoice.crecheId),
-            eq(catalogueItemsTable.name, packageItem.description)
-          )
-        )
-        .limit(1);
+      const catItem = await CatalogueRepository.findByNameAndCreche(invoice.crecheId, packageItem.description, tx);
       if (catItem?.creditsAmount && catItem.creditsAmount > 0) {
         console.warn(
           `[releasePurchasedCredits] Item "${packageItem.description}" sem snapshot. ` +
@@ -118,14 +89,14 @@ export async function releasePurchasedCredits(
     const expirationDate = new Date();
     expirationDate.setDate(expirationDate.getDate() + expirationDays);
 
-    await tx.insert(tutorCreditsTable).values({
+    await CreditRepository.createPackageCredits({
       crecheId: invoice.crecheId,
       tutorId: invoice.tutorId,
       totalCredits: baseCredits,
       usedCredits: 0,
       maxPetsPerDay,
       expirationDate: expirationDate.toISOString().split("T")[0],
-    });
+    }, tx);
 
     creditsAdded = true;
   }
@@ -140,42 +111,30 @@ export async function releasePurchasedCredits(
     }
     // 2. Fallback legado: lookup por nome
     else {
-      const [catItem] = await tx
-        .select()
-        .from(catalogueItemsTable)
-        .where(
-          and(
-            eq(catalogueItemsTable.crecheId, invoice.crecheId),
-            eq(catalogueItemsTable.name, serviceItem.description),
-            eq(catalogueItemsTable.type, "service")
-          )
-        )
-        .limit(1);
-      if (catItem) {
+      const catItem2 = await CatalogueRepository.findServiceByNameAndCreche(invoice.crecheId, serviceItem.description, tx);
+      if (catItem2) {
         console.warn(
           `[releasePurchasedCredits] ServiceItem "${serviceItem.description}" sem catalogueItemId. ` +
           `Usando lookup legado por nome (invoice #${invoiceId}, item #${serviceItem.id}).`
         );
-        resolvedCatalogueItemId = catItem.id;
+        resolvedCatalogueItemId = catItem2.id;
       }
     }
 
     if (!resolvedCatalogueItemId) continue;
 
-    await tx.insert(tutorServiceCreditsTable).values({
+    await CreditRepository.createServiceCredits({
       crecheId: invoice.crecheId,
       tutorId: invoice.tutorId,
       catalogueItemId: resolvedCatalogueItemId,
       totalCredits: serviceItem.quantity || 1,
-    });
+    }, tx);
     creditsAdded = true;
   }
 
   if (!creditsAdded) return;
 
-  await tx.update(invoicesTable)
-    .set({ creditsReleased: true })
-    .where(eq(invoicesTable.id, invoiceId));
+  await InvoiceRepository.markCreditsReleased(invoiceId, tx);
 
   await logFinancialAudit({
     crecheId: invoice.crecheId,
@@ -192,7 +151,6 @@ export async function releasePurchasedCredits(
 //
 // Fase 14: adicionada verificação de idempotência — se bookingCreditsTable já
 // contém registros para este bookingId, retorna os totais sem reprocessar.
-// Isso previne double-consume em caso de retry ou dupla confirmação.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function consumePackageCredits(
@@ -205,16 +163,9 @@ export async function consumePackageCredits(
   tx: any
 ): Promise<ConsumePackageCreditsResult> {
   // ── Fase 14: Idempotência ────────────────────────────────────────────────
-  const existing = await tx
-    .select({
-      id: bookingCreditsTable.id,
-      creditsConsumed: bookingCreditsTable.creditsConsumed,
-    })
-    .from(bookingCreditsTable)
-    .where(eq(bookingCreditsTable.bookingId, bookingId));
+  const existing = await CreditRepository.findBookingCredits(bookingId, tx);
 
   if (existing.length > 0) {
-    // Já foi processado — retornar totais existentes sem reprocessar
     const totalConsumedNormal = existing.filter((r: any) => r.creditsConsumed > 0).length;
     const totalPiggybacked = existing.filter((r: any) => r.creditsConsumed === 0).length;
     console.warn(
@@ -232,24 +183,9 @@ export async function consumePackageCredits(
     const dateStr = d.toISOString().split("T")[0];
 
     // 1. Tentar carona (piggyback) — pacotes multi-pet
-    const piggybackCandidates = await tx
-      .select({
-        creditId: bookingCreditsTable.tutorCreditId,
-        maxPets: tutorCreditsTable.maxPetsPerDay,
-        usedPetsCount: sql<number>`count(DISTINCT ${bookingsTable.petId})`,
-      })
-      .from(bookingCreditsTable)
-      .innerJoin(tutorCreditsTable, eq(bookingCreditsTable.tutorCreditId, tutorCreditsTable.id))
-      .innerJoin(bookingsTable, eq(bookingCreditsTable.bookingId, bookingsTable.id))
-      .where(and(
-        eq(bookingsTable.tutorId, tutorId),
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingCreditsTable.consumedDate, dateStr),
-        isNull(bookingCreditsTable.restoredAt),
-        gt(tutorCreditsTable.maxPetsPerDay, 1),
-        eq(tutorCreditsTable.maxPetsPerDay, packageMaxPets),
-      ))
-      .groupBy(bookingCreditsTable.tutorCreditId, tutorCreditsTable.maxPetsPerDay);
+    const piggybackCandidates = await CreditRepository.findPiggybackCandidates(
+      tutorId, crecheId, dateStr, packageMaxPets, tx
+    );
 
     let piggybackedCreditId: number | null = null;
     for (const cand of piggybackCandidates) {
@@ -260,46 +196,31 @@ export async function consumePackageCredits(
     }
 
     if (piggybackedCreditId) {
-      await tx.insert(bookingCreditsTable).values({
+      await CreditRepository.createBookingCredit({
         bookingId,
         tutorCreditId: piggybackedCreditId,
         creditsConsumed: 0,
         consumedDate: dateStr,
-      });
+      }, tx);
       totalPiggybacked++;
       continue;
     }
 
     // 2. Consumo normal de crédito do pacote
-    const validCredits = await tx
-      .select()
-      .from(tutorCreditsTable)
-      .where(and(
-        eq(tutorCreditsTable.tutorId, tutorId),
-        eq(tutorCreditsTable.crecheId, crecheId),
-        eq(tutorCreditsTable.maxPetsPerDay, packageMaxPets),
-        sql`${tutorCreditsTable.usedCredits} < ${tutorCreditsTable.totalCredits}`,
-        or(
-          isNull(tutorCreditsTable.expirationDate),
-          gte(tutorCreditsTable.expirationDate, new Date().toISOString().split("T")[0])
-        )
-      ))
-      .orderBy(asc(tutorCreditsTable.expirationDate), asc(tutorCreditsTable.createdAt))
-      .limit(1)
-      .for("update");
+    const todayStr = new Date().toISOString().split("T")[0];
+    const creditPack = await CreditRepository.findOldestAvailablePackageCreditForUpdate(
+      tutorId, crecheId, packageMaxPets, todayStr, tx
+    );
 
-    if (validCredits.length > 0) {
-      const creditPack = validCredits[0];
-      await tx.update(tutorCreditsTable)
-        .set({ usedCredits: sql`${tutorCreditsTable.usedCredits} + 1` })
-        .where(eq(tutorCreditsTable.id, creditPack.id));
+    if (creditPack) {
+      await CreditRepository.incrementUsedPackageCredits(creditPack.id, 1, tx);
 
-      await tx.insert(bookingCreditsTable).values({
+      await CreditRepository.createBookingCredit({
         bookingId,
         tutorCreditId: creditPack.id,
         creditsConsumed: 1,
         consumedDate: dateStr,
-      });
+      }, tx);
       totalConsumedNormal++;
     } else {
       // 3. Sem saldo — dia excedente a faturar
@@ -316,7 +237,6 @@ export async function consumePackageCredits(
 // Fase 14:
 // - Adicionada verificação de idempotência (bookingServiceCreditsTable)
 // - Match por catalogueItemId em vez de normalização de string quando possível
-// - Normalização de string mantida como fallback para compatibilidade
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function consumeServiceCreditsForBooking(
@@ -331,41 +251,17 @@ export async function consumeServiceCreditsForBooking(
   if (catalogueItem.type !== "service") return daysToBill;
 
   // ── Fase 14: Idempotência ────────────────────────────────────────────────
-  const existingSvc = await tx
-    .select({ id: bookingServiceCreditsTable.id })
-    .from(bookingServiceCreditsTable)
-    .where(eq(bookingServiceCreditsTable.bookingId, bookingId))
-    .limit(1);
-
-  if (existingSvc.length > 0) {
+  if (await CreditRepository.existsBookingServiceCredit(bookingId, tx)) {
     console.warn(
       `[consumeServiceCreditsForBooking] Booking #${bookingId} já tem registros ` +
       `em bookingServiceCreditsTable. Retornando sem reprocessar (idempotência).`
     );
-    return daysToBill; // não reprocessar; retornar daysToBill original
+    return daysToBill;
   }
 
-  // Busca créditos de serviço disponíveis para este tutor/creche
-  const candidateCredits = await tx
-    .select({
-      id: tutorServiceCreditsTable.id,
-      totalCredits: tutorServiceCreditsTable.totalCredits,
-      usedCredits: tutorServiceCreditsTable.usedCredits,
-      catalogueItemId: tutorServiceCreditsTable.catalogueItemId,
-      itemName: catalogueItemsTable.name,
-    })
-    .from(tutorServiceCreditsTable)
-    .innerJoin(
-      catalogueItemsTable,
-      eq(catalogueItemsTable.id, tutorServiceCreditsTable.catalogueItemId),
-    )
-    .where(and(
-      eq(tutorServiceCreditsTable.tutorId, tutorId),
-      eq(tutorServiceCreditsTable.crecheId, crecheId),
-      sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`,
-    ))
-    .orderBy(asc(tutorServiceCreditsTable.id))
-    .for("update");
+  const candidateCredits = await CreditRepository.findAvailableServiceCreditsForUpdate(
+    tutorId, crecheId, tx
+  );
 
   // Fase 14: match prioritário por catalogueItemId (sem depender de string)
   let matchingCredits = candidateCredits.filter(
@@ -388,15 +284,13 @@ export async function consumeServiceCreditsForBooking(
     const availableInCredit = credit.totalCredits - credit.usedCredits;
     const toConsume = Math.min(availableInCredit, remaining);
 
-    await tx.update(tutorServiceCreditsTable)
-      .set({ usedCredits: sql`${tutorServiceCreditsTable.usedCredits} + ${toConsume}` })
-      .where(eq(tutorServiceCreditsTable.id, credit.id));
+    await CreditRepository.incrementUsedServiceCredits(credit.id, toConsume, tx);
 
-    await tx.insert(bookingServiceCreditsTable).values({
+    await CreditRepository.createBookingServiceCredit({
       bookingId,
       tutorServiceCreditId: credit.id,
       creditsConsumed: toConsume,
-    });
+    }, tx);
 
     remaining -= toConsume;
 
@@ -423,52 +317,32 @@ export async function restoreBookingPackageCredits(
   bookingId: number,
   tx: any
 ): Promise<void> {
-  const consumed = await tx
-    .select()
-    .from(bookingCreditsTable)
-    .where(and(
-      eq(bookingCreditsTable.bookingId, bookingId),
-      isNull(bookingCreditsTable.restoredAt),
-    ));
+  const consumed = await CreditRepository.findActiveBookingCredits(bookingId, tx);
 
-  for (const c of consumed) {
+  for (const credit of consumed) {
     let shouldRestoreToTutor = true;
 
-    if (c.creditsConsumed > 0 && c.consumedDate) {
+    if (credit.creditsConsumed > 0 && credit.consumedDate) {
       // Verificar se existe reserva de carona dependente deste crédito
-      const [child] = await tx
-        .select()
-        .from(bookingCreditsTable)
-        .where(and(
-          eq(bookingCreditsTable.tutorCreditId, c.tutorCreditId),
-          eq(bookingCreditsTable.consumedDate, c.consumedDate),
-          eq(bookingCreditsTable.creditsConsumed, 0),
-          isNull(bookingCreditsTable.restoredAt),
-          sql`${bookingCreditsTable.id} != ${c.id}`,
-        ))
-        .limit(1);
+      const child = await CreditRepository.findPiggybackChild(
+        credit.tutorCreditId,
+        credit.consumedDate,
+        credit.id,
+        tx
+      );
 
       if (child) {
         // Transferir o crédito para a reserva de carona
-        await tx
-          .update(bookingCreditsTable)
-          .set({ creditsConsumed: c.creditsConsumed })
-          .where(eq(bookingCreditsTable.id, child.id));
+        await CreditRepository.updateBookingCreditConsumed(child.id, credit.creditsConsumed, tx);
         shouldRestoreToTutor = false;
       }
     }
 
     if (shouldRestoreToTutor) {
-      await tx.update(tutorCreditsTable)
-        .set({
-          usedCredits: sql`GREATEST(0, ${tutorCreditsTable.usedCredits} - ${c.creditsConsumed})`,
-        })
-        .where(eq(tutorCreditsTable.id, c.tutorCreditId));
+      await CreditRepository.decrementUsedPackageCredits(credit.tutorCreditId, credit.creditsConsumed, tx);
     }
 
-    await tx.update(bookingCreditsTable)
-      .set({ restoredAt: new Date() })
-      .where(eq(bookingCreditsTable.id, c.id));
+    await CreditRepository.markBookingCreditRestored(credit.id, tx);
   }
 }
 
@@ -480,23 +354,10 @@ export async function restoreBookingServiceCredits(
   bookingId: number,
   tx: any
 ): Promise<void> {
-  const consumed = await tx
-    .select()
-    .from(bookingServiceCreditsTable)
-    .where(and(
-      eq(bookingServiceCreditsTable.bookingId, bookingId),
-      isNull(bookingServiceCreditsTable.restoredAt),
-    ));
+  const consumed = await CreditRepository.findActiveBookingServiceCredits(bookingId, tx);
 
   for (const sc of consumed) {
-    await tx.update(tutorServiceCreditsTable)
-      .set({
-        usedCredits: sql`GREATEST(0, ${tutorServiceCreditsTable.usedCredits} - ${sc.creditsConsumed})`,
-      })
-      .where(eq(tutorServiceCreditsTable.id, sc.tutorServiceCreditId));
-
-    await tx.update(bookingServiceCreditsTable)
-      .set({ restoredAt: new Date() })
-      .where(eq(bookingServiceCreditsTable.id, sc.id));
+    await CreditRepository.decrementUsedServiceCredits(sc.tutorServiceCreditId, sc.creditsConsumed, tx);
+    await CreditRepository.markBookingServiceCreditRestored(sc.id, tx);
   }
 }

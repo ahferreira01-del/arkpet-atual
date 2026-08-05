@@ -18,3 +18,4 @@
 - [Booking state machine by type](booking-state-machine-by-type.md) — SERVICE_BOOKING_TYPES (banho) use checkin→complete-service flow; never check-out or consumables. Extend set when adding new service types.
 - [Phase 13 checkout billing fix](phase13-checkout-billing.md) — checkout must NOT re-charge base price (charged at confirmation); catalogue PUT now saves costPrice/barcode; push cleanup on re-subscribe; stock-transactions catches table-not-exist.
 - [Phase 14 financial module restructure](phase14-financial-restructure.md) — InvoiceStateMachine, addCharge overflow-avulsa fix, invoice_items snapshot columns, idempotency gates, financialSync delegates to BillingService.
+- [Phase 15A financial split architecture](phase15a-financial-split.md) — routes/financial/ (10 sub-files), repositories/ layer (9 files), services/wallet+pos+expense; routes/financial.ts deleted; getCrecheAdminEmail in shared.ts.

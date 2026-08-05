@@ -13,7 +13,7 @@ import storageRouter from "./storage.js";
 import tutorTimelineRouter from "./tutor-timeline.js";
 import feedRouter from "./feed-v2.js";
 import billingRouter from "./billing.js";
-import financialRouter from "./financial.js";
+import financialRouter from "./financial/index.js";
 import financialAnalyticsRouter from "./financial-analytics.js";
 import financialSearchRouter from "./financial-search.js";
 import financialReportsRouter from "./financial-reports.js";

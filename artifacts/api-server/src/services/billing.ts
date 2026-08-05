@@ -1,8 +1,14 @@
 import { db } from "@workspace/db";
-import { invoicesTable, transactionsTable, invoiceItemsTable, usersTable, ordersTable } from "@workspace/db/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { InvoiceRepository } from "../repositories/invoice.repository.js";
+import { TransactionRepository } from "../repositories/transaction.repository.js";
+import { OrderRepository } from "../repositories/order.repository.js";
+import { CatalogueRepository } from "../repositories/catalogue.repository.js";
+import { getTutorMensalidadeDia } from "../repositories/shared.js";
 import { releasePurchasedCredits } from "./credits.js";
 import { logFinancialAudit } from "./audit.js";
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTE: refundInvoiceItem is defined at the bottom of this file.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Máquina de Estados da Invoice (Fase 14)
@@ -48,9 +54,6 @@ export class InvoiceStateMachine {
 // calculateDueDate
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Calcula a data de vencimento baseada no dia de mensalidade do tutor.
- */
 export function calculateDueDate(
   tutorMensalidadeDia: number | null | undefined,
   fallbackDate: Date = new Date()
@@ -84,25 +87,7 @@ export function calculateDueDate(
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
-  const todayStr = new Date().toISOString().split("T")[0];
-  const [overdue] = await db
-    .select({ id: invoicesTable.id })
-    .from(invoicesTable)
-    .where(
-      and(
-        eq(invoicesTable.tutorId, tutorId),
-        or(
-          eq(invoicesTable.status, "overdue"),
-          and(
-            eq(invoicesTable.status, "pending"),
-            sql`${invoicesTable.dueDate} < ${todayStr}`
-          )
-        )
-      )
-    )
-    .limit(1);
-
-  return !!overdue;
+  return InvoiceRepository.hasOverdue(tutorId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,20 +101,13 @@ export async function processManualPayment(
   paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip"
 ) {
   return await db.transaction(async (tx) => {
-    const [invoice] = await tx
-      .select()
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
-      .for("update");
-
+    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
-    await tx.update(invoicesTable)
-      .set({ status: "paid", paymentMethod, updatedAt: new Date() })
-      .where(eq(invoicesTable.id, invoiceId));
+    await InvoiceRepository.markPaid(invoiceId, paymentMethod, tx);
 
-    await tx.insert(transactionsTable).values({
+    await TransactionRepository.create({
       crecheId: invoice.crecheId,
       invoiceId: invoice.id,
       type: "income",
@@ -137,7 +115,7 @@ export async function processManualPayment(
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod,
       description: `Pagamento da Fatura #${invoice.id}`,
-    });
+    }, tx);
 
     await logFinancialAudit({
       crecheId: invoice.crecheId,
@@ -150,9 +128,7 @@ export async function processManualPayment(
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    await tx.update(ordersTable)
-      .set({ status: "paid" })
-      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
+    await OrderRepository.markPaidByInvoice(invoiceId, tx);
 
     return invoice;
   });
@@ -164,20 +140,13 @@ export async function processManualPayment(
 
 export async function approveReceipt(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const [invoice] = await tx
-      .select()
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
-      .for("update");
-
+    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
-    await tx.update(invoicesTable)
-      .set({ status: "paid", updatedAt: new Date() })
-      .where(eq(invoicesTable.id, invoiceId));
+    await InvoiceRepository.markPaid(invoiceId, invoice.paymentMethod || "pix", tx);
 
-    await tx.insert(transactionsTable).values({
+    await TransactionRepository.create({
       crecheId: invoice.crecheId,
       invoiceId: invoice.id,
       type: "income",
@@ -185,7 +154,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Comprovante aprovado da Fatura #${invoice.id}`,
-    });
+    }, tx);
 
     await logFinancialAudit({
       crecheId: invoice.crecheId,
@@ -198,9 +167,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    await tx.update(ordersTable)
-      .set({ status: "paid" })
-      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
+    await OrderRepository.markPaidByInvoice(invoiceId, tx);
 
     return invoice;
   });
@@ -212,22 +179,12 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
 export async function voidInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const [invoice] = await tx
-      .select()
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
-      .for("update");
-
+    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "voided");
 
-    await tx.update(invoicesTable)
-      .set({ status: "voided", updatedAt: new Date() })
-      .where(eq(invoicesTable.id, invoiceId));
-
-    await tx.update(ordersTable)
-      .set({ status: "cancelled" })
-      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
+    await InvoiceRepository.markVoided(invoiceId, tx);
+    await OrderRepository.cancelPendingByInvoice(invoiceId, tx);
 
     await logFinancialAudit({
       crecheId,
@@ -248,20 +205,13 @@ export async function voidInvoice(invoiceId: number, crecheId: number, userId: n
 
 export async function refundInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const [invoice] = await tx
-      .select()
-      .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
-      .for("update");
-
+    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "refunded");
 
-    await tx.update(invoicesTable)
-      .set({ status: "refunded", updatedAt: new Date() })
-      .where(eq(invoicesTable.id, invoiceId));
+    await InvoiceRepository.markRefunded(invoiceId, tx);
 
-    await tx.insert(transactionsTable).values({
+    await TransactionRepository.create({
       crecheId: invoice.crecheId,
       invoiceId: invoice.id,
       type: "expense",
@@ -269,14 +219,9 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Estorno da Fatura #${invoice.id}`,
-    });
+    }, tx);
 
-    await tx.update(ordersTable)
-      .set({ status: "cancelled" })
-      .where(and(
-        eq(ordersTable.invoiceId, invoiceId),
-        or(eq(ordersTable.status, "pending_payment"), eq(ordersTable.status, "paid"))
-      ));
+    await OrderRepository.cancelAllByInvoice(invoiceId, tx);
 
     await logFinancialAudit({
       crecheId,
@@ -386,13 +331,9 @@ export class BillingService {
 
       if (params.existingInvoiceId) {
         // ── Append to an already-created invoice (multi-item orders) ──────
-        const [existing] = await txClient
-          .select({ id: invoicesTable.id, amount: invoicesTable.amount })
-          .from(invoicesTable)
-          .where(eq(invoicesTable.id, params.existingInvoiceId));
+        const existing = await InvoiceRepository.findById(params.existingInvoiceId, txClient);
 
         if (!existing) {
-          // F-04: nunca criar item órfão — lançar erro se invoice não existe
           throw new Error(
             `[BillingService.addCharge] Invoice #${params.existingInvoiceId} não encontrada. ` +
             `Item não foi criado para evitar registro órfão.`
@@ -400,47 +341,33 @@ export class BillingService {
         }
 
         const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-        await txClient
-          .update(invoicesTable)
-          .set({ amount: newTotal, updatedAt: new Date() })
-          .where(eq(invoicesTable.id, params.existingInvoiceId));
-
+        await InvoiceRepository.setAmount(params.existingInvoiceId, newTotal, txClient);
         invoiceId = params.existingInvoiceId;
+
       } else if (params.isAvulso) {
         // ── Avulso: invoice standalone, nunca reabrir mensal ─────────────
-        const [newInv] = await txClient
-          .insert(invoicesTable)
-          .values({
-            crecheId: params.crecheId,
-            tutorId: params.tutorId,
-            cycleStart: itemDateStr,
-            cycleEnd: itemDateStr,
-            dueDate: itemDateStr,
-            amount: totalItemAmount.toFixed(2),
-            status: "pending",
-          })
-          .returning();
+        const newInv = await InvoiceRepository.create({
+          crecheId: params.crecheId,
+          tutorId: params.tutorId,
+          cycleStart: itemDateStr,
+          cycleEnd: itemDateStr,
+          dueDate: itemDateStr,
+          amount: totalItemAmount.toFixed(2),
+          status: "pending",
+        }, txClient);
         invoiceId = newInv.id;
+
       } else {
         // ── Ciclo mensal: merge ou nova invoice ───────────────────────────
-        const [tutor] = await txClient
-          .select({ mensalidadeDia: usersTable.mensalidadeDia })
-          .from(usersTable)
-          .where(eq(usersTable.id, params.tutorId));
+        const mensalidadeDia = await getTutorMensalidadeDia(params.tutorId, txClient);
+        const cycle = this.getCycleDates(mensalidadeDia, itemDateStr);
 
-        const cycle = this.getCycleDates(tutor?.mensalidadeDia, itemDateStr);
-
-        const [existing] = await txClient
-          .select()
-          .from(invoicesTable)
-          .where(
-            and(
-              eq(invoicesTable.tutorId, params.tutorId),
-              eq(invoicesTable.cycleStart, cycle.cycleStart),
-              eq(invoicesTable.cycleEnd, cycle.cycleEnd)
-            )
-          )
-          .for("update");
+        const existing = await InvoiceRepository.findByCycleForUpdate(
+          params.tutorId,
+          cycle.cycleStart,
+          cycle.cycleEnd,
+          txClient
+        );
 
         if (existing) {
           if (InvoiceStateMachine.isClosed(existing.status)) {
@@ -450,47 +377,37 @@ export class BillingService {
               `já encerrado (status="${existing.status}"). ` +
               `Criando invoice avulsa overflow (tutorId=${params.tutorId}).`
             );
-            const [newInv] = await txClient
-              .insert(invoicesTable)
-              .values({
-                crecheId: params.crecheId,
-                tutorId: params.tutorId,
-                // cycleStart/cycleEnd omitidos (NULL) → permite múltiplas overflows
-                dueDate: itemDateStr,
-                amount: totalItemAmount.toFixed(2),
-                status: "pending",
-              })
-              .returning();
+            const newInv = await InvoiceRepository.create({
+              crecheId: params.crecheId,
+              tutorId: params.tutorId,
+              dueDate: itemDateStr,
+              amount: totalItemAmount.toFixed(2),
+              status: "pending",
+            }, txClient);
             invoiceId = newInv.id;
           } else {
             // Ciclo aberto (pending/overdue) — merge normal
             const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-            await txClient
-              .update(invoicesTable)
-              .set({ amount: newTotal, updatedAt: new Date() })
-              .where(eq(invoicesTable.id, existing.id));
+            await InvoiceRepository.setAmount(existing.id, newTotal, txClient);
             invoiceId = existing.id;
           }
         } else {
           // Primeiro lançamento do ciclo — criar invoice mensal
-          const [newInv] = await txClient
-            .insert(invoicesTable)
-            .values({
-              crecheId: params.crecheId,
-              tutorId: params.tutorId,
-              cycleStart: cycle.cycleStart,
-              cycleEnd: cycle.cycleEnd,
-              dueDate: cycle.dueDate,
-              amount: totalItemAmount.toFixed(2),
-              status: "pending",
-            })
-            .returning();
+          const newInv = await InvoiceRepository.create({
+            crecheId: params.crecheId,
+            tutorId: params.tutorId,
+            cycleStart: cycle.cycleStart,
+            cycleEnd: cycle.cycleEnd,
+            dueDate: cycle.dueDate,
+            amount: totalItemAmount.toFixed(2),
+            status: "pending",
+          }, txClient);
           invoiceId = newInv.id;
         }
       }
 
       // ── Inserir item com snapshot histórico (Fase 14) ──────────────────
-      await txClient.insert(invoiceItemsTable).values({
+      await InvoiceRepository.createItem({
         invoiceId,
         description: params.description,
         amount: amountVal.toString(),
@@ -507,7 +424,7 @@ export class BillingService {
         creditsAmount: params.creditsAmount,
         snapshotMaxPets: params.snapshotMaxPets,
         snapshotExpirationDays: params.snapshotExpiration ?? (params.creditsAmount ? 365 : undefined),
-      });
+      }, txClient);
 
       // ── Audit log (Fase 14) ────────────────────────────────────────────
       await logFinancialAudit({
@@ -535,6 +452,87 @@ export class BillingService {
    * Processa pagamento Stripe — delega ao fluxo padrão de pagamento manual.
    * FinancialSync chama este método em vez de escrever no banco diretamente.
    */
+  /**
+   * Processes a partial item refund on an invoice.
+   * - Restores stock (if product type)
+   * - Adjusts invoice total or creates a negative transaction (if paid)
+   * - Writes audit log
+   */
+  static async refundItem(params: {
+    invoiceId: number;
+    crecheId: number;
+    invoiceItemId: number;
+    quantity: number;
+    userId: number;
+  }) {
+    const { invoiceId, crecheId, invoiceItemId, quantity, userId } = params;
+
+    await db.transaction(async (tx) => {
+      const invoice = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId, tx);
+      if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { status: 404 });
+
+      const invoiceItem = await InvoiceRepository.findItemById(invoiceItemId, invoiceId, tx);
+      if (!invoiceItem) throw Object.assign(new Error("Item da fatura não encontrado."), { status: 404 });
+      if ((invoiceItem.quantity ?? 1) < quantity) {
+        throw Object.assign(new Error("Quantidade de devolução maior que a comprada."), { status: 400 });
+      }
+
+      // Restore stock if this is a product (Phase 14: prefer catalogueItemId snapshot)
+      let catItem = invoiceItem.catalogueItemId
+        ? await CatalogueRepository.findById(invoiceItem.catalogueItemId, tx)
+        : await CatalogueRepository.findByNameAndCreche(crecheId, invoiceItem.description, tx);
+
+      if (catItem && catItem.type === "product") {
+        await CatalogueRepository.incrementStock(catItem.id, quantity, tx);
+        await CatalogueRepository.createStockTransaction({
+          itemId: catItem.id,
+          crecheId,
+          type: "in",
+          quantity,
+          reason: "Devolução / Estorno",
+          userId,
+        }, tx);
+      }
+
+      const itemTotalValue = Number(invoiceItem.amount) * quantity;
+
+      if (invoice.status === "pending") {
+        const newAmount = (Number(invoice.amount) - itemTotalValue).toString();
+        await InvoiceRepository.setAmount(invoiceId, newAmount, tx);
+
+        if ((invoiceItem.quantity ?? 1) === quantity) {
+          await InvoiceRepository.deleteItem(invoiceItemId, tx);
+        } else {
+          await InvoiceRepository.updateItemQuantity(
+            invoiceItemId,
+            (invoiceItem.quantity ?? 1) - quantity,
+            tx
+          );
+        }
+      } else if (invoice.status === "paid") {
+        // Paid invoices keep history intact — create a negative transaction
+        await TransactionRepository.create({
+          crecheId,
+          invoiceId: invoice.id,
+          type: "income",
+          amount: (-itemTotalValue).toString(),
+          transactionDate: new Date().toISOString().split("T")[0],
+          paymentMethod: "cash",
+          description: `Estorno de Venda: ${invoiceItem.description} (Qtd: ${quantity})`,
+        }, tx);
+      }
+
+      await logFinancialAudit({
+        crecheId,
+        userId,
+        action: "invoice_refund",
+        referenceId: invoice.id,
+        referenceType: "invoices",
+        details: `Estorno parcial/total do item ${invoiceItem.description} (Qtd: ${quantity})`,
+      }, tx);
+    });
+  }
+
   static async processStripePayment(params: {
     invoiceId: number;
     crecheId: number;
@@ -544,12 +542,7 @@ export class BillingService {
   }): Promise<void> {
     const { invoiceId, crecheId, stripeSessionId, isPackagePurchase, tx } = params;
 
-    const [invoice] = await tx
-      .select()
-      .from(invoicesTable)
-      .where(eq(invoicesTable.id, invoiceId))
-      .for("update");
-
+    const invoice = await InvoiceRepository.findByIdForUpdate(invoiceId, tx);
     if (!invoice) return;
 
     // Idempotência: se já processado por um worker anterior, sair silenciosamente
@@ -560,13 +553,9 @@ export class BillingService {
       return;
     }
 
-    await tx.update(invoicesTable).set({
-      status: "paid",
-      paymentMethod: "stripe",
-      updatedAt: new Date(),
-    }).where(eq(invoicesTable.id, invoiceId));
+    await InvoiceRepository.markPaid(invoiceId, "stripe", tx);
 
-    await tx.insert(transactionsTable).values({
+    await TransactionRepository.create({
       crecheId,
       invoiceId,
       type: "income",
@@ -574,14 +563,9 @@ export class BillingService {
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod: "stripe",
       description: `Pagamento Stripe da Fatura #${invoiceId}`,
-    });
+    }, tx);
 
-    await tx.update(ordersTable)
-      .set({ status: "paid" })
-      .where(and(
-        eq(ordersTable.invoiceId, invoiceId),
-        eq(ordersTable.status, "pending_payment")
-      ));
+    await OrderRepository.markPaidByInvoice(invoiceId, tx);
 
     if (isPackagePurchase) {
       await (await import("./credits.js")).releasePurchasedCredits(invoiceId, 0, tx);
