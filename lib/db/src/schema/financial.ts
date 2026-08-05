@@ -8,7 +8,7 @@ import { bookingsTable } from "./bookings";
 export const invoiceStatusEnum = pgEnum("invoice_status", ["pending", "awaiting_confirmation", "paid", "overdue", "voided", "refunded"]);
 export const transactionTypeEnum = pgEnum("transaction_type", ["income", "expense"]);
 export const paymentMethodEnum = pgEnum("payment_method", ["stripe", "pix", "cash", "credit_card", "bank_slip", "credits"]);
-export const itemTypeEnum = pgEnum("item_type", ["service", "product", "package"]);
+export const itemTypeEnum = pgEnum("item_type", ["service", "product", "package", "day_use"]);
 export const auditActionEnum = pgEnum("audit_action", [
   "invoice_create", 
   "invoice_void", 

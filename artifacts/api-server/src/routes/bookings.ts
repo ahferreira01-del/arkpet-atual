@@ -405,12 +405,17 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               eq(catalogueItemsTable.isActive, true),
             ));
 
-          // 1. Exact name match: "Day use" → "day_use" === existing.type
-          let catalogueItem = allItems.find(
-            i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type,
-          );
+          // 1. Direct type match — finds items registered as "day_use" in the catalogue
+          let catalogueItem = allItems.find(i => i.type === existing.type);
 
-          // 2. Keyword fallback for day_use type
+          // 2. Exact name match: "Day use" → "day_use" === existing.type
+          if (!catalogueItem) {
+            catalogueItem = allItems.find(
+              i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type,
+            );
+          }
+
+          // 3. Keyword fallback for day_use type
           if (!catalogueItem && existing.type === "day_use") {
             catalogueItem = allItems.find(i => {
               const name = i.name.toLowerCase();
