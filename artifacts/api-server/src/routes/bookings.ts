@@ -15,7 +15,6 @@ import {
   catalogueItemsTable,
   invoicesTable,
   invoiceItemsTable,
-  tutorCreditsTable,
   bookingCreditsTable,
   financialAuditLogsTable,
   tutorServiceCreditsTable,
@@ -172,7 +171,8 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
     ]);
 
     res.json({
-      items: data,
+      data,               // chave canônica (nova)
+      items: data,        // alias de compatibilidade retroativa
       total: Number(total),
       page,
       pageSize,
@@ -348,11 +348,11 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       }
 
       if (status !== undefined) {
-        if (req.user.role === "tutor") {
+        if (req.user!.role === "tutor") {
           if (status !== "cancel_requested") {
             throw new Error("Tutores só podem solicitar cancelamento de reservas.");
           }
-          if (existing.tutorId !== req.user.id) {
+          if (existing.tutorId !== req.user!.id) {
             throw new Error("Reserva não encontrada.");
           }
           if (!["pending", "confirmed"].includes(existing.status)) {
@@ -461,7 +461,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
                  crecheId,
                  catalogueItem,
                  daysToBill,
-                 req.user.id,
+                 req.user!.id,
                  tx
                );
              }
@@ -490,7 +490,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         
         await logFinancialAudit({
           crecheId,
-          userId: req.user.id,
+          userId: req.user!.id,
           action: "credits_deduct",
           referenceId: bookingId,
           referenceType: "bookings",
@@ -513,7 +513,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         // Fase 12: audit log movido para dentro do bloco (antes executava em todo status change)
         await logFinancialAudit({
           crecheId,
-          userId: req.user.id,
+          userId: req.user!.id,
           action: "credits_deduct",
           referenceId: bookingId,
           referenceType: "bookings",
@@ -931,8 +931,10 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
         .set({ isCheckedIn: false })
         .where(eq(petsTable.id, existing.petId));
 
-      // 2. Coletar Base Price e Consumables
-      const basePrice = Number(existing.price || "0");
+      // 2. Coletar Consumables
+      // Nota: o preço base da reserva foi faturado na confirmação (consumePackageCredits +
+      // BillingService.addCharge). O check-out fatura apenas os consumíveis adicionados
+      // durante a estadia para evitar cobrança duplicada do valor base.
       const consumables = await tx
         .select({
           itemId: bookingConsumablesTable.itemId,
@@ -944,73 +946,27 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
         .leftJoin(catalogueItemsTable, eq(bookingConsumablesTable.itemId, catalogueItemsTable.id))
         .where(eq(bookingConsumablesTable.bookingId, bookingId));
 
-      let totalAmount = basePrice;
-      for (const item of consumables) {
-        totalAmount += Number(item.chargedPrice) * item.quantity;
-      }
-
-      // 3. Verificar Créditos do Tutor (se tem crédito, deduzimos da diária base)
-      let creditsUsed = 0;
-      if (existing.tutorId && basePrice > 0) {
-        const [activeCredits] = await tx
-          .select()
-          .from(tutorCreditsTable)
-          .where(
-            and(
-              eq(tutorCreditsTable.crecheId, crecheId),
-              eq(tutorCreditsTable.tutorId, existing.tutorId),
-              sql`${tutorCreditsTable.totalCredits} > ${tutorCreditsTable.usedCredits}`,
-              or(
-                isNull(tutorCreditsTable.expirationDate),
-                gte(
-                  tutorCreditsTable.expirationDate,
-                  new Date().toISOString().split("T")[0],
-                ),
-              ),
-            ),
-          )
-          .limit(1);
-
-        if (activeCredits) {
-          creditsUsed = 1;
-          totalAmount -= basePrice; // Desconta o valor base, tutor só paga consumíveis
-          await tx
-            .update(tutorCreditsTable)
-            .set({ usedCredits: sql`${tutorCreditsTable.usedCredits} + 1` })
-            .where(eq(tutorCreditsTable.id, activeCredits.id));
-        }
-      }
-
-      // 4. Gerar Fatura via BillingService
-      if (totalAmount > 0 || creditsUsed > 0) {
-        const invoiceId = await BillingService.addCharge({
-           crecheId,
-           tutorId: existing.tutorId!,
-           amount: creditsUsed > 0 ? 0 : basePrice,
-           description: `Reserva #${bookingId} (${creditsUsed > 0 ? "Pacote de Diárias" : existing.type === "day_use" ? "Day Use" : existing.type})`,
-           type: existing.type,
-           petId: existing.petId,
-           bookingId: bookingId,
-           itemDate: new Date(),
-           tx: tx,
-        });
-
-        // 4.2 Inserir Itens Consumíveis via BillingService
-        for (const item of consumables) {
-          if (Number(item.chargedPrice) > 0) {
-            await BillingService.addCharge({
-              crecheId,
-              tutorId: existing.tutorId!,
-              amount: Number(item.chargedPrice),
-              quantity: item.quantity,
-              description: item.itemName || `Consumível #${item.itemId}`,
-              type: "consumable",
-              petId: existing.petId,
-              bookingId: bookingId,
-              itemDate: new Date(),
-              tx: tx,
-            });
-          }
+      // 3. Faturar apenas consumíveis no check-out.
+      // ATENÇÃO: o preço base da reserva é faturado na confirmação (via BillingService.addCharge
+      // na fase de confirmação). Faturar novamente aqui causaria cobrança em duplicidade.
+      // Os créditos de pacote também são consumidos na confirmação via consumePackageCredits.
+      const consumableCharges = consumables.filter(item => Number(item.chargedPrice) > 0);
+      if (consumableCharges.length > 0 && existing.tutorId) {
+        let firstInvoiceId: number | null = null;
+        for (const item of consumableCharges) {
+          const invoiceId = await BillingService.addCharge({
+            crecheId,
+            tutorId: existing.tutorId,
+            amount: Number(item.chargedPrice),
+            quantity: item.quantity,
+            description: item.itemName || `Consumível #${item.itemId}`,
+            type: "consumable",
+            petId: existing.petId,
+            bookingId: bookingId,
+            itemDate: new Date(),
+            tx: tx,
+          });
+          if (firstInvoiceId === null) firstInvoiceId = invoiceId;
         }
 
         // 5. Auditoria
@@ -1018,9 +974,9 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
           crecheId,
           userId: req.user!.id,
           action: "invoice_create",
-          referenceId: invoiceId,
+          referenceId: firstInvoiceId!,
           referenceType: "invoices",
-          details: `Fatura consolidada atualizada no check-out da reserva #${bookingId}. Total base da reserva: ${basePrice}. Créditos usados: ${creditsUsed}.`,
+          details: `Check-out da reserva #${bookingId}. ${consumableCharges.length} consumível(is) faturado(s) no check-out.`,
         }, tx);
       }
     });

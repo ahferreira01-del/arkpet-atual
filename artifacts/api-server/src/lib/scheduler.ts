@@ -579,7 +579,7 @@ export function startPastDueSuspender() {
 
 // ─── Auto-delete old Pix receipts (90 days LGPD) ──────────────────────────────
 import { ObjectStorageService } from "./objectStorage.js";
-import { invoicesTable } from "@workspace/db/schema";
+// invoicesTable já importado no topo do arquivo — não re-importar aqui
 
 async function deleteOldReceipts() {
   try {

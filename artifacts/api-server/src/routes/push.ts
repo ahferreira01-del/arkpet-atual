@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { pushSubscriptionsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 
 const router = Router();
@@ -71,6 +71,29 @@ router.post("/subscribe", async (req: AuthRequest, res) => {
 
   if (!userId) {
     res.status(401).json({ error: "Token necessário para nova assinatura" }); return;
+  }
+
+  // Limpar assinaturas anteriores do mesmo usuário no mesmo serviço de push
+  // (mesmo host = mesmo navegador que resubscreveu após logout/expiração).
+  // Isso evita que o servidor tente entregar para endpoints obsoletos
+  // do mesmo device antes da limpeza lazy via 410/404.
+  try {
+    const newHost = new URL(endpoint).host;
+    const existing = await db
+      .select({ id: pushSubscriptionsTable.id, endpoint: pushSubscriptionsTable.endpoint })
+      .from(pushSubscriptionsTable)
+      .where(eq(pushSubscriptionsTable.userId, userId));
+    const stale = existing.filter((s) => {
+      try { return new URL(s.endpoint).host === newHost; } catch { return false; }
+    });
+    if (stale.length > 0) {
+      await db.delete(pushSubscriptionsTable)
+        .where(inArray(pushSubscriptionsTable.id, stale.map((s) => s.id)));
+      console.log(`[push] Cleaned ${stale.length} stale subscription(s) for userId=${userId} (same push host)`);
+    }
+  } catch (cleanupErr) {
+    // Falha no cleanup não deve impedir o registro da nova assinatura
+    console.error("[push] Cleanup de assinaturas antigas falhou:", cleanupErr);
   }
 
   await db.insert(pushSubscriptionsTable).values({ userId, endpoint, p256dh, auth });

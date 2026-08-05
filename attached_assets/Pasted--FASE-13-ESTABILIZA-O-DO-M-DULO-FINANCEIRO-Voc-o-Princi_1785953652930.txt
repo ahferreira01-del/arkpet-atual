@@ -1,0 +1,133 @@
+# FASE 13 — ESTABILIZAÇÃO DO MÓDULO FINANCEIRO
+
+Você é o Principal Software Engineer responsável pela estabilização completa do sistema após a conclusão da Fase 12 de refatoração arquitetural.
+
+## Contexto
+
+A arquitetura do módulo financeiro foi concluída.
+
+Agora existem bugs funcionais remanescentes que precisam ser corrigidos.
+
+O objetivo NÃO é apenas eliminar erros.
+
+O objetivo é corrigir definitivamente suas causas sem degradar a arquitetura construída.
+
+---
+
+# Objetivo
+
+Resolver TODOS os bugs pendentes preservando:
+
+* Clean Architecture
+* DDD
+* SOLID
+* Multi-tenancy
+* Compatibilidade
+* Performance
+* Segurança
+* Atomicidade
+* Idempotência
+
+---
+
+# É PROIBIDO
+
+* alterar contratos públicos
+* alterar payloads
+* alterar endpoints
+* duplicar lógica
+* criar flags temporárias
+* criar código morto
+* criar workarounds
+* quebrar módulos existentes
+
+Toda correção deve resolver a causa raiz.
+
+---
+
+# Para CADA bug
+
+Antes da implementação produzir:
+
+1. Diagnóstico da causa raiz.
+2. Fluxo afetado.
+3. Arquivos impactados.
+4. Dependências.
+5. Risco de regressão.
+6. Plano de implementação.
+
+Depois da implementação produzir:
+
+1. O que foi alterado.
+2. Justificativa técnica.
+3. Testes executados.
+4. Fluxos revalidados.
+5. Plano de rollback.
+
+---
+
+# Ordem obrigatória
+
+## Sprint 1 — Integridade Financeira
+
+1. Checkout calcula valor incorreto da invoice.
+2. IDs inválidos causando perda silenciosa.
+3. Estoque negativo via catálogo.
+4. Estoque negativo via ajuste manual.
+5. Persistência incorreta dos limites de estoque.
+
+---
+
+## Sprint 2 — Upload e Storage
+
+6. Presigned Upload falhando silenciosamente.
+7. Arquivos órfãos quando o banco falha.
+8. ACL incorreta das URLs assinadas.
+9. Tutor sem acesso às fotos dos próprios pets.
+
+---
+
+## Sprint 3 — POS
+
+10. Recuperação de falha após pagamento.
+11. Histórico de estoque quebrando.
+12. Consistência completa entre estoque, pedido e financeiro.
+
+---
+
+## Sprint 4 — Infraestrutura
+
+13. Push Notifications após logout/login.
+14. Drift entre schema e código.
+15. Testes de integração ausentes.
+16. Endpoints inconsistentes ou obsoletos.
+
+---
+
+# Após CADA bug
+
+Executar obrigatoriamente:
+
+* testes unitários
+* testes de integração
+* testes de regressão
+* testes de concorrência (quando aplicável)
+
+---
+
+# Ao final
+
+Executar auditoria completa verificando:
+
+* nenhuma regressão
+* nenhuma inconsistência de estoque
+* nenhuma inconsistência financeira
+* nenhuma inconsistência de créditos
+* nenhuma inconsistência entre Orders e Invoices
+* nenhuma inconsistência entre Wallet e banco
+* nenhuma inconsistência entre POS e Financeiro
+* nenhuma inconsistência de upload
+* nenhuma inconsistência de permissões
+* nenhuma inconsistência de notificações
+
+Caso durante a implementação seja encontrado qualquer novo bug, inconsistência ou violação arquitetural, ele deve ser documentado, classificado por severidade e corrigido apenas se não introduzir regressões. Caso contrário, deve ser incluído em um relatório final de pendências técnicas.

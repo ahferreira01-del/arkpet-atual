@@ -34,7 +34,8 @@ router.get("/search", requireFinancialAccess, async (req: AuthRequest, res: Resp
     const query = req.query.q as string;
 
     if (!query || query.length < 2) {
-      return res.json({ results: [] });
+      res.json({ results: [] });
+      return;
     }
 
     const likeQuery = `%${query}%`;

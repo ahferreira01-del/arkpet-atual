@@ -1,11 +1,18 @@
-import { Router, Request } from "express";
+import { Router } from "express";
 import { db } from "@workspace/db";
-import { vaccinesTable, medicationsTable, incidentsTable } from "@workspace/db/schema";
+import { vaccinesTable, medicationsTable, incidentsTable, petsTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+
+/** Converte req.params que pode vir como string | string[] (mergeParams) */
+function parseParamId(value: string | string[] | undefined): number {
+  const str = Array.isArray(value) ? value[0] : (value ?? "");
+  const id = parseInt(str, 10);
+  return isNaN(id) ? NaN : id;
+}
 
 // ---------------------------------------------------------
 // VACCINES
@@ -14,9 +21,22 @@ router.use(authenticate);
 router.get("/vaccines/:petId", async (req: AuthRequest, res) => {
   try {
     const crecheId = req.user!.crecheId!;
-    const petId = parseInt(req.params.petId);
-    
-    // Admin/staff and tutor can see vaccines
+    const petId = parseParamId(req.params.petId);
+    if (!petId || petId <= 0) {
+      res.status(400).json({ error: "petId inválido" });
+      return;
+    }
+
+    // Validar que o pet existe e pertence a esta creche
+    const [pet] = await db.select({ id: petsTable.id })
+      .from(petsTable)
+      .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+      .limit(1);
+    if (!pet) {
+      res.status(404).json({ error: "Pet não encontrado" });
+      return;
+    }
+
     const vaccines = await db.select()
       .from(vaccinesTable)
       .where(and(eq(vaccinesTable.crecheId, crecheId), eq(vaccinesTable.petId, petId)))
@@ -35,7 +55,8 @@ router.post("/vaccines", async (req: AuthRequest, res) => {
     const { petId, name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl } = req.body;
 
     if (!petId || !name || !appliedDate) {
-      return res.status(400).json({ error: "Missing required fields" });
+      res.status(400).json({ error: "Missing required fields" });
+      return;
     }
 
     const [vaccine] = await db.insert(vaccinesTable).values({
@@ -59,15 +80,27 @@ router.post("/vaccines", async (req: AuthRequest, res) => {
 router.post("/vaccines/:id/receipt", async (req: AuthRequest, res) => {
   try {
     const crecheId = req.user!.crecheId!;
-    const vaccineId = parseInt(req.params.id);
+    const vaccineId = parseParamId(req.params.id);
+    if (!vaccineId || vaccineId <= 0) {
+      res.status(400).json({ error: "ID inválido" });
+      return;
+    }
     const { receiptUrl } = req.body;
 
-    if (!receiptUrl) return res.status(400).json({ error: "Missing receipt URL" });
+    if (!receiptUrl) {
+      res.status(400).json({ error: "Missing receipt URL" });
+      return;
+    }
 
     const [vaccine] = await db.update(vaccinesTable)
       .set({ receiptUrl })
       .where(and(eq(vaccinesTable.id, vaccineId), eq(vaccinesTable.crecheId, crecheId)))
       .returning();
+
+    if (!vaccine) {
+      res.status(404).json({ error: "Vacina não encontrada" });
+      return;
+    }
 
     res.json(vaccine);
   } catch (error) {
@@ -83,8 +116,21 @@ router.post("/vaccines/:id/receipt", async (req: AuthRequest, res) => {
 router.get("/medications/:petId", async (req: AuthRequest, res) => {
   try {
     const crecheId = req.user!.crecheId!;
-    const petIdStr = Array.isArray(req.params.petId) ? req.params.petId[0] : req.params.petId;
-    const petId = parseInt(petIdStr as string);
+    const petId = parseParamId(req.params.petId);
+    if (!petId || petId <= 0) {
+      res.status(400).json({ error: "petId inválido" });
+      return;
+    }
+
+    // Validar que o pet existe e pertence a esta creche
+    const [pet] = await db.select({ id: petsTable.id })
+      .from(petsTable)
+      .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+      .limit(1);
+    if (!pet) {
+      res.status(404).json({ error: "Pet não encontrado" });
+      return;
+    }
 
     const medications = await db.select()
       .from(medicationsTable)
@@ -99,7 +145,10 @@ router.get("/medications/:petId", async (req: AuthRequest, res) => {
 
 router.post("/medications", async (req: AuthRequest, res) => {
   try {
-    if (req.user!.role === 'tutor') return res.status(403).json({ error: "Access denied" });
+    if (req.user!.role === 'tutor') {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
     const crecheId = req.user!.crecheId!;
     const { petId, name, dosage, frequency, startDate, endDate, times, notes } = req.body;
 
@@ -128,8 +177,21 @@ router.post("/medications", async (req: AuthRequest, res) => {
 router.get("/incidents/:petId", async (req: AuthRequest, res) => {
   try {
     const crecheId = req.user!.crecheId!;
-    const petIdStr = Array.isArray(req.params.petId) ? req.params.petId[0] : req.params.petId;
-    const petId = parseInt(petIdStr as string);
+    const petId = parseParamId(req.params.petId);
+    if (!petId || petId <= 0) {
+      res.status(400).json({ error: "petId inválido" });
+      return;
+    }
+
+    // Validar que o pet existe e pertence a esta creche
+    const [pet] = await db.select({ id: petsTable.id })
+      .from(petsTable)
+      .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+      .limit(1);
+    if (!pet) {
+      res.status(404).json({ error: "Pet não encontrado" });
+      return;
+    }
 
     const incidents = await db.select()
       .from(incidentsTable)
@@ -159,7 +221,7 @@ router.post("/incidents", async (req: AuthRequest, res) => {
       vetCalled: vetCalled || false,
       vetName,
       actionTaken,
-      reportedBy: req.user!.id.toString(), // Store user ID
+      reportedBy: req.user!.id.toString(),
     }).returning();
 
     res.status(201).json(incident);

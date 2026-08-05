@@ -67,7 +67,9 @@ const catalogueItemSchema = z.object({
     medium: z.number().nonnegative(),
     large: z.number().nonnegative()
   }).optional().nullable(),
-  stockQuantity: z.number().int().nonnegative().optional().nullable(),
+  // stockQuantity é intencionalmente OMITIDO do schema de PUT.
+  // Estoque deve ser ajustado via POST /catalogue/:itemId/stock-adjustment (com auditoria).
+  // Aceitar stockQuantity via PUT pularia a auditoria e permitiria estoque negativo silencioso.
   reorderThreshold: z.number().int().nonnegative().optional().nullable(),
   creditsAmount: z.number().int().positive().optional().nullable(),
   category: z.string().max(100).optional().nullable(),
@@ -80,6 +82,7 @@ const catalogueItemSchema = z.object({
     )
   ).optional().nullable(),
   costPrice: z.number().nonnegative().optional().nullable(),
+  maxPetsPerDay: z.number().int().positive().optional().nullable(),
 }).refine(
   (data) => data.type !== 'package' || (data.creditsAmount && data.creditsAmount > 0),
   { message: 'A quantidade de diárias (créditos) é obrigatória para pacotes', path: ['creditsAmount'] }
@@ -208,7 +211,7 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
   try {
     const crecheId = Number(req.params.crecheId);
     const itemId = Number(req.params.itemId);
-    const { name, type, description, price, pricingBySize, stockQuantity, reorderThreshold, creditsAmount, maxPetsPerDay, category, sku, barcode, costPrice, mediaUrls } = req.body;
+    const { name, type, description, price, pricingBySize, reorderThreshold, creditsAmount, maxPetsPerDay, category, sku, barcode, costPrice, mediaUrls } = req.body;
     
     const [oldItem] = await db.select().from(catalogueItemsTable).where(and(eq(catalogueItemsTable.id, itemId), eq(catalogueItemsTable.crecheId, crecheId)));
     
@@ -242,6 +245,9 @@ router.put("/catalogue/:itemId", requireFinancialAccess, validate(catalogueItemS
         description,
         category,
         sku,
+        // barcode e costPrice agora são persistidos (antes eram silenciosamente ignorados)
+        ...(barcode !== undefined ? { barcode } : {}),
+        ...(costPrice !== undefined ? { costPrice: costPrice !== null ? costPrice.toString() : null } : {}),
         mediaUrls: mediaUrls ?? oldItem.mediaUrls,
         basePrice: price,
         priceSmall: pricingBySize?.small ?? price,
@@ -518,37 +524,50 @@ router.get("/catalogue/:itemId/stock-transactions", requireFinancialAccess, asyn
       return;
     }
 
-    const [data, [{ total }]] = await Promise.all([
-      db
-        .select({
-          id: catalogueStockTransactionsTable.id,
-          type: catalogueStockTransactionsTable.type,
-          quantity: catalogueStockTransactionsTable.quantity,
-          reason: catalogueStockTransactionsTable.reason,
-          createdAt: catalogueStockTransactionsTable.createdAt,
-          userName: usersTable.name,
-        })
-        .from(catalogueStockTransactionsTable)
-        .leftJoin(usersTable, eq(catalogueStockTransactionsTable.userId, usersTable.id))
-        .where(
-          and(
-            eq(catalogueStockTransactionsTable.itemId, itemId),
-            eq(catalogueStockTransactionsTable.crecheId, crecheId)
+    let data: any[] = [];
+    let total = 0;
+    try {
+      const [rows, [{ count: cnt }]] = await Promise.all([
+        db
+          .select({
+            id: catalogueStockTransactionsTable.id,
+            type: catalogueStockTransactionsTable.type,
+            quantity: catalogueStockTransactionsTable.quantity,
+            reason: catalogueStockTransactionsTable.reason,
+            createdAt: catalogueStockTransactionsTable.createdAt,
+            userName: usersTable.name,
+          })
+          .from(catalogueStockTransactionsTable)
+          .leftJoin(usersTable, eq(catalogueStockTransactionsTable.userId, usersTable.id))
+          .where(
+            and(
+              eq(catalogueStockTransactionsTable.itemId, itemId),
+              eq(catalogueStockTransactionsTable.crecheId, crecheId)
+            )
           )
-        )
-        .orderBy(desc(catalogueStockTransactionsTable.createdAt))
-        .limit(pageSize)
-        .offset(offset),
-      db
-        .select({ total: count() })
-        .from(catalogueStockTransactionsTable)
-        .where(
-          and(
-            eq(catalogueStockTransactionsTable.itemId, itemId),
-            eq(catalogueStockTransactionsTable.crecheId, crecheId)
-          )
-        ),
-    ]);
+          .orderBy(desc(catalogueStockTransactionsTable.createdAt))
+          .limit(pageSize)
+          .offset(offset),
+        db
+          .select({ count: count() })
+          .from(catalogueStockTransactionsTable)
+          .where(
+            and(
+              eq(catalogueStockTransactionsTable.itemId, itemId),
+              eq(catalogueStockTransactionsTable.crecheId, crecheId)
+            )
+          ),
+      ]);
+      data = rows;
+      total = Number(cnt);
+    } catch (queryErr: any) {
+      // Tabela pode não existir em ambientes sem migração aplicada → retorna vazio
+      const msg: string = queryErr?.message ?? "";
+      if (!msg.includes("does not exist") && !msg.includes("relation")) {
+        throw queryErr;
+      }
+      console.warn("[stock-transactions] Tabela não encontrada, retornando vazio:", msg);
+    }
 
     res.json({
       data,
@@ -758,13 +777,13 @@ router.get("/service-credits", async (req: AuthRequest, res: Response, next: Nex
     const crecheId = Number(req.params.crecheId);
     const { page, pageSize, offset } = getPaginationParams(req.query);
     
-    let baseConditions = sql`${tutorServiceCreditsTable.crecheId} = ${crecheId}`;
+    let baseConditions: ReturnType<typeof sql> = sql`${tutorServiceCreditsTable.crecheId} = ${crecheId}`;
     if (req.user!.role === "tutor") {
-      baseConditions = and(baseConditions, eq(tutorServiceCreditsTable.tutorId, req.user!.id));
+      baseConditions = (and(baseConditions, eq(tutorServiceCreditsTable.tutorId, req.user!.id)) ?? baseConditions) as ReturnType<typeof sql>;
     }
     
     // Only return credits that haven't been fully used
-    baseConditions = and(baseConditions, sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`);
+    baseConditions = (and(baseConditions, sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`) ?? baseConditions) as ReturnType<typeof sql>;
 
     const [data, [{ total }]] = await Promise.all([
       db
