@@ -53,7 +53,7 @@ const bookingTypeLabel: Record<string, string> = {
 // Service bookings (grooming, etc.) follow a different operational flow:
 // confirmed → "Iniciar Serviço" (checkin) → active → "Concluir Serviço" (complete-service)
 // They don't have check-out or consumables — the pet leaves after the service.
-const SERVICE_BOOKING_TYPES = new Set(["banho"]);
+const SERVICE_BOOKING_TYPES = new Set(["banho", "visita_taxi", "creche_taxi"]);
 const isServiceBooking = (type: string) => SERVICE_BOOKING_TYPES.has(type);
 
 const statusVariant: Record<BookingStatus, any> = {

@@ -683,15 +683,16 @@ router.post("/invoices/:invoiceId/upload-receipt", validate(uploadReceiptSchema)
     await db.update(invoicesTable)
       .set({ receiptPhotoPath, status: "awaiting_confirmation", updatedAt: new Date() })
       .where(eq(invoicesTable.id, invoiceId));
-      
-    await logFinancialAudit({
+
+    // Non-fatal: audit log must not block the receipt upload response
+    logFinancialAudit({
       crecheId,
       userId: req.user!.id,
       action: "payment_receipt_upload",
       referenceId: invoiceId,
       referenceType: "invoices",
       details: "Tutor enviou comprovante de pagamento."
-    }, db);
+    }, db).catch((err: unknown) => console.error("[audit] upload-receipt log failed:", err));
 
     res.json({ ok: true });
   } catch (err) {

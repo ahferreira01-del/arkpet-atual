@@ -467,20 +467,24 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
   const { user } = useAuth();
   const { data: creche } = useGetCreche(user?.crecheId || 1);
 
-  const pixKey = creche?.pixKey || "pix@arkpet.com.br"; 
-  const pixName = creche?.pixName || "ArkPet";
+  const pixKey = (creche as any)?.pixKey as string | null | undefined;
+  const pixName = ((creche as any)?.pixName as string | null | undefined) || "ArkPet";
   const amount = invoice?.amount ? Number(invoice.amount) / 100 : (invoice?.totalAmount ? Number(invoice.totalAmount) / 100 : 0);
+  const pixConfigured = !!pixKey;
 
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [pixPayload, setPixPayload] = useState<string>(pixKey);
+  const [pixPayload, setPixPayload] = useState<string>("");
 
   React.useEffect(() => {
-    if (isOpen) {
+    if (isOpen && pixKey && amount > 0) {
       const payload = generatePixPayload(pixKey, pixName, "BRASIL", amount, `FAT${invoice?.id || '00'}`);
       setPixPayload(payload);
       QRCode.toDataURL(payload, { width: 256, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
         .then(url => setQrCodeUrl(url))
         .catch(console.error);
+    } else {
+      setQrCodeUrl(null);
+      setPixPayload("");
     }
   }, [isOpen, pixKey, pixName, amount, invoice?.id]);
 
@@ -493,26 +497,36 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
     <Modal isOpen={isOpen} onClose={onClose} title={`Pagamento via Pix`}>
       <div className="space-y-6 text-center pt-2">
         
-        <div className="bg-white p-4 rounded-3xl inline-block mx-auto border-4 border-emerald-500/20 shadow-lg shadow-emerald-500/10">
-          {qrCodeUrl ? (
-            <img src={qrCodeUrl} alt="QR Code Pix" className="h-44 w-44 object-contain" />
-          ) : (
-            <QrCode className="h-44 w-44 text-slate-900 opacity-10" />
-          )}
-        </div>
-        
-        <div>
-          <p className="text-4xl font-display font-bold text-white tracking-tight">{formatBRL(invoice?.amount ? Number(invoice.amount) : invoice?.totalAmount || 0)}</p>
-          <p className="text-sm font-medium text-emerald-400 mt-2 uppercase tracking-wider">{pixName}</p>
-          <p className="text-sm text-muted-foreground mt-2 px-4 leading-relaxed">Abra o app do seu banco e escaneie o código QR acima ou utilize o código Copia e Cola abaixo.</p>
-        </div>
-        
-        <div className="bg-white/5 p-2 pr-2 pl-4 rounded-2xl border border-white/10 flex items-center justify-between gap-3">
-          <span className="text-white font-mono text-xs truncate flex-1 text-left opacity-70">{pixPayload}</span>
-          <Button variant="secondary" size="sm" onClick={handleCopy} className="shrink-0 bg-white/10 hover:bg-white/20 text-white rounded-xl">
-            <Copy className="h-4 w-4 mr-2" /> Copiar Código
-          </Button>
-        </div>
+        {!pixConfigured ? (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 text-center">
+            <QrCode className="h-12 w-12 text-amber-400 mx-auto mb-3 opacity-60" />
+            <p className="text-amber-300 font-semibold text-sm">Chave Pix não configurada</p>
+            <p className="text-muted-foreground text-xs mt-1">A creche ainda não cadastrou a chave Pix. Entre em contato para combinar o pagamento.</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-white p-4 rounded-3xl inline-block mx-auto border-4 border-emerald-500/20 shadow-lg shadow-emerald-500/10">
+              {qrCodeUrl ? (
+                <img src={qrCodeUrl} alt="QR Code Pix" className="h-44 w-44 object-contain" />
+              ) : (
+                <QrCode className="h-44 w-44 text-slate-900 opacity-10" />
+              )}
+            </div>
+
+            <div>
+              <p className="text-4xl font-display font-bold text-white tracking-tight">{formatBRL(invoice?.amount ? Number(invoice.amount) : invoice?.totalAmount || 0)}</p>
+              <p className="text-sm font-medium text-emerald-400 mt-2 uppercase tracking-wider">{pixName}</p>
+              <p className="text-sm text-muted-foreground mt-2 px-4 leading-relaxed">Abra o app do seu banco e escaneie o código QR acima ou utilize o código Copia e Cola abaixo.</p>
+            </div>
+
+            <div className="bg-white/5 p-2 pr-2 pl-4 rounded-2xl border border-white/10 flex items-center justify-between gap-3">
+              <span className="text-white font-mono text-xs truncate flex-1 text-left opacity-70">{pixPayload}</span>
+              <Button variant="secondary" size="sm" onClick={handleCopy} className="shrink-0 bg-white/10 hover:bg-white/20 text-white rounded-xl">
+                <Copy className="h-4 w-4 mr-2" /> Copiar Código
+              </Button>
+            </div>
+          </>
+        )}
 
         <div className="pt-6 flex flex-col gap-3">
           <Button onClick={onUploadClick} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-6 rounded-2xl text-base shadow-lg shadow-emerald-500/20">
