@@ -882,14 +882,15 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
       return;
     }
 
-    // 2. Adicionar ao ciclo consolidado via BillingService
+    // 2. Pacotes sempre geram fatura avulsa própria — nunca reabrem a fatura mensal já paga
     const invoiceId = await BillingService.addCharge({
       crecheId,
       tutorId,
       amount: item.basePrice,
       description: `${item.name} — ${item.creditsAmount} diárias`,
       type: "package",
-      itemDate: new Date()
+      itemDate: new Date(),
+      isAvulso: true,
     });
 
     // 4. Log de auditoria
@@ -920,30 +921,30 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
             quantity: 1,
           }],
           metadata: {
-            invoiceId: invoice.id.toString(),
+            invoiceId: invoiceId.toString(),
             crecheId: crecheId.toString(),
             tutorId: tutorId.toString(),
             creditsAmount: item.creditsAmount.toString(),
             packagePurchase: 'true',
           },
-          success_url: `${process.env.FRONTEND_URL}/tutor/financial?highlight=invoice-${invoice.id}&purchased=true`,
+          success_url: `${process.env.FRONTEND_URL}/tutor/financial?highlight=invoice-${invoiceId}&purchased=true`,
           cancel_url: `${process.env.FRONTEND_URL}/tutor/store`,
         });
 
         await db.update(invoicesTable)
           .set({ stripePaymentIntentId: session.payment_intent as string })
-          .where(eq(invoicesTable.id, invoice.id));
+          .where(eq(invoicesTable.id, invoiceId));
 
         checkoutUrl = session.url;
       }
     }
 
     res.status(201).json({
-      invoice,
+      invoiceId,
       checkoutUrl,
       message: paymentMethod === 'stripe'
         ? 'Redirecionando para pagamento...'
-        : `Fatura #${invoice.id} gerada. Realize o pagamento para liberar suas diárias.`,
+        : `Fatura #${invoiceId} gerada. Realize o pagamento para liberar suas diárias.`,
     });
 
   } catch (err) {
