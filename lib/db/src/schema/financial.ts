@@ -220,6 +220,7 @@ export const invoicesRelations = relations(invoicesTable, ({ one, many }) => ({
 }));
 
 // 5. Detalhes dos Itens da Fatura (Itemização)
+// Fase 14: snapshot histórico — tudo necessário para reconstruir a compra sem consultar Catalogue
 export const invoiceItemsTable = pgTable("invoice_items", {
   id: serial("id").primaryKey(),
   invoiceId: integer("invoice_id").notNull(),
@@ -231,6 +232,13 @@ export const invoiceItemsTable = pgTable("invoice_items", {
   bookingId: integer("booking_id"),
   orderId: integer("order_id"),
   itemType: varchar("item_type", { length: 50 }),
+  // ─── Fase 14: Snapshot histórico ───────────────────────────────────────────
+  catalogueItemId: integer("catalogue_item_id"),          // FK para catalogueItemsTable (nullable por compatibilidade)
+  snapshotName: varchar("snapshot_name", { length: 255 }), // Nome capturado no momento da compra
+  snapshotPrice: numeric("snapshot_price", { precision: 10, scale: 2 }), // Preço unitário no momento da compra
+  creditsAmount: integer("credits_amount"),               // Qtd de créditos que este item concede (packages/services)
+  snapshotMaxPets: integer("snapshot_max_pets"),          // maxPetsPerDay capturado (para packages multi-pet)
+  snapshotExpirationDays: integer("snapshot_expiration_days"), // Dias até expirar (padrão 365)
 });
 
 export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({

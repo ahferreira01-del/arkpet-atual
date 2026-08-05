@@ -581,18 +581,34 @@ export function startPastDueSuspender() {
 import { ObjectStorageService } from "./objectStorage.js";
 // invoicesTable já importado no topo do arquivo — não re-importar aqui
 
+// Fase 14: flag de concorrência para evitar execução paralela
+let receiptCleanupRunning = false;
+
 async function deleteOldReceipts() {
+  if (receiptCleanupRunning) {
+    console.warn("[scheduler] deleteOldReceipts: execução anterior ainda em andamento, ignorando.");
+    return;
+  }
+  receiptCleanupRunning = true;
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 90);
 
+    // Fase 14 (F-11): excluir comprovantes apenas de invoices NÃO pagas
+    // (comprovantes de invoices pagas têm valor probatório — não deletar)
     const oldInvoices = await db
       .select({ id: invoicesTable.id, receiptPhotoPath: invoicesTable.receiptPhotoPath })
       .from(invoicesTable)
       .where(
         and(
           isNotNull(invoicesTable.receiptPhotoPath),
-          lte(invoicesTable.updatedAt, cutoff)
+          lte(invoicesTable.updatedAt, cutoff),
+          // Preservar comprovantes de invoices pagas — apenas limpar as não pagas
+          or(
+            eq(invoicesTable.status, "voided"),
+            eq(invoicesTable.status, "refunded"),
+            eq(invoicesTable.status, "overdue")
+          )
         )
       );
 
@@ -614,6 +630,8 @@ async function deleteOldReceipts() {
     }
   } catch (err) {
     console.error("[scheduler] erro ao limpar comprovantes antigos:", err);
+  } finally {
+    receiptCleanupRunning = false;
   }
 }
 
@@ -632,7 +650,15 @@ export function startReceiptCleanupJob() {
 
 const EXPIRED_ORDER_DAYS = 7;
 
+// Fase 14: flag de concorrência para cancelamento de pedidos
+let expiredOrderCancellerRunning = false;
+
 async function cancelExpiredOrders(): Promise<void> {
+  if (expiredOrderCancellerRunning) {
+    console.warn("[scheduler] cancelExpiredOrders: execução anterior ainda em andamento, ignorando.");
+    return;
+  }
+  expiredOrderCancellerRunning = true;
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - EXPIRED_ORDER_DAYS);
@@ -659,6 +685,8 @@ async function cancelExpiredOrders(): Promise<void> {
     }
   } catch (err) {
     console.error("[scheduler] erro ao cancelar pedidos expirados:", err);
+  } finally {
+    expiredOrderCancellerRunning = false;
   }
 }
 

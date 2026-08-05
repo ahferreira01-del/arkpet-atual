@@ -4,12 +4,57 @@ import { eq, and, or, sql } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { logFinancialAudit } from "./audit.js";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Máquina de Estados da Invoice (Fase 14)
+// Única fonte de verdade para transições válidas de status.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export class InvoiceStateMachine {
+  private static readonly VALID_TRANSITIONS: Record<string, readonly string[]> = {
+    pending:               ["paid", "voided", "overdue"],
+    overdue:               ["paid", "voided"],
+    awaiting_confirmation: ["paid", "voided"],
+    paid:                  ["refunded"],
+    voided:                [],
+    refunded:              [],
+  } as const;
+
+  static canTransition(from: string, to: string): boolean {
+    return (this.VALID_TRANSITIONS[from] ?? []).includes(to);
+  }
+
+  static assertTransition(from: string, to: string): void {
+    if (!this.canTransition(from, to)) {
+      const allowed = (this.VALID_TRANSITIONS[from] ?? []).join(", ") || "nenhuma";
+      throw new Error(
+        `Transição de status inválida para Invoice: "${from}" → "${to}". ` +
+        `Transições permitidas de "${from}": [${allowed}]`
+      );
+    }
+  }
+
+  /** Verifica se o status é terminal (não aceita mais alterações financeiras). */
+  static isTerminal(status: string): boolean {
+    return (this.VALID_TRANSITIONS[status]?.length ?? Infinity) === 0;
+  }
+
+  /** Verifica se o status é "fechado" para novos lançamentos no mesmo ciclo. */
+  static isClosed(status: string): boolean {
+    return status === "paid" || status === "refunded" || status === "voided";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// calculateDueDate
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Calcula a data de vencimento baseada no dia de mensalidade do tutor.
- * @param tutorMensalidadeDia Dia do vencimento (ex: 10). Se nulo, usa a data atual + 3 dias.
- * @param fallbackDate Data base (geralmente data da reserva ou de hoje).
  */
-export function calculateDueDate(tutorMensalidadeDia: number | null | undefined, fallbackDate: Date = new Date()): string {
+export function calculateDueDate(
+  tutorMensalidadeDia: number | null | undefined,
+  fallbackDate: Date = new Date()
+): string {
   if (!tutorMensalidadeDia) {
     const fallback = new Date(fallbackDate);
     fallback.setDate(fallback.getDate() + 3);
@@ -30,15 +75,14 @@ export function calculateDueDate(tutorMensalidadeDia: number | null | undefined,
 
   const lastDayOfMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
   const actualDay = Math.min(tutorMensalidadeDia, lastDayOfMonth);
-  
   const finalDueDate = new Date(dueYear, dueMonth, actualDay);
   return finalDueDate.toISOString().split("T")[0];
 }
 
-/**
- * Verifica se um tutor possui faturas em atraso.
- * Uma fatura está em atraso se o status for 'overdue' ou se for 'pending' e a data de vencimento for anterior a hoje.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// hasOverdueInvoices
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
   const todayStr = new Date().toISOString().split("T")[0];
   const [overdue] = await db
@@ -61,10 +105,17 @@ export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
   return !!overdue;
 }
 
-// ─── Fase 2: FOR UPDATE adicionado em processManualPayment ───────────────────
-export async function processManualPayment(invoiceId: number, crecheId: number, userId: number, paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip") {
+// ─────────────────────────────────────────────────────────────────────────────
+// processManualPayment — FOR UPDATE + state machine + audit
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function processManualPayment(
+  invoiceId: number,
+  crecheId: number,
+  userId: number,
+  paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip"
+) {
   return await db.transaction(async (tx) => {
-    // Fase 2: lock pessimista impede processamento duplo concorrente
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
@@ -72,9 +123,7 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
       .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
-    if (invoice.status === "paid" || invoice.status === "voided" || invoice.status === "refunded") {
-      throw new Error("A fatura já foi processada ou cancelada");
-    }
+    InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
     await tx.update(invoicesTable)
       .set({ status: "paid", paymentMethod, updatedAt: new Date() })
@@ -87,7 +136,7 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
       amount: invoice.amount,
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod,
-      description: `Pagamento da Fatura #${invoice.id}`
+      description: `Pagamento da Fatura #${invoice.id}`,
     });
 
     await logFinancialAudit({
@@ -96,12 +145,11 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
       action: "manual_payment_register",
       referenceId: invoice.id,
       referenceType: "invoices",
-      details: `Fatura #${invoice.id} paga via ${paymentMethod} e conciliada.`
+      details: `Fatura #${invoice.id} paga via ${paymentMethod} e conciliada.`,
     }, tx);
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    // Fase 6: sincronizar Order → paid quando invoice é paga
     await tx.update(ordersTable)
       .set({ status: "paid" })
       .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
@@ -110,10 +158,12 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
   });
 }
 
-// ─── Fase 2: FOR UPDATE adicionado em approveReceipt ─────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// approveReceipt — FOR UPDATE + state machine + audit
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function approveReceipt(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    // Fase 2: lock pessimista impede aprovação dupla concorrente
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
@@ -121,9 +171,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
       .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
-    if (invoice.status === "paid" || invoice.status === "voided" || invoice.status === "refunded") {
-      throw new Error("A fatura já foi processada ou cancelada");
-    }
+    InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
     await tx.update(invoicesTable)
       .set({ status: "paid", updatedAt: new Date() })
@@ -136,7 +184,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
       amount: invoice.amount,
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod: invoice.paymentMethod || "pix",
-      description: `Comprovante aprovado da Fatura #${invoice.id}`
+      description: `Comprovante aprovado da Fatura #${invoice.id}`,
     });
 
     await logFinancialAudit({
@@ -145,12 +193,11 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
       action: "payment_approve",
       referenceId: invoice.id,
       referenceType: "invoices",
-      details: `Comprovante da Fatura #${invoice.id} aprovado.`
+      details: `Comprovante da Fatura #${invoice.id} aprovado.`,
     }, tx);
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    // Fase 6: sincronizar Order → paid quando invoice é aprovada
     await tx.update(ordersTable)
       .set({ status: "paid" })
       .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
@@ -159,10 +206,12 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
   });
 }
 
-// ─── Fase 1: voidInvoice agora é 100% atômica + Fase 2: FOR UPDATE + Fase 6: Order sync ───
+// ─────────────────────────────────────────────────────────────────────────────
+// voidInvoice — FOR UPDATE + state machine + audit
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function voidInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    // Fase 2: lock pessimista — impede void duplicado concorrente
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
@@ -170,37 +219,35 @@ export async function voidInvoice(invoiceId: number, crecheId: number, userId: n
       .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
-    if (invoice.status === "paid" || invoice.status === "refunded" || invoice.status === "voided") {
-      throw new Error("A fatura já foi processada ou cancelada");
-    }
+    InvoiceStateMachine.assertTransition(invoice.status, "voided");
 
     await tx.update(invoicesTable)
       .set({ status: "voided", updatedAt: new Date() })
       .where(eq(invoicesTable.id, invoiceId));
 
-    // Fase 6: sincronizar Orders pendentes → cancelled quando invoice é cancelada
     await tx.update(ordersTable)
       .set({ status: "cancelled" })
       .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
 
-    // Fase 1: audit dentro da mesma transação — se falhar, o void também reverte
     await logFinancialAudit({
       crecheId,
       userId,
       action: "invoice_void",
       referenceId: invoice.id,
       referenceType: "invoices",
-      details: `Fatura #${invoice.id} cancelada.`
+      details: `Fatura #${invoice.id} cancelada (${invoice.status} → voided).`,
     }, tx);
 
     return invoice;
   });
 }
 
-// ─── Fase 6: refundInvoice sincroniza Order → cancelled ──────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// refundInvoice — FOR UPDATE + state machine + audit
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function refundInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    // Fase 2: lock pessimista
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
@@ -208,7 +255,7 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
-    if (invoice.status !== "paid") throw new Error("Apenas faturas pagas podem ser estornadas");
+    InvoiceStateMachine.assertTransition(invoice.status, "refunded");
 
     await tx.update(invoicesTable)
       .set({ status: "refunded", updatedAt: new Date() })
@@ -221,10 +268,9 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       amount: invoice.amount,
       transactionDate: new Date().toISOString().split("T")[0],
       paymentMethod: invoice.paymentMethod || "pix",
-      description: `Estorno da Fatura #${invoice.id}`
+      description: `Estorno da Fatura #${invoice.id}`,
     });
 
-    // Fase 6: sincronizar Order → cancelled quando invoice é estornada
     await tx.update(ordersTable)
       .set({ status: "cancelled" })
       .where(and(
@@ -238,24 +284,32 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       action: "invoice_refund",
       referenceId: invoice.id,
       referenceType: "invoices",
-      details: `Fatura #${invoice.id} estornada.`
+      details: `Fatura #${invoice.id} estornada.`,
     }, tx);
 
     return invoice;
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// BillingService — única autoridade de criação de invoices e charges
+// ─────────────────────────────────────────────────────────────────────────────
+
 export class BillingService {
   /**
-   * Calculates the exact boundaries of a billing cycle based on the tutor's due date.
+   * Calcula os limites exatos de um ciclo de faturamento baseado no dia de
+   * mensalidade do tutor.
    */
-  static getCycleDates(mensalidadeDia: number | null | undefined, txDateStr: string = new Date().toISOString().split('T')[0]) {
+  static getCycleDates(
+    mensalidadeDia: number | null | undefined,
+    txDateStr: string = new Date().toISOString().split("T")[0]
+  ) {
     const txDate = new Date(txDateStr + "T12:00:00Z");
     const day = mensalidadeDia || 10;
-    
+
     let endMonth = txDate.getUTCMonth();
     let endYear = txDate.getUTCFullYear();
-    
+
     if (txDate.getUTCDate() > day) {
       endMonth++;
       if (endMonth > 11) {
@@ -263,13 +317,11 @@ export class BillingService {
         endYear++;
       }
     }
-    
-    // The cycle end date is the 'mensalidade_dia' of the cycleEndMonth
+
     const lastDayOfMonth = new Date(Date.UTC(endYear, endMonth + 1, 0)).getUTCDate();
     const actualDay = Math.min(day, lastDayOfMonth);
     const endDate = new Date(Date.UTC(endYear, endMonth, actualDay));
-    
-    // Cycle start is the day after the previous cycle's end
+
     let startMonth = endMonth - 1;
     let startYear = endYear;
     if (startMonth < 0) {
@@ -279,7 +331,7 @@ export class BillingService {
     const lastDayOfStartMonth = new Date(Date.UTC(startYear, startMonth + 1, 0)).getUTCDate();
     const actualStartDay = Math.min(day, lastDayOfStartMonth);
     const startDate = new Date(Date.UTC(startYear, startMonth, actualStartDay + 1));
-    
+
     return {
       cycleStart: startDate.toISOString().split("T")[0],
       cycleEnd: endDate.toISOString().split("T")[0],
@@ -287,6 +339,21 @@ export class BillingService {
     };
   }
 
+  /**
+   * Adiciona uma cobrança ao tutor.
+   *
+   * Regras:
+   * - Cobranças avulsas (`isAvulso: true`) criam invoice própria, nunca reabrem a mensal.
+   * - Cobranças mensais fazem merge no ciclo atual SE o ciclo estiver em status aberto
+   *   (pending/overdue). Se o ciclo já estiver fechado (paid/refunded/voided), cria
+   *   invoice avulsa — NUNCA reabre invoice já liquidada.
+   * - Se `existingInvoiceId` for fornecido, adiciona ao invoice existente (multi-item orders).
+   *   Se o invoice não for encontrado, lança erro (não cria item órfão).
+   * - Salva snapshot histórico no `invoiceItemsTable` para permitir reconstituição sem
+   *   consultar o Catalogue.
+   *
+   * @returns ID do invoice ao qual o item foi adicionado.
+   */
   static async addCharge(params: {
     crecheId: number;
     tutorId: number;
@@ -298,48 +365,74 @@ export class BillingService {
     orderId?: number;
     itemDate?: Date;
     quantity?: number;
-    isAvulso?: boolean; // When true, creates a standalone invoice instead of merging into the monthly cycle
-    existingInvoiceId?: number; // When set, skip invoice creation and append to this existing invoice
-    tx?: any; // Accept a tx object to reuse it
+    isAvulso?: boolean;
+    existingInvoiceId?: number;
+    tx?: any;
+    userId?: number;              // Para audit log (0 = sistema)
+    // ─── Fase 14: snapshot histórico ───────────────────────────────────────
+    catalogueItemId?: number;     // FK para catalogueItemsTable
+    creditsAmount?: number;       // Qtd de créditos que este item concede
+    snapshotMaxPets?: number;     // maxPetsPerDay do pacote
+    snapshotExpiration?: number;  // Dias até expirar (padrão 365)
   }) {
-    const amountVal = typeof params.amount === 'string' ? parseFloat(params.amount) : params.amount;
+    const amountVal =
+      typeof params.amount === "string" ? parseFloat(params.amount) : params.amount;
     const quantity = params.quantity || 1;
     const totalItemAmount = amountVal * quantity;
-    const itemDateStr = (params.itemDate || new Date()).toISOString().split('T')[0];
-    
+    const itemDateStr = (params.itemDate || new Date()).toISOString().split("T")[0];
+
     const executeLogic = async (txClient: any) => {
       let invoiceId: number;
 
       if (params.existingInvoiceId) {
-        // Append to an already-created avulso invoice (e.g. multi-item orders)
-        invoiceId = params.existingInvoiceId;
-        const [existing] = await txClient.select({ amount: invoicesTable.amount })
+        // ── Append to an already-created invoice (multi-item orders) ──────
+        const [existing] = await txClient
+          .select({ id: invoicesTable.id, amount: invoicesTable.amount })
           .from(invoicesTable)
           .where(eq(invoicesTable.id, params.existingInvoiceId));
-        if (existing) {
-          const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-          await txClient.update(invoicesTable)
-            .set({ amount: newTotal, updatedAt: new Date() })
-            .where(eq(invoicesTable.id, params.existingInvoiceId));
+
+        if (!existing) {
+          // F-04: nunca criar item órfão — lançar erro se invoice não existe
+          throw new Error(
+            `[BillingService.addCharge] Invoice #${params.existingInvoiceId} não encontrada. ` +
+            `Item não foi criado para evitar registro órfão.`
+          );
         }
+
+        const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
+        await txClient
+          .update(invoicesTable)
+          .set({ amount: newTotal, updatedAt: new Date() })
+          .where(eq(invoicesTable.id, params.existingInvoiceId));
+
+        invoiceId = params.existingInvoiceId;
       } else if (params.isAvulso) {
-        // Avulso charges get their own standalone invoice so they never
-        // re-open or inflate the tutor's monthly cycle invoice.
-        const [newInv] = await txClient.insert(invoicesTable).values({
-          crecheId: params.crecheId,
-          tutorId: params.tutorId,
-          cycleStart: itemDateStr,
-          cycleEnd: itemDateStr,
-          dueDate: itemDateStr,
-          amount: totalItemAmount.toFixed(2),
-          status: "pending",
-        }).returning();
+        // ── Avulso: invoice standalone, nunca reabrir mensal ─────────────
+        const [newInv] = await txClient
+          .insert(invoicesTable)
+          .values({
+            crecheId: params.crecheId,
+            tutorId: params.tutorId,
+            cycleStart: itemDateStr,
+            cycleEnd: itemDateStr,
+            dueDate: itemDateStr,
+            amount: totalItemAmount.toFixed(2),
+            status: "pending",
+          })
+          .returning();
         invoiceId = newInv.id;
       } else {
-        const [tutor] = await txClient.select({ mensalidadeDia: usersTable.mensalidadeDia }).from(usersTable).where(eq(usersTable.id, params.tutorId));
+        // ── Ciclo mensal: merge ou nova invoice ───────────────────────────
+        const [tutor] = await txClient
+          .select({ mensalidadeDia: usersTable.mensalidadeDia })
+          .from(usersTable)
+          .where(eq(usersTable.id, params.tutorId));
+
         const cycle = this.getCycleDates(tutor?.mensalidadeDia, itemDateStr);
-        
-        const [existing] = await txClient.select().from(invoicesTable)
+
+        const [existing] = await txClient
+          .select()
+          .from(invoicesTable)
           .where(
             and(
               eq(invoicesTable.tutorId, params.tutorId),
@@ -347,53 +440,160 @@ export class BillingService {
               eq(invoicesTable.cycleEnd, cycle.cycleEnd)
             )
           )
-          .for('update');
-        
-        if (existing) {
-          const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-          
-          let newStatus = existing.status;
-          if (existing.status === 'paid' || existing.status === 'refunded' || existing.status === 'voided') {
-            newStatus = 'pending';
-          }
+          .for("update");
 
-          await txClient.update(invoicesTable)
-            .set({ amount: newTotal, status: newStatus, updatedAt: new Date() })
-            .where(eq(invoicesTable.id, existing.id));
-          invoiceId = existing.id;
+        if (existing) {
+          if (InvoiceStateMachine.isClosed(existing.status)) {
+            // F-03: Ciclo já encerrado — criar avulsa overflow em vez de reabrir
+            console.warn(
+              `[BillingService.addCharge] Ciclo ${cycle.cycleStart}–${cycle.cycleEnd} ` +
+              `já encerrado (status="${existing.status}"). ` +
+              `Criando invoice avulsa overflow (tutorId=${params.tutorId}).`
+            );
+            const [newInv] = await txClient
+              .insert(invoicesTable)
+              .values({
+                crecheId: params.crecheId,
+                tutorId: params.tutorId,
+                // cycleStart/cycleEnd omitidos (NULL) → permite múltiplas overflows
+                dueDate: itemDateStr,
+                amount: totalItemAmount.toFixed(2),
+                status: "pending",
+              })
+              .returning();
+            invoiceId = newInv.id;
+          } else {
+            // Ciclo aberto (pending/overdue) — merge normal
+            const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
+            await txClient
+              .update(invoicesTable)
+              .set({ amount: newTotal, updatedAt: new Date() })
+              .where(eq(invoicesTable.id, existing.id));
+            invoiceId = existing.id;
+          }
         } else {
-          const [newInv] = await txClient.insert(invoicesTable).values({
-            crecheId: params.crecheId,
-            tutorId: params.tutorId,
-            cycleStart: cycle.cycleStart,
-            cycleEnd: cycle.cycleEnd,
-            dueDate: cycle.dueDate,
-            amount: totalItemAmount.toFixed(2),
-            status: "pending",
-          }).returning();
+          // Primeiro lançamento do ciclo — criar invoice mensal
+          const [newInv] = await txClient
+            .insert(invoicesTable)
+            .values({
+              crecheId: params.crecheId,
+              tutorId: params.tutorId,
+              cycleStart: cycle.cycleStart,
+              cycleEnd: cycle.cycleEnd,
+              dueDate: cycle.dueDate,
+              amount: totalItemAmount.toFixed(2),
+              status: "pending",
+            })
+            .returning();
           invoiceId = newInv.id;
         }
       }
 
+      // ── Inserir item com snapshot histórico (Fase 14) ──────────────────
       await txClient.insert(invoiceItemsTable).values({
-         invoiceId: invoiceId,
-         description: params.description,
-         amount: amountVal.toString(),
-         quantity: quantity,
-         itemDate: params.itemDate || new Date(),
-         petId: params.petId,
-         bookingId: params.bookingId,
-         orderId: params.orderId,
-         itemType: params.type || "service",
+        invoiceId,
+        description: params.description,
+        amount: amountVal.toString(),
+        quantity,
+        itemDate: params.itemDate || new Date(),
+        petId: params.petId,
+        bookingId: params.bookingId,
+        orderId: params.orderId,
+        itemType: params.type || "service",
+        // Snapshot — capturado no momento da cobrança
+        catalogueItemId: params.catalogueItemId,
+        snapshotName: params.description,
+        snapshotPrice: amountVal.toFixed(2),
+        creditsAmount: params.creditsAmount,
+        snapshotMaxPets: params.snapshotMaxPets,
+        snapshotExpirationDays: params.snapshotExpiration ?? (params.creditsAmount ? 365 : undefined),
       });
+
+      // ── Audit log (Fase 14) ────────────────────────────────────────────
+      await logFinancialAudit({
+        crecheId: params.crecheId,
+        userId: params.userId ?? 0,
+        action: "invoice_create",
+        referenceId: invoiceId,
+        referenceType: "invoices",
+        details:
+          `Cobrança "${params.description}" × ${quantity} = R$${totalItemAmount.toFixed(2)}` +
+          ` (tipo: ${params.type || "service"}).`,
+      }, txClient);
 
       return invoiceId;
     };
 
     if (params.tx) {
-        return await executeLogic(params.tx);
+      return await executeLogic(params.tx);
     } else {
-        return await db.transaction(executeLogic);
+      return await db.transaction(executeLogic);
     }
+  }
+
+  /**
+   * Processa pagamento Stripe — delega ao fluxo padrão de pagamento manual.
+   * FinancialSync chama este método em vez de escrever no banco diretamente.
+   */
+  static async processStripePayment(params: {
+    invoiceId: number;
+    crecheId: number;
+    stripeSessionId: string;
+    isPackagePurchase?: boolean;
+    tx: any;
+  }): Promise<void> {
+    const { invoiceId, crecheId, stripeSessionId, isPackagePurchase, tx } = params;
+
+    const [invoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId))
+      .for("update");
+
+    if (!invoice) return;
+
+    // Idempotência: se já processado por um worker anterior, sair silenciosamente
+    if (InvoiceStateMachine.isClosed(invoice.status)) {
+      console.log(
+        `[BillingService.processStripePayment] Fatura #${invoiceId} já está em status="${invoice.status}". Ignorando evento Stripe.`
+      );
+      return;
+    }
+
+    await tx.update(invoicesTable).set({
+      status: "paid",
+      paymentMethod: "stripe",
+      updatedAt: new Date(),
+    }).where(eq(invoicesTable.id, invoiceId));
+
+    await tx.insert(transactionsTable).values({
+      crecheId,
+      invoiceId,
+      type: "income",
+      amount: invoice.amount,
+      transactionDate: new Date().toISOString().split("T")[0],
+      paymentMethod: "stripe",
+      description: `Pagamento Stripe da Fatura #${invoiceId}`,
+    });
+
+    await tx.update(ordersTable)
+      .set({ status: "paid" })
+      .where(and(
+        eq(ordersTable.invoiceId, invoiceId),
+        eq(ordersTable.status, "pending_payment")
+      ));
+
+    if (isPackagePurchase) {
+      await (await import("./credits.js")).releasePurchasedCredits(invoiceId, 0, tx);
+    }
+
+    await logFinancialAudit({
+      crecheId,
+      userId: 0, // 0 = sistema / Stripe
+      action: "manual_payment_register",
+      referenceId: invoiceId,
+      referenceType: "invoices",
+      details: `Fatura #${invoiceId} paga via Stripe (session: ${stripeSessionId}).`,
+    }, tx);
   }
 }

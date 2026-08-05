@@ -14,7 +14,7 @@ import { logFinancialAudit } from "./audit.js";
 import { normalizeServiceType } from "../utils/service-name.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fase 7: Tipos públicos da API interna do CreditService
+// Tipos públicos do CreditService
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ConsumePackageCreditsResult {
@@ -24,7 +24,16 @@ export interface ConsumePackageCreditsResult {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// releasePurchasedCredits — Fase 2 (FOR UPDATE) + Fase 9 (sem regex)
+// releasePurchasedCredits
+//
+// Fase 14: usa snapshot histórico do invoiceItemsTable (catalogueItemId,
+// creditsAmount, snapshotMaxPets, snapshotExpirationDays) em vez de consultar
+// o Catalogue por nome. Mantém fallback por catalogueItemId (lookup por ID) e
+// por nome (legado) para invoices antigas sem snapshot.
+//
+// Garantias:
+// - FOR UPDATE na invoice → idempotência (creditsReleased gate)
+// - Nenhum INSERT duplicado se chamado duas vezes para o mesmo invoiceId
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function releasePurchasedCredits(
@@ -32,8 +41,6 @@ export async function releasePurchasedCredits(
   paidByUserId: number,
   tx: any
 ): Promise<void> {
-
-  // Fase 2: lock pessimista — impede liberação dupla concorrente para o mesmo invoiceId
   const [invoice] = await tx
     .select()
     .from(invoicesTable)
@@ -48,40 +55,73 @@ export async function releasePurchasedCredits(
     .from(invoiceItemsTable)
     .where(eq(invoiceItemsTable.invoiceId, invoiceId));
 
-  // Fase 9: decisão baseada exclusivamente em itemType — sem regex
-  const packageItems = items.filter((item: typeof invoiceItemsTable.$inferSelect) =>
-    item.itemType === "package"
+  // Fase 14: decisão baseada em itemType — sem regex
+  const packageItems = items.filter(
+    (item: typeof invoiceItemsTable.$inferSelect) => item.itemType === "package"
   );
-
-  const serviceItems = items.filter((item: typeof invoiceItemsTable.$inferSelect) =>
-    item.itemType === "service"
+  const serviceItems = items.filter(
+    (item: typeof invoiceItemsTable.$inferSelect) => item.itemType === "service"
   );
 
   if (packageItems.length === 0 && serviceItems.length === 0) return;
 
   let creditsAdded = false;
 
+  // ── Pacotes de diárias ──────────────────────────────────────────────────
   for (const packageItem of packageItems) {
-    const [catItem] = await tx.select().from(catalogueItemsTable).where(
-      and(
-        eq(catalogueItemsTable.crecheId, invoice.crecheId),
-        eq(catalogueItemsTable.name, packageItem.description)
-      )
-    ).limit(1);
+    let baseCredits: number | null = null;
+    let maxPetsPerDay = 1;
+    let expirationDays = 365;
 
-    const baseCredits: number | null = catItem?.creditsAmount ?? null;
+    // 1. Prioridade: snapshot histórico (Fase 14)
+    if (packageItem.creditsAmount && packageItem.creditsAmount > 0) {
+      baseCredits = packageItem.creditsAmount * (packageItem.quantity || 1);
+      maxPetsPerDay = packageItem.snapshotMaxPets ?? 1;
+      expirationDays = packageItem.snapshotExpirationDays ?? 365;
+    }
+    // 2. Fallback: lookup por catalogueItemId (mais confiável que nome)
+    else if (packageItem.catalogueItemId) {
+      const [catItem] = await tx
+        .select()
+        .from(catalogueItemsTable)
+        .where(eq(catalogueItemsTable.id, packageItem.catalogueItemId))
+        .limit(1);
+      if (catItem?.creditsAmount && catItem.creditsAmount > 0) {
+        baseCredits = catItem.creditsAmount * (packageItem.quantity || 1);
+        maxPetsPerDay = catItem.maxPetsPerDay ?? 1;
+      }
+    }
+    // 3. Fallback legado: lookup por nome (deprecated — itens sem snapshot)
+    else {
+      const [catItem] = await tx
+        .select()
+        .from(catalogueItemsTable)
+        .where(
+          and(
+            eq(catalogueItemsTable.crecheId, invoice.crecheId),
+            eq(catalogueItemsTable.name, packageItem.description)
+          )
+        )
+        .limit(1);
+      if (catItem?.creditsAmount && catItem.creditsAmount > 0) {
+        console.warn(
+          `[releasePurchasedCredits] Item "${packageItem.description}" sem snapshot. ` +
+          `Usando lookup legado por nome (invoice #${invoiceId}, item #${packageItem.id}).`
+        );
+        baseCredits = catItem.creditsAmount * (packageItem.quantity || 1);
+        maxPetsPerDay = catItem.maxPetsPerDay ?? 1;
+      }
+    }
+
     if (!baseCredits || baseCredits <= 0) continue;
 
-    const creditsAmount = baseCredits * (packageItem.quantity || 1);
-    const maxPetsPerDay = catItem?.maxPetsPerDay ?? 1;
-
     const expirationDate = new Date();
-    expirationDate.setFullYear(expirationDate.getFullYear() + 1);
+    expirationDate.setDate(expirationDate.getDate() + expirationDays);
 
     await tx.insert(tutorCreditsTable).values({
       crecheId: invoice.crecheId,
       tutorId: invoice.tutorId,
-      totalCredits: creditsAmount,
+      totalCredits: baseCredits,
       usedCredits: 0,
       maxPetsPerDay,
       expirationDate: expirationDate.toISOString().split("T")[0],
@@ -90,24 +130,45 @@ export async function releasePurchasedCredits(
     creditsAdded = true;
   }
 
+  // ── Pacotes de serviços ─────────────────────────────────────────────────
   for (const serviceItem of serviceItems) {
-    const catalogueItems = await tx.select().from(catalogueItemsTable).where(
-      and(
-        eq(catalogueItemsTable.crecheId, invoice.crecheId),
-        eq(catalogueItemsTable.name, serviceItem.description),
-        eq(catalogueItemsTable.type, "service")
-      )
-    ).limit(1);
+    let resolvedCatalogueItemId: number | null = null;
 
-    if (catalogueItems.length > 0) {
-      await tx.insert(tutorServiceCreditsTable).values({
-        crecheId: invoice.crecheId,
-        tutorId: invoice.tutorId,
-        catalogueItemId: catalogueItems[0].id,
-        totalCredits: serviceItem.quantity || 1,
-      });
-      creditsAdded = true;
+    // 1. Prioridade: snapshot histórico
+    if (serviceItem.catalogueItemId) {
+      resolvedCatalogueItemId = serviceItem.catalogueItemId;
     }
+    // 2. Fallback legado: lookup por nome
+    else {
+      const [catItem] = await tx
+        .select()
+        .from(catalogueItemsTable)
+        .where(
+          and(
+            eq(catalogueItemsTable.crecheId, invoice.crecheId),
+            eq(catalogueItemsTable.name, serviceItem.description),
+            eq(catalogueItemsTable.type, "service")
+          )
+        )
+        .limit(1);
+      if (catItem) {
+        console.warn(
+          `[releasePurchasedCredits] ServiceItem "${serviceItem.description}" sem catalogueItemId. ` +
+          `Usando lookup legado por nome (invoice #${invoiceId}, item #${serviceItem.id}).`
+        );
+        resolvedCatalogueItemId = catItem.id;
+      }
+    }
+
+    if (!resolvedCatalogueItemId) continue;
+
+    await tx.insert(tutorServiceCreditsTable).values({
+      crecheId: invoice.crecheId,
+      tutorId: invoice.tutorId,
+      catalogueItemId: resolvedCatalogueItemId,
+      totalCredits: serviceItem.quantity || 1,
+    });
+    creditsAdded = true;
   }
 
   if (!creditsAdded) return;
@@ -127,9 +188,11 @@ export async function releasePurchasedCredits(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fase 7: consumePackageCredits
-// Extrai o loop de consumo/carona de diárias de packages do routes/bookings.ts.
-// Retorna { totalPiggybacked, totalConsumedNormal, daysToBill }.
+// consumePackageCredits
+//
+// Fase 14: adicionada verificação de idempotência — se bookingCreditsTable já
+// contém registros para este bookingId, retorna os totais sem reprocessar.
+// Isso previne double-consume em caso de retry ou dupla confirmação.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function consumePackageCredits(
@@ -141,6 +204,26 @@ export async function consumePackageCredits(
   packageMaxPets: number,
   tx: any
 ): Promise<ConsumePackageCreditsResult> {
+  // ── Fase 14: Idempotência ────────────────────────────────────────────────
+  const existing = await tx
+    .select({
+      id: bookingCreditsTable.id,
+      creditsConsumed: bookingCreditsTable.creditsConsumed,
+    })
+    .from(bookingCreditsTable)
+    .where(eq(bookingCreditsTable.bookingId, bookingId));
+
+  if (existing.length > 0) {
+    // Já foi processado — retornar totais existentes sem reprocessar
+    const totalConsumedNormal = existing.filter((r: any) => r.creditsConsumed > 0).length;
+    const totalPiggybacked = existing.filter((r: any) => r.creditsConsumed === 0).length;
+    console.warn(
+      `[consumePackageCredits] Booking #${bookingId} já tem ${existing.length} registros ` +
+      `em bookingCreditsTable. Retornando sem reprocessar (idempotência).`
+    );
+    return { totalPiggybacked, totalConsumedNormal, daysToBill: 0 };
+  }
+
   let totalPiggybacked = 0;
   let totalConsumedNormal = 0;
   let daysToBill = 0;
@@ -228,9 +311,12 @@ export async function consumePackageCredits(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fase 7: consumeServiceCreditsForBooking
-// Extrai o consumo de créditos de serviço (carteira) do routes/bookings.ts.
-// Retorna o número de dias restantes após o consumo de créditos.
+// consumeServiceCreditsForBooking
+//
+// Fase 14:
+// - Adicionada verificação de idempotência (bookingServiceCreditsTable)
+// - Match por catalogueItemId em vez de normalização de string quando possível
+// - Normalização de string mantida como fallback para compatibilidade
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function consumeServiceCreditsForBooking(
@@ -244,14 +330,28 @@ export async function consumeServiceCreditsForBooking(
 ): Promise<number> {
   if (catalogueItem.type !== "service") return daysToBill;
 
-  const bookingServiceType = normalizeServiceType(catalogueItem.name);
+  // ── Fase 14: Idempotência ────────────────────────────────────────────────
+  const existingSvc = await tx
+    .select({ id: bookingServiceCreditsTable.id })
+    .from(bookingServiceCreditsTable)
+    .where(eq(bookingServiceCreditsTable.bookingId, bookingId))
+    .limit(1);
 
-  // Busca todos os créditos de serviço disponíveis para este tutor/creche
+  if (existingSvc.length > 0) {
+    console.warn(
+      `[consumeServiceCreditsForBooking] Booking #${bookingId} já tem registros ` +
+      `em bookingServiceCreditsTable. Retornando sem reprocessar (idempotência).`
+    );
+    return daysToBill; // não reprocessar; retornar daysToBill original
+  }
+
+  // Busca créditos de serviço disponíveis para este tutor/creche
   const candidateCredits = await tx
     .select({
       id: tutorServiceCreditsTable.id,
       totalCredits: tutorServiceCreditsTable.totalCredits,
       usedCredits: tutorServiceCreditsTable.usedCredits,
+      catalogueItemId: tutorServiceCreditsTable.catalogueItemId,
       itemName: catalogueItemsTable.name,
     })
     .from(tutorServiceCreditsTable)
@@ -267,10 +367,18 @@ export async function consumeServiceCreditsForBooking(
     .orderBy(asc(tutorServiceCreditsTable.id))
     .for("update");
 
-  // Filtra por tipo de serviço normalizado (ex: "banho" cobre variantes de porte)
-  const matchingCredits = candidateCredits.filter(
-    (c: { itemName: string }) => normalizeServiceType(c.itemName) === bookingServiceType,
+  // Fase 14: match prioritário por catalogueItemId (sem depender de string)
+  let matchingCredits = candidateCredits.filter(
+    (c: any) => c.catalogueItemId === catalogueItem.id
   );
+
+  // Fallback: normalização de nome para variantes de tamanho (ex: Banho P/M/G)
+  if (matchingCredits.length === 0) {
+    const bookingServiceType = normalizeServiceType(catalogueItem.name);
+    matchingCredits = candidateCredits.filter(
+      (c: any) => normalizeServiceType(c.itemName) === bookingServiceType
+    );
+  }
 
   let remaining = daysToBill;
 
@@ -284,7 +392,6 @@ export async function consumeServiceCreditsForBooking(
       .set({ usedCredits: sql`${tutorServiceCreditsTable.usedCredits} + ${toConsume}` })
       .where(eq(tutorServiceCreditsTable.id, credit.id));
 
-    // Fase 5: rastrear consumo em booking_service_credits para permitir restauração
     await tx.insert(bookingServiceCreditsTable).values({
       bookingId,
       tutorServiceCreditId: credit.id,
@@ -299,7 +406,9 @@ export async function consumeServiceCreditsForBooking(
       action: "credits_deduct",
       referenceId: bookingId,
       referenceType: "bookings",
-      details: `Consumo de ${toConsume} crédito(s) de serviço (${credit.itemName} → ${catalogueItem.name}) da Carteira de Serviços.`,
+      details:
+        `Consumo de ${toConsume} crédito(s) de serviço ` +
+        `(catId=${credit.catalogueItemId}, "${credit.itemName}" → "${catalogueItem.name}").`,
     }, tx);
   }
 
@@ -307,9 +416,7 @@ export async function consumeServiceCreditsForBooking(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fase 4+7: restoreBookingPackageCredits
-// Extrai a restauração de créditos de pacote do cancelamento em routes/bookings.ts.
-// Fase 4: GREATEST(0, ...) impede usedCredits negativo.
+// restoreBookingPackageCredits — GREATEST(0,...) + piggyback transfer
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function restoreBookingPackageCredits(
@@ -329,18 +436,22 @@ export async function restoreBookingPackageCredits(
 
     if (c.creditsConsumed > 0 && c.consumedDate) {
       // Verificar se existe reserva de carona dependente deste crédito
-      const [child] = await tx.select().from(bookingCreditsTable)
+      const [child] = await tx
+        .select()
+        .from(bookingCreditsTable)
         .where(and(
           eq(bookingCreditsTable.tutorCreditId, c.tutorCreditId),
           eq(bookingCreditsTable.consumedDate, c.consumedDate),
           eq(bookingCreditsTable.creditsConsumed, 0),
           isNull(bookingCreditsTable.restoredAt),
           sql`${bookingCreditsTable.id} != ${c.id}`,
-        )).limit(1);
+        ))
+        .limit(1);
 
       if (child) {
         // Transferir o crédito para a reserva de carona
-        await tx.update(bookingCreditsTable)
+        await tx
+          .update(bookingCreditsTable)
           .set({ creditsConsumed: c.creditsConsumed })
           .where(eq(bookingCreditsTable.id, child.id));
         shouldRestoreToTutor = false;
@@ -348,9 +459,10 @@ export async function restoreBookingPackageCredits(
     }
 
     if (shouldRestoreToTutor) {
-      // Fase 4: GREATEST(0, ...) garante que usedCredits nunca fica negativo
       await tx.update(tutorCreditsTable)
-        .set({ usedCredits: sql`GREATEST(0, ${tutorCreditsTable.usedCredits} - ${c.creditsConsumed})` })
+        .set({
+          usedCredits: sql`GREATEST(0, ${tutorCreditsTable.usedCredits} - ${c.creditsConsumed})`,
+        })
         .where(eq(tutorCreditsTable.id, c.tutorCreditId));
     }
 
@@ -361,9 +473,7 @@ export async function restoreBookingPackageCredits(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Fase 4+5+7: restoreBookingServiceCredits
-// Restaura créditos de serviço consumidos por uma reserva cancelada.
-// Fase 4: GREATEST(0, ...) impede usedCredits negativo.
+// restoreBookingServiceCredits — GREATEST(0,...) anti-underflow
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function restoreBookingServiceCredits(
@@ -379,9 +489,10 @@ export async function restoreBookingServiceCredits(
     ));
 
   for (const sc of consumed) {
-    // Fase 4: GREATEST(0, ...) garante que usedCredits nunca fica negativo
     await tx.update(tutorServiceCreditsTable)
-      .set({ usedCredits: sql`GREATEST(0, ${tutorServiceCreditsTable.usedCredits} - ${sc.creditsConsumed})` })
+      .set({
+        usedCredits: sql`GREATEST(0, ${tutorServiceCreditsTable.usedCredits} - ${sc.creditsConsumed})`,
+      })
       .where(eq(tutorServiceCreditsTable.id, sc.tutorServiceCreditId));
 
     await tx.update(bookingServiceCreditsTable)

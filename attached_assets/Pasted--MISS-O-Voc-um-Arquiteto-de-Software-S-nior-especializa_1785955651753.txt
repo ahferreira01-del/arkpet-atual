@@ -1,0 +1,517 @@
+# MISSÃO
+
+Você é um Arquiteto de Software Sênior especializado em DDD, Clean Architecture, PostgreSQL, Drizzle ORM, TypeScript e sistemas financeiros.
+
+Sua missão é executar uma REESTRUTURAÇÃO COMPLETA do módulo financeiro descrito na documentação fornecida.
+
+IMPORTANTE:
+
+NÃO quero remendos.
+
+NÃO quero correções pontuais.
+
+NÃO quero duplicação de lógica.
+
+NÃO quero criar novos bugs.
+
+Quero que o módulo fique consistente como um único domínio.
+
+Toda alteração deve preservar compatibilidade com o restante do sistema.
+
+Nenhuma regra de negócio existente pode ser alterada, exceto quando ela já for considerada um bug documentado.
+
+--------------------------------------------------
+OBJETIVOS
+--------------------------------------------------
+
+Eliminar TODOS os problemas arquiteturais documentados.
+
+Eliminar TODOS os bugs conhecidos.
+
+Eliminar inconsistências.
+
+Eliminar duplicidade de lógica.
+
+Eliminar múltiplas fontes de verdade.
+
+Eliminar acoplamentos incorretos.
+
+Eliminar código morto.
+
+Eliminar endpoints obsoletos.
+
+Eliminar dependência de nomes (strings).
+
+Eliminar race conditions.
+
+Eliminar problemas de idempotência.
+
+Eliminar estados inconsistentes.
+
+Garantir integridade transacional.
+
+Garantir compatibilidade retroativa.
+
+--------------------------------------------------
+REGRAS ABSOLUTAS
+--------------------------------------------------
+
+NÃO alterar contratos públicos.
+
+NÃO alterar URLs existentes.
+
+NÃO alterar payloads existentes.
+
+NÃO alterar regras de negócio funcionais.
+
+NÃO quebrar frontend.
+
+NÃO quebrar Booking.
+
+NÃO quebrar Orders.
+
+NÃO quebrar POS.
+
+NÃO quebrar Stripe.
+
+NÃO quebrar Scheduler.
+
+NÃO quebrar Wallet.
+
+NÃO quebrar Auditoria.
+
+Caso seja necessário criar novos métodos internos, fazê-lo preservando as interfaces públicas.
+
+Sempre preferir EXTRAIR código ao invés de duplicar.
+
+Sempre preferir centralizar regras.
+
+Sempre preferir uma única fonte de verdade.
+
+--------------------------------------------------
+O QUE DEVE SER CORRIGIDO
+--------------------------------------------------
+
+### 1 Billing
+
+BillingService deve ser a ÚNICA autoridade para:
+
+- criação de invoices
+- alteração de status
+- pagamentos
+- cancelamentos
+- refunds
+- geração de transactions
+
+Nenhum outro módulo pode escrever diretamente nessas tabelas.
+
+financialSync deve delegar ao BillingService.
+
+--------------------------------------------------
+
+### 2 Credits
+
+Eliminar completamente qualquer lógica baseada em:
+
+regex
+
+nomes
+
+descrições
+
+strings
+
+A decisão deve usar apenas:
+
+itemType
+
+catalogueItemId
+
+creditsAmount
+
+snapshot persistido.
+
+--------------------------------------------------
+
+### 3 InvoiceItem
+
+Transformar InvoiceItem em snapshot histórico.
+
+Salvar obrigatoriamente:
+
+catalogueItemId
+
+itemType
+
+creditsAmount
+
+snapshotName
+
+snapshotPrice
+
+snapshotMaxPets
+
+snapshotExpiration
+
+Tudo necessário para reconstruir a compra sem consultar Catalogue.
+
+Após isso:
+
+releasePurchasedCredits NÃO pode mais consultar Catalogue.
+
+--------------------------------------------------
+
+### 4 CreditService
+
+Centralizar TODA regra de crédito.
+
+Criar métodos formais:
+
+consumePackageCredits()
+
+restorePackageCredits()
+
+consumeServiceCredits()
+
+restoreServiceCredits()
+
+releasePurchasedCredits()
+
+getWallet()
+
+Nenhum outro módulo pode atualizar:
+
+usedCredits
+
+totalCredits
+
+diretamente.
+
+--------------------------------------------------
+
+### 5 Booking
+
+Booking não pode mais acessar:
+
+tutor_credits
+
+tutor_service_credits
+
+diretamente.
+
+Toda operação deve passar pelo CreditService.
+
+--------------------------------------------------
+
+### 6 Orders
+
+Criar OrderService.
+
+Mover toda lógica de:
+
+orders.ts
+
+para
+
+services/orders.ts
+
+Routes apenas orquestram.
+
+--------------------------------------------------
+
+### 7 Wallet
+
+Criar WalletService.
+
+Centralizar cálculo de:
+
+saldo
+
+pacotes
+
+serviços
+
+créditos
+
+expiração
+
+Nenhum endpoint poderá calcular saldo manualmente.
+
+--------------------------------------------------
+
+### 8 Stripe
+
+FinancialSync não escreve mais no banco.
+
+Ele apenas traduz eventos Stripe para BillingService.
+
+Garantir:
+
+idempotência
+
+retry seguro
+
+paymentIntent único
+
+--------------------------------------------------
+
+### 9 Auditoria
+
+Toda operação financeira deve:
+
+abrir transaction
+
+executar operação
+
+registrar audit
+
+confirmar transaction
+
+Nunca permitir audit parcial.
+
+--------------------------------------------------
+
+### 10 Estado
+
+Implementar máquina de estados para Invoice.
+
+Transições válidas apenas:
+
+pending
+
+↓
+
+paid
+
+↓
+
+refunded
+
+pending
+
+↓
+
+voided
+
+overdue
+
+↓
+
+paid
+
+Bloquear qualquer transição inválida.
+
+--------------------------------------------------
+
+### 11 Banco
+
+Adicionar constraints additive.
+
+CHECK
+
+UNIQUE
+
+Índices
+
+Nunca gerar DROP.
+
+Nunca remover colunas.
+
+Nunca quebrar migrations.
+
+--------------------------------------------------
+
+### 12 Endpoints
+
+Manter compatibilidade.
+
+Endpoints antigos continuam funcionando.
+
+Caso sejam obsoletos:
+
+delegar internamente ao fluxo novo.
+
+Não remover imediatamente.
+
+--------------------------------------------------
+
+### 13 Cache
+
+Toda alteração financeira deve invalidar automaticamente:
+
+wallet
+
+dashboard
+
+packages
+
+serviceCredits
+
+orders
+
+invoices
+
+--------------------------------------------------
+
+### 14 Scheduler
+
+Implementar limpeza automática de:
+
+pedidos expirados
+
+uploads órfãos
+
+recibos antigos
+
+sem remover dados financeiros.
+
+--------------------------------------------------
+
+### 15 Frontend
+
+Nenhum hook existente deve quebrar.
+
+Caso algum endpoint antigo ainda seja utilizado:
+
+implementar camada de compatibilidade.
+
+--------------------------------------------------
+
+### 16 Código morto
+
+Identificar:
+
+rotas
+
+services
+
+queries
+
+helpers
+
+não utilizados.
+
+Remover apenas se houver certeza absoluta.
+
+Caso contrário:
+
+marcar @deprecated.
+
+--------------------------------------------------
+
+### 17 Acoplamento
+
+Eliminar dependências diretas entre domínios.
+
+Booking → Billing
+
+Booking → Credits
+
+Orders → Credits
+
+Financial → Stripe
+
+Tudo deve ocorrer através de Services.
+
+--------------------------------------------------
+
+### 18 Testes
+
+Criar testes para:
+
+pagamento manual
+
+PIX
+
+Stripe
+
+refund
+
+void
+
+compra loja
+
+POS
+
+consumo crédito
+
+restauração
+
+cancelamento
+
+concorrência
+
+idempotência
+
+--------------------------------------------------
+
+### 19 Compatibilidade
+
+Ao final:
+
+Todo frontend existente deve continuar funcionando sem alterações.
+
+--------------------------------------------------
+
+### 20 Critérios obrigatórios de aceite
+
+A implementação só poderá ser considerada concluída quando TODOS os itens abaixo forem verdadeiros.
+
+✓ tsc sem erros
+
+✓ build sem warnings críticos
+
+✓ drizzle-kit sem DROP
+
+✓ nenhum endpoint removido
+
+✓ nenhuma migration destrutiva
+
+✓ nenhuma quebra de contrato
+
+✓ nenhuma regra duplicada
+
+✓ nenhuma consulta por nome
+
+✓ nenhuma regex de domínio
+
+✓ nenhuma escrita financeira fora dos Services
+
+✓ nenhuma race condition conhecida
+
+✓ webhook Stripe idempotente
+
+✓ releasePurchasedCredits determinístico
+
+✓ Booking sem acesso direto às tabelas financeiras
+
+✓ Orders sem lógica de negócio na rota
+
+✓ Wallet centralizada
+
+✓ Billing única fonte de verdade
+
+✓ testes passando
+
+✓ documentação atualizada
+
+--------------------------------------------------
+
+MODO DE EXECUÇÃO
+
+Antes de modificar qualquer arquivo:
+
+1. analisar impacto;
+2. identificar dependências;
+3. verificar chamadas cruzadas;
+4. confirmar que nenhuma interface pública será quebrada.
+
+Após cada alteração:
+
+- executar validações;
+- verificar invariantes;
+- verificar compatibilidade.
+
+Caso qualquer alteração possa quebrar outro módulo, refatore a arquitetura em vez de aplicar uma correção localizada.
+
+O objetivo não é apenas corrigir bugs, mas deixar o módulo financeiro consistente, previsível, extensível e preparado para evolução futura, mantendo 100% de compatibilidade com o sistema existente.

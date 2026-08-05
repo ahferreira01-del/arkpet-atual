@@ -910,6 +910,12 @@ router.post("/packages/purchase", async (req: AuthRequest, res: Response, next: 
       type: "package",
       itemDate: new Date(),
       isAvulso: true,
+      userId: req.user!.id,
+      // Fase 14: snapshot histórico — permite releasePurchasedCredits sem consultar Catalogue
+      catalogueItemId: item.id,
+      creditsAmount: item.creditsAmount ?? undefined,
+      snapshotMaxPets: item.maxPetsPerDay ?? undefined,
+      snapshotExpiration: 365,
     });
 
     // 4. Log de auditoria
@@ -1340,6 +1346,9 @@ router.post("/pos-sale", requireFinancialAccess, validate(posSaleSchema), async 
           isAvulso: isAvulso,
           itemDate: new Date(),
           tx: tx,
+          userId: req.user!.id,
+          // Fase 14: snapshot para rastreabilidade de estorno
+          catalogueItemId: oi.catalogueItemId,
         });
       }
 
@@ -1399,11 +1408,18 @@ router.post("/invoices/:invoiceId/refund-item", validate(refundItemSchema), asyn
       if (!invoiceItem) throw new Error("Item da fatura não encontrado.");
       if (invoiceItem.quantity < quantity) throw new Error("Quantidade de devolução maior que a comprada.");
 
-      // For a real product, we'd have a catalogue item link in invoice_items or try to match by name
-      // Wait, invoice_items doesn't have catalogueItemId natively. Let's try to match by name in catalogue.
-      const [catItem] = await tx.select().from(catalogueItemsTable)
-        .where(and(eq(catalogueItemsTable.crecheId, crecheId), eq(catalogueItemsTable.name, invoiceItem.description)))
-        .for('update');
+      // Fase 14: usar catalogueItemId do snapshot (mais confiável que lookup por nome)
+      let catItem: typeof catalogueItemsTable.$inferSelect | undefined;
+      if (invoiceItem.catalogueItemId) {
+        [catItem] = await tx.select().from(catalogueItemsTable)
+          .where(eq(catalogueItemsTable.id, invoiceItem.catalogueItemId))
+          .for('update');
+      } else {
+        // Fallback legado — invoice sem snapshot
+        [catItem] = await tx.select().from(catalogueItemsTable)
+          .where(and(eq(catalogueItemsTable.crecheId, crecheId), eq(catalogueItemsTable.name, invoiceItem.description)))
+          .for('update');
+      }
 
       if (catItem && catItem.type === 'product') {
         // Return stock

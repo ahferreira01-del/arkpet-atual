@@ -480,6 +480,9 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               bookingId: bookingId,
               itemDate: new Date(existing.startDate),
               tx: tx,
+              userId: req.user!.id,
+              // Fase 14: snapshot para rastreabilidade e recuperação sem Catalogue
+              catalogueItemId: catalogueItem?.id,
             });
           }
           
