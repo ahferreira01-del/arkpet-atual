@@ -1,0 +1,497 @@
+# FASE 15 — CONSOLIDAÇÃO DEFINITIVA DO MÓDULO FINANCEIRO
+
+Você é o Arquiteto Responsável pelo módulo financeiro deste sistema SaaS multi-tenant.
+
+Toda a Fase 14 já foi implementada.
+
+Considere como VERDADE ABSOLUTA que já existem:
+
+- InvoiceStateMachine
+- BillingService como única autoridade de invoices
+- processStripePayment()
+- Snapshot histórico completo em InvoiceItems
+- releasePurchasedCredits baseado em snapshot
+- Idempotência de consumo de créditos
+- Scheduler protegido contra concorrência
+- addCharge criando invoice overflow
+- financialSync delegando para BillingService
+
+NÃO remova nenhuma dessas implementações.
+
+NÃO reescreva funcionalidades já corrigidas.
+
+NÃO simplifique código funcionando.
+
+A missão desta fase é apenas consolidar definitivamente a arquitetura.
+
+--------------------------------------------------
+
+OBJETIVO
+
+Eliminar TODA dívida técnica restante do domínio financeiro.
+
+Sem alterar comportamento.
+
+Sem alterar regras.
+
+Sem quebrar APIs.
+
+Sem quebrar frontend.
+
+Sem quebrar integrações.
+
+--------------------------------------------------
+
+### PARTE 1
+
+Transformar routes/financial.ts em um módulo organizado.
+
+Extrair em arquivos separados:
+
+catalogue.routes.ts
+
+invoice.routes.ts
+
+wallet.routes.ts
+
+expense.routes.ts
+
+transaction.routes.ts
+
+audit.routes.ts
+
+reports.routes.ts
+
+pos.routes.ts
+
+refund.routes.ts
+
+credits.routes.ts
+
+Cada arquivo deve possuir apenas sua responsabilidade.
+
+As rotas públicas NÃO podem mudar.
+
+Apenas a organização interna.
+
+--------------------------------------------------
+
+### PARTE 2
+
+Criar WalletService.
+
+Toda regra relacionada a:
+
+saldo
+
+créditos
+
+pacotes
+
+serviços
+
+expiração
+
+deve existir apenas nele.
+
+Nenhuma route pode calcular saldo.
+
+Nenhum endpoint pode acessar diretamente tutor_credits.
+
+Nenhum endpoint pode acessar diretamente tutor_service_credits.
+
+Todos devem usar WalletService.
+
+--------------------------------------------------
+
+### PARTE 3
+
+Criar Repository Layer.
+
+Criar:
+
+InvoiceRepository
+
+CreditRepository
+
+WalletRepository
+
+TransactionRepository
+
+CatalogueRepository
+
+ExpenseRepository
+
+OrderRepository
+
+BookingRepository
+
+Nenhum Service poderá conter SQL espalhado.
+
+Toda consulta deverá passar pelo Repository.
+
+--------------------------------------------------
+
+### PARTE 4
+
+Eliminar consultas duplicadas.
+
+Encontrar:
+
+SELECT repetidos
+
+JOIN repetidos
+
+Queries iguais
+
+Helpers iguais
+
+Centralizar tudo.
+
+--------------------------------------------------
+
+### PARTE 5
+
+Eliminar qualquer acesso direto ao banco nas Routes.
+
+Routes apenas:
+
+validam request
+
+autorizam usuário
+
+chamam Services
+
+retornam resposta
+
+Nenhuma regra de negócio.
+
+Nenhum SQL.
+
+--------------------------------------------------
+
+### PARTE 6
+
+Padronizar transações.
+
+Toda operação financeira deve seguir exatamente:
+
+db.transaction
+
+↓
+
+Service
+
+↓
+
+Repository
+
+↓
+
+Audit
+
+↓
+
+Commit
+
+↓
+
+Cache invalidate
+
+Nunca fora desta ordem.
+
+--------------------------------------------------
+
+### PARTE 7
+
+Implementar Outbox Pattern interno.
+
+Sempre que ocorrer:
+
+InvoicePaid
+
+InvoiceRefunded
+
+InvoiceVoided
+
+CreditsReleased
+
+CreditsConsumed
+
+CreditsRestored
+
+OrderPaid
+
+OrderCancelled
+
+criar um registro na tabela de outbox.
+
+Nenhuma integração futura deverá depender diretamente da transação principal.
+
+Não alterar comportamento atual.
+
+Apenas preparar arquitetura.
+
+--------------------------------------------------
+
+### PARTE 8
+
+Centralizar eventos.
+
+Criar Domain Events:
+
+InvoiceCreated
+
+InvoicePaid
+
+InvoiceRefunded
+
+InvoiceVoided
+
+CreditsReleased
+
+CreditsConsumed
+
+CreditsRestored
+
+OrderCreated
+
+OrderPaid
+
+OrderCancelled
+
+BookingConfirmed
+
+BookingCancelled
+
+Mesmo que inicialmente apenas encaminhem para os Services existentes.
+
+--------------------------------------------------
+
+### PARTE 9
+
+Padronizar erros.
+
+Criar exceções específicas:
+
+InvoiceNotFound
+
+InvalidInvoiceState
+
+CreditUnavailable
+
+DuplicatePayment
+
+PaymentAlreadyProcessed
+
+InvalidTransition
+
+CatalogueItemUnavailable
+
+WalletUnavailable
+
+Todas as mensagens padronizadas.
+
+--------------------------------------------------
+
+### PARTE 10
+
+Eliminar TODO código morto.
+
+Localizar:
+
+helpers não usados
+
+rotas não usadas
+
+services abandonados
+
+imports mortos
+
+queries duplicadas
+
+endpoints obsoletos
+
+Caso exista risco de quebra:
+
+marcar @deprecated.
+
+Caso não exista:
+
+remover.
+
+--------------------------------------------------
+
+### PARTE 11
+
+Padronizar logs.
+
+Toda operação financeira deve gerar logs estruturados contendo:
+
+tenantId
+
+invoiceId
+
+orderId
+
+bookingId
+
+userId
+
+operation
+
+elapsedTime
+
+result
+
+error
+
+Nunca console.log solto.
+
+--------------------------------------------------
+
+### PARTE 12
+
+Testes.
+
+Adicionar testes de integração para:
+
+Compra Loja
+
+POS
+
+Pagamento PIX
+
+Pagamento Stripe
+
+Pagamento Manual
+
+Refund
+
+Void
+
+Wallet
+
+Consumo
+
+Restauração
+
+Retry
+
+Concorrência
+
+Overflow Invoice
+
+Scheduler
+
+Outbox
+
+Todos devem passar.
+
+--------------------------------------------------
+
+### PARTE 13
+
+Documentação.
+
+Atualizar:
+
+Fluxograma
+
+Dependências
+
+Eventos
+
+Repositories
+
+Services
+
+State Machine
+
+Wallet
+
+Outbox
+
+Arquitetura
+
+Sem divergência entre código e documentação.
+
+--------------------------------------------------
+
+RESTRIÇÕES
+
+É proibido:
+
+❌ alterar endpoints
+
+❌ alterar payloads
+
+❌ alterar contratos
+
+❌ alterar banco de forma destrutiva
+
+❌ gerar DROP
+
+❌ remover colunas
+
+❌ remover tabelas
+
+❌ quebrar frontend
+
+❌ quebrar Booking
+
+❌ quebrar Orders
+
+❌ quebrar Stripe
+
+❌ quebrar Scheduler
+
+❌ quebrar POS
+
+--------------------------------------------------
+
+CRITÉRIOS DE ACEITE
+
+A fase somente termina quando:
+
+✓ nenhuma Route possui regra de negócio
+
+✓ nenhuma Route possui SQL
+
+✓ toda regra financeira está em Services
+
+✓ todo SQL está em Repository
+
+✓ Wallet centralizada
+
+✓ Billing continua única autoridade
+
+✓ Snapshot continua sendo única fonte de verdade
+
+✓ nenhum endpoint mudou
+
+✓ nenhum frontend precisa ser alterado
+
+✓ tsc sem erros
+
+✓ build passando
+
+✓ drizzle sem DROP
+
+✓ testes passando
+
+✓ documentação atualizada
+
+--------------------------------------------------
+
+Antes de modificar qualquer arquivo:
+
+1. Mapear dependências.
+2. Verificar impacto.
+3. Garantir retrocompatibilidade.
+4. Implementar.
+5. Executar testes.
+6. Validar invariantes.
+7. Somente então concluir a fase.
+
+Objetivo final: deixar o módulo financeiro preparado para crescer por muitos anos sem necessidade de reestruturações futuras, preservando integralmente o comportamento atual.
