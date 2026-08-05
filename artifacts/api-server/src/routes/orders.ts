@@ -154,26 +154,51 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       return;
     }
 
-    const [updatedOrder] = await db.update(ordersTable)
-      .set({ status })
-      .where(eq(ordersTable.id, orderId))
-      .returning();
+    // Status update + credit release + outbox event must all commit in ONE
+    // transaction. Lock the row first so concurrent requests see the same
+    // pre-transition state — preventing duplicate credit releases and
+    // duplicate OrderPaid events when the same status is set twice.
+    const updatedOrder = await db.transaction(async (tx) => {
+      // Re-read with a row-level lock to get the authoritative pre-update status.
+      const [locked] = await tx
+        .select()
+        .from(ordersTable)
+        .where(and(eq(ordersTable.id, orderId), eq(ordersTable.crecheId, crecheId)))
+        .for("update");
 
-    // Liberação de créditos ao marcar como entregue/pago
-    if (["delivered", "ready_for_pickup", "paid"].includes(status) && order.invoiceId) {
-      await db.transaction(async (tx) => {
-        await releasePurchasedCredits(order.invoiceId!, req.user!.id, tx);
-        // Emit OrderPaid when the order is confirmed as paid or delivered
-        if (status === "paid" || status === "delivered") {
+      if (!locked) throw Object.assign(new Error("Pedido não encontrado."), { status: 404 });
+
+      const [updated] = await tx
+        .update(ordersTable)
+        .set({ status })
+        .where(eq(ordersTable.id, orderId))
+        .returning();
+
+      // Credit release happens at the first transition into
+      // {ready_for_pickup, paid, delivered}. Gate on the pre-update status
+      // so a ready_for_pickup → delivered sequence does not release twice.
+      const creditsAlreadyReleased = (["ready_for_pickup", "paid", "delivered"] as string[]).includes(locked.status);
+      // OrderPaid emits only when the order first reaches paid/delivered.
+      // A ready_for_pickup → paid sequence must still emit the event; a
+      // paid → delivered repeat must not.
+      const orderAlreadyPaid = (["paid", "delivered"] as string[]).includes(locked.status);
+
+      if (["delivered", "ready_for_pickup", "paid"].includes(status) && locked.invoiceId) {
+        if (!creditsAlreadyReleased) {
+          await releasePurchasedCredits(locked.invoiceId!, req.user!.id, tx);
+        }
+        if ((status === "paid" || status === "delivered") && !orderAlreadyPaid) {
           await OutboxRepository.insert({
             type: "OrderPaid",
             crecheId,
-            invoiceId: order.invoiceId!,
+            invoiceId: locked.invoiceId!,
             occurredAt: new Date().toISOString(),
           } as FinancialDomainEvent, tx);
         }
-      });
-    }
+      }
+
+      return updated;
+    });
 
     res.json(updatedOrder);
   } catch (err) {

@@ -39,6 +39,9 @@ app.listen(port, () => {
       return initStripe();
     })
     .catch((err) => {
-      console.error("[startup] Falha na inicialização (servidor continua ativo):", err);
+      // DDL or critical DB failure: do not serve with a broken outbox schema.
+      // Terminate so the process supervisor / deploy health-check detects the failure.
+      console.error("[startup] Falha crítica na inicialização — encerrando processo:", err);
+      process.exit(1);
     });
 });

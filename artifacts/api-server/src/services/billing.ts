@@ -128,7 +128,15 @@ export async function processManualPayment(
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    const paidOrdersManual = await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    for (const o of paidOrdersManual) {
+      await OutboxRepository.insert({
+        type: "OrderPaid",
+        crecheId: invoice.crecheId,
+        invoiceId: invoiceId,
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
+    }
 
     await OutboxRepository.insert({
       type: "InvoicePaid",
@@ -177,7 +185,15 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
-    await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    const paidOrdersReceipt = await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    for (const o of paidOrdersReceipt) {
+      await OutboxRepository.insert({
+        type: "OrderPaid",
+        crecheId: invoice.crecheId,
+        invoiceId: invoiceId,
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
+    }
 
     await OutboxRepository.insert({
       type: "InvoicePaid",
@@ -620,7 +636,15 @@ export class BillingService {
       description: `Pagamento Stripe da Fatura #${invoiceId}`,
     }, tx);
 
-    await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    const paidOrdersStripe = await OrderRepository.markPaidByInvoice(invoiceId, tx);
+    for (const o of paidOrdersStripe) {
+      await OutboxRepository.insert({
+        type: "OrderPaid",
+        crecheId,
+        invoiceId,
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
+    }
 
     if (isPackagePurchase) {
       await (await import("./credits.js")).releasePurchasedCredits(invoiceId, 0, tx);

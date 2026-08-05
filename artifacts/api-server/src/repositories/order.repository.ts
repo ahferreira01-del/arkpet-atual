@@ -39,12 +39,16 @@ export class OrderRepository {
       .where(eq(orderItemsTable.orderId, orderId));
   }
 
-  /** Marks all pending_payment orders for an invoice as paid. */
-  static async markPaidByInvoice(invoiceId: number, tx?: any): Promise<void> {
-    await c(tx)
+  /** Marks all pending_payment orders for an invoice as paid; returns updated rows. */
+  static async markPaidByInvoice(
+    invoiceId: number,
+    tx?: any
+  ): Promise<(typeof ordersTable.$inferSelect)[]> {
+    return c(tx)
       .update(ordersTable)
       .set({ status: "paid" })
-      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
+      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")))
+      .returning();
   }
 
   /** Cancels pending_payment orders for an invoice. */

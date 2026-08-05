@@ -6,6 +6,7 @@ import { financialLog } from "./logger.js";
 import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
+import { cancelOrder } from "../services/orders.js";
 
 const notifiedTaskIds = new Set<number>();
 let taskReminderRunning = false;
@@ -464,13 +465,13 @@ async function sendInvoiceReminders() {
       }).catch(() => {});
     }
   } catch (err) {
-    console.error("[scheduler] invoice reminder error:", err);
+    financialLog({ operation: "invoice_reminder", level: "error", error: err instanceof Error ? err.message : String(err) });
   }
 }
 
 export function startMensalidadeScheduler() {
   cron.schedule("0 9 * * *", async () => {
-    console.log("[scheduler] Running invoice reminders...");
+    financialLog({ operation: "invoice_reminder_start", result: "running" });
     await sendInvoiceReminders();
   });
   console.log("[scheduler] Invoice reminder scheduler started.");
@@ -657,7 +658,7 @@ let expiredOrderCancellerRunning = false;
 
 async function cancelExpiredOrders(): Promise<void> {
   if (expiredOrderCancellerRunning) {
-    console.warn("[scheduler] cancelExpiredOrders: execução anterior ainda em andamento, ignorando.");
+    financialLog({ operation: "expired_order_canceller", result: "skipped_already_running" });
     return;
   }
   expiredOrderCancellerRunning = true;
@@ -665,8 +666,10 @@ async function cancelExpiredOrders(): Promise<void> {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - EXPIRED_ORDER_DAYS);
 
+    // Fetch full order rows so cancelOrder() can restore stock, void invoices,
+    // and emit the OrderCancelled outbox event atomically.
     const expired = await db
-      .select({ id: ordersTable.id, crecheId: ordersTable.crecheId })
+      .select()
       .from(ordersTable)
       .where(
         and(
@@ -676,17 +679,27 @@ async function cancelExpiredOrders(): Promise<void> {
       );
 
     if (!expired.length) return;
-    console.log(`[scheduler] Cancelando ${expired.length} pedido(s) expirado(s) (>${EXPIRED_ORDER_DAYS} dias em pending_payment)...`);
+    financialLog({ operation: "expired_order_canceller", result: `cancelling ${expired.length}` });
 
     for (const order of expired) {
-      await db
-        .update(ordersTable)
-        .set({ status: "cancelled" })
-        .where(eq(ordersTable.id, order.id));
-      console.log(`[scheduler] Pedido #${order.id} cancelado por expiração (crecheId=${order.crecheId}).`);
+      try {
+        // Route through cancelOrder() so stock is restored, the invoice is
+        // voided, and OrderCancelled/InvoiceVoided outbox events are all
+        // committed in the same transaction. userId=null = system actor.
+        await cancelOrder({ order, crecheId: order.crecheId, userId: null });
+        financialLog({ operation: "expired_order_cancelled", orderId: order.id, crecheId: order.crecheId });
+      } catch (err) {
+        financialLog({
+          operation: "expired_order_cancel_failed",
+          level: "error",
+          orderId: order.id,
+          crecheId: order.crecheId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   } catch (err) {
-    console.error("[scheduler] erro ao cancelar pedidos expirados:", err);
+    financialLog({ operation: "expired_order_canceller", level: "error", error: err instanceof Error ? err.message : String(err) });
   } finally {
     expiredOrderCancellerRunning = false;
   }
@@ -779,7 +792,7 @@ async function processOutbox(): Promise<void> {
       if (!hadEvent) break;
     }
   } catch (err) {
-    console.error("[outbox] worker error:", err);
+    financialLog({ operation: "outbox_worker", level: "error", error: err instanceof Error ? err.message : String(err) });
   } finally {
     outboxWorkerRunning = false;
   }

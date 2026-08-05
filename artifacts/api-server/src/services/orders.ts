@@ -246,7 +246,8 @@ export async function dispatchLowStockAlerts(
 export async function cancelOrder(params: {
   order: typeof ordersTable.$inferSelect;
   crecheId: number;
-  userId: number;
+  /** Null for system actors (e.g. scheduled cancellations). Column is nullable. */
+  userId: number | null;
 }): Promise<typeof ordersTable.$inferSelect> {
   const { order, crecheId, userId } = params;
   let updatedOrder!: typeof ordersTable.$inferSelect;
@@ -259,6 +260,21 @@ export async function cancelOrder(params: {
     : [];
 
   await db.transaction(async (tx) => {
+    // Re-read the order with a row-level lock inside the transaction.
+    // This prevents concurrent cancellations (scheduler + API race) from
+    // double-restoring stock and emitting duplicate OrderCancelled events.
+    const [lockedOrder] = await tx
+      .select()
+      .from(ordersTable)
+      .where(eq(ordersTable.id, order.id))
+      .for("update");
+
+    if (!lockedOrder || lockedOrder.status === "cancelled") {
+      // Already cancelled — nothing to do; return the current row.
+      updatedOrder = lockedOrder ?? order;
+      return;
+    }
+
     for (const item of items) {
       const catItem = catItems.find(c => c.id === item.catalogueItemId);
 
