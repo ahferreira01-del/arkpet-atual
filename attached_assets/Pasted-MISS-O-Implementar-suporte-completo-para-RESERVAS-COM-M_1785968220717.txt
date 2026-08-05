@@ -1,0 +1,591 @@
+MISSÃO
+
+Implementar suporte completo para RESERVAS COM MÚLTIPLOS SERVIÇOS no sistema.
+
+NÃO é permitido criar soluções paliativas.
+
+NÃO é permitido adicionar IFs espalhados pelo sistema.
+
+NÃO é permitido duplicar regras existentes.
+
+Toda alteração deve seguir exatamente a arquitetura do domínio já existente.
+
+O sistema financeiro foi recentemente refatorado e possui:
+
+- BillingService como única autoridade de faturamento
+- CreditService como única autoridade de créditos
+- InvoiceStateMachine
+- Snapshot histórico em invoice_items
+- Idempotência
+- Auditoria
+- Locks
+- Transações atômicas
+
+A implementação DEVE respeitar tudo isso.
+
+====================================================
+OBJETIVO FUNCIONAL
+====================================================
+
+Hoje uma reserva possui apenas um serviço.
+
+Desejo permitir:
+
+Serviço Primário
+
++
+
+N serviços adicionais (add-ons)
+
+Exemplo
+
+Reserva
+
+Primário:
+• Day Use
+
+Serviços adicionais:
+
+• Banho
+
+• Táxi
+
+• Escovação
+
+Todos pertencem à MESMA reserva.
+
+O tipo primário continua sendo o dono da reserva.
+
+Os adicionais apenas complementam.
+
+Jamais podem alterar a máquina de estados.
+
+====================================================
+RESTRIÇÕES ABSOLUTAS
+====================================================
+
+NÃO alterar endpoints existentes.
+
+NÃO remover campos.
+
+NÃO quebrar frontend antigo.
+
+NÃO quebrar reservas existentes.
+
+NÃO alterar regras financeiras atuais.
+
+NÃO alterar consumo do serviço principal.
+
+A feature deve ser completamente retrocompatível.
+
+====================================================
+ARQUITETURA OBRIGATÓRIA
+====================================================
+
+O sistema deverá evoluir para:
+
+Booking
+
+↓
+
+BookingPrimaryService
+
+↓
+
+BookingAdditionalServices
+
+↓
+
+CreditService
+
+↓
+
+BillingService
+
+↓
+
+Invoice
+
+Nunca:
+
+Frontend
+↓
+
+Billing
+
+Nunca:
+
+Booking
+↓
+
+Invoices diretamente
+
+====================================================
+FASE 1
+MODELAGEM
+====================================================
+
+Avaliar o schema atual.
+
+Criar estrutura adequada para múltiplos serviços.
+
+Se necessário criar tabela intermediária.
+
+Exemplo:
+
+booking_services
+
+id
+
+bookingId
+
+catalogueItemId
+
+type
+
+source
+
+status
+
+consumedCredit
+
+charged
+
+invoiceItemId
+
+createdAt
+
+updatedAt
+
+NÃO reutilizar booking_consumables caso ela possua responsabilidades diferentes.
+
+Caso reutilizar seja inadequado, criar nova tabela.
+
+Justificar tecnicamente.
+
+====================================================
+FASE 2
+SERVIÇO PRIMÁRIO
+====================================================
+
+O booking continua possuindo:
+
+type
+
+serviceId
+
+ou equivalente.
+
+O serviço primário continua determinando:
+
+checkin
+
+checkout
+
+completed
+
+cancelled
+
+workflow
+
+Nunca utilizar add-ons para determinar fluxo.
+
+====================================================
+FASE 3
+SERVIÇOS ADICIONAIS
+====================================================
+
+Permitir N serviços adicionais.
+
+Cada adicional deve possuir:
+
+catalogueItemId
+
+quantidade
+
+status
+
+origem
+
+consumo de crédito
+
+invoiceItem
+
+individual
+
+====================================================
+FASE 4
+API
+====================================================
+
+Expandir criação da reserva.
+
+Hoje:
+
+POST /bookings
+
+Passará aceitar:
+
+additionalServices
+
+[]
+
+Validar:
+
+todos pertencem à creche
+
+ativos
+
+vendáveis
+
+não duplicados
+
+compatíveis com o serviço principal
+
+Tudo dentro da MESMA transação.
+
+====================================================
+FASE 5
+CRÉDITOS
+====================================================
+
+Hoje:
+
+CreditService consome apenas o serviço principal.
+
+Expandir.
+
+Criar:
+
+consumeAdditionalServices()
+
+restoreAdditionalServices()
+
+Cada adicional deve:
+
+verificar crédito
+
+consumir
+
+ou
+
+gerar cobrança
+
+individualmente.
+
+Jamais utilizar regex.
+
+Sempre catalogueItemId.
+
+====================================================
+FASE 6
+FATURAMENTO
+====================================================
+
+BillingService continua sendo único responsável.
+
+Cada adicional SEM crédito deve gerar:
+
+InvoiceItem
+
+com snapshot histórico.
+
+Não gerar Invoice separada.
+
+Adicionar charge na invoice correta.
+
+Seguir InvoiceStateMachine.
+
+Nunca reabrir invoice fechada.
+
+====================================================
+FASE 7
+CANCELAMENTO
+====================================================
+
+Ao cancelar reserva:
+
+Restaurar
+
+serviço principal
+
++
+
+todos adicionais
+
+Cada adicional deve ser restaurado individualmente.
+
+Caso tenha sido faturado:
+
+seguir fluxo atual de void/refund.
+
+Jamais perder crédito.
+
+Jamais duplicar crédito.
+
+====================================================
+FASE 8
+CHECKOUT
+====================================================
+
+Tela de checkout deve mostrar:
+
+Serviço principal
+
+Todos adicionais
+
+Origem do pagamento
+
+Crédito
+
+ou
+
+Cobrança
+
+Valor individual
+
+Valor total
+
+====================================================
+FASE 9
+LISTAGEM
+====================================================
+
+Listagem deve retornar:
+
+booking
+
++
+
+additionalServices
+
+Evitar N+1.
+
+Usar JOIN otimizado ou carregamento em lote.
+
+====================================================
+FASE 10
+FRONTEND
+====================================================
+
+Wizard
+
+Separar claramente:
+
+Serviço principal
+
+↓
+
+Serviços adicionais
+
+Resumo final:
+
+Primário
+
+Add-ons
+
+Créditos utilizados
+
+Cobranças
+
+Estimativa da fatura
+
+====================================================
+FASE 11
+EVENTOS
+====================================================
+
+Expandir domínio.
+
+Criar:
+
+AdditionalServiceAdded
+
+AdditionalServiceRemoved
+
+AdditionalServiceCharged
+
+AdditionalServiceCreditConsumed
+
+AdditionalServiceCreditRestored
+
+Todos auditáveis.
+
+====================================================
+FASE 12
+AUDITORIA
+====================================================
+
+Toda operação deve gerar:
+
+FinancialAuditLog
+
+BookingAuditLog
+
+quando aplicável.
+
+====================================================
+FASE 13
+INVARIANTES
+====================================================
+
+Garantir:
+
+✓ Serviço primário nunca muda.
+
+✓ Add-ons nunca controlam workflow.
+
+✓ Nenhum crédito negativo.
+
+✓ Nenhuma cobrança duplicada.
+
+✓ Nenhum crédito duplicado.
+
+✓ Nenhum invoice_item duplicado.
+
+✓ Cancelamento restaura exatamente o consumido.
+
+✓ Retry não duplica consumo.
+
+✓ Retry não duplica cobrança.
+
+✓ Tudo transacional.
+
+====================================================
+FASE 14
+MIGRAÇÃO
+====================================================
+
+Schema apenas ADITIVO.
+
+Zero DROP.
+
+Zero rename destrutivo.
+
+Zero quebra.
+
+Toda migração reversível.
+
+====================================================
+FASE 15
+COMPATIBILIDADE
+====================================================
+
+Reservas antigas continuam funcionando.
+
+Frontend antigo continua funcionando.
+
+API antiga continua funcionando.
+
+Novos campos opcionais.
+
+====================================================
+FASE 16
+TESTES
+====================================================
+
+Criar testes para:
+
+Reserva simples
+
+Reserva com 2 serviços
+
+Reserva com 5 serviços
+
+Reserva com créditos
+
+Reserva parcialmente coberta por créditos
+
+Sem créditos
+
+Cancelamento
+
+Void
+
+Refund
+
+Retry
+
+Race Condition
+
+Pagamento Stripe
+
+Pagamento Manual
+
+PIX
+
+Concorrência
+
+====================================================
+FASE 17
+PERFORMANCE
+====================================================
+
+Nenhuma consulta poderá gerar N+1.
+
+Adicionar índices necessários.
+
+Revisar EXPLAIN.
+
+====================================================
+FASE 18
+DOCUMENTAÇÃO
+====================================================
+
+Atualizar:
+
+Fluxo de reservas
+
+Fluxo financeiro
+
+Fluxo de créditos
+
+Fluxo de faturamento
+
+Eventos
+
+Contratos
+
+Dependências
+
+Invariantes
+
+Diagramas
+
+====================================================
+CRITÉRIOS DE ACEITE
+====================================================
+
+A implementação será considerada concluída apenas se:
+
+✓ Nenhuma funcionalidade existente quebrar.
+
+✓ Nenhuma assinatura pública mudar.
+
+✓ Nenhum endpoint existente deixar de funcionar.
+
+✓ Toda lógica financeira continuar centralizada em BillingService.
+
+✓ Toda lógica de créditos continuar centralizada em CreditService.
+
+✓ Nenhum código duplicado for criado.
+
+✓ Nenhuma regra depender de strings.
+
+✓ Toda decisão utilizar catalogueItemId.
+
+✓ Toda operação crítica utilizar transação.
+
+✓ Todo fluxo for idempotente.
+
+✓ Todo fluxo gerar auditoria.
+
+✓ O sistema permanecer coerente com DDD.
+
+Antes de escrever qualquer código, realizar uma auditoria completa dos impactos em backend, frontend, banco, serviços, eventos, contratos, testes e documentação.
+
+Caso qualquer alteração possa quebrar um módulo existente, interromper a implementação e propor uma solução arquitetural melhor antes de continuar.
+
+O objetivo NÃO é apenas implementar multi-serviços.
+
+O objetivo é fazer essa funcionalidade parecer que sempre fez parte da arquitetura do sistema.
