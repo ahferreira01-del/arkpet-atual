@@ -132,7 +132,7 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
           amount: reqItem.unitPrice,
           quantity: reqItem.quantity,
           description: catItem!.name,
-          type: catItem?.type === "service" ? "service" : "product",
+          type: catItem?.type ?? "product", // preserve "service" / "package" / "product"
           itemDate: new Date(),
           isAvulso: !firstInvoiceId,            // first item creates the avulso invoice
           existingInvoiceId: firstInvoiceId ?? undefined, // subsequent items append to it
