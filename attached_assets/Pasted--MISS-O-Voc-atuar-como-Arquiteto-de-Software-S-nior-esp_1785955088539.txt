@@ -1,0 +1,556 @@
+# MISSÃO
+
+Você atuará como Arquiteto de Software Sênior especializado em sistemas financeiros, DDD, Event-Driven Architecture, PostgreSQL, transações ACID e SaaS Multi-Tenant.
+
+Sua missão NÃO é criar funcionalidades.
+
+Sua missão é executar uma AUDITORIA TÉCNICA COMPLETA DE REGRESSÃO sobre todo o módulo financeiro após todas as refatorações já realizadas.
+
+Todo o trabalho deve preservar 100% da arquitetura existente.
+
+Nenhum endpoint pode mudar.
+
+Nenhuma assinatura pública pode mudar.
+
+Nenhuma regra de negócio pode mudar.
+
+Nenhum comportamento esperado pode ser alterado.
+
+Todo ajuste deve ser interno.
+
+A prioridade absoluta é eliminar inconsistências, regressões, riscos de concorrência e pontos de falha sem transformar o código em um conjunto de remendos.
+
+--------------------------------------------------
+
+OBJETIVOS
+
+Realizar uma auditoria completa dos fluxos:
+
+• Loja
+• Carrinho
+• Pedidos
+• Catálogo
+• Estoque
+• POS
+• Invoice
+• BillingService
+• CreditService
+• Wallet
+• Booking
+• Stripe
+• PIX
+• Scheduler
+• Push
+• Upload
+• Storage
+• Auditoria financeira
+
+--------------------------------------------------
+
+VALIDAR O FLUXO COMPLETO
+
+Fluxo obrigatório:
+
+CATALOGUE
+
+↓
+
+STORE
+
+↓
+
+CART
+
+↓
+
+ORDER
+
+↓
+
+INVOICE
+
+↓
+
+PAYMENT
+
+↓
+
+TRANSACTION
+
+↓
+
+CREDIT RELEASE
+
+↓
+
+WALLET
+
+↓
+
+BOOKING
+
+↓
+
+CREDIT CONSUMPTION
+
+↓
+
+CHECKOUT
+
+↓
+
+CANCELAMENTO
+
+↓
+
+ESTORNO
+
+↓
+
+AUDITORIA
+
+Verifique absolutamente todas as transições possíveis.
+
+--------------------------------------------------
+
+VALIDAR TODOS OS TIPOS DE VENDA
+
+□ Produto físico
+
+□ Serviço
+
+□ Pacote de diárias
+
+□ Pacote de serviços
+
+□ Consumível
+
+□ Venda POS
+
+□ Compra Loja
+
+□ Reserva
+
+□ Cobrança mensal
+
+□ Cobrança avulsa
+
+--------------------------------------------------
+
+VALIDAR TODOS OS TIPOS DE PAGAMENTO
+
+PIX
+
+Stripe
+
+Pagamento Manual
+
+Recebimento Manual
+
+Webhook Stripe
+
+Comprovante
+
+Refund
+
+Void
+
+--------------------------------------------------
+
+VALIDAR TODAS AS TRANSIÇÕES
+
+pending
+
+↓
+
+paid
+
+↓
+
+refunded
+
+↓
+
+voided
+
+↓
+
+overdue
+
+Garantir que nenhuma transição ilegal seja possível.
+
+--------------------------------------------------
+
+VALIDAR CRÉDITOS
+
+Auditar:
+
+releasePurchasedCredits()
+
+consumePackageCredits()
+
+consumeServiceCredits()
+
+restorePackageCredits()
+
+restoreServiceCredits()
+
+Wallet
+
+Booking
+
+Order
+
+Invoice
+
+Verificar:
+
+• duplicidade
+
+• underflow
+
+• overflow
+
+• double release
+
+• restore incorreto
+
+• consumo duplicado
+
+• créditos órfãos
+
+• invoice sem créditos
+
+• créditos sem invoice
+
+--------------------------------------------------
+
+VALIDAR FATURAS
+
+Verificar:
+
+Invoice mensal
+
+Invoice avulsa
+
+Invoice reaberta
+
+Invoice cancelada
+
+Invoice refund
+
+Invoice paga
+
+Invoice overdue
+
+Invoice pending
+
+Verificar se existe qualquer possibilidade de:
+
+• receber novos charges indevidamente
+
+• perder invoice
+
+• invoice sem transaction
+
+• transaction sem invoice
+
+• order sem invoice
+
+--------------------------------------------------
+
+VALIDAR ESTOQUE
+
+Validar:
+
+Compra
+
+POS
+
+Cancelamento
+
+Refund
+
+Stock Adjustment
+
+Baixa automática
+
+Reposição
+
+Low Stock
+
+Reorder Threshold
+
+Garantir:
+
+Nunca existir estoque negativo.
+
+Nunca perder movimentação.
+
+Toda alteração gerar histórico.
+
+--------------------------------------------------
+
+VALIDAR BOOKINGS
+
+Confirmação
+
+Cancelamento
+
+Reagendamento
+
+Consumo de créditos
+
+Cobrança automática
+
+Consumíveis
+
+Serviços
+
+Pacotes
+
+Verificar:
+
+duplicidade
+
+race condition
+
+rollback parcial
+
+créditos inconsistentes
+
+--------------------------------------------------
+
+VALIDAR STORAGE
+
+Upload
+
+Presigned Upload
+
+ACL
+
+Download
+
+Imagens
+
+Vídeos
+
+Pet
+
+Tutor
+
+Creche
+
+Comprovantes
+
+Verificar:
+
+arquivos órfãos
+
+uploads perdidos
+
+ACL incorreta
+
+URLs inválidas
+
+expiração
+
+--------------------------------------------------
+
+VALIDAR PUSH
+
+Login
+
+Logout
+
+Troca de navegador
+
+Múltiplos dispositivos
+
+Subscriptions duplicadas
+
+Subscriptions órfãs
+
+--------------------------------------------------
+
+VALIDAR CACHE
+
+Toda alteração financeira deve invalidar:
+
+Dashboard
+
+Wallet
+
+Packages Balance
+
+Service Credits
+
+Invoices
+
+Orders
+
+Bookings
+
+KPIs
+
+--------------------------------------------------
+
+VALIDAR TRANSAÇÕES
+
+Toda operação financeira deve ser atômica.
+
+Nenhuma operação pode ficar parcialmente aplicada.
+
+Todo UPDATE crítico deve estar protegido por transaction quando necessário.
+
+Todo SELECT seguido de UPDATE concorrente deve possuir proteção adequada (FOR UPDATE quando aplicável).
+
+--------------------------------------------------
+
+VALIDAR CONSTRAINTS
+
+Verificar:
+
+CHECK
+
+UNIQUE
+
+FK lógica
+
+Integridade referencial
+
+Idempotência
+
+Locks
+
+Rollback
+
+--------------------------------------------------
+
+VALIDAR OBSERVABILIDADE
+
+Confirmar que todos os fluxos críticos geram:
+
+FinancialAuditLog
+
+StockTransaction
+
+Transaction
+
+Logs de erro
+
+Logs de warning
+
+Sem duplicidade.
+
+--------------------------------------------------
+
+VALIDAR RETROCOMPATIBILIDADE
+
+Garantir que:
+
+Nenhum endpoint mudou.
+
+Nenhum payload mudou.
+
+Nenhuma resposta JSON mudou.
+
+Nenhum hook do frontend foi quebrado.
+
+Nenhuma rota foi removida.
+
+Nenhum cache foi invalidado incorretamente.
+
+Nenhuma integração existente deixou de funcionar.
+
+--------------------------------------------------
+
+VALIDAR CÓDIGO
+
+Procurar:
+
+Duplicação
+
+Código morto
+
+Regex de domínio
+
+Hardcodes
+
+Magic Strings
+
+Race Conditions
+
+N+1 Queries
+
+SELECT sem lock
+
+UPDATE parcial
+
+try/catch silencioso
+
+Rollback ausente
+
+Concorrência
+
+Dependências circulares
+
+Acoplamento indevido
+
+--------------------------------------------------
+
+PARA CADA PROBLEMA ENCONTRADO INFORMAR
+
+1. Severidade
+
+CRÍTICO
+
+ALTO
+
+MÉDIO
+
+BAIXO
+
+2. Arquivo
+
+3. Método
+
+4. Linha aproximada
+
+5. Fluxo afetado
+
+6. Impacto
+
+7. Causa raiz
+
+8. Correção proposta
+
+9. Risco da correção
+
+10. Compatibilidade
+
+11. Plano de rollback
+
+12. Casos de teste necessários
+
+--------------------------------------------------
+
+NÃO IMPLEMENTE NADA IMEDIATAMENTE.
+
+Primeiro gere um relatório técnico completo.
+
+Somente após a auditoria completa proponha uma nova sequência de fases de correção priorizadas por:
+
+• risco
+
+• impacto
+
+• dependências
+
+• facilidade de rollback
+
+• compatibilidade
+
+• ausência de regressão
+
+O objetivo final é deixar o módulo financeiro consistente, transacional, previsível, desacoplado, sem regressões e sem introduzir qualquer comportamento que pareça um remendo.
