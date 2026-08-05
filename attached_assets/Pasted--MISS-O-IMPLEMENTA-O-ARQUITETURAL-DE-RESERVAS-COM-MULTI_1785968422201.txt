@@ -1,0 +1,616 @@
+# MISSÃO — IMPLEMENTAÇÃO ARQUITETURAL DE RESERVAS COM MULTI-SERVIÇOS
+
+## CONTEXTO
+
+Este projeto já passou por uma grande refatoração arquitetural do módulo financeiro.
+
+A arquitetura atual possui:
+
+- BillingService como única autoridade de faturamento.
+- CreditService como única autoridade sobre créditos.
+- InvoiceStateMachine como única máquina de estados das invoices.
+- Snapshot histórico em invoice_items.
+- Idempotência em operações críticas.
+- Auditoria centralizada.
+- Eventos via Outbox.
+- Transações atômicas.
+- Separação clara entre domínios.
+
+A nova funcionalidade deve seguir exatamente essa arquitetura.
+
+NÃO quero adaptações rápidas.
+
+NÃO quero código duplicado.
+
+NÃO quero lógica espalhada.
+
+NÃO quero ifs especiais para "multi-serviço".
+
+Quero que essa funcionalidade pareça que sempre existiu dentro do sistema.
+
+--------------------------------------------------
+
+# OBJETIVO
+
+Permitir que uma reserva possua:
+
+• 1 Serviço Primário
+
+e
+
+• N Serviços Adicionais (Add-ons)
+
+Exemplo:
+
+Reserva
+
+Serviço Primário
+- Day Use
+
+Serviços adicionais
+
+- Banho
+- Táxi
+- Escovação
+- Adestramento
+
+Todos pertencem à MESMA reserva.
+
+O serviço primário continua sendo o dono da reserva.
+
+Os adicionais apenas complementam.
+
+Jamais podem alterar a máquina de estados.
+
+--------------------------------------------------
+
+# PRINCÍPIOS OBRIGATÓRIOS
+
+A implementação deve obedecer aos seguintes princípios:
+
+✓ DDD
+
+✓ SOLID
+
+✓ Clean Architecture
+
+✓ Event Driven
+
+✓ Idempotência
+
+✓ Retrocompatibilidade
+
+✓ Zero regressões
+
+✓ Zero quebra de APIs existentes
+
+✓ Zero perda de dados
+
+✓ Zero duplicação de regras
+
+✓ Zero lógica baseada em string
+
+✓ Zero remendos
+
+--------------------------------------------------
+
+# COMPATIBILIDADE
+
+Os endpoints atuais NÃO podem ser quebrados.
+
+É permitido adicionar parâmetros opcionais.
+
+É proibido:
+
+- remover parâmetros
+- renomear parâmetros existentes
+- alterar contratos atuais
+- alterar comportamento quando os novos campos não forem enviados
+
+Clientes antigos devem continuar funcionando sem qualquer modificação.
+
+--------------------------------------------------
+
+# FASE 1 — AUDITORIA
+
+Antes de escrever qualquer código:
+
+Mapear completamente:
+
+- Backend
+- Frontend
+- Banco
+- Billing
+- Credits
+- Bookings
+- Catálogo
+- Eventos
+- Auditoria
+- Scheduler
+- Testes
+- Dependências
+- Fluxos
+
+Identificar qualquer impacto.
+
+Nenhuma implementação deve começar antes dessa análise.
+
+--------------------------------------------------
+
+# FASE 2 — MODELAGEM DO DOMÍNIO
+
+A reserva passa a ser um Aggregate.
+
+Booking
+
+↓
+
+Primary Service
+
+↓
+
+Additional Services
+
+↓
+
+Credits
+
+↓
+
+Billing
+
+↓
+
+Audit
+
+↓
+
+Outbox
+
+Não tratar serviços adicionais como simples consumables.
+
+Avaliar o schema atual.
+
+Caso booking_consumables possua responsabilidade operacional (staff durante a estadia), NÃO reutilizá-la.
+
+Criar estrutura própria.
+
+Exemplo:
+
+booking_services
+
+id
+
+bookingId
+
+catalogueItemId
+
+quantity
+
+status
+
+source
+
+consumedCredit
+
+charged
+
+invoiceItemId
+
+createdAt
+
+updatedAt
+
+Caso exista solução melhor, justificar tecnicamente.
+
+--------------------------------------------------
+
+# FASE 3 — FONTE ÚNICA DE VERDADE
+
+Eliminar definitivamente dependência de strings.
+
+Hoje existe:
+
+booking.type
+
+Isso deve permanecer apenas para compatibilidade.
+
+Adicionar:
+
+primaryCatalogueItemId
+
+na tabela bookings.
+
+Reservas antigas:
+
+primaryCatalogueItemId = NULL
+
+Reservas novas:
+
+primaryCatalogueItemId preenchido.
+
+A partir desta implementação:
+
+catalogueItemId passa a ser a única fonte oficial de identificação de serviços.
+
+Novas regras jamais poderão depender de:
+
+booking.type
+
+regex
+
+nomes
+
+descrições
+
+Toda lógica utilizará catalogueItemId.
+
+--------------------------------------------------
+
+# FASE 4 — API
+
+Expandir POST /bookings.
+
+Aceitar opcionalmente:
+
+additionalServices[]
+
+Cada item deve conter:
+
+catalogueItemId
+
+quantity
+
+Validar:
+
+- pertence à creche
+- ativo
+- vendável
+- sem duplicidade
+- compatível com o serviço primário
+
+Tudo dentro de uma única transação.
+
+--------------------------------------------------
+
+# FASE 5 — SERVIÇO PRIMÁRIO
+
+O serviço primário continua controlando:
+
+check-in
+
+check-out
+
+completed
+
+cancelled
+
+workflow
+
+SERVICE_BOOKING_TYPES
+
+Nenhum serviço adicional poderá alterar a máquina de estados.
+
+--------------------------------------------------
+
+# FASE 6 — CREDIT SERVICE
+
+Expandir CreditService.
+
+Criar métodos específicos.
+
+consumeAdditionalServices()
+
+restoreAdditionalServices()
+
+Cada serviço adicional deve:
+
+verificar saldo
+
+consumir crédito
+
+ou
+
+gerar cobrança
+
+individualmente.
+
+Jamais utilizar regex.
+
+Sempre catalogueItemId.
+
+--------------------------------------------------
+
+# FASE 7 — BILLING
+
+BillingService continua sendo o único responsável pelo faturamento.
+
+Cada serviço adicional SEM crédito disponível deve gerar:
+
+InvoiceItem
+
+com snapshot histórico completo.
+
+Jamais criar invoices separadas.
+
+Jamais reabrir invoices encerradas.
+
+Respeitar InvoiceStateMachine.
+
+--------------------------------------------------
+
+# FASE 8 — CANCELAMENTO
+
+Ao cancelar uma reserva:
+
+Restaurar individualmente:
+
+Serviço principal
+
+Serviço adicional 1
+
+Serviço adicional 2
+
+...
+
+Nunca fazer restauração global.
+
+Cada item deve ser tratado conforme sua origem.
+
+Exemplo:
+
+Banho
+
+→ crédito
+
+→ restaura crédito
+
+Táxi
+
+→ faturado
+
+→ void/refund
+
+Escovação
+
+→ não consumido
+
+→ nenhuma ação
+
+Jamais perder créditos.
+
+Jamais duplicar créditos.
+
+--------------------------------------------------
+
+# FASE 9 — CHECKOUT
+
+A tela de checkout deve mostrar:
+
+Serviço principal
+
+Todos os adicionais
+
+Origem de pagamento
+
+Crédito utilizado
+
+Cobrança
+
+Valor unitário
+
+Valor total
+
+Estimativa final da fatura
+
+--------------------------------------------------
+
+# FASE 10 — FRONTEND
+
+Separar visualmente:
+
+Serviço Primário
+
+↓
+
+Serviços Adicionais
+
+Resumo:
+
+Primário
+
+Add-ons
+
+Créditos utilizados
+
+Cobranças
+
+Total estimado
+
+Interface intuitiva.
+
+Sem aumentar complexidade para o usuário.
+
+--------------------------------------------------
+
+# FASE 11 — EVENTOS
+
+Adicionar eventos ao domínio.
+
+BookingCreatedWithAdditionalServices
+
+AdditionalServicesConfirmed
+
+AdditionalServiceCreditConsumed
+
+AdditionalServiceCreditRestored
+
+AdditionalServiceCharged
+
+AdditionalServiceCancelled
+
+Todos utilizando o padrão Outbox existente.
+
+--------------------------------------------------
+
+# FASE 12 — AUDITORIA
+
+Toda operação deve gerar:
+
+FinancialAuditLog
+
+BookingAuditLog
+
+quando aplicável.
+
+Nenhuma alteração financeira pode ocorrer sem auditoria.
+
+--------------------------------------------------
+
+# FASE 13 — PERFORMANCE
+
+Evitar N+1.
+
+Adicionar índices.
+
+Revisar consultas.
+
+Utilizar joins eficientes.
+
+Avaliar impacto de paginação.
+
+--------------------------------------------------
+
+# FASE 14 — MIGRAÇÕES
+
+Somente alterações aditivas.
+
+Permitido:
+
+Novas tabelas
+
+Novas colunas
+
+Novos índices
+
+Novas constraints
+
+Proibido:
+
+DROP
+
+Rename destrutivo
+
+Alterações incompatíveis
+
+Toda migração reversível.
+
+--------------------------------------------------
+
+# FASE 15 — TESTES
+
+Criar testes completos.
+
+Reserva simples
+
+Reserva com múltiplos serviços
+
+Multi-pet
+
+Crédito parcial
+
+Sem créditos
+
+Cancelamento
+
+Void
+
+Refund
+
+Stripe
+
+PIX
+
+Pagamento manual
+
+Retry
+
+Race Condition
+
+Rollback
+
+Idempotência
+
+Compatibilidade com reservas antigas
+
+--------------------------------------------------
+
+# FASE 16 — DOCUMENTAÇÃO
+
+Atualizar:
+
+Fluxo de reservas
+
+Fluxo financeiro
+
+Fluxo de créditos
+
+Eventos
+
+Contratos
+
+Dependências
+
+Diagramas
+
+Invariantes
+
+Arquitetura
+
+--------------------------------------------------
+
+# CRITÉRIOS DE ACEITE
+
+A implementação somente será considerada concluída se:
+
+✓ Nenhuma funcionalidade existente quebrar.
+
+✓ Nenhum endpoint existente deixar de funcionar.
+
+✓ Nenhuma assinatura pública mudar.
+
+✓ Clientes antigos continuarem funcionando.
+
+✓ Todo faturamento continuar centralizado em BillingService.
+
+✓ Todo crédito continuar centralizado em CreditService.
+
+✓ Todo serviço seja identificado exclusivamente por catalogueItemId.
+
+✓ booking.type permaneça apenas para compatibilidade.
+
+✓ Nenhuma regra utilize strings ou regex.
+
+✓ Toda operação crítica seja transacional.
+
+✓ Todo fluxo seja idempotente.
+
+✓ Todo fluxo gere auditoria.
+
+✓ Toda reserva seja tratada como um Aggregate.
+
+✓ Nenhum código duplicado seja criado.
+
+✓ Nenhuma lógica financeira seja espalhada pelo sistema.
+
+✓ Nenhum remendo seja introduzido.
+
+## INSTRUÇÃO FINAL
+
+Antes de implementar qualquer alteração, realizar uma auditoria completa dos impactos e apresentar um plano técnico detalhado.
+
+Caso qualquer decisão possa comprometer a arquitetura existente, interromper a implementação e propor uma alternativa arquitetural mais adequada antes de modificar o código.
+
+O objetivo não é apenas adicionar múltiplos serviços em uma reserva.
+
+O objetivo é evoluir definitivamente o domínio de reservas, mantendo a mesma qualidade arquitetural já existente no módulo financeiro.
