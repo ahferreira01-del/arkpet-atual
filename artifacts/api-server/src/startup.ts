@@ -339,11 +339,68 @@ export async function ensureBookingServicesSchema(): Promise<void> {
   console.log("[startup] booking_services: schema verificado (idempotente).");
 }
 
+/**
+ * Ensures `invoices` and `invoice_items` have every column the ORM reads/writes.
+ * Idempotent — safe to run on every startup.
+ * Production databases were created before several columns were added; this
+ * migration brings them up to the current Drizzle schema shape.
+ */
+async function ensureInvoicesSchema(): Promise<void> {
+  await (db as any).execute(`
+    -- Enums (guard: only created when absent)
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'invoice_status') THEN
+        CREATE TYPE invoice_status AS ENUM (
+          'pending','awaiting_confirmation','paid','overdue','voided','refunded'
+        );
+      END IF;
+    END $$;
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'payment_method') THEN
+        CREATE TYPE payment_method AS ENUM (
+          'stripe','pix','cash','credit_card','bank_slip','credits'
+        );
+      END IF;
+    END $$;
+
+    -- invoices: additive column provisioning
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS discount        NUMERIC(10,2) DEFAULT 0.00;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS credits_released BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_method  payment_method;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS stripe_payment_intent_id VARCHAR(255);
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_photo_path TEXT;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cycle_start     DATE;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cycle_end       DATE;
+    ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- tutor × cycle unique index (nullable cols → only one non-null row per tutor+cycle)
+    CREATE UNIQUE INDEX IF NOT EXISTS tutor_cycle_unique_idx
+      ON invoices (tutor_id, cycle_start, cycle_end)
+      WHERE tutor_id IS NOT NULL AND cycle_start IS NOT NULL AND cycle_end IS NOT NULL;
+
+    -- invoice_items: additive column provisioning
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS item_date             TIMESTAMP;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS pet_id                INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS booking_id            INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS order_id              INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS item_type             VARCHAR(50);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS catalogue_item_id     INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_name         VARCHAR(255);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_price        NUMERIC(10,2);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS credits_amount        INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_max_pets     INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_expiration_days INTEGER;
+  `);
+  console.log("[startup] invoices/invoice_items: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
   // Task #103: add-on services schema (runs in all environments)
   await ensureBookingServicesSchema();
+  // Invoices/invoice_items column drift (runs in all environments)
+  await ensureInvoicesSchema();
 
   await seedPlans();
 
