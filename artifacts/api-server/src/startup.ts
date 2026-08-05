@@ -265,9 +265,85 @@ async function ensureOutboxSchema(): Promise<void> {
   console.log("[startup] financial_outbox: schema verificado (idempotente).");
 }
 
+/**
+ * Task #103 — Add-on services (booking_services): ensures the table, enum,
+ * and supporting columns exist in all environments.
+ * Idempotent — safe to run on every startup.
+ * Needed because drizzle-kit push only ran on the dev DB; production and CI
+ * databases get the schema through this startup path.
+ */
+export async function ensureBookingServicesSchema(): Promise<void> {
+  await (db as any).execute(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'booking_service_status') THEN
+        CREATE TYPE booking_service_status AS ENUM ('pending', 'confirmed', 'cancelled');
+      END IF;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS booking_services (
+      id                        SERIAL PRIMARY KEY,
+      booking_id                INTEGER NOT NULL,
+      catalogue_item_id         INTEGER NOT NULL,
+      quantity                  INTEGER NOT NULL DEFAULT 1,
+      status                    booking_service_status NOT NULL DEFAULT 'pending',
+      consumed_credit           BOOLEAN NOT NULL DEFAULT FALSE,
+      tutor_service_credit_id   INTEGER,
+      charged                   BOOLEAN NOT NULL DEFAULT FALSE,
+      invoice_item_id           INTEGER,
+      captured_price            NUMERIC(10, 2),
+      created_at                TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at                TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- Fully additive column provisioning: an earlier/partial deployment may
+    -- have created the table with a subset of columns. Every column the code
+    -- reads or writes is added here individually (NOT NULL columns carry a
+    -- DEFAULT so the ALTER succeeds on non-empty tables).
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS booking_id INTEGER;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS catalogue_item_id INTEGER;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS status booking_service_status NOT NULL DEFAULT 'pending';
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS consumed_credit BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS tutor_service_credit_id INTEGER;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS charged BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS invoice_item_id INTEGER;
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS captured_price NUMERIC(10, 2);
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+    ALTER TABLE booking_services
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- Indexes only after all columns are guaranteed to exist
+    CREATE INDEX IF NOT EXISTS booking_services_booking_idx
+      ON booking_services (booking_id);
+    CREATE INDEX IF NOT EXISTS booking_services_catalogue_idx
+      ON booking_services (catalogue_item_id);
+    -- Uniqueness: one row per (booking, catalogue item) to prevent duplicate charges
+    CREATE UNIQUE INDEX IF NOT EXISTS booking_services_booking_catalogue_uq
+      ON booking_services (booking_id, catalogue_item_id)
+      WHERE status != 'cancelled';
+
+    -- Add primary_catalogue_item_id to bookings if it doesn't exist yet
+    ALTER TABLE bookings
+      ADD COLUMN IF NOT EXISTS primary_catalogue_item_id INTEGER;
+  `);
+  console.log("[startup] booking_services: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
+  // Task #103: add-on services schema (runs in all environments)
+  await ensureBookingServicesSchema();
 
   await seedPlans();
 

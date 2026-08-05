@@ -14,7 +14,12 @@ export type FinancialEventType =
   | "CreditsConsumed"
   | "CreditsRestored"
   | "OrderPaid"
-  | "OrderCancelled";
+  | "OrderCancelled"
+  | "AdditionalServicesConfirmed"
+  | "AdditionalServiceCreditConsumed"
+  | "AdditionalServiceCreditRestored"
+  | "AdditionalServiceCharged"
+  | "AdditionalServicesCancelled";
 
 export interface BaseFinancialEvent {
   type: FinancialEventType;
@@ -71,6 +76,42 @@ export interface OrderCancelledEvent extends BaseFinancialEvent {
   invoiceId: number;
 }
 
+export interface AdditionalServicesConfirmedEvent extends BaseFinancialEvent {
+  type: "AdditionalServicesConfirmed";
+  bookingId: number;
+  tutorId: number;
+  count: number;       // number of add-ons confirmed
+}
+
+export interface AdditionalServiceCreditConsumedEvent extends BaseFinancialEvent {
+  type: "AdditionalServiceCreditConsumed";
+  bookingId: number;
+  tutorId: number;
+  bookingServiceId: number;
+  catalogueItemId: number;
+}
+
+export interface AdditionalServiceCreditRestoredEvent extends BaseFinancialEvent {
+  type: "AdditionalServiceCreditRestored";
+  bookingId: number;
+  bookingServiceId: number;
+  catalogueItemId: number;
+}
+
+export interface AdditionalServiceChargedEvent extends BaseFinancialEvent {
+  type: "AdditionalServiceCharged";
+  bookingId: number;
+  tutorId: number;
+  bookingServiceId: number;
+  catalogueItemId: number;
+  amount: number;
+}
+
+export interface AdditionalServicesCancelledEvent extends BaseFinancialEvent {
+  type: "AdditionalServicesCancelled";
+  bookingId: number;
+}
+
 export type FinancialDomainEvent =
   | InvoicePaidEvent
   | InvoiceRefundedEvent
@@ -79,7 +120,12 @@ export type FinancialDomainEvent =
   | CreditsConsumedEvent
   | CreditsRestoredEvent
   | OrderPaidEvent
-  | OrderCancelledEvent;
+  | OrderCancelledEvent
+  | AdditionalServicesConfirmedEvent
+  | AdditionalServiceCreditConsumedEvent
+  | AdditionalServiceCreditRestoredEvent
+  | AdditionalServiceChargedEvent
+  | AdditionalServicesCancelledEvent;
 
 /**
  * Stamps `occurredAt` and returns a typed domain event.

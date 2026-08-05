@@ -152,7 +152,7 @@ describe("OutboxRepository", () => {
 describe("Payment operations emit expected outbox events", () => {
   it("processManualPayment emits InvoicePaid", async () => {
     const tutor = await createTestTutor(ctx.crecheId);
-    const invId = await BillingService.addCharge({
+    const { invoiceId: invId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 42,
@@ -175,7 +175,7 @@ describe("Payment operations emit expected outbox events", () => {
 
   it("voidInvoice emits InvoiceVoided", async () => {
     const tutor = await createTestTutor(ctx.crecheId);
-    const invId = await BillingService.addCharge({
+    const { invoiceId: invId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 55,

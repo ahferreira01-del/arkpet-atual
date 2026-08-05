@@ -42,14 +42,14 @@ describe("BillingService.addCharge — cycle invoice", () => {
   });
 
   it("creates a new monthly cycle invoice for the first charge", async () => {
-    firstInvoiceId = await BillingService.addCharge({
+    ({ invoiceId: firstInvoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 50,
       description: "Diária Test",
       type: "service",
       userId: ctx.userId,
-    });
+    }));
     expect(firstInvoiceId).toBeTypeOf("number");
     const inv = await InvoiceRepository.findById(firstInvoiceId);
     expect(inv).toBeTruthy();
@@ -58,7 +58,7 @@ describe("BillingService.addCharge — cycle invoice", () => {
   });
 
   it("merges a second charge into the same open cycle invoice", async () => {
-    const secondInvoiceId = await BillingService.addCharge({
+    const { invoiceId: secondInvoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 30,
@@ -76,7 +76,7 @@ describe("BillingService.addCharge — cycle invoice", () => {
     // Pay the cycle invoice first
     await processManualPayment(firstInvoiceId, ctx.crecheId, ctx.userId, "cash");
 
-    const overflowId = await BillingService.addCharge({
+    const { invoiceId: overflowId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 20,
@@ -101,7 +101,7 @@ describe("BillingService.addCharge — cycle invoice", () => {
 describe("BillingService.addCharge — avulso and existingInvoiceId", () => {
   it("creates a standalone avulso invoice when isAvulso=true", async () => {
     const tutor = await createTestTutor(ctx.crecheId);
-    const invId = await BillingService.addCharge({
+    const { invoiceId: invId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 75,
@@ -120,7 +120,7 @@ describe("BillingService.addCharge — avulso and existingInvoiceId", () => {
   it("appends to an existing invoice when existingInvoiceId is provided", async () => {
     const tutor = await createTestTutor(ctx.crecheId);
 
-    const baseId = await BillingService.addCharge({
+    const { invoiceId: baseId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 40,
@@ -130,7 +130,7 @@ describe("BillingService.addCharge — avulso and existingInvoiceId", () => {
       userId: ctx.userId,
     });
 
-    const appendId = await BillingService.addCharge({
+    const { invoiceId: appendId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 10,
@@ -170,7 +170,7 @@ describe("processManualPayment", () => {
   beforeAll(async () => {
     const tutor = await createTestTutor(ctx.crecheId);
     tutorId = tutor.id;
-    invoiceId = await BillingService.addCharge({
+    ({ invoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 100,
@@ -178,7 +178,7 @@ describe("processManualPayment", () => {
       type: "service",
       isAvulso: true,
       userId: ctx.userId,
-    });
+    }));
   });
 
   it("marks invoice as paid and inserts InvoicePaid outbox event", async () => {
@@ -212,14 +212,14 @@ describe("voidInvoice", () => {
   beforeAll(async () => {
     const tutor = await createTestTutor(ctx.crecheId);
     tutorId = tutor.id;
-    invoiceId = await BillingService.addCharge({
+    ({ invoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 60,
       description: "Void test",
       type: "service",
       isAvulso: true,
-    });
+    }));
   });
 
   it("marks invoice as voided and inserts InvoiceVoided outbox event", async () => {
@@ -246,14 +246,14 @@ describe("refundInvoice", () => {
     const tutor = await createTestTutor(ctx.crecheId);
     tutorId = tutor.id;
     // Create and pay an invoice so it can be refunded
-    invoiceId = await BillingService.addCharge({
+    ({ invoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId,
       amount: 80,
       description: "Refund test",
       type: "service",
       isAvulso: true,
-    });
+    }));
     await processManualPayment(invoiceId, ctx.crecheId, ctx.userId, "pix");
   });
 
@@ -278,7 +278,7 @@ describe("BillingService.addCharge — anonymous POS (null tutorId) concurrent s
     // Both sales have tutorId=null (anonymous POS, no customer attached).
     // Without the null-tutorId fix, both would try to insert an invoice with
     // (tutorId=0, cycleStart=today, cycleEnd=today) and hit the unique index.
-    const [result1, result2] = await Promise.all([
+    const [r1, r2] = await Promise.all([
       BillingService.addCharge({
         crecheId: ctx.crecheId,
         tutorId: null,
@@ -296,6 +296,8 @@ describe("BillingService.addCharge — anonymous POS (null tutorId) concurrent s
         isAvulso: false,
       }),
     ]);
+    const result1 = r1.invoiceId;
+    const result2 = r2.invoiceId;
 
     // Must be two distinct invoices
     expect(result1).toBeTypeOf("number");
@@ -319,7 +321,7 @@ describe("BillingService.addCharge — anonymous POS (null tutorId) concurrent s
 describe("processManualPayment — concurrency (double-payment race)", () => {
   it("two parallel payment attempts on the same invoice: exactly one succeeds", async () => {
     const tutor = await createTestTutor(ctx.crecheId);
-    const invoiceId = await BillingService.addCharge({
+    const { invoiceId } = await BillingService.addCharge({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
       amount: 50,

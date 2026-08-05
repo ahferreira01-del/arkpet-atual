@@ -421,6 +421,21 @@ export interface CreateBookingRequest {
   isRecurring: boolean;
   recurringDays?: number[] | null;
   price?: number | null;
+  /** For package-credit bookings: the maxPetsPerDay limit of the package used. */
+  packageMaxPets?: number | null;
+  /**
+   * Catalogue item ID of the primary service being booked.
+   * Must be positive, active, service-type, and belong to the current creche.
+   * Required when additionalServiceIds are provided; null/absent for package bookings.
+   */
+  primaryCatalogueItemId?: number | null;
+  /**
+   * Catalogue item IDs of add-on services to attach to the booking.
+   * Each ID must be a positive integer, active, service-type, belong to this creche,
+   * and must not duplicate primaryCatalogueItemId.
+   * Not allowed when packageMaxPets is set (package bookings).
+   */
+  additionalServiceIds?: number[] | null;
 }
 
 export type UpdateBookingRequestStatus =

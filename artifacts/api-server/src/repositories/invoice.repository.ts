@@ -212,8 +212,9 @@ export class InvoiceRepository {
   static async createItem(
     values: typeof invoiceItemsTable.$inferInsert,
     tx?: any
-  ): Promise<void> {
-    await c(tx).insert(invoiceItemsTable).values(values);
+  ): Promise<{ id: number }> {
+    const [row] = await c(tx).insert(invoiceItemsTable).values(values).returning({ id: invoiceItemsTable.id });
+    return row;
   }
 
   static async findItemsByInvoiceId(invoiceId: number, tx?: any) {

@@ -472,7 +472,7 @@ export class BillingService {
       }
 
       // ── Inserir item com snapshot histórico (Fase 14) ──────────────────
-      await InvoiceRepository.createItem({
+      const { id: invoiceItemId } = await InvoiceRepository.createItem({
         invoiceId,
         description: params.description,
         amount: amountVal.toString(),
@@ -503,7 +503,7 @@ export class BillingService {
           ` (tipo: ${params.type || "service"}).`,
       }, txClient);
 
-      return invoiceId;
+      return { invoiceId, invoiceItemId };
     };
 
     if (params.tx) {

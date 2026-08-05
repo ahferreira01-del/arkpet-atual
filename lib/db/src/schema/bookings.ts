@@ -28,6 +28,7 @@ export const bookingsTable = pgTable("bookings", {
   hasPersonalItems: boolean("has_personal_items"),
   personalItemsPhotoUrl: text("personal_items_photo_url"),
   packageMaxPets: integer("package_max_pets"), // Limite do pacote selecionado no agendamento
+  primaryCatalogueItemId: integer("primary_catalogue_item_id"), // ID do serviço principal (null para reservas antigas)
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("bookings_creche_date_idx").on(t.crecheId, t.startDate),

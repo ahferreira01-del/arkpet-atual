@@ -20,14 +20,12 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Open the port FIRST so the Replit health-check probe gets a 200 immediately.
-// DB init and schedulers run after — a transient startup error must never
-// prevent the port from opening (autoscale deploy would fail the promote step).
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
-
-  initializeDatabase()
-    .then(() => {
+// Schema provisioning must complete before accepting booking traffic to prevent
+// requests from hitting tables that don't exist yet on a fresh deployment.
+initializeDatabase()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
       startScheduler();
       startMensalidadeScheduler();
       startScheduledPlanChangeApplicator();
@@ -36,12 +34,14 @@ app.listen(port, () => {
       startExpiredOrderCanceller();
       startOutboxWorker();
       // Stripe init runs after DB so price seeding has the schema ready.
-      return initStripe();
-    })
-    .catch((err) => {
-      // DDL or critical DB failure: do not serve with a broken outbox schema.
-      // Terminate so the process supervisor / deploy health-check detects the failure.
-      console.error("[startup] Falha crítica na inicialização — encerrando processo:", err);
-      process.exit(1);
+      initStripe().catch((err) => {
+        console.error("[startup] Stripe init error (non-fatal):", err);
+      });
     });
-});
+  })
+  .catch((err) => {
+    // DDL or critical DB failure: do not serve with a broken schema.
+    // Terminate so the process supervisor / deploy health-check detects the failure.
+    console.error("[startup] Falha crítica na inicialização — encerrando processo:", err);
+    process.exit(1);
+  });

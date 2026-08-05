@@ -65,9 +65,9 @@ export default function NewBooking() {
 
   const [step, setStep] = useState(1);
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
-    null,
-  );
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  // Add-ons: catalogue item IDs of additional services (besides the primary)
+  const [selectedAddonIds, setSelectedAddonIds] = useState<number[]>([]);
 
   const [form, setForm] = useState({
     startDate: format(new Date(), "yyyy-MM-dd"),
@@ -76,7 +76,7 @@ export default function NewBooking() {
   });
 
   const availablePets = isTutor
-    ? pets?.filter((p) => p.tutorId === user?.id)
+    ? pets?.filter((p: any) => p.tutorId === user?.id)
     : pets;
   // Include both "service" and "day_use" catalogue items in the selector.
   // "day_use" is a canonical catalogue type distinct from generic services.
@@ -106,6 +106,25 @@ export default function NewBooking() {
   }
 
   const selectedService = services.find((s: any) => s.id === selectedServiceId);
+
+  // isRealServiceSelected: true only when a non-package catalogue item (positive ID) is chosen.
+  // Package selections use synthetic negative IDs — add-ons are not supported for packages.
+  const isRealServiceSelected = selectedServiceId !== null && selectedServiceId > 0;
+
+  // Add-on services: catalogue services that are NOT the primary selected service.
+  // Only computed and shown when a real (non-package) primary service is selected.
+  const addonServices = (isRealServiceSelected
+    ? catalogue?.filter((item: any) =>
+        item.type === "service" &&
+        item.id !== selectedServiceId &&
+        item.isActive !== false
+      ) ?? []
+    : []) as any[];
+
+  const toggleAddon = (id: number) =>
+    setSelectedAddonIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
 
   const handleNext = () => {
     if (step === 1 && selectedPetIds.length === 0) {
@@ -141,7 +160,7 @@ export default function NewBooking() {
 
   const getPetPrice = (petId: number) => {
     if (!selectedService) return { price: 0, usedSize: false, pet: undefined };
-    const pet = availablePets?.find((p) => p.id === petId);
+    const pet = availablePets?.find((p: any) => p.id === petId);
     let price = selectedService.price;
     let usedSize = false;
 
@@ -182,6 +201,10 @@ export default function NewBooking() {
           .replace(/\s+/g, "_")
           .replace(/[^a-z0-9_]/g, "")
         || "servico";
+
+    // Primary catalogue item ID (null for virtual package entries id < 0)
+    const primaryCatalogueItemId = selectedService.id > 0 ? selectedService.id : null;
+
     try {
       await Promise.all(
         selectedPetIds.map((petId) => {
@@ -196,7 +219,10 @@ export default function NewBooking() {
               notes: form.notes || undefined,
               price,
               packageMaxPets: selectedService.id < 0 ? selectedService.maxPets : undefined,
-            } as any,
+              isRecurring: false,
+              primaryCatalogueItemId: primaryCatalogueItemId ?? undefined,
+              additionalServiceIds: selectedAddonIds.length > 0 ? selectedAddonIds : undefined,
+            },
           });
         }),
       );
@@ -311,7 +337,7 @@ export default function NewBooking() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {availablePets?.map((pet) => {
+                {availablePets?.map((pet: any) => {
                   const isSelected = selectedPetIds.includes(pet.id);
                   return (
                     <Card
@@ -401,7 +427,11 @@ export default function NewBooking() {
                         key={service.id}
                         className={`transition-all duration-300 ${isSuboptimalPackage ? "opacity-50 grayscale cursor-not-allowed" : "cursor-pointer hover:border-white/20"} ${isSelected && !isSuboptimalPackage ? "ring-2 ring-primary border-primary bg-primary/5" : ""}`}
                         onClick={() => {
-                          if (!isSuboptimalPackage) setSelectedServiceId(service.id);
+                          if (!isSuboptimalPackage) {
+                            setSelectedServiceId(service.id);
+                            // Clear add-ons when switching to a package (not supported)
+                            if (service.id < 0) setSelectedAddonIds([]);
+                          }
                         }}
                       >
                         <CardContent className="p-5">
@@ -488,6 +518,59 @@ export default function NewBooking() {
                   );
                   });
                 })()}
+              </div>
+            )}
+
+            {/* ── Serviços Adicionais (add-ons) ────────────────────────────────── */}
+            {selectedServiceId !== null && addonServices.length > 0 && (
+              <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                <div>
+                  <h3 className="text-base font-semibold text-white mb-1">
+                    Adicionar Serviços Extra
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Selecione serviços complementares para este agendamento (opcional).
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {addonServices.map((addon: any) => {
+                    const isSelected = selectedAddonIds.includes(addon.id);
+                    return (
+                      <div
+                        key={addon.id}
+                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                          isSelected
+                            ? "bg-indigo-500/10 border-indigo-500/40 ring-1 ring-indigo-500/30"
+                            : "bg-white/3 border-white/10 hover:border-white/20"
+                        }`}
+                        onClick={() => toggleAddon(addon.id)}
+                      >
+                        <div
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+                            isSelected
+                              ? "bg-indigo-500 border-indigo-500 text-white"
+                              : "border-white/20"
+                          }`}
+                        >
+                          {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{addon.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(() => {
+                              const pet = availablePets?.find((p: any) => selectedPetIds[0] && p.id === selectedPetIds[0]);
+                              let price = Number(addon.basePrice);
+                              if (pet?.size === "small" && addon.priceSmall) price = Number(addon.priceSmall);
+                              else if (pet?.size === "medium" && addon.priceMedium) price = Number(addon.priceMedium);
+                              else if (pet?.size === "large" && addon.priceLarge) price = Number(addon.priceLarge);
+                              return `+ ${(price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -590,12 +673,33 @@ export default function NewBooking() {
                   <CardContent className="p-5 space-y-4">
                     <div>
                       <span className="text-xs text-muted-foreground block mb-1">
-                        Serviço Selecionado
+                        Serviço Principal
                       </span>
                       <h4 className="font-semibold text-lg text-white">
                         {selectedService?.name}
                       </h4>
                     </div>
+
+                    {selectedAddonIds.length > 0 && (
+                      <div>
+                        <span className="text-xs text-muted-foreground block mb-2">
+                          Serviços Adicionais ({selectedAddonIds.length})
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedAddonIds.map((id) => {
+                            const addon = addonServices.find((a: any) => a.id === id);
+                            return addon ? (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2.5 py-0.5 text-xs font-medium text-indigo-300 ring-1 ring-inset ring-indigo-500/25"
+                              >
+                                + {addon.name}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>

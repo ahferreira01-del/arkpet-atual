@@ -90,6 +90,44 @@ export const bookingConsumablesRelations = relations(bookingConsumablesTable, ({
   }),
 }));
 
+// 2b. Serviços Adicionais Planejados da Reserva (booking_services)
+// Distinto de booking_consumables (operacional, adicionado pelo staff durante a estadia).
+// Estes são escolhidos pelo tutor no momento da criação, processados na confirmação.
+export const bookingServiceStatusEnum = pgEnum("booking_service_status", [
+  "pending", "confirmed", "cancelled",
+]);
+
+export const bookingServicesTable = pgTable("booking_services", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  catalogueItemId: integer("catalogue_item_id").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  status: bookingServiceStatusEnum("status").default("pending").notNull(),
+  // Rastreamento financeiro por add-on (idempotência + cancelamento por item)
+  consumedCredit: boolean("consumed_credit").default(false).notNull(),
+  // ID exato do tutor_service_credits consumido — necessário para restauração precisa
+  tutorServiceCreditId: integer("tutor_service_credit_id"),
+  charged: boolean("charged").default(false).notNull(),
+  invoiceItemId: integer("invoice_item_id"),            // FK para invoice_items quando faturado
+  capturedPrice: numeric("captured_price", { precision: 10, scale: 2 }), // preço capturado na criação
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("booking_services_booking_idx").on(t.bookingId),
+  index("booking_services_catalogue_idx").on(t.catalogueItemId),
+]);
+
+export const bookingServicesRelations = relations(bookingServicesTable, ({ one }) => ({
+  booking: one(bookingsTable, {
+    fields: [bookingServicesTable.bookingId],
+    references: [bookingsTable.id],
+  }),
+  item: one(catalogueItemsTable, {
+    fields: [bookingServicesTable.catalogueItemId],
+    references: [catalogueItemsTable.id],
+  }),
+}));
+
 // 3. Pacotes de Créditos dos Tutores (Mensalidades / Diárias Pré-pagas)
 export const tutorCreditsTable = pgTable("tutor_credits", {
   id: serial("id").primaryKey(),

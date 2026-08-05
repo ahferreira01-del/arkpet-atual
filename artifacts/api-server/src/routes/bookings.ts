@@ -12,6 +12,7 @@ import {
   usersTable,
   crechesTable,
   bookingConsumablesTable,
+  bookingServicesTable,
   catalogueItemsTable,
   invoicesTable,
   invoiceItemsTable,
@@ -19,7 +20,7 @@ import {
   financialAuditLogsTable,
   tutorServiceCreditsTable,
 } from "@workspace/db/schema";
-import { eq, and, desc, gte, gt, sql, or, isNull, asc } from "drizzle-orm";
+import { eq, and, desc, gte, gt, sql, or, isNull, asc, inArray, count } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { normalizeServiceType } from "../utils/service-name.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
@@ -33,7 +34,21 @@ import {
   consumeServiceCreditsForBooking,
   restoreBookingPackageCredits,
   restoreBookingServiceCredits,
+  consumeAdditionalServices,
+  restoreAdditionalServices,
 } from "../services/credits.js";
+import { BookingServicesRepository } from "../repositories/booking-services.repository.js";
+
+// ── Domain error helper ────────────────────────────────────────────────────────
+// Creates an Error with an explicit HTTP status code so catch blocks can
+// distinguish domain/validation errors (4xx) from unexpected infrastructure
+// failures (which should propagate to the global 500 handler via next(err)).
+function clientError(message: string, status = 400): Error & { status: number } {
+  const err = new Error(message) as Error & { status: number };
+  err.status = status;
+  return err;
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -170,9 +185,28 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
         .where(and(...conditions)),
     ]);
 
+    // Batch-fetch add-ons for all returned bookings
+    const bookingIds = data.map((b: any) => b.id);
+    const allAddons = bookingIds.length > 0
+      ? await BookingServicesRepository.findByBookingIds(bookingIds)
+      : [];
+
+    // Group add-ons by bookingId
+    const addonsByBooking = new Map<number, any[]>();
+    for (const addon of allAddons) {
+      const arr = addonsByBooking.get(addon.bookingId) ?? [];
+      arr.push(addon);
+      addonsByBooking.set(addon.bookingId, arr);
+    }
+
+    const enrichedData = data.map((b: any) => ({
+      ...b,
+      additionalServices: addonsByBooking.get(b.id) ?? [],
+    }));
+
     res.json({
-      data,               // chave canônica (nova)
-      items: data,        // alias de compatibilidade retroativa
+      data: enrichedData,       // chave canônica (nova)
+      items: enrichedData,      // alias de compatibilidade retroativa
       total: Number(total),
       page,
       pageSize,
@@ -199,7 +233,49 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
     isRecurring,
     recurringDays,
     packageMaxPets,
+    // add-ons: optional array of catalogue item IDs (services only)
+    additionalServiceIds,
+    // primary catalogue item ID — null for package bookings (id < 0 is virtual)
+    primaryCatalogueItemId,
   } = req.body;
+
+  // ── Pre-transaction structural validation of add-on payload ────────────────
+  // Done here (before any DB writes) so that no booking row is ever inserted
+  // for a structurally invalid request.
+  let validatedAddonIds: number[] | null = null;
+  if (Array.isArray(additionalServiceIds) && additionalServiceIds.length > 0) {
+    // Reject if a package booking — packageMaxPets is set or no real primary ID
+    const isPackageBooking = (packageMaxPets != null) ||
+      (primaryCatalogueItemId == null || (typeof primaryCatalogueItemId === "number" && primaryCatalogueItemId <= 0));
+    if (isPackageBooking) {
+      res.status(400).json({ error: "Serviços adicionais não são suportados em reservas de pacote de diárias." });
+      return;
+    }
+
+    // Every element must be a positive integer — no silent discard
+    for (const id of additionalServiceIds) {
+      if (typeof id !== "number" || !Number.isInteger(id) || id <= 0) {
+        res.status(400).json({
+          error: `additionalServiceIds contém valor inválido: ${JSON.stringify(id)}. Todos os IDs devem ser inteiros positivos.`,
+        });
+        return;
+      }
+    }
+    const uniqueIds: number[] = [...new Set<number>(additionalServiceIds as number[])];
+
+    // Reject duplication of the primary service — both are positive ints at this point
+    if (
+      typeof primaryCatalogueItemId === "number" &&
+      primaryCatalogueItemId > 0 &&
+      uniqueIds.includes(primaryCatalogueItemId)
+    ) {
+      res.status(400).json({ error: "O serviço principal não pode ser adicionado como serviço adicional." });
+      return;
+    }
+
+    validatedAddonIds = uniqueIds;
+  }
+  // ── End pre-transaction validation ──────────────────────────────────────────
 
   try {
     const enriched = await db.transaction(async (tx) => {
@@ -209,12 +285,31 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
         .where(eq(petsTable.id, petId))
         .limit(1);
 
-      if (!pet) throw new Error("Pet não encontrado");
+      if (!pet) {
+        const err = new Error("Pet não encontrado") as any;
+        err.status = 404;
+        throw err;
+      }
+
+      // ── Tenant + ownership guard ─────────────────────────────────────────────
+      // The pet must belong to this creche.  For tutor callers, the pet must
+      // also belong to the authenticated tutor (prevents cross-tutor booking).
+      if (pet.crecheId !== crecheId) {
+        const err = new Error("Este pet não pertence a esta creche.") as any;
+        err.status = 403;
+        throw err;
+      }
+      if (req.user!.role === "tutor" && pet.tutorId !== req.user!.id) {
+        const err = new Error("Este pet não pertence ao tutor autenticado.") as any;
+        err.status = 403;
+        throw err;
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       const tutorId = req.user!.role === "tutor" ? req.user!.id : (pet.tutorId ?? req.user!.id);
 
       if (await hasOverdueInvoices(tutorId)) {
-        throw new Error("Este tutor possui faturas em atraso. Regularize a situação para realizar novos agendamentos.");
+        throw clientError("Este tutor possui faturas em atraso. Regularize a situação para realizar novos agendamentos.");
       }
 
       // Calcula duração (noites). Se endDate não for passado ou for igual, é 1 dia.
@@ -223,7 +318,43 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
       const end = endDate ? new Date(endDate) : new Date(startDate);
       const durationDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)));
 
-      // 1. Criar o Booking com preço zero provisoriamente
+      // 1. Validate and resolve primaryCatalogueItemId — must be active, service or
+      //    day_use type, belong to this creche, and be a positive integer when provided.
+      let resolvedPrimaryId: number | null = null;
+      if (primaryCatalogueItemId != null) {
+        if (
+          typeof primaryCatalogueItemId !== "number" ||
+          !Number.isInteger(primaryCatalogueItemId) ||
+          primaryCatalogueItemId <= 0
+        ) {
+          throw clientError("primaryCatalogueItemId deve ser um inteiro positivo.");
+        }
+        const [primaryItem] = await tx
+          .select({ id: catalogueItemsTable.id, type: catalogueItemsTable.type })
+          .from(catalogueItemsTable)
+          .where(
+            and(
+              eq(catalogueItemsTable.id, primaryCatalogueItemId),
+              eq(catalogueItemsTable.crecheId, crecheId),
+              eq(catalogueItemsTable.isActive, true)
+            )
+          )
+          .limit(1);
+        if (!primaryItem) {
+          throw clientError(
+            `primaryCatalogueItemId=${primaryCatalogueItemId} não encontrado, inativo ou não pertence a esta creche.`
+          );
+        }
+        // Accept service and day_use catalogue items as the primary service —
+        // both are selectable in the booking wizard.
+        if (primaryItem.type !== "service" && primaryItem.type !== "day_use") {
+          throw clientError(
+            `primaryCatalogueItemId=${primaryCatalogueItemId} não é um serviço (tipo "${primaryItem.type}") e não pode ser o serviço principal da reserva.`
+          );
+        }
+        resolvedPrimaryId = primaryItem.id;
+      }
+
       const [booking] = await tx
         .insert(bookingsTable)
         .values({
@@ -237,9 +368,54 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
           isRecurring: isRecurring || false,
           recurringDays,
           packageMaxPets,
+          primaryCatalogueItemId: resolvedPrimaryId,
           price: 0,
         })
         .returning();
+
+      // 2. Save add-ons — DB-side validation (ownership, active, service type)
+      if (validatedAddonIds && validatedAddonIds.length > 0) {
+        // Fetch exactly the requested IDs (parameterized — no raw SQL)
+        const items = await tx
+          .select()
+          .from(catalogueItemsTable)
+          .where(
+            and(
+              eq(catalogueItemsTable.crecheId, crecheId),
+              eq(catalogueItemsTable.isActive, true),
+              inArray(catalogueItemsTable.id, validatedAddonIds)
+            )
+          );
+
+        // Every requested ID must be found, active, belong to this creche, and be a service type
+        const foundIds = new Set(items.map((i: any) => i.id));
+        for (const requestedId of validatedAddonIds) {
+          if (!foundIds.has(requestedId)) {
+            throw clientError(`Add-on inválido: item id=${requestedId} não encontrado, inativo ou não pertence a esta creche.`);
+          }
+        }
+        for (const item of items) {
+          if (item.type !== "service") {
+            throw clientError(`Item "${item.name}" (id=${item.id}) não é um serviço e não pode ser adicionado como adicional.`);
+          }
+        }
+
+        for (const item of items) {
+          // Compute price based on pet size
+          let price = Number(item.basePrice);
+          if (pet.size === "small" && item.priceSmall) price = Number(item.priceSmall);
+          else if (pet.size === "medium" && item.priceMedium) price = Number(item.priceMedium);
+          else if (pet.size === "large" && item.priceLarge) price = Number(item.priceLarge);
+
+          await BookingServicesRepository.insert({
+            bookingId: booking.id,
+            catalogueItemId: item.id,
+            quantity: 1,
+            status: "pending",
+            capturedPrice: String(price),
+          }, tx);
+        }
+      }
 
       // Lógica de consumo de créditos movida para a rota PUT (status = confirmed)
 
@@ -290,8 +466,11 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
 
     res.status(201).json(enriched);
   } catch (err: any) {
-    if (err.message) {
-      res.status(400).json({ error: err.message });
+    // Only convert errors with an explicit 4xx status code (set via clientError()) to
+    // client responses. Unexpected infrastructure errors (DB failures, etc.) go to
+    // the global error handler so they correctly surface as 500 — never as 400.
+    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
+      res.status(err.status).json({ error: err.message });
     } else {
       next(err);
     }
@@ -315,7 +494,11 @@ router.get("/:bookingId", async (req: AuthRequest, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.json(await getBookingWithNames(booking));
+  const [enriched, addons] = await Promise.all([
+    getBookingWithNames(booking),
+    BookingServicesRepository.findByBookingId(bookingId),
+  ]);
+  res.json({ ...enriched, additionalServices: addons });
 });
 
 router.put("/:bookingId", async (req: AuthRequest, res, next) => {
@@ -344,19 +527,19 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         .for("update");
 
       if (!existing) {
-        throw new Error("Reserva não encontrada.");
+        throw clientError("Reserva não encontrada.", 404);
       }
 
       if (status !== undefined) {
         if (req.user!.role === "tutor") {
           if (status !== "cancel_requested") {
-            throw new Error("Tutores só podem solicitar cancelamento de reservas.");
+            throw clientError("Tutores só podem solicitar cancelamento de reservas.", 403);
           }
           if (existing.tutorId !== req.user!.id) {
-            throw new Error("Reserva não encontrada.");
+            throw clientError("Reserva não encontrada.", 404);
           }
           if (!["pending", "confirmed"].includes(existing.status)) {
-            throw new Error("Só é possível solicitar cancelamento de reservas pendentes ou confirmadas.");
+            throw clientError("Só é possível solicitar cancelamento de reservas pendentes ou confirmadas.");
           }
         }
         updates.status = status;
@@ -405,31 +588,50 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               eq(catalogueItemsTable.isActive, true),
             ));
 
-          // 1. Direct type match — finds items registered as "day_use" in the catalogue
-          let catalogueItem = allItems.find(i => i.type === existing.type);
-
-          // 2. Exact name match: "Day use" → "day_use" === existing.type
-          if (!catalogueItem) {
-            catalogueItem = allItems.find(
-              i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type,
-            );
-          }
-
-          // 3. Keyword fallback for day_use type
-          if (!catalogueItem && existing.type === "day_use") {
-            catalogueItem = allItems.find(i => {
-              const name = i.name.toLowerCase();
-              return (
-                name.includes("creche") ||
-                name.includes("day") ||
-                name.includes("diária") ||
-                name.includes("diaria") ||
-                name.includes("hosped") ||
-                name.includes("estadia") ||
-                name.includes("pernoite") ||
-                name.includes("hotel")
+          // 0. Authoritative: use primaryCatalogueItemId when present (set at creation).
+          //    This is the exact item the tutor selected. If it cannot be found (e.g.
+          //    deactivated after booking), we explicitly confirm at price=0 with a warning
+          //    rather than silently substituting a different service.
+          let catalogueItem: (typeof allItems)[number] | null = null;
+          if (existing.primaryCatalogueItemId) {
+            catalogueItem = allItems.find(i => i.id === existing.primaryCatalogueItemId) ?? null;
+            if (!catalogueItem) {
+              console.warn(
+                `[bookings] confirm: primaryCatalogueItemId=${existing.primaryCatalogueItemId} ` +
+                `not found or inactive (crecheId=${crecheId}). Confirming with price=0.`
               );
-            });
+              updates.price = 0;
+              daysToBill = 0; // skip billing block below
+            }
+          } else {
+            // Legacy bookings: no primaryCatalogueItemId stored — use heuristics only here.
+
+            // 1. Direct type match
+            catalogueItem = allItems.find(i => i.type === existing.type) ?? null;
+
+            // 2. Exact name match: "Day use" → "day_use" === existing.type
+            if (!catalogueItem) {
+              catalogueItem = allItems.find(
+                i => i.name.toLowerCase().replace(/\s+/g, "_") === existing.type,
+              ) ?? null;
+            }
+
+            // 3. Keyword fallback for day_use type
+            if (!catalogueItem && existing.type === "day_use") {
+              catalogueItem = allItems.find(i => {
+                const name = i.name.toLowerCase();
+                return (
+                  name.includes("creche") ||
+                  name.includes("day") ||
+                  name.includes("diária") ||
+                  name.includes("diaria") ||
+                  name.includes("hosped") ||
+                  name.includes("estadia") ||
+                  name.includes("pernoite") ||
+                  name.includes("hotel")
+                );
+              }) ?? null;
+            }
           }
 
           if (!catalogueItem) {
@@ -495,6 +697,18 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         } else {
           updates.price = 0;
         }
+
+        // ── Processar add-ons (booking_services) na confirmação ────────────
+        if (existing.tutorId) {
+          await consumeAdditionalServices(
+            bookingId,
+            existing.tutorId,
+            crecheId,
+            existing.petId,
+            req.user!.id,
+            tx
+          );
+        }
         
         await logFinancialAudit({
           crecheId,
@@ -508,15 +722,102 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
       // Handle cancellation logic
       if (status === "cancelled" && existing.status !== "cancelled") {
+        // Guard (BEFORE any credit restoration or status change): block
+        // cancellation when ANY invoice item of this booking — primary service
+        // charge OR add-on — belongs to a paid/refunded invoice. A processed
+        // payment cannot be silently voided; it requires an explicit admin
+        // refund/credit-note workflow first.
+        {
+          const paidItems = await tx
+            .select({ itemId: invoiceItemsTable.id })
+            .from(invoiceItemsTable)
+            .innerJoin(invoicesTable, eq(invoiceItemsTable.invoiceId, invoicesTable.id))
+            .where(
+              and(
+                eq(invoiceItemsTable.bookingId, bookingId),
+                inArray(invoicesTable.status, ["paid", "refunded"])
+              )
+            )
+            .limit(1);
+          if (paidItems.length > 0) {
+            throw clientError(
+              "Não é possível cancelar — a reserva possui cobranças com pagamento já processado. Solicite o estorno manualmente antes de cancelar.",
+              422
+            );
+          }
+        }
+
         // Fase 4+7: CreditService restaura créditos de pacote (com piggyback) e serviço
         // usando GREATEST(0, ...) para evitar saldos negativos (underflow protection)
         await restoreBookingPackageCredits(bookingId, tx, crecheId);
         await restoreBookingServiceCredits(bookingId, tx, crecheId);
 
-        // Cancelar faturas pendentes vinculadas à reserva
-        await tx.update(invoicesTable)
-          .set({ status: "voided" })
-          .where(and(eq(invoicesTable.bookingId, bookingId), eq(invoicesTable.status, "pending")));
+        // Restaurar créditos de add-ons e cancelar os booking_services
+        if (existing.tutorId) {
+          await restoreAdditionalServices(bookingId, existing.tutorId, crecheId, tx);
+        }
+
+        // Cancelar faturas vinculadas à reserva de forma segura:
+        // em vez de void incondicional por invoices.bookingId (que poderia destruir
+        // invoices mensais compartilhados), removemos os itens específicos desta reserva
+        // e só anulamos a invoice se ela ficar sem nenhum item restante.
+        {
+          // Find all invoice_items still linked to this booking (add-on items were
+          // already removed by restoreAdditionalServices above).
+          const bookingItems = await tx
+            .select({
+              id: invoiceItemsTable.id,
+              invoiceId: invoiceItemsTable.invoiceId,
+              amount: invoiceItemsTable.amount,
+              quantity: invoiceItemsTable.quantity,
+            })
+            .from(invoiceItemsTable)
+            .where(eq(invoiceItemsTable.bookingId, bookingId));
+
+          // Group by invoiceId
+          const byInvoice = new Map<number, typeof bookingItems>();
+          for (const item of bookingItems) {
+            if (!byInvoice.has(item.invoiceId)) byInvoice.set(item.invoiceId, []);
+            byInvoice.get(item.invoiceId)!.push(item);
+          }
+
+          for (const [affectedInvoiceId, items] of byInvoice) {
+            const [invoice] = await tx
+              .select({ id: invoicesTable.id, amount: invoicesTable.amount, status: invoicesTable.status })
+              .from(invoicesTable)
+              .where(eq(invoicesTable.id, affectedInvoiceId))
+              .limit(1);
+
+            // Skip already-closed invoices — their items are financial history
+            if (!invoice || ["voided", "refunded", "paid"].includes(invoice.status)) continue;
+
+            // Remove this booking's remaining items and tally the amount to subtract
+            let amountToRemove = 0;
+            for (const item of items) {
+              amountToRemove += parseFloat(item.amount) * (item.quantity ?? 1);
+              await tx.delete(invoiceItemsTable).where(eq(invoiceItemsTable.id, item.id));
+            }
+
+            // Count how many items remain on this invoice after removal
+            const [{ remaining }] = await tx
+              .select({ remaining: count(invoiceItemsTable.id) })
+              .from(invoiceItemsTable)
+              .where(eq(invoiceItemsTable.invoiceId, affectedInvoiceId));
+
+            if (Number(remaining) === 0) {
+              // Invoice is now empty — void it entirely
+              await tx.update(invoicesTable)
+                .set({ status: "voided", amount: "0.00", updatedAt: new Date() })
+                .where(eq(invoicesTable.id, affectedInvoiceId));
+            } else {
+              // Shared invoice still has other charges — only reduce the amount
+              const newTotal = Math.max(0, parseFloat(invoice.amount) - amountToRemove);
+              await tx.update(invoicesTable)
+                .set({ amount: newTotal.toFixed(2), updatedAt: new Date() })
+                .where(eq(invoicesTable.id, affectedInvoiceId));
+            }
+          }
+        }
 
         // Fase 12: audit log movido para dentro do bloco (antes executava em todo status change)
         await logFinancialAudit({
@@ -597,13 +898,14 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
     res.json(enriched);
   } catch (err: any) {
-    if (err.message === "Tutores só podem solicitar cancelamento de reservas." || 
-        err.message === "Reserva não encontrada." ||
-        err.message === "Só é possível solicitar cancelamento de reservas pendentes ou confirmadas.") {
-      res.status(400).json({ error: err.message });
-      return;
+    // Only convert errors with an explicit 4xx status code (set via clientError()) to
+    // client responses. Unexpected infrastructure errors (DB failures, etc.) go to
+    // the global error handler so they correctly surface as 500 — never as 400.
+    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
+      res.status(err.status).json({ error: err.message });
+    } else {
+      next(err);
     }
-    next(err);
   }
 });
 
@@ -962,7 +1264,7 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
       if (consumableCharges.length > 0 && existing.tutorId) {
         let firstInvoiceId: number | null = null;
         for (const item of consumableCharges) {
-          const invoiceId = await BillingService.addCharge({
+          const { invoiceId } = await BillingService.addCharge({
             crecheId,
             tutorId: existing.tutorId,
             amount: Number(item.chargedPrice),

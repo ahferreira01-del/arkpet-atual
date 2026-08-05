@@ -385,12 +385,12 @@ export default function Bookings() {
   const completeServiceMutation = useCompleteService(crecheId);
   const forceCheckoutMutation = useForceCheckout(crecheId);
 
-  const isPetPresent = (petId: number) => pets?.find((p) => p.id === petId)?.isCheckedIn ?? false;
+  const isPetPresent = (petId: number) => pets?.find((p: any) => p.id === petId)?.isCheckedIn ?? false;
 
   // Pets marcados como presentes mas sem reserva ativa (estado inconsistente)
-  const stuckPets = !isTutor ? (pets ?? []).filter((p) => {
+  const stuckPets = !isTutor ? (pets ?? []).filter((p: any) => {
     if (!p.isCheckedIn) return false;
-    return !(bookings ?? []).some((b) => b.petId === p.id && b.status === "active");
+    return !(bookings ?? []).some((b: any) => b.petId === p.id && b.status === "active");
   }) : [];
 
   const handleForceCheckout = (pet: any) => {
@@ -409,8 +409,8 @@ export default function Bookings() {
     return () => clearTimeout(timer);
   }, [highlightBookingId, bookings?.length]);
 
-  const myBookings = isTutor ? bookings?.filter((b) => {
-    const myPetIds = pets?.map((p) => p.id) || [];
+  const myBookings = isTutor ? bookings?.filter((b: any) => {
+    const myPetIds = pets?.map((p: any) => p.id) || [];
     return myPetIds.includes(b.petId);
   }) : bookings;
 
@@ -650,7 +650,7 @@ export default function Bookings() {
             <>
               {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
               <div className="md:hidden divide-y divide-white/5">
-                {filtered.map((booking) => (
+                {filtered.map((booking: any) => (
                   <div
                     key={booking.id}
                     id={`booking-${booking.id}`}
@@ -702,7 +702,21 @@ export default function Bookings() {
                       )}
                     </div>
 
-                    {/* Row 3b: Observations */}
+                    {/* Row 3b: Add-on services chips */}
+                    {Array.isArray((booking as any).additionalServices) && (booking as any).additionalServices.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {(booking as any).additionalServices.map((addon: any) => (
+                          <span
+                            key={addon.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-300 ring-1 ring-inset ring-indigo-500/20"
+                          >
+                            + {addon.itemName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Row 3c: Observations */}
                     {booking.notes && (
                       <p className="text-xs text-muted-foreground/80 bg-white/5 rounded px-2.5 py-1.5 italic">
                         💬 {booking.notes}
@@ -851,7 +865,7 @@ export default function Bookings() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {filtered.map((booking) => (
+                    {filtered.map((booking: any) => (
                       <tr key={booking.id} className="hover:bg-white/5 transition-colors">
                         <td className="px-6 py-4">
                           <p className="font-medium text-white">{booking.petName}</p>
@@ -1045,6 +1059,27 @@ export default function Bookings() {
                 <span className="text-muted-foreground">Início</span>
                 <span className="font-medium text-white">{format(parseLocalDate(editBooking.startDate), "dd/MM/yyyy")}</span>
               </div>
+              {/* Add-on services */}
+              {(editBooking as any).additionalServices?.length > 0 && (
+                <div className="pt-1 space-y-1">
+                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Serviços adicionais</span>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {(editBooking as any).additionalServices.map((s: any) => (
+                      <span
+                        key={s.id}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/15 border border-violet-400/25 text-violet-300"
+                      >
+                        {s.catalogueItemName ?? s.catalogueItem?.name ?? `#${s.catalogueItemId}`}
+                        {s.status && s.status !== "pending" && (
+                          <span className="opacity-60">
+                            {s.status === "confirmed" ? "✓" : s.status === "cancelled" ? "✗" : ""}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Alterar Status</label>

@@ -97,7 +97,7 @@ router.post(
         res.status(422).json({ error: "Este pacote não possui créditos configurados" }); return;
       }
 
-      const invoiceId = await BillingService.addCharge({
+      const { invoiceId } = await BillingService.addCharge({
         crecheId,
         tutorId,
         amount: item.basePrice,

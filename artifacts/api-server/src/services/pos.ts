@@ -124,7 +124,7 @@ export class PosService {
       let invoiceId: number | null = null;
 
       for (const li of lockedItems) {
-        invoiceId = await BillingService.addCharge({
+        ({ invoiceId } = await BillingService.addCharge({
           crecheId,
           tutorId: tutorId ?? null,
           amount: li.unitPrice,
@@ -136,7 +136,7 @@ export class PosService {
           tx,
           userId,
           catalogueItemId: li.item.id,
-        });
+        }));
       }
 
       // Phase 5 — Immediate payment

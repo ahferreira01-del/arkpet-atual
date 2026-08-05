@@ -1,4 +1,5 @@
 import { db } from "@workspace/db";
+import { invoiceItemsTable, invoicesTable } from "@workspace/db/schema";
 import { CreditRepository } from "../repositories/credit.repository.js";
 import { InvoiceRepository } from "../repositories/invoice.repository.js";
 import { CatalogueRepository } from "../repositories/catalogue.repository.js";
@@ -7,6 +8,7 @@ import { normalizeServiceType } from "../utils/service-name.js";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { type FinancialDomainEvent } from "./events.js";
 import { financialLog } from "../lib/logger.js";
+import { eq, and, count, inArray } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos públicos do CreditService
@@ -354,6 +356,263 @@ export async function consumeServiceCreditsForBooking(
   }
 
   return remaining; // dias restantes a faturar
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// consumeAdditionalServices
+//
+// For each pending add-on in booking_services:
+//   1. Try to consume a service credit (by catalogueItemId, exact match first).
+//   2. If no credit available, charge via BillingService.addCharge.
+//   3. Mark the add-on as confirmed + consumedCredit/charged accordingly.
+//
+// Returns the list of bookingServiceIds that were charged (for audit).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function consumeAdditionalServices(
+  bookingId: number,
+  tutorId: number,
+  crecheId: number,
+  petId: number,
+  userId: number,
+  tx: any
+): Promise<{ creditedIds: number[]; chargedIds: number[] }> {
+  const { BookingServicesRepository } = await import("../repositories/booking-services.repository.js");
+  const { BillingService } = await import("./billing.js");
+
+  const addons = await BookingServicesRepository.findPendingForUpdate(bookingId, tx);
+
+  const creditedIds: number[] = [];
+  const chargedIds: number[] = [];
+
+  for (const addon of addons) {
+    // Try exact service-credit match by catalogueItemId
+    const candidateCredits = await CreditRepository.findAvailableServiceCreditsForUpdate(
+      tutorId, crecheId, tx
+    );
+
+    const exactMatch = candidateCredits.find(
+      (c: any) => c.catalogueItemId === addon.catalogueItemId
+    );
+
+    if (exactMatch) {
+      // Consume 1 credit per add-on (quantity=1 always for services)
+      await CreditRepository.incrementUsedServiceCredits(exactMatch.id, addon.quantity, tx);
+      // Save the exact credit row ID so restore can target the precise row
+      await BookingServicesRepository.markConsumedCredit(addon.id, exactMatch.id, tx);
+
+      await OutboxRepository.insert({
+        type: "AdditionalServiceCreditConsumed",
+        crecheId,
+        bookingId,
+        tutorId,
+        bookingServiceId: addon.id,
+        catalogueItemId: addon.catalogueItemId,
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
+
+      creditedIds.push(addon.id);
+    } else {
+      // No service credit — charge via BillingService
+      const price = Number(addon.capturedPrice ?? 0);
+      if (price > 0) {
+        // addCharge now returns { invoiceId, invoiceItemId } — use the item ID directly
+        const { invoiceItemId: resolvedInvoiceItemId } = await BillingService.addCharge({
+          crecheId,
+          tutorId,
+          amount: price,
+          quantity: addon.quantity,
+          description: addon.itemName ?? `Serviço adicional #${addon.catalogueItemId}`,
+          type: "service",
+          petId,
+          bookingId,
+          catalogueItemId: addon.catalogueItemId,
+          itemDate: new Date(),
+          tx,
+        });
+
+        await BookingServicesRepository.markCharged(addon.id, resolvedInvoiceItemId, tx);
+
+        await OutboxRepository.insert({
+          type: "AdditionalServiceCharged",
+          crecheId,
+          bookingId,
+          tutorId,
+          bookingServiceId: addon.id,
+          catalogueItemId: addon.catalogueItemId,
+          amount: price,
+          occurredAt: new Date().toISOString(),
+        } as FinancialDomainEvent, tx);
+
+        chargedIds.push(addon.id);
+      } else {
+        // Zero-price add-on (e.g. a free service) — just confirm it
+        await BookingServicesRepository.markConfirmed(addon.id, tx);
+        creditedIds.push(addon.id);
+      }
+    }
+  }
+
+  if (addons.length > 0) {
+    await OutboxRepository.insert({
+      type: "AdditionalServicesConfirmed",
+      crecheId,
+      bookingId,
+      tutorId,
+      count: addons.length,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
+
+  return { creditedIds, chargedIds };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// restoreAdditionalServices
+//
+// Called during booking cancellation.
+// - For add-ons with consumedCredit=true: restore the service credit
+//   (GREATEST(0,...) anti-underflow via CreditRepository).
+// - For add-ons with charged=true: void the linked invoice item via SQL
+//   (the parent invoice re-calculates at next payment attempt).
+// - Marks all confirmed add-ons as cancelled.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function restoreAdditionalServices(
+  bookingId: number,
+  tutorId: number,
+  crecheId: number,
+  tx: any
+): Promise<void> {
+  const { BookingServicesRepository } = await import("../repositories/booking-services.repository.js");
+
+  // Restore credited add-ons — use the persisted tutorServiceCreditId for exact targeting
+  const credited = await BookingServicesRepository.findConfirmedWithCredit(bookingId, tx);
+  for (const addon of credited) {
+    if (addon.tutorServiceCreditId) {
+      // Exact-row restore: guaranteed to hit the row that was incremented at confirmation
+      await CreditRepository.decrementUsedServiceCredits(
+        addon.tutorServiceCreditId, addon.quantity, tx
+      );
+    }
+
+    await BookingServicesRepository.markCancelled(addon.id, tx);
+
+    await OutboxRepository.insert({
+      type: "AdditionalServiceCreditRestored",
+      crecheId,
+      bookingId,
+      bookingServiceId: addon.id,
+      catalogueItemId: addon.catalogueItemId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
+
+  // Reverse charged add-ons: group by invoice first to avoid prematurely voiding
+  // a shared cycle invoice mid-loop when two or more add-ons share the same invoice.
+  const charged = await BookingServicesRepository.findConfirmedCharged(bookingId, tx);
+
+  // Step 1: collect all invoice item IDs that need reversal
+  type ChargedAddonWithItem = {
+    addon: (typeof charged)[number];
+    item: { id: number; invoiceId: number; amount: string; quantity: number | null } | null;
+  };
+  const chargedWithItems: ChargedAddonWithItem[] = await Promise.all(
+    charged.map(async (addon: (typeof charged)[number]) => {
+      if (!addon.invoiceItemId) return { addon, item: null };
+      const [item] = await tx
+        .select({
+          id: invoiceItemsTable.id,
+          invoiceId: invoiceItemsTable.invoiceId,
+          amount: invoiceItemsTable.amount,
+          quantity: invoiceItemsTable.quantity,
+        })
+        .from(invoiceItemsTable)
+        .where(eq(invoiceItemsTable.id, addon.invoiceItemId))
+        .limit(1);
+      return { addon, item: item ?? null };
+    })
+  );
+
+  // Step 2: group by invoiceId
+  const byInvoice = new Map<number, ChargedAddonWithItem[]>();
+  for (const cai of chargedWithItems) {
+    if (!cai.item) continue;
+    const invId = cai.item.invoiceId;
+    if (!byInvoice.has(invId)) byInvoice.set(invId, []);
+    byInvoice.get(invId)!.push(cai);
+  }
+
+  // Step 3: per-invoice batch reversal — one void-or-adjust decision per invoice
+  for (const [invoiceId, invoiceAddons] of byInvoice) {
+    const [invoice] = await tx
+      .select({ id: invoicesTable.id, amount: invoicesTable.amount, status: invoicesTable.status })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.id, invoiceId))
+      .limit(1);
+
+    const isMutable = invoice && !["voided", "refunded", "paid"].includes(invoice.status);
+    if (!isMutable) {
+      // Paid/refunded/voided invoices: preserve items as financial history
+      continue;
+    }
+
+    // Compute total to subtract for all add-ons on this invoice
+    let amountToRemove = 0;
+    const itemIdsToDelete: number[] = [];
+    for (const { item } of invoiceAddons) {
+      if (!item) continue;
+      amountToRemove += parseFloat(item.amount) * (item.quantity ?? 1);
+      itemIdsToDelete.push(item.id);
+    }
+
+    // Delete all add-on items for this invoice in one pass
+    if (itemIdsToDelete.length > 0) {
+      await tx.delete(invoiceItemsTable).where(inArray(invoiceItemsTable.id, itemIdsToDelete));
+    }
+
+    // Count remaining items after batch deletion
+    const [{ remaining }] = await tx
+      .select({ remaining: count(invoiceItemsTable.id) })
+      .from(invoiceItemsTable)
+      .where(eq(invoiceItemsTable.invoiceId, invoiceId));
+
+    if (Number(remaining) === 0) {
+      // Invoice is now empty — void it
+      await InvoiceRepository.setAmount(invoiceId, "0.00", tx);
+      await InvoiceRepository.markVoided(invoiceId, tx);
+    } else {
+      // Shared invoice still has other line items — only reduce the total
+      const newTotal = Math.max(0, parseFloat(invoice.amount) - amountToRemove);
+      await InvoiceRepository.setAmount(invoiceId, newTotal.toFixed(2), tx);
+    }
+  }
+
+  // Step 4: mark all add-on records cancelled and emit outbox events
+  for (const { addon } of chargedWithItems) {
+    await BookingServicesRepository.markCancelled(addon.id, tx);
+
+    await OutboxRepository.insert({
+      type: "AdditionalServicesCancelled",
+      crecheId,
+      bookingId,
+      bookingServiceId: addon.id,
+      catalogueItemId: addon.catalogueItemId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
+
+  // Also cancel any still-pending add-ons (booking cancelled before confirmation)
+  await BookingServicesRepository.markAllCancelledForBooking(bookingId, tx);
+
+  if (credited.length > 0 || charged.length > 0) {
+    await OutboxRepository.insert({
+      type: "AdditionalServicesCancelled",
+      crecheId,
+      bookingId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

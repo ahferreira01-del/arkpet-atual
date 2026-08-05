@@ -139,7 +139,7 @@ export async function createOrder(
 
     for (const reqItem of orderItemsToInsert) {
       const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-      const invId = await BillingService.addCharge({
+      const { invoiceId: invId } = await BillingService.addCharge({
         crecheId,
         tutorId,
         amount: reqItem.unitPrice,
@@ -155,7 +155,7 @@ export async function createOrder(
     }
 
     if (Number(deliveryFee) > 0) {
-      const invId = await BillingService.addCharge({
+      const { invoiceId: invId } = await BillingService.addCharge({
         crecheId,
         tutorId,
         amount: deliveryFee.toString(),
