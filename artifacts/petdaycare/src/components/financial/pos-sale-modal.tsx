@@ -22,7 +22,7 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
   const [paymentMethod, setPaymentMethod] = useState("cash");
 
   const filtered = catalogue?.filter((item: any) => 
-    item.type === "service" || item.type === "product"
+    item.type === "service" || item.type === "product" || item.type === "day_use"
   ).filter((item: any) => 
     item.name.toLowerCase().includes(search.toLowerCase()) || 
     (item.barcode && item.barcode.includes(search))
@@ -51,8 +51,12 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
   const total = cart.reduce((acc, current) => acc + (current.item.price * current.quantity), 0);
 
   // Validação de estoque SEM LOCK
+  // Só aplica para produtos com trackStock=true. Serviços e day_use nunca têm estoque.
   const cartWithStockStatus = cart.map(cartItem => {
-    const isOutOfStock = cartItem.item.type === 'product' && cartItem.quantity > (cartItem.item.stockQuantity || 0);
+    const isOutOfStock =
+      cartItem.item.type === 'product' &&
+      cartItem.item.trackStock === true &&
+      cartItem.quantity > (cartItem.item.stockQuantity || 0);
     return { ...cartItem, isOutOfStock };
   });
 
@@ -186,19 +190,32 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Input 
-                        type="number" 
-                        min="1" 
-                        value={c.quantity}
-                        onChange={(e) => handleQuantityChange(c.item.id, parseInt(e.target.value) || 1)}
-                        className="w-16 h-8 text-center"
-                      />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleQuantityChange(c.item.id, c.quantity - 1)}
+                        disabled={c.quantity <= 1}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-white"
+                      >
+                        <span className="text-base leading-none">−</span>
+                      </Button>
+                      <span className="w-8 text-center text-sm font-semibold text-white tabular-nums">
+                        {c.quantity}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleQuantityChange(c.item.id, c.quantity + 1)}
+                        className="h-8 w-8 p-0 text-muted-foreground hover:text-white"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
                       <Button 
                         size="sm" 
                         variant="ghost"
                         onClick={() => handleRemove(c.item.id)}
-                        className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive ml-1"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

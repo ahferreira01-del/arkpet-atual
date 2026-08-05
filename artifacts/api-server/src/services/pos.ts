@@ -65,7 +65,9 @@ export class PosService {
           );
         }
 
-        if (lockedItem.type === "product" && lockedItem.stockQuantity < reqItem.quantity) {
+        // Only enforce stock for products that actually track stock.
+        // Services and day_use items never have stock, so trackStock=false bypasses this check.
+        if (lockedItem.type === "product" && lockedItem.trackStock && lockedItem.stockQuantity < reqItem.quantity) {
           throw Object.assign(
             new Error(
               `Estoque insuficiente para o item: ${lockedItem.name}. Saldo atual: ${lockedItem.stockQuantity}`
