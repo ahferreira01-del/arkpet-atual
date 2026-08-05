@@ -49,7 +49,7 @@ export default function TutorStore() {
     setCart(prev => {
       const existing = prev.find(i => i.item.id === item.id);
       if (existing) {
-        if (item.stockQuantity !== null && existing.quantity >= item.stockQuantity) {
+        if (item.type === 'product' && item.trackStock && item.stockQuantity !== null && existing.quantity >= item.stockQuantity) {
           toast({ title: "Estoque insuficiente", variant: "destructive" });
           return prev;
         }
@@ -69,7 +69,7 @@ export default function TutorStore() {
       if (i.item.id === itemId) {
         const newQ = i.quantity + delta;
         if (newQ < 1) return i;
-        if (i.item.stockQuantity !== null && newQ > i.item.stockQuantity) {
+        if (i.item.type === 'product' && i.item.trackStock && i.item.stockQuantity !== null && newQ > i.item.stockQuantity) {
           toast({ title: "Estoque insuficiente", variant: "destructive" });
           return i;
         }
