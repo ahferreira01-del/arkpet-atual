@@ -99,10 +99,11 @@ export class PosService {
         }
       }
 
-      // Phase 3 — Decrement stock + record stock transactions for products
+      // Phase 3 — Decrement stock + record stock transactions for tracked products only.
+      // Products with trackStock=false (and all services/day_use) skip stock bookkeeping.
       const stockTransactions: any[] = [];
       for (const li of lockedItems) {
-        if (li.item.type === "product") {
+        if (li.item.type === "product" && li.item.trackStock) {
           await CatalogueRepository.decrementStock(li.item.id, li.quantity, tx);
           stockTransactions.push({
             itemId: li.item.id,

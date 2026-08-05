@@ -92,7 +92,9 @@ export async function createOrder(
         throw new Error(`Item ID ${reqItem.catalogueItemId} não encontrado ou inativo.`);
       }
 
-      if (lockedItem.type === "product") {
+      // Only enforce stock for products that actually track stock.
+      // Services, day_use, and products with trackStock=false never block on quantity.
+      if (lockedItem.type === "product" && lockedItem.trackStock) {
         if (lockedItem.stockQuantity < reqItem.quantity) {
           throw new Error(`Estoque insuficiente para o item: ${lockedItem.name}. Saldo: ${lockedItem.stockQuantity}`);
         }
