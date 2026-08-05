@@ -88,9 +88,19 @@ app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 
 app.use("/api", router);
 
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
   const isDev = process.env.NODE_ENV === "development";
-  console.error("SERVER ERROR:", err.stack);
+  const status: number | undefined = err.status ?? err.statusCode;
+
+  // 4xx errors are client errors — return the status + message without
+  // polluting logs with stack traces.
+  if (status && status >= 400 && status < 500) {
+    res.status(status).json({ error: err.message });
+    return;
+  }
+
+  // 5xx / unexpected errors: log fully for debugging.
+  console.error("SERVER ERROR:", err.stack ?? err.message);
   console.error({
     message: err.message,
     path: req.path,

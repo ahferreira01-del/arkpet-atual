@@ -123,7 +123,7 @@ export class PosService {
       for (const li of lockedItems) {
         invoiceId = await BillingService.addCharge({
           crecheId,
-          tutorId: tutorId || 0,
+          tutorId: tutorId ?? null,
           amount: li.unitPrice,
           quantity: li.quantity,
           description: li.item.name,

@@ -354,7 +354,7 @@ export class BillingService {
    */
   static async addCharge(params: {
     crecheId: number;
-    tutorId: number;
+    tutorId: number | null;
     amount: number | string;
     description: string;
     type?: string;
@@ -397,13 +397,18 @@ export class BillingService {
         await InvoiceRepository.setAmount(params.existingInvoiceId, newTotal, txClient);
         invoiceId = params.existingInvoiceId;
 
-      } else if (params.isAvulso) {
-        // ── Avulso: invoice standalone, nunca reabrir mensal ─────────────
+      } else if (params.isAvulso || params.tutorId == null) {
+        // ── Avulso: invoice standalone, nunca reabrir mensal.
+        // Also covers anonymous POS sales (tutorId=null) — they are always
+        // standalone so each sale gets its own invoice and the unique index
+        // on (tutorId, cycleStart, cycleEnd) is never contested.
         const newInv = await InvoiceRepository.create({
           crecheId: params.crecheId,
-          tutorId: params.tutorId,
-          cycleStart: itemDateStr,
-          cycleEnd: itemDateStr,
+          tutorId: params.tutorId ?? null,
+          // Anonymous sales omit cycleStart/cycleEnd so concurrent invoices
+          // don't collide on the unique index (NULL != NULL in Postgres).
+          cycleStart: params.isAvulso ? itemDateStr : undefined,
+          cycleEnd: params.isAvulso ? itemDateStr : undefined,
           dueDate: itemDateStr,
           amount: totalItemAmount.toFixed(2),
           status: "pending",
@@ -412,7 +417,8 @@ export class BillingService {
 
       } else {
         // ── Ciclo mensal: merge ou nova invoice ───────────────────────────
-        const mensalidadeDia = await getTutorMensalidadeDia(params.tutorId, txClient);
+        const tutorId = params.tutorId; // narrowed: not null here
+        const mensalidadeDia = await getTutorMensalidadeDia(tutorId, txClient);
         const cycle = this.getCycleDates(mensalidadeDia, itemDateStr);
 
         const existing = await InvoiceRepository.findByCycleForUpdate(

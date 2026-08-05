@@ -20,3 +20,4 @@
 - [Phase 14 financial module restructure](phase14-financial-restructure.md) — InvoiceStateMachine, addCharge overflow-avulsa fix, invoice_items snapshot columns, idempotency gates, financialSync delegates to BillingService.
 - [Phase 15A financial split architecture](phase15a-financial-split.md) — routes/financial/ (10 sub-files), repositories/ layer (9 files), services/wallet+pos+expense; routes/financial.ts deleted; getCrecheAdminEmail in shared.ts.
 - [Financial outbox & structured logging](financial-outbox-logging.md) — financial_outbox table, OutboxRepository, domain events in services/events.ts, financialLog in lib/logger.ts; outbox inserts are ALWAYS inside the same tx as the main write.
+- [Phase 15C integration test patterns](phase15c-integration-tests.md) — avulso unique-index collision fix, null-tutorId addCharge routing, global error handler 4xx forwarding, outbox bookmark pattern.

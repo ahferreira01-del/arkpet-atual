@@ -102,7 +102,6 @@ export async function setup({
     planId: trialPlan.id,
     status: "active",
     trialEndsAt,
-    currentPeriodStart: new Date(),
     currentPeriodEnd: trialEndsAt,
   });
 
