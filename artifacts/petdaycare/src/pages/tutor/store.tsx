@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useListCatalogue, useCreateOrder, useCreche } from "@/hooks/use-financial";
+import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,22 @@ function formatBRL(value: number) {
   return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function useMediaToken() {
+  const [token, setToken] = useState(() => getMediaToken());
+  useEffect(() => {
+    const refresh = () => setToken(getMediaToken());
+    window.addEventListener("media_token_refresh", refresh);
+    return () => window.removeEventListener("media_token_refresh", refresh);
+  }, []);
+  return token;
+}
+
 export default function TutorStore() {
   const { user } = useAuth();
   const crecheId = user?.crecheId || 1;
   const tutorId = user?.id;
   const { toast } = useToast();
+  const mediaToken = useMediaToken();
 
   const { data: catalogue, isLoading } = useListCatalogue(crecheId);
   const { data: creche } = useCreche(crecheId);
@@ -107,7 +119,7 @@ export default function TutorStore() {
       <CardContent className="p-0 flex flex-col flex-1">
         <div className="h-48 bg-gradient-to-br from-violet-500/10 to-violet-900/30 relative flex items-center justify-center overflow-hidden">
           {item.mediaUrls && item.mediaUrls.length > 0 ? (
-            <img src={item.mediaUrls[0]} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+            <img src={buildMediaSrc(item.mediaUrls[0], mediaToken)} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
           ) : (
             <Sparkles className="h-16 w-16 text-violet-400 group-hover:scale-110 transition-transform duration-500" />
           )}
@@ -155,7 +167,7 @@ export default function TutorStore() {
       <CardContent className="p-0 flex flex-col flex-1">
         <div className="h-48 bg-gradient-to-br from-emerald-500/10 to-emerald-900/30 relative flex items-center justify-center overflow-hidden">
           {item.mediaUrls && item.mediaUrls.length > 0 ? (
-            <img src={item.mediaUrls[0]} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+            <img src={buildMediaSrc(item.mediaUrls[0], mediaToken)} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
           ) : (
             <PackageOpen className="h-16 w-16 text-emerald-400 group-hover:scale-110 transition-transform duration-500" />
           )}
@@ -278,7 +290,7 @@ export default function TutorStore() {
                 <div key={cartItem.item.id} className="flex gap-4 items-center bg-white/5 p-3 rounded-lg border border-white/5">
                   <div className="w-16 h-16 rounded-md bg-white/10 flex items-center justify-center overflow-hidden shrink-0">
                     {cartItem.item.mediaUrls?.[0] ? (
-                      <img src={cartItem.item.mediaUrls[0]} alt="prod" className="w-full h-full object-cover" />
+                      <img src={buildMediaSrc(cartItem.item.mediaUrls[0], mediaToken)} alt="prod" className="w-full h-full object-cover" />
                     ) : cartItem.item.type === 'service' ? (
                       <Sparkles className="h-6 w-6 text-violet-400" />
                     ) : (

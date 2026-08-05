@@ -259,6 +259,7 @@ export class BillingService {
     itemDate?: Date;
     quantity?: number;
     isAvulso?: boolean; // When true, creates a standalone invoice instead of merging into the monthly cycle
+    existingInvoiceId?: number; // When set, skip invoice creation and append to this existing invoice
     tx?: any; // Accept a tx object to reuse it
   }) {
     const amountVal = typeof params.amount === 'string' ? parseFloat(params.amount) : params.amount;
@@ -269,7 +270,19 @@ export class BillingService {
     const executeLogic = async (txClient: any) => {
       let invoiceId: number;
 
-      if (params.isAvulso) {
+      if (params.existingInvoiceId) {
+        // Append to an already-created avulso invoice (e.g. multi-item orders)
+        invoiceId = params.existingInvoiceId;
+        const [existing] = await txClient.select({ amount: invoicesTable.amount })
+          .from(invoicesTable)
+          .where(eq(invoicesTable.id, params.existingInvoiceId));
+        if (existing) {
+          const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
+          await txClient.update(invoicesTable)
+            .set({ amount: newTotal, updatedAt: new Date() })
+            .where(eq(invoicesTable.id, params.existingInvoiceId));
+        }
+      } else if (params.isAvulso) {
         // Avulso charges get their own standalone invoice so they never
         // re-open or inflate the tutor's monthly cycle invoice.
         const [newInv] = await txClient.insert(invoicesTable).values({

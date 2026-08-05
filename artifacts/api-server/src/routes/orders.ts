@@ -121,6 +121,8 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
       let firstInvoiceId: number | null = null;
 
       // 2. Add Charges via BillingService and grant service credits
+      // All order items share one standalone (avulso) invoice so they never
+      // re-open or inflate the tutor's monthly cycle invoice.
       for (const reqItem of orderItemsToInsert) {
         const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
         
@@ -132,6 +134,8 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
           description: catItem!.name,
           type: catItem?.type === "service" ? "service" : "product",
           itemDate: new Date(),
+          isAvulso: !firstInvoiceId,            // first item creates the avulso invoice
+          existingInvoiceId: firstInvoiceId ?? undefined, // subsequent items append to it
           tx: tx
         });
         if (!firstInvoiceId) firstInvoiceId = invId;
@@ -146,6 +150,8 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
           description: "Taxa de Entrega",
           type: "fee",
           itemDate: new Date(),
+          isAvulso: !firstInvoiceId,
+          existingInvoiceId: firstInvoiceId ?? undefined,
           tx: tx
         });
         if (!firstInvoiceId) firstInvoiceId = invId;
