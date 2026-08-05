@@ -1,6 +1,8 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable } from "@workspace/db/schema";
+import { OutboxRepository } from "../repositories/outbox.repository.js";
+import { financialLog } from "./logger.js";
 import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
@@ -699,4 +701,91 @@ export function startExpiredOrderCanceller() {
   // Also run on startup to catch any orders that expired while server was down
   cancelExpiredOrders();
   console.log(`[scheduler] Expired-order canceller iniciado (graça: ${EXPIRED_ORDER_DAYS} dias).`);
+}
+
+// ─── Financial Outbox Worker (Phase 15B) ─────────────────────────────────────
+// Runs every minute; fetches up to 50 pending outbox events, processes them
+// (no-op stub that writes structured JSON), marks them processed/failed.
+
+let outboxWorkerRunning = false;
+
+/** Events that fail MAX_OUTBOX_RETRIES times are moved to dead-letter (`failed`). */
+const MAX_OUTBOX_RETRIES = 3;
+
+/**
+ * Processes one pending outbox event in its own transaction.
+ * Per-event isolation means a DB failure on one event cannot roll back
+ * another event's status update. SKIP LOCKED prevents two concurrent
+ * worker ticks from picking up the same event.
+ * Returns true when an event was found and processed (or failed), false
+ * when there are no more pending events.
+ */
+async function processOneOutboxEvent(): Promise<boolean> {
+  let hadEvent = false;
+  await db.transaction(async (tx) => {
+    const [event] = await tx
+      .select()
+      .from(financialOutboxTable)
+      .where(eq(financialOutboxTable.status, "pending"))
+      .orderBy(financialOutboxTable.id)
+      .limit(1)
+      .for("update", { skipLocked: true });
+
+    if (!event) return;
+    hadEvent = true;
+
+    try {
+      // Stub: log the event; no external consumer yet (Phase 15B)
+      financialLog({
+        operation: "outbox_process",
+        eventId: event.id,
+        eventType: event.eventType,
+        result: "ok",
+      });
+      await tx
+        .update(financialOutboxTable)
+        .set({ status: "processed", processedAt: new Date() })
+        .where(eq(financialOutboxTable.id, event.id));
+    } catch (err: any) {
+      // Increment retry count. If this update also fails (DB down),
+      // the transaction rolls back and the event stays pending — it
+      // will be retried on the next worker tick.
+      const newRetryCount = event.retryCount + 1;
+      const dead = newRetryCount >= MAX_OUTBOX_RETRIES;
+      await tx
+        .update(financialOutboxTable)
+        .set({ status: dead ? "failed" : "pending", retryCount: newRetryCount })
+        .where(eq(financialOutboxTable.id, event.id));
+      financialLog({
+        operation: dead ? "outbox_dead_letter" : "outbox_retry",
+        level: "warn",
+        eventId: event.id,
+        eventType: event.eventType,
+        retryCount: newRetryCount,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+  return hadEvent;
+}
+
+async function processOutbox(): Promise<void> {
+  if (outboxWorkerRunning) return;
+  outboxWorkerRunning = true;
+  try {
+    // Process up to 50 events, one per transaction, so failures are isolated.
+    for (let i = 0; i < 50; i++) {
+      const hadEvent = await processOneOutboxEvent();
+      if (!hadEvent) break;
+    }
+  } catch (err) {
+    console.error("[outbox] worker error:", err);
+  } finally {
+    outboxWorkerRunning = false;
+  }
+}
+
+export function startOutboxWorker(): void {
+  cron.schedule("* * * * *", processOutbox);
+  console.log("[scheduler] Outbox worker started.");
 }

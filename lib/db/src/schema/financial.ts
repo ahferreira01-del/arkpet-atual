@@ -390,4 +390,20 @@ export const stockTransactionsRelations = relations(catalogueStockTransactionsTa
   user: one(usersTable, { fields: [catalogueStockTransactionsTable.userId], references: [usersTable.id] }),
 }));
 
+// ─── Financial Outbox (Phase 15B) ────────────────────────────────────────────
+// Stores domain events for async consumers. Events are inserted inside the same
+// transaction as the main DB write (atomicity guarantee). A background worker
+// processes pending events and marks them processed/failed.
+
+export const outboxStatusEnum = pgEnum("outbox_status", ["pending", "processed", "failed"]);
+
+export const financialOutboxTable = pgTable("financial_outbox", {
+  id: serial("id").primaryKey(),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  status: outboxStatusEnum("status").default("pending").notNull(),
+  retryCount: integer("retry_count").default(0).notNull(),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 

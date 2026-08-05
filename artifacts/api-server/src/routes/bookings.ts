@@ -505,8 +505,8 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       if (status === "cancelled" && existing.status !== "cancelled") {
         // Fase 4+7: CreditService restaura créditos de pacote (com piggyback) e serviço
         // usando GREATEST(0, ...) para evitar saldos negativos (underflow protection)
-        await restoreBookingPackageCredits(bookingId, tx);
-        await restoreBookingServiceCredits(bookingId, tx);
+        await restoreBookingPackageCredits(bookingId, tx, crecheId);
+        await restoreBookingServiceCredits(bookingId, tx, crecheId);
 
         // Cancelar faturas pendentes vinculadas à reserva
         await tx.update(invoicesTable)

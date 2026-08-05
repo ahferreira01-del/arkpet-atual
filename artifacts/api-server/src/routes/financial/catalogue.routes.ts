@@ -8,6 +8,7 @@ import { getPaginationParams, getCrecheAdminEmail } from "../../repositories/sha
 import { logFinancialAudit } from "../../services/audit.js";
 import { sendLowStockAlertEmail } from "../../services/email.js";
 import { requireFinancialAccess } from "./middleware.js";
+import { financialLog } from "../../lib/logger.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -271,7 +272,7 @@ router.post(
               });
             }
           } catch (alertErr) {
-            console.error("[low-stock-alert] Failed to send alert:", alertErr);
+            financialLog({ operation: "low_stock_alert_failed", level: "error", error: String(alertErr), itemId });
           }
         })();
       }
@@ -315,7 +316,7 @@ router.get(
       } catch (queryErr: any) {
         const msg: string = queryErr?.message ?? "";
         if (!msg.includes("does not exist") && !msg.includes("relation")) throw queryErr;
-        console.warn("[stock-transactions] Tabela não encontrada, retornando vazio:", msg);
+        financialLog({ operation: "stock_tx_table_missing", level: "warn", itemId, details: msg });
       }
 
       res.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) });

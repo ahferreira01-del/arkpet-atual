@@ -3,6 +3,7 @@ import { authenticate, type AuthRequest } from "../../middlewares/authenticate.j
 import { validate } from "../../middlewares/validate.js";
 import { z } from "zod";
 import { InvoiceRepository } from "../../repositories/invoice.repository.js";
+import { financialLog } from "../../lib/logger.js";
 import { getPaginationParams } from "../../repositories/shared.js";
 import {
   processManualPayment,
@@ -231,7 +232,7 @@ router.post(
         referenceId: invoiceId,
         referenceType: "invoices",
         details: "Tutor enviou comprovante de pagamento.",
-      }).catch((err: unknown) => console.error("[audit] upload-receipt log failed:", err));
+      }).catch((err: unknown) => financialLog({ operation: "audit_log_failed", level: "error", invoiceId, error: String(err) }));
 
       res.json({ ok: true });
     } catch (err) {

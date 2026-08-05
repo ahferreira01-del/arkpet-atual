@@ -20,6 +20,8 @@ import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { createOrder, cancelOrder, dispatchLowStockAlerts } from "../services/orders.js";
 import { releasePurchasedCredits } from "../services/credits.js";
+import { OutboxRepository } from "../repositories/outbox.repository.js";
+import type { FinancialDomainEvent } from "../services/events.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -143,9 +145,13 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       return;
     }
 
-    // Fase 8: cancelamento delegado ao OrderService
+    // Fase 8: cancelamento delegado ao OrderService.
+    // cancelOrder() includes the status→cancelled update inside its own
+    // transaction together with the outbox events, so they are atomic.
     if (status === "cancelled" && order.status !== "cancelled") {
-      await cancelOrder({ order, crecheId, userId: req.user!.id });
+      const cancelledOrder = await cancelOrder({ order, crecheId, userId: req.user!.id });
+      res.json(cancelledOrder);
+      return;
     }
 
     const [updatedOrder] = await db.update(ordersTable)
@@ -157,6 +163,15 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
     if (["delivered", "ready_for_pickup", "paid"].includes(status) && order.invoiceId) {
       await db.transaction(async (tx) => {
         await releasePurchasedCredits(order.invoiceId!, req.user!.id, tx);
+        // Emit OrderPaid when the order is confirmed as paid or delivered
+        if (status === "paid" || status === "delivered") {
+          await OutboxRepository.insert({
+            type: "OrderPaid",
+            crecheId,
+            invoiceId: order.invoiceId!,
+            occurredAt: new Date().toISOString(),
+          } as FinancialDomainEvent, tx);
+        }
       });
     }
 

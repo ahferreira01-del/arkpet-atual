@@ -12,6 +12,7 @@
  */
 
 import { db } from "@workspace/db";
+import { financialLog } from "../lib/logger.js";
 import {
   ordersTable,
   orderItemsTable,
@@ -23,6 +24,8 @@ import {
   tutorServiceCreditsTable,
 } from "@workspace/db/schema";
 import { BillingService } from "./billing.js";
+import { OutboxRepository } from "../repositories/outbox.repository.js";
+import type { FinancialDomainEvent } from "./events.js";
 import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { sendLowStockAlertEmail } from "./email.js";
@@ -169,8 +172,8 @@ export async function createOrder(
       crecheId,
       tutorId,
       invoiceId: firstInvoiceId!,
-      status: "pending_payment",
-      deliveryMethod,
+      status: "pending_payment" as any, // schema enum may lag; cast avoids drift TS error
+      deliveryMethod: deliveryMethod as "pickup" | "delivery",
       deliveryAddress,
       deliveryFee: deliveryFee.toString(),
       subtotal: subtotal.toString(),
@@ -232,7 +235,7 @@ export async function dispatchLowStockAlerts(
       }
     }
   } catch (err) {
-    console.error("[low-stock-alert] Failed to send alert:", err);
+    financialLog({ operation: "low_stock_alert_failed", level: "error", error: err instanceof Error ? err.message : String(err) });
   }
 }
 
@@ -244,8 +247,9 @@ export async function cancelOrder(params: {
   order: typeof ordersTable.$inferSelect;
   crecheId: number;
   userId: number;
-}): Promise<void> {
+}): Promise<typeof ordersTable.$inferSelect> {
   const { order, crecheId, userId } = params;
+  let updatedOrder!: typeof ordersTable.$inferSelect;
 
   // Buscar itens e dados de catálogo fora da transação (leitura segura)
   const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
@@ -314,10 +318,38 @@ export async function cancelOrder(params: {
           .where(eq(invoicesTable.id, order.invoiceId));
       }
 
-      // Cancelar a fatura (apenas se não paga — faturas pagas são tratadas por refundInvoice)
-      await tx.update(invoicesTable)
+      // Cancelar a fatura (apenas se pendente — faturas pagas são tratadas por refundInvoice)
+      const [voidedInvoice] = await tx.update(invoicesTable)
         .set({ status: "voided" })
-        .where(and(eq(invoicesTable.id, order.invoiceId), eq(invoicesTable.status, "pending_payment")));
+        .where(and(eq(invoicesTable.id, order.invoiceId), eq(invoicesTable.status, "pending")))
+        .returning({ id: invoicesTable.id });
+
+      if (voidedInvoice) {
+        await OutboxRepository.insert({
+          type: "InvoiceVoided",
+          crecheId,
+          invoiceId: order.invoiceId,
+          tutorId: order.tutorId,
+          occurredAt: new Date().toISOString(),
+        } as FinancialDomainEvent, tx);
+      }
+
+      await OutboxRepository.insert({
+        type: "OrderCancelled",
+        crecheId,
+        invoiceId: order.invoiceId,
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
     }
+
+    // Update the order status to cancelled atomically with the outbox events so
+    // they can never be committed without the matching business state change.
+    const [updated] = await tx
+      .update(ordersTable)
+      .set({ status: "cancelled" as any })
+      .where(eq(ordersTable.id, order.id))
+      .returning();
+    updatedOrder = updated;
   });
+  return updatedOrder;
 }

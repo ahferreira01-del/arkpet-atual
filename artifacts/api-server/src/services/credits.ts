@@ -4,6 +4,9 @@ import { InvoiceRepository } from "../repositories/invoice.repository.js";
 import { CatalogueRepository } from "../repositories/catalogue.repository.js";
 import { logFinancialAudit } from "./audit.js";
 import { normalizeServiceType } from "../utils/service-name.js";
+import { OutboxRepository } from "../repositories/outbox.repository.js";
+import { type FinancialDomainEvent } from "./events.js";
+import { financialLog } from "../lib/logger.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos públicos do CreditService
@@ -75,10 +78,14 @@ export async function releasePurchasedCredits(
     else {
       const catItem = await CatalogueRepository.findByNameAndCreche(invoice.crecheId, packageItem.description, tx);
       if (catItem?.creditsAmount && catItem.creditsAmount > 0) {
-        console.warn(
-          `[releasePurchasedCredits] Item "${packageItem.description}" sem snapshot. ` +
-          `Usando lookup legado por nome (invoice #${invoiceId}, item #${packageItem.id}).`
-        );
+        financialLog({
+          operation: "credits_legacy_pkg_fallback",
+          level: "warn",
+          invoiceId,
+          itemId: packageItem.id,
+          itemDescription: packageItem.description,
+          result: "legacy_name_lookup",
+        });
         baseCredits = catItem.creditsAmount * (packageItem.quantity || 1);
         maxPetsPerDay = catItem.maxPetsPerDay ?? 1;
       }
@@ -113,10 +120,14 @@ export async function releasePurchasedCredits(
     else {
       const catItem2 = await CatalogueRepository.findServiceByNameAndCreche(invoice.crecheId, serviceItem.description, tx);
       if (catItem2) {
-        console.warn(
-          `[releasePurchasedCredits] ServiceItem "${serviceItem.description}" sem catalogueItemId. ` +
-          `Usando lookup legado por nome (invoice #${invoiceId}, item #${serviceItem.id}).`
-        );
+        financialLog({
+          operation: "credits_legacy_svc_fallback",
+          level: "warn",
+          invoiceId,
+          itemId: serviceItem.id,
+          itemDescription: serviceItem.description,
+          result: "legacy_name_lookup",
+        });
         resolvedCatalogueItemId = catItem2.id;
       }
     }
@@ -144,6 +155,14 @@ export async function releasePurchasedCredits(
     referenceType: "invoices",
     details: `Créditos liberados para tutor #${invoice.tutorId} após pagamento da fatura #${invoiceId}.`,
   }, tx);
+
+  await OutboxRepository.insert({
+    type: "CreditsReleased",
+    crecheId: invoice.crecheId,
+    invoiceId,
+    tutorId: invoice.tutorId as number,
+    occurredAt: new Date().toISOString(),
+  } as FinancialDomainEvent, tx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,10 +187,13 @@ export async function consumePackageCredits(
   if (existing.length > 0) {
     const totalConsumedNormal = existing.filter((r: any) => r.creditsConsumed > 0).length;
     const totalPiggybacked = existing.filter((r: any) => r.creditsConsumed === 0).length;
-    console.warn(
-      `[consumePackageCredits] Booking #${bookingId} já tem ${existing.length} registros ` +
-      `em bookingCreditsTable. Retornando sem reprocessar (idempotência).`
-    );
+    financialLog({
+      operation: "credits_pkg_idempotent",
+      level: "warn",
+      bookingId,
+      existingCount: existing.length,
+      result: "skipped",
+    });
     return { totalPiggybacked, totalConsumedNormal, daysToBill: 0 };
   }
 
@@ -228,6 +250,17 @@ export async function consumePackageCredits(
     }
   }
 
+  if (totalConsumedNormal > 0) {
+    await OutboxRepository.insert({
+      type: "CreditsConsumed",
+      crecheId,
+      bookingId,
+      tutorId,
+      creditsConsumed: totalConsumedNormal,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
+
   return { totalPiggybacked, totalConsumedNormal, daysToBill };
 }
 
@@ -252,10 +285,12 @@ export async function consumeServiceCreditsForBooking(
 
   // ── Fase 14: Idempotência ────────────────────────────────────────────────
   if (await CreditRepository.existsBookingServiceCredit(bookingId, tx)) {
-    console.warn(
-      `[consumeServiceCreditsForBooking] Booking #${bookingId} já tem registros ` +
-      `em bookingServiceCreditsTable. Retornando sem reprocessar (idempotência).`
-    );
+    financialLog({
+      operation: "credits_svc_idempotent",
+      level: "warn",
+      bookingId,
+      result: "skipped",
+    });
     return daysToBill;
   }
 
@@ -306,6 +341,18 @@ export async function consumeServiceCreditsForBooking(
     }, tx);
   }
 
+  const serviceCreditsConsumed = daysToBill - remaining;
+  if (serviceCreditsConsumed > 0) {
+    await OutboxRepository.insert({
+      type: "CreditsConsumed",
+      crecheId,
+      bookingId,
+      tutorId,
+      creditsConsumed: serviceCreditsConsumed,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
+
   return remaining; // dias restantes a faturar
 }
 
@@ -315,7 +362,8 @@ export async function consumeServiceCreditsForBooking(
 
 export async function restoreBookingPackageCredits(
   bookingId: number,
-  tx: any
+  tx: any,
+  crecheId = 0
 ): Promise<void> {
   const consumed = await CreditRepository.findActiveBookingCredits(bookingId, tx);
 
@@ -344,6 +392,15 @@ export async function restoreBookingPackageCredits(
 
     await CreditRepository.markBookingCreditRestored(credit.id, tx);
   }
+
+  if (consumed.length > 0) {
+    await OutboxRepository.insert({
+      type: "CreditsRestored",
+      crecheId,
+      bookingId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -352,12 +409,22 @@ export async function restoreBookingPackageCredits(
 
 export async function restoreBookingServiceCredits(
   bookingId: number,
-  tx: any
+  tx: any,
+  crecheId = 0
 ): Promise<void> {
   const consumed = await CreditRepository.findActiveBookingServiceCredits(bookingId, tx);
 
   for (const sc of consumed) {
     await CreditRepository.decrementUsedServiceCredits(sc.tutorServiceCreditId, sc.creditsConsumed, tx);
     await CreditRepository.markBookingServiceCreditRestored(sc.id, tx);
+  }
+
+  if (consumed.length > 0) {
+    await OutboxRepository.insert({
+      type: "CreditsRestored",
+      crecheId,
+      bookingId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
   }
 }

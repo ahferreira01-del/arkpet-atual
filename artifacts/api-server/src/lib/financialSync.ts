@@ -1,5 +1,6 @@
 import { db } from "@workspace/db";
 import { BillingService } from "../services/billing.js";
+import { financialLog } from "./logger.js";
 
 /**
  * Fase 14 — FinancialSync não escreve mais no banco diretamente.
@@ -18,10 +19,7 @@ export async function applyFinancialStripeEvent(event: any): Promise<void> {
 
     // Fase 14: log de WARN para eventos sem metadata esperada
     if (!metadata.invoiceId) {
-      console.warn(
-        `[financialSync] checkout.session.completed sem metadata.invoiceId — ` +
-        `session: ${obj.id ?? "?"}, ignorando.`
-      );
+      financialLog({ operation: "stripe_session_no_invoice_id", level: "warn", sessionId: obj.id ?? "?", result: "skipped" });
       return;
     }
 
@@ -29,10 +27,7 @@ export async function applyFinancialStripeEvent(event: any): Promise<void> {
     const crecheId = Number(metadata.crecheId);
 
     if (!invoiceId || !crecheId) {
-      console.warn(
-        `[financialSync] invoiceId=${invoiceId} ou crecheId=${crecheId} inválido — ` +
-        `session: ${obj.id ?? "?"}, ignorando.`
-      );
+      financialLog({ operation: "stripe_session_invalid_ids", level: "warn", invoiceId, crecheId, sessionId: obj.id ?? "?", result: "skipped" });
       return;
     }
 
@@ -47,8 +42,6 @@ export async function applyFinancialStripeEvent(event: any): Promise<void> {
       });
     });
 
-    console.log(
-      `[financialSync] Fatura #${invoiceId} processada via Stripe (session: ${obj.id}).`
-    );
+    financialLog({ operation: "stripe_session_processed", invoiceId, sessionId: obj.id, result: "ok" });
   }
 }

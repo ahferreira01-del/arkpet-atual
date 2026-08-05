@@ -6,9 +6,9 @@ import { CatalogueRepository } from "../repositories/catalogue.repository.js";
 import { getTutorMensalidadeDia } from "../repositories/shared.js";
 import { releasePurchasedCredits } from "./credits.js";
 import { logFinancialAudit } from "./audit.js";
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTE: refundInvoiceItem is defined at the bottom of this file.
-// ─────────────────────────────────────────────────────────────────────────────
+import { OutboxRepository } from "../repositories/outbox.repository.js";
+import { type FinancialDomainEvent } from "./events.js";
+import { financialLog } from "../lib/logger.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Máquina de Estados da Invoice (Fase 14)
@@ -130,6 +130,16 @@ export async function processManualPayment(
 
     await OrderRepository.markPaidByInvoice(invoiceId, tx);
 
+    await OutboxRepository.insert({
+      type: "InvoicePaid",
+      crecheId: invoice.crecheId,
+      invoiceId: invoice.id,
+      tutorId: invoice.tutorId,
+      amount: invoice.amount,
+      paymentMethod,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+
     return invoice;
   });
 }
@@ -169,6 +179,16 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
     await OrderRepository.markPaidByInvoice(invoiceId, tx);
 
+    await OutboxRepository.insert({
+      type: "InvoicePaid",
+      crecheId: invoice.crecheId,
+      invoiceId: invoice.id,
+      tutorId: invoice.tutorId,
+      amount: invoice.amount,
+      paymentMethod: invoice.paymentMethod || "pix",
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
+
     return invoice;
   });
 }
@@ -194,6 +214,14 @@ export async function voidInvoice(invoiceId: number, crecheId: number, userId: n
       referenceType: "invoices",
       details: `Fatura #${invoice.id} cancelada (${invoice.status} → voided).`,
     }, tx);
+
+    await OutboxRepository.insert({
+      type: "InvoiceVoided",
+      crecheId,
+      invoiceId: invoice.id,
+      tutorId: invoice.tutorId,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
 
     return invoice;
   });
@@ -231,6 +259,15 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       referenceType: "invoices",
       details: `Fatura #${invoice.id} estornada.`,
     }, tx);
+
+    await OutboxRepository.insert({
+      type: "InvoiceRefunded",
+      crecheId,
+      invoiceId: invoice.id,
+      tutorId: invoice.tutorId,
+      amount: invoice.amount,
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
 
     return invoice;
   });
@@ -372,11 +409,17 @@ export class BillingService {
         if (existing) {
           if (InvoiceStateMachine.isClosed(existing.status)) {
             // F-03: Ciclo já encerrado — criar avulsa overflow em vez de reabrir
-            console.warn(
-              `[BillingService.addCharge] Ciclo ${cycle.cycleStart}–${cycle.cycleEnd} ` +
-              `já encerrado (status="${existing.status}"). ` +
-              `Criando invoice avulsa overflow (tutorId=${params.tutorId}).`
-            );
+            financialLog({
+              operation: "billing_overflow_avulso",
+              level: "warn",
+              tenantId: params.crecheId,
+              userId: params.userId,
+              tutorId: params.tutorId,
+              cycleStart: cycle.cycleStart,
+              cycleEnd: cycle.cycleEnd,
+              closedStatus: existing.status,
+              result: "overflow_avulso_created",
+            });
             const newInv = await InvoiceRepository.create({
               crecheId: params.crecheId,
               tutorId: params.tutorId,
@@ -530,6 +573,15 @@ export class BillingService {
         referenceType: "invoices",
         details: `Estorno parcial/total do item ${invoiceItem.description} (Qtd: ${quantity})`,
       }, tx);
+
+      await OutboxRepository.insert({
+        type: "InvoiceRefunded",
+        crecheId,
+        invoiceId,
+        tutorId: invoice.tutorId,
+        amount: itemTotalValue.toString(),
+        occurredAt: new Date().toISOString(),
+      } as FinancialDomainEvent, tx);
     });
   }
 
@@ -547,9 +599,12 @@ export class BillingService {
 
     // Idempotência: se já processado por um worker anterior, sair silenciosamente
     if (InvoiceStateMachine.isClosed(invoice.status)) {
-      console.log(
-        `[BillingService.processStripePayment] Fatura #${invoiceId} já está em status="${invoice.status}". Ignorando evento Stripe.`
-      );
+      financialLog({
+        operation: "stripe_payment_idempotent",
+        invoiceId,
+        invoiceStatus: invoice.status,
+        result: "skipped",
+      });
       return;
     }
 
@@ -579,5 +634,15 @@ export class BillingService {
       referenceType: "invoices",
       details: `Fatura #${invoiceId} paga via Stripe (session: ${stripeSessionId}).`,
     }, tx);
+
+    await OutboxRepository.insert({
+      type: "InvoicePaid",
+      crecheId,
+      invoiceId,
+      tutorId: invoice.tutorId,
+      amount: invoice.amount,
+      paymentMethod: "stripe",
+      occurredAt: new Date().toISOString(),
+    } as FinancialDomainEvent, tx);
   }
 }

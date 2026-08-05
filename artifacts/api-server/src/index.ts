@@ -1,6 +1,6 @@
 import app from "./app";
 import { initializeDatabase, initStripe } from "./startup.js";
-import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender, startReceiptCleanupJob, startExpiredOrderCanceller } from "./lib/scheduler.js";
+import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender, startReceiptCleanupJob, startExpiredOrderCanceller, startOutboxWorker } from "./lib/scheduler.js";
 
 // Process-level backstop: a stray rejected promise or thrown error in async
 // code (e.g. a transient DB/network hiccup) must NEVER silently crash the API
@@ -34,6 +34,7 @@ app.listen(port, () => {
       startPastDueSuspender();
       startReceiptCleanupJob();
       startExpiredOrderCanceller();
+      startOutboxWorker();
       // Stripe init runs after DB so price seeding has the schema ready.
       return initStripe();
     })

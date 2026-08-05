@@ -234,7 +234,41 @@ async function migrateQuintalPetTrial() {
   console.log(`[startup] Quintal Pet: trial inserido — expira em ${trialEndsAt.toISOString()}`);
 }
 
+/**
+ * Phase 15B: ensures the financial_outbox table and its enum exist.
+ * Idempotent — safe to run on every startup in all environments.
+ * Needed because drizzle-kit push only ran on the dev DB; production
+ * (and CI) databases must get the schema via this startup path.
+ */
+/**
+ * Idempotent DDL — propagates on failure so startup aborts rather than
+ * silently booting without the outbox table (which would cause every
+ * financial mutation to fail at the point of the outbox insert).
+ */
+async function ensureOutboxSchema(): Promise<void> {
+  await (db as any).execute(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'outbox_status') THEN
+        CREATE TYPE outbox_status AS ENUM ('pending', 'processed', 'failed');
+      END IF;
+    END $$;
+    CREATE TABLE IF NOT EXISTS financial_outbox (
+      id           SERIAL PRIMARY KEY,
+      event_type   VARCHAR(100) NOT NULL,
+      payload      JSONB NOT NULL,
+      status       outbox_status NOT NULL DEFAULT 'pending',
+      retry_count  INTEGER NOT NULL DEFAULT 0,
+      processed_at TIMESTAMP,
+      created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log("[startup] financial_outbox: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
+  // Phase 15B: idempotent outbox schema creation (runs in all environments)
+  await ensureOutboxSchema();
+
   await seedPlans();
 
   if (process.env.NODE_ENV !== "production") return;
