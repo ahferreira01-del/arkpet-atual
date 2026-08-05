@@ -1,6 +1,6 @@
 # Documentação Técnica — Módulo Financeiro ArkPet
-**Versão:** 1.0 · **Data:** Agosto 2026  
-**Escopo:** Auditoria completa + Regras de negócio  
+**Versão:** 2.0 · **Data:** Agosto 2026  
+**Escopo:** Auditoria completa + Regras de negócio + Matriz de dependências  
 **Metodologia:** Leitura de código, zero alterações
 
 ---
@@ -8,6 +8,22 @@
 ## ÍNDICE
 
 1. [Arquitetura e Mapa de Responsabilidades](#1-arquitetura-e-mapa-de-responsabilidades)
+2. [Fluxograma Completo](#2-fluxograma-completo)
+3. [Regras de Negócio — Catálogo e Estoque](#3-regras-de-negócio--catálogo-e-estoque)
+4. [Regras de Negócio — Faturas (Invoice)](#4-regras-de-negócio--faturas-invoice)
+5. [Regras de Negócio — Pedidos (Orders)](#5-regras-de-negócio--pedidos-orders)
+6. [Regras de Negócio — Pagamentos](#6-regras-de-negócio--pagamentos)
+7. [Regras de Negócio — Créditos](#7-regras-de-negócio--créditos)
+8. [Regras de Negócio — Reservas e Consumo de Créditos](#8-regras-de-negócio--reservas-e-consumo-de-créditos)
+9. [Regras de Negócio — Wallet do Tutor](#9-regras-de-negócio--wallet-do-tutor)
+10. [Endpoints — Mapeamento Completo](#10-endpoints--mapeamento-completo)
+11. [Riscos e Bugs Identificados](#11-riscos-e-bugs-identificados)
+12. [Inconsistências Estruturais](#12-inconsistências-estruturais)
+13. [Oportunidades de Melhoria](#13-oportunidades-de-melhoria)
+14. [Matriz de Dependências — Backend](#14-matriz-de-dependências--backend)
+15. [Matriz de Dependências — Frontend](#15-matriz-de-dependências--frontend)
+16. [Matriz de Dependências — Eventos Assíncronos](#16-matriz-de-dependências--eventos-assíncronos)
+17. [Grafo de Dependências Completo](#17-grafo-de-dependências-completo)
 2. [Fluxograma Completo](#2-fluxograma-completo)
 3. [Regras de Negócio — Catálogo e Estoque](#3-regras-de-negócio--catálogo-e-estoque)
 4. [Regras de Negócio — Faturas (Invoice)](#4-regras-de-negócio--faturas-invoice)
@@ -772,3 +788,324 @@ serviceItems = invoice_items onde:
 │  B5 (race condition usedCredits)                                │
 └──────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 14. MATRIZ DE DEPENDÊNCIAS — BACKEND
+
+### 14.1 Grafo de importações dos serviços financeiros
+
+```
+services/audit.ts
+  └─ logFinancialAudit()
+        ▲ importado por
+        ├── services/billing.ts
+        ├── services/credits.ts
+        ├── routes/financial.ts
+        ├── routes/bookings.ts
+        ├── routes/orders.ts
+        └── routes/users.ts
+
+services/billing.ts
+  └─ BillingService.addCharge, processManualPayment, approveReceipt,
+     voidInvoice, refundInvoice, hasOverdueInvoices, calculateDueDate
+        ▲ importado por
+        ├── routes/financial.ts   (processManualPayment, approveReceipt, void, refund, addCharge)
+        ├── routes/bookings.ts    (addCharge para reservas/consumíveis, hasOverdueInvoices)
+        └── routes/orders.ts      (addCharge para pedidos, hasOverdueInvoices, calculateDueDate)
+
+services/credits.ts
+  └─ releasePurchasedCredits()
+        ▲ importado por
+        ├── routes/orders.ts      (L395 — PUT /orders/:id/status)
+        └── lib/financialSync.ts  (L39 — webhook checkout.session.completed)
+```
+
+### 14.2 Matriz completa — quem faz o quê
+
+| Arquivo | Importa | Chama | Lê | Grava | Altera | Em tx? | FOR UPDATE? |
+|---|---|---|---|---|---|---|---|
+| `routes/financial.ts` | billing, credits, audit | addCharge, processManualPayment, approveReceipt, voidInvoice, refundInvoice, logFinancialAudit | invoices, invoice_items, transactions, catalogue_items, tutor_credits, tutor_service_credits, expenses, orders, audit_logs | invoices, invoice_items, transactions, expenses, catalogue_items, audit_logs, catalogue_stock_transactions | invoices, catalogue_items, expenses | Parcial (falta em catalogue CRUD) | Sim (stock-adjustment) |
+| `routes/orders.ts` | BillingService, releasePurchasedCredits, hasOverdueInvoices, calculateDueDate | addCharge, releasePurchasedCredits | catalogue_items, invoices, orders, order_items, tutor_service_credits | orders, order_items, catalogue_stock_transactions | catalogue_items (stock), invoices (status), tutor_service_credits (totalCredits) | Sim | Sim (catalogue_items) |
+| `routes/bookings.ts` | BillingService, logFinancialAudit, hasOverdueInvoices | addCharge, hasOverdueInvoices, logFinancialAudit | tutor_credits, tutor_service_credits, catalogue_items, invoices, invoice_items | booking_credits, invoice_items | tutor_credits (usedCredits), tutor_service_credits (usedCredits), invoices (status) | Sim | Sim (bookings, tutor_credits — parcial; service_credits — sem lock ⚠️) |
+| `lib/financialSync.ts` | releasePurchasedCredits | releasePurchasedCredits | invoices | transactions | invoices (status → paid) | Sim | Não ⚠️ |
+| `lib/scheduler.ts` | — (DB direto) | — | invoices (pending/overdue) | — | invoices (receipt cleanup) | Não | Não |
+| `routes/users.ts` | logFinancialAudit | logFinancialAudit | — | financial_audit_logs | — | Não | — |
+| `routes/financial-search.ts` | — | — | Todas financeiras | — | — | Não | Não |
+| `routes/financial-reports.ts` | — | — | Todas financeiras | — | — | Não | Não |
+| `routes/financial-analytics.ts` | — | — | Todas financeiras | — | — | Não | Não |
+| `services/billing.ts` | audit | logFinancialAudit | invoices | transactions, invoice_items | invoices (status, amount), orders (status) | Sim | Sim (addCharge mensal) |
+| `services/credits.ts` | audit | logFinancialAudit | invoices, invoice_items, catalogue_items | tutor_credits, tutor_service_credits | invoices (creditsReleased) | Sim (recebe tx) | Não ⚠️ |
+
+### 14.3 Acesso por tabela
+
+| Tabela | Lê | Grava | Altera | Deleta |
+|---|---|---|---|---|
+| `invoices` | financial.ts, billing.ts, credits.ts, bookings.ts, orders.ts, financialSync.ts, scheduler.ts, reports, search, analytics | billing.ts (addCharge) | billing.ts, financialSync.ts, credits.ts, bookings.ts | — |
+| `invoice_items` | financial.ts, credits.ts, bookings.ts | billing.ts (addCharge), bookings.ts | financial.ts (refund-item) | — |
+| `transactions` | financial.ts, reports, analytics | billing.ts, financialSync.ts | — | — |
+| `tutor_credits` | financial.ts, credits.ts, bookings.ts | credits.ts | bookings.ts (usedCredits) | — |
+| `tutor_service_credits` | financial.ts, credits.ts, bookings.ts, orders.ts | credits.ts | bookings.ts (usedCredits), orders.ts (totalCredits na revogação) | — |
+| `catalogue_items` | financial.ts, orders.ts, bookings.ts, credits.ts | financial.ts | financial.ts (PUT), orders.ts (stock) | financial.ts (DELETE físico) |
+| `catalogue_stock_transactions` | financial.ts | financial.ts, orders.ts | — | — |
+| `orders` | financial.ts, orders.ts | orders.ts | billing.ts (status → paid), orders.ts | — |
+| `order_items` | financial.ts, orders.ts | orders.ts | — | — |
+| `expenses` | financial.ts, reports | financial.ts | financial.ts | financial.ts |
+| `financial_audit_logs` | financial.ts, search | audit.ts (via todos) | — | — |
+
+### 14.4 Registro do roteador
+
+```
+app.use("/api", router)
+  ├── /creches/:crecheId/financial           → routes/financial.ts
+  ├── /creches/:crecheId/financial/search    → routes/financial-search.ts
+  ├── /creches/:crecheId/financial/analytics → routes/financial-analytics.ts
+  ├── /creches/:crecheId/orders              → routes/orders.ts
+  └── /stripe                                → routes/stripe.ts (webhook)
+
+Middleware global: helmet, cors, compression, express.json
+Auth middleware: aplicado por rota, não globalmente
+```
+
+### 14.5 Stripe — eventos e ações
+
+| Evento Stripe | Handler | Tabelas | Chama serviço financeiro? |
+|---|---|---|---|
+| `checkout.session.completed` | `financialSync.ts` | invoices (UPDATE paid), transactions (INSERT) | `releasePurchasedCredits` ✅ (somente se `metadata.packagePurchase` presente) |
+| `payment_intent.succeeded` | `stripe.ts` | invoices, subscriptions | Não chama billing.ts diretamente |
+| `customer.subscription.updated/deleted` | `subscriptionSync.ts` | subscriptions | Não — apenas subscription status |
+| `invoice.paid` / `invoice.payment_failed` | `subscriptionSync.ts` | subscriptions | Não — apenas subscription status |
+
+> **Gap crítico:** A condição `metadata.packagePurchase` é obrigatória para liberar créditos via Stripe. Se a sessão foi criada sem esse campo, créditos não são liberados mesmo com pagamento confirmado.
+
+### 14.6 Jobs agendados
+
+| Job | Cron (BRT) | Tabelas | Ação | Falha silenciosa? |
+|---|---|---|---|---|
+| Receipt Cleanup | 04:00 diário | invoices | Deleta comprovantes >90 dias (LGPD), limpa `receiptPhotoPath` | Sim |
+| Plan Change Applicator | 06:00 diário | subscriptions | Aplica downgrades/upgrades agendados | Não (loga) |
+| Past-Due Suspender | 07:00 diário | subscriptions | Suspende assinaturas com >7 dias de atraso | Não (loga) |
+| Invoice Reminders | 09:00 diário | invoices | Push para tutor (5d/3d/hoje/overdue) e admin (overdue) | Sim (`.catch(() => {})`) |
+
+> **Gap:** Não há job que grave `status='overdue'` no banco. O status overdue é **derivado em consulta** (`dueDate < hoje`). Qualquer query que precise filtrar overdue precisa replicar essa lógica.
+
+---
+
+## 15. MATRIZ DE DEPENDÊNCIAS — FRONTEND
+
+### 15.1 Mapa de páginas e componentes
+
+| Arquivo | Hooks usados | Mutations | Invalida após mutação |
+|---|---|---|---|
+| `pages/tutor/store.tsx` | `useListCatalogue`, `useCreateOrder`, `useCreche` | `createOrder` | `orders`, `catalogue` |
+| `pages/tutor/financial.tsx` | `useTutorInvoices`, `useListOrders`, `useStripeCheckout`, `usePackagesBalance`, `useServiceCredits`, `useInvoiceItems` | `stripeCheckout`, `uploadReceipt` | — (só lê) |
+| `pages/financial/index.tsx` | `useListAllInvoices`, `useDashboardCashFlow`, `useDashboardDre`, `useListExpenses`, `useListCatalogue`, `useListAuditLogs`, `useListOrders`, todas as mutations admin | Todas as mutations admin | `all-invoices`, `tutor-invoices`, `cash-flow`, `dre`, `orders`, `expenses`, `catalogue`, `audit-logs` |
+| `pages/financial/dashboards.tsx` | `useDashboardKPIs`, `useDashboardCharts`, `useDashboardSales`, `useFinancialReport` | — | — |
+| `pages/dashboard.tsx` | `useTutorInvoices` | — | — |
+| `pages/bookings/new.tsx` | `useListCatalogue`, `usePackagesBalance`, `useServiceCredits` | — | — |
+| `pages/pets/detail.tsx` | `useTutorInvoices` | — | — |
+| `components/financial/pos-sale-modal.tsx` | `useListCatalogue`, `usePosSale` | `posSale` | `all-invoices`, `catalogue`, `dashboard-dre`, `dashboard-cash-flow` |
+| `components/financial/smart-indicators.tsx` | `useTutorSmartIndicators`, `useCatalogueSmartIndicators` | — | — |
+| `components/financial/command-palette.tsx` | `useFinancialSearch` | — | — |
+| `components/bookings/add-consumable-modal.tsx` | `useListCatalogue`, `useAddBookingConsumable` | `addBookingConsumable` | `booking-consumables`, `all-invoices`, `tutor-invoices` |
+| `components/layout/bottom-nav.tsx` | `useTutorInvoiceBadge` | — | — (badge pendentes/vencidas) |
+
+### 15.2 Grafo de dependências frontend
+
+```
+use-financial.ts (hub central)
+  │
+  ├── pages/tutor/store.tsx            → useListCatalogue, useCreateOrder
+  ├── pages/tutor/financial.tsx        → useTutorInvoices, usePackagesBalance,
+  │                                       useServiceCredits, useListOrders
+  ├── pages/financial/index.tsx        → useListAllInvoices, useApproveReceipt,
+  │                                       usePayManualInvoice, useVoidInvoice,
+  │                                       useRefundInvoice, usePosSale,
+  │                                       useListCatalogue, useDashboardCashFlow,
+  │                                       useListExpenses, useUpdateOrderStatus …
+  ├── pages/financial/dashboards.tsx   → useDashboardKPIs, useDashboardCharts
+  ├── pages/dashboard.tsx              → useTutorInvoices (badge de vencidas)
+  ├── pages/bookings/new.tsx           → useListCatalogue, usePackagesBalance,
+  │                                       useServiceCredits
+  ├── components/pos-sale-modal.tsx    → usePosSale, useListCatalogue
+  ├── components/smart-indicators.tsx  → useTutorSmartIndicators
+  ├── components/add-consumable-modal  → useListCatalogue, useAddBookingConsumable
+  └── components/bottom-nav.tsx        → useTutorInvoiceBadge
+```
+
+### 15.3 Cache invalidation map
+
+```
+Mutação                   → Query keys invalidadas
+─────────────────────────────────────────────────────────────
+approveReceipt            → all-invoices, tutor-invoices, cash-flow, dre, orders
+payManualInvoice          → all-invoices, tutor-invoices, cash-flow, dre
+voidInvoice               → all-invoices, tutor-invoices
+refundInvoice             → all-invoices, tutor-invoices, cash-flow
+refundInvoiceItem         → all-invoices, tutor-invoices, invoice-items
+createOrder               → orders, catalogue
+updateOrderStatus         → orders, all-invoices, tutor-invoices
+posSale                   → all-invoices, catalogue, dashboard-dre, dashboard-cash-flow
+stockAdjustment           → catalogue, stock-history
+createCatalogueItem       → catalogue
+updateCatalogueItem       → catalogue
+deleteCatalogueItem       → catalogue
+createExpense             → expenses, cash-flow, dre
+updateExpense / delete    → expenses
+payExpense                → expenses, cash-flow
+addBookingConsumable      → booking-consumables, all-invoices, tutor-invoices
+
+NÃO invalidado (gap de cache):
+  ❌ dashboard-kpis    após approveReceipt/payManual → KPIs ficam desatualizados
+  ❌ packages-balance  após approveReceipt           → wallet mostra saldo antigo
+  ❌ service-credits   após approveReceipt           → mesma situação
+```
+
+### 15.4 Navegação financeira no app
+
+```
+Tutor:
+  BottomNav  → /tutor/financial   (Minha Carteira / Faturas)
+  BottomNav  → /tutor/store       (Lojinha)
+  Dashboard  → /tutor/financial   (ao clicar em fatura vencida)
+
+Admin:
+  Sidebar    → /financial         (Painel Financeiro completo)
+  Sidebar    → /orders            (Gestão de pedidos)
+  Qualquer   → modal POS          (components/financial/pos-sale-modal.tsx)
+```
+
+---
+
+## 16. MATRIZ DE DEPENDÊNCIAS — EVENTOS ASSÍNCRONOS
+
+### 16.1 E-mails
+
+| Trigger | Fonte | Destinatário | Assíncrono? | Falha tratada? |
+|---|---|---|---|---|
+| Estoque abaixo de `minStockAlert` (ajuste manual) | `financial.ts:~465` | `creche_admin` | Sim (IIFE fire-and-forget) | Sim (`.catch` + log) |
+| Estoque abaixo de `minStockAlert` (pedido da loja) | `orders.ts:~188` | `creche_admin` | Sim (IIFE fire-and-forget) | Sim (`.catch` + log) |
+| Criação/aprovação de invoice | `billing.ts / email.ts:~210` | Tutor | Sim | Não confirmado |
+
+### 16.2 Push notifications
+
+| Trigger | Fonte | Destinatário | Assíncrono? | Falha tratada? |
+|---|---|---|---|---|
+| Invoice próxima do vencimento (5d, 3d, hoje) | `scheduler.ts:~439` | Tutor | Sim (dentro do cron) | Sim (`.catch(() => {})`) |
+| Invoice vencida (overdue) | `scheduler.ts:~457` | Tutor + Admin | Sim (dentro do cron) | Sim (`.catch(() => {})`) |
+| Pagamento confirmado (`payment_intent.succeeded`) | `stripe.ts:~659` | Tutor | Sim | Não confirmado |
+
+### 16.3 Fluxo completo do webhook Stripe
+
+```
+Stripe → POST /api/stripe/webhook
+  │
+  ├── checkout.session.completed
+  │     └── financialSync.ts
+  │           ├── SELECT invoice WHERE stripePaymentIntentId
+  │           ├── UPDATE invoice SET status='paid'
+  │           ├── INSERT transactions (income)
+  │           └── releasePurchasedCredits(invoiceId)
+  │                 └── somente se session.metadata.packagePurchase presente
+  │
+  ├── payment_intent.succeeded
+  │     └── stripe.ts — PIX/Boleto
+  │           └── atualiza invoice e/ou agenda mudança de plano
+  │
+  ├── customer.subscription.updated / deleted
+  │     └── subscriptionSync.ts — atualiza subscriptions table
+  │
+  └── invoice.paid / invoice.payment_failed
+        └── subscriptionSync.ts — atualiza status da assinatura
+```
+
+### 16.4 Eventos frontend (CustomEvents)
+
+| Evento | Disparado em | Escutado por | Propósito |
+|---|---|---|---|
+| `media_token_refresh` | `hooks/use-auth.tsx` (a cada save do token) | `pet-avatar.tsx`, `tutor/store.tsx` (useMediaToken) | Re-renderiza imagens com token renovado |
+| `financial-refresh` | `financial-context.tsx` (após mutations) | Abas abertas do app | Sincroniza dados financeiros entre abas |
+
+---
+
+## 17. GRAFO DE DEPENDÊNCIAS COMPLETO
+
+### 17.1 Visão de alto nível
+
+```
+                    ┌──────────────────────┐
+                    │   STRIPE (externo)    │
+                    └──────────┬───────────┘
+                               │ webhook
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                     MÓDULO FINANCEIRO (core)                     │
+│                                                                  │
+│  services/billing.ts ◄──── bookings.ts, orders.ts, financial.ts │
+│  services/credits.ts ◄──── orders.ts, financialSync.ts          │
+│  services/audit.ts   ◄──── todos os módulos acima + users.ts    │
+│                                                                  │
+│  routes/financial.ts        (CRUD + pagamentos + POS)           │
+│  routes/financial-search    (leitura)                           │
+│  routes/financial-reports   (leitura)                           │
+│  routes/financial-analytics (leitura)                           │
+│                                                                  │
+│  lib/financialSync.ts ◄── Stripe → releasePurchasedCredits      │
+│  lib/scheduler.ts    ────► invoices (reminders, cleanup)        │
+└──────────────────────────────────────────────────────────────────┘
+          ▲                    ▲                   ▲
+          │ addCharge          │ hasOverdue         │ releasePurchasedCredits
+          │                    │                   │
+  routes/bookings.ts    routes/orders.ts    lib/financialSync.ts
+  - confirma reserva    - cria pedido       - webhook Stripe
+  - consome créditos    - cancela pedido
+  - restaura créditos   - libera créditos
+
+          │ HTTP API
+          ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                    FRONTEND (React PWA)                          │
+│  hooks/use-financial.ts (hub central)                           │
+│    ├── tutor/store.tsx          (lojinha)                       │
+│    ├── tutor/financial.tsx      (carteira / faturas)            │
+│    ├── financial/index.tsx      (admin hub)                     │
+│    ├── financial/dashboards.tsx (KPIs / charts)                 │
+│    ├── dashboard.tsx            (badge vencidas)                │
+│    ├── bookings/new.tsx         (verifica créditos)             │
+│    ├── pos-sale-modal.tsx       (venda balcão)                  │
+│    ├── smart-indicators.tsx     (indicadores tutor)             │
+│    ├── add-consumable-modal.tsx                                 │
+│    └── bottom-nav.tsx           (badge pendentes)              │
+└──────────────────────────────────────────────────────────────────┘
+          │ notificações
+          ▼
+  Tutor (push/email)         Admin (push/email)
+  - reminder vencimento      - alerta estoque baixo
+  - invoice vencida          - invoice vencida (push)
+```
+
+### 17.2 Dependências inversas — quem depende do financeiro
+
+| Módulo | O que consome | Direção |
+|---|---|---|
+| `bookings.ts` | `addCharge`, `hasOverdueInvoices`, `logFinancialAudit`, `tutorCreditsTable`, `tutorServiceCreditsTable` | bookings → financeiro |
+| `orders.ts` | `addCharge`, `releasePurchasedCredits`, `hasOverdueInvoices`, `calculateDueDate` | orders → financeiro |
+| `financialSync.ts` | `releasePurchasedCredits`, `invoicesTable`, `transactionsTable` | stripe → financeiro |
+| `scheduler.ts` | `invoicesTable` (reminders, cleanup) | scheduler → financeiro |
+| `users.ts` | `logFinancialAudit` | users → financeiro |
+| `use-financial.ts` | Todos os endpoints `/financial` e `/orders` | frontend → financeiro |
+| `pages/bookings/new.tsx` | `usePackagesBalance`, `useServiceCredits`, `useListCatalogue` | booking UI → financeiro |
+| `components/bottom-nav.tsx` | `useTutorInvoiceBadge` | nav → financeiro |
+
+### 17.3 O que o financeiro consome (dependências de saída)
+
+| Dependência | Para quê |
+|---|---|
+| `lib/db` (Drizzle ORM) | Todas as queries |
+| `services/audit.ts` | Logging de todas as ações |
+| `services/email.ts` | Alertas de estoque baixo, invoice email |
+| `lib/objectStorage.ts` | Upload/download de comprovantes |
+| `lib/push.ts` | Push ao tutor/admin (via scheduler) |
+| `lib/stripe.ts` | Criação de sessões de checkout |
+| `middlewares/authenticate.ts` | Auth em todos os endpoints |
+| `middlewares/validate.ts` | Validação Zod por rota |
