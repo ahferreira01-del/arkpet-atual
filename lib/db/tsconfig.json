@@ -8,5 +8,6 @@
     "rootDir": "src",
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/migrate_to_wms.ts", "src/test_query.ts", "src/test_query_2.ts"]
 }

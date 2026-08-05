@@ -28,6 +28,13 @@ import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.
 import { logFinancialAudit } from "../services/audit.js";
 import { hasOverdueInvoices, BillingService } from "../services/billing.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
+// Fase 7: API interna do CreditService — Booking não conhece mais as tabelas financeiras
+import {
+  consumePackageCredits,
+  consumeServiceCreditsForBooking,
+  restoreBookingPackageCredits,
+  restoreBookingServiceCredits,
+} from "../services/credits.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -366,91 +373,23 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         let totalConsumedNormal = 0;
         let daysToBill = 0;
 
-        // Only attempt to consume package credits when the booking was explicitly
-        // created with packageMaxPets set (i.e. the tutor selected "Usar Diárias").
-        // Avulso/lodging bookings with packageMaxPets = null are always billed.
-        const usePackageCredits = existing.packageMaxPets != null;
-
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          const dateStr = d.toISOString().split("T")[0];
-          
-          if (!usePackageCredits) {
-            // Avulso/lodging booking: skip credit consumption entirely, bill this day.
-            daysToBill++;
-            continue;
-          }
-
-          // 1. Tentar pegar carona (Piggyback) — somente para pacotes multi-pet
-          const piggybackCandidates = await tx
-            .select({
-              creditId: bookingCreditsTable.tutorCreditId,
-              maxPets: tutorCreditsTable.maxPetsPerDay,
-              usedPetsCount: sql<number>`count(DISTINCT ${bookingsTable.petId})`
-            })
-            .from(bookingCreditsTable)
-            .innerJoin(tutorCreditsTable, eq(bookingCreditsTable.tutorCreditId, tutorCreditsTable.id))
-            .innerJoin(bookingsTable, eq(bookingCreditsTable.bookingId, bookingsTable.id))
-            .where(and(
-              eq(bookingsTable.tutorId, existing.tutorId),
-              eq(bookingsTable.crecheId, crecheId),
-              eq(bookingCreditsTable.consumedDate, dateStr),
-              isNull(bookingCreditsTable.restoredAt),
-              gt(tutorCreditsTable.maxPetsPerDay, 1),
-              eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets!)
-            ))
-            .groupBy(bookingCreditsTable.tutorCreditId, tutorCreditsTable.maxPetsPerDay);
-            
-          let piggybackedCreditId: number | null = null;
-          for (const cand of piggybackCandidates) {
-            if (Number(cand.usedPetsCount) < cand.maxPets) {
-              piggybackedCreditId = cand.creditId;
-              break;
-            }
-          }
-          
-          if (piggybackedCreditId) {
-            await tx.insert(bookingCreditsTable).values({
-              bookingId: bookingId,
-              tutorCreditId: piggybackedCreditId,
-              creditsConsumed: 0,
-              consumedDate: dateStr,
-            });
-            totalPiggybacked++;
-            continue;
-          }
-
-          // 2. Não conseguiu carona, consumir saldo normal
-          const validCredits = await tx
-            .select()
-            .from(tutorCreditsTable)
-            .where(
-              and(
-                eq(tutorCreditsTable.tutorId, existing.tutorId),
-                eq(tutorCreditsTable.crecheId, crecheId),
-                eq(tutorCreditsTable.maxPetsPerDay, existing.packageMaxPets!),
-                sql`${tutorCreditsTable.usedCredits} < ${tutorCreditsTable.totalCredits}`,
-                or(isNull(tutorCreditsTable.expirationDate), gte(tutorCreditsTable.expirationDate, new Date().toISOString().split("T")[0]))
-              )
-            )
-            .orderBy(asc(tutorCreditsTable.expirationDate), asc(tutorCreditsTable.createdAt))
-            .limit(1)
-            .for("update");
-
-          if (validCredits.length > 0) {
-            const creditPack = validCredits[0];
-            await tx.update(tutorCreditsTable)
-              .set({ usedCredits: sql`${tutorCreditsTable.usedCredits} + 1` })
-              .where(eq(tutorCreditsTable.id, creditPack.id));
-            
-            await tx.insert(bookingCreditsTable).values({
-              bookingId: bookingId,
-              tutorCreditId: creditPack.id,
-              creditsConsumed: 1,
-              consumedDate: dateStr,
-            });
-            totalConsumedNormal++;
-          } else {
-            // 3. Sem saldo. Faturar dias excedentes.
+        // Fase 7: CreditService.consumePackageCredits — Booking não conhece mais tabelas de créditos
+        if (existing.packageMaxPets != null) {
+          const result = await consumePackageCredits(
+            bookingId,
+            existing.tutorId!,
+            crecheId,
+            start,
+            end,
+            existing.packageMaxPets!,
+            tx
+          );
+          totalPiggybacked = result.totalPiggybacked;
+          totalConsumedNormal = result.totalConsumedNormal;
+          daysToBill = result.daysToBill;
+        } else {
+          // Avulso/lodging: todos os dias são faturados
+          for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
             daysToBill++;
           }
         }
@@ -513,62 +452,18 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
                unitPrice = Number(catalogueItem.basePrice);
              }
              
-             // Check if we have service credits (carteira de serviços).
-             // Matching is done by normalized base service type so that a
-             // "Banho Pequeno" credit covers a "Banho Grande" booking (same
-             // service, different porte). Size qualifier words are stripped
-             // before comparison via normalizeServiceType().
-             if (catalogueItem.type === "service") {
-               const bookingServiceType = normalizeServiceType(catalogueItem.name);
-
-               // Fetch ALL available service credits for this tutor/creche,
-               // joined with the catalogue item to get the item name for matching.
-               const candidateCredits = await tx
-                 .select({
-                   id: tutorServiceCreditsTable.id,
-                   totalCredits: tutorServiceCreditsTable.totalCredits,
-                   usedCredits: tutorServiceCreditsTable.usedCredits,
-                   itemName: catalogueItemsTable.name,
-                 })
-                 .from(tutorServiceCreditsTable)
-                 .innerJoin(
-                   catalogueItemsTable,
-                   eq(catalogueItemsTable.id, tutorServiceCreditsTable.catalogueItemId),
-                 )
-                 .where(and(
-                   eq(tutorServiceCreditsTable.tutorId, existing.tutorId!),
-                   eq(tutorServiceCreditsTable.crecheId, crecheId),
-                   sql`${tutorServiceCreditsTable.usedCredits} < ${tutorServiceCreditsTable.totalCredits}`
-                 ))
-                 .orderBy(asc(tutorServiceCreditsTable.id))
-                 .for("update");
-
-               // Keep only credits whose base service type matches (e.g. all "banho" variants)
-               const matchingCredits = candidateCredits.filter(
-                 c => normalizeServiceType(c.itemName) === bookingServiceType,
+             // Fase 7: CreditService.consumeServiceCreditsForBooking
+             // Rastreia consumo em booking_service_credits para restauração no cancelamento (Fase 5)
+             if (catalogueItem.type === "service" && daysToBill > 0) {
+               daysToBill = await consumeServiceCreditsForBooking(
+                 bookingId,
+                 existing.tutorId!,
+                 crecheId,
+                 catalogueItem,
+                 daysToBill,
+                 req.user.id,
+                 tx
                );
-
-               for (const credit of matchingCredits) {
-                 if (daysToBill <= 0) break;
-
-                 const remainingInCredit = credit.totalCredits - credit.usedCredits;
-                 const toConsume = Math.min(remainingInCredit, daysToBill);
-
-                 await tx.update(tutorServiceCreditsTable)
-                   .set({ usedCredits: sql`${tutorServiceCreditsTable.usedCredits} + ${toConsume}` })
-                   .where(eq(tutorServiceCreditsTable.id, credit.id));
-
-                 daysToBill -= toConsume;
-
-                 await logFinancialAudit({
-                   crecheId,
-                   userId: req.user.id,
-                   action: "credits_deduct",
-                   referenceId: bookingId,
-                   referenceType: "bookings",
-                   details: `Consumo de ${toConsume} crédito(s) de serviço (${credit.itemName} → ${catalogueItem.name}) da Carteira de Serviços.`
-                 }, tx);
-               }
              }
           }
           
@@ -605,59 +500,26 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
       // Handle cancellation logic
       if (status === "cancelled" && existing.status !== "cancelled") {
-        // 1. Fetch consumed credits
-        const consumed = await tx
-          .select()
-          .from(bookingCreditsTable)
-          .where(and(eq(bookingCreditsTable.bookingId, bookingId), isNull(bookingCreditsTable.restoredAt)));
+        // Fase 4+7: CreditService restaura créditos de pacote (com piggyback) e serviço
+        // usando GREATEST(0, ...) para evitar saldos negativos (underflow protection)
+        await restoreBookingPackageCredits(bookingId, tx);
+        await restoreBookingServiceCredits(bookingId, tx);
 
-        // 2. Restore credits
-        for (const c of consumed) {
-          let shouldRestoreToTutor = true;
-
-          if (c.creditsConsumed > 0 && c.consumedDate) {
-            const [child] = await tx.select().from(bookingCreditsTable)
-              .where(and(
-                eq(bookingCreditsTable.tutorCreditId, c.tutorCreditId),
-                eq(bookingCreditsTable.consumedDate, c.consumedDate),
-                eq(bookingCreditsTable.creditsConsumed, 0),
-                isNull(bookingCreditsTable.restoredAt),
-                sql`${bookingCreditsTable.id} != ${c.id}`
-              )).limit(1);
-
-            if (child) {
-              await tx.update(bookingCreditsTable)
-                .set({ creditsConsumed: c.creditsConsumed })
-                .where(eq(bookingCreditsTable.id, child.id));
-                
-              shouldRestoreToTutor = false;
-            }
-          }
-
-          if (shouldRestoreToTutor) {
-            await tx.update(tutorCreditsTable)
-              .set({ usedCredits: sql`${tutorCreditsTable.usedCredits} - ${c.creditsConsumed}` })
-              .where(eq(tutorCreditsTable.id, c.tutorCreditId));
-          }
-
-          await tx.update(bookingCreditsTable)
-            .set({ restoredAt: new Date() })
-            .where(eq(bookingCreditsTable.id, c.id));
-        }
-
-        // 3. Cancel pending invoices linked to this booking
+        // Cancelar faturas pendentes vinculadas à reserva
         await tx.update(invoicesTable)
           .set({ status: "voided" })
           .where(and(eq(invoicesTable.bookingId, bookingId), eq(invoicesTable.status, "pending")));
-      }
+
+        // Fase 12: audit log movido para dentro do bloco (antes executava em todo status change)
         await logFinancialAudit({
           crecheId,
           userId: req.user.id,
-          action: "credits_deduct", // using available enum value
+          action: "credits_deduct",
           referenceId: bookingId,
           referenceType: "bookings",
           details: "Estorno de créditos devido a cancelamento da reserva."
         }, tx);
+      }
 
 
       const [booking] = await tx

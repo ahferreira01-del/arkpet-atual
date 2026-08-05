@@ -16,6 +16,11 @@ Adding a UNIQUE/constraint to a table that already has rows makes `drizzle-kit p
 `$REPLIT_DEV_DOMAIN/api/...` routes to the FRONTEND (petdaycare web), NOT the api-server. Curling it for backend tests returns empty/fails.
 **How to apply:** test the API server directly at `http://localhost:8080/api/...` from the shell. The frontend reaches the API via its own vite proxy.
 
+## lib/db tsconfig excludes broken migration scripts
+`lib/db/src/migrate_to_wms.ts` references non-existent tables (`itemBatchesTable`, `inventoryMovementsTable`) and is excluded in `lib/db/tsconfig.json` via `"exclude"`. Same for `test_query.ts` / `test_query_2.ts`.
+**Why:** these are one-off scripts never meant to be compiled into the dist; they block `tsc --build` without the exclusion.
+**How to apply:** if tsc --build fails in lib/db with "no exported member" errors from a `migrate_*.ts` or `test_*.ts` file, add it to `tsconfig.json → exclude`; do NOT try to stub the missing exports. Also: always delete `tsconfig.tsbuildinfo` before re-running tsc --build if the "up to date" message is misleading (`rm lib/db/tsconfig.tsbuildinfo && npx tsc --build`).
+
 ## Known PRE-EXISTING issues (not regressions — do not "fix" reflexively)
 - `lib/api-zod/src/index.ts` has duplicate-export TS2308 ambiguity (ListBookingsParams, etc.) from `export *` of both ./generated/api and ./generated/types. api-zod is consumed by api-server only, not the frontend; frontend libs (lib/db, lib/api-client-react) build clean.
 - `artifacts/petdaycare/src/pages/bookings/index.tsx` references booking status `cancel_requested` which is NOT in openapi.yaml → 3 TS errors there. Pre-existing spec/frontend drift.

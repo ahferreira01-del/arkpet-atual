@@ -163,6 +163,24 @@ export const bookingCreditsRelations = relations(bookingCreditsTable, ({ one }) 
   }),
 }));
 
+// 3.7. Rastreamento de créditos de SERVIÇO consumidos por reserva (Fase 5 — migração aditiva)
+// Permite a restauração correta ao cancelar uma reserva.
+export const bookingServiceCreditsTable = pgTable("booking_service_credits", {
+  id: serial("id").primaryKey(),
+  bookingId: integer("booking_id").notNull(),
+  tutorServiceCreditId: integer("tutor_service_credit_id").notNull().references(() => tutorServiceCreditsTable.id),
+  creditsConsumed: integer("credits_consumed").notNull(),
+  restoredAt: timestamp("restored_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const bookingServiceCreditsRelations = relations(bookingServiceCreditsTable, ({ one }) => ({
+  tutorServiceCredit: one(tutorServiceCreditsTable, {
+    fields: [bookingServiceCreditsTable.tutorServiceCreditId],
+    references: [tutorServiceCreditsTable.id],
+  }),
+}));
+
 // 4. Cabeçalho de Faturas (Contas a Receber)
 export const invoicesTable = pgTable("invoices", {
   id: serial("id").primaryKey(),

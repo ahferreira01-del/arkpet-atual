@@ -210,12 +210,14 @@ export function usePayManualInvoice(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: pagamento libera créditos e atualiza saldo de pacotes/serviços
       queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
-      // Must include crecheId to match useListOrders key: ["orders", crecheId]
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
     }
   });
 }
@@ -236,12 +238,14 @@ export function useApproveReceipt(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: aprovação de comprovante libera créditos e atualiza saldo de pacotes/serviços
       queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
       queryClient.invalidateQueries({ queryKey: ["dre"] });
-      // Must include crecheId to match useListOrders key: ["orders", crecheId]
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
     }
   });
 }
@@ -529,8 +533,12 @@ export function useRefundInvoice(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: fatura estornada cancela orders vinculadas e afeta DRE e tutor-invoices
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
     }
   });
 }
@@ -548,7 +556,10 @@ export function useVoidInvoice(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: void cancela orders vinculadas e invalida visão do tutor
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
     }
   });
 }
@@ -675,7 +686,12 @@ export function useUpdateOrderStatus(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: mudar status de pedido pode liberar créditos, alterar estoque, e afetar DRE
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
     }
   });
 }
@@ -700,8 +716,11 @@ export function useCreateOrder(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: novo pedido cria invoice e consome estoque
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
     }
   });
 }
@@ -726,10 +745,11 @@ export function usePosSale(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: chaves corretas para dre e cash-flow (eram "dashboard-dre"/"dashboard-cash-flow")
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-dre", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
     }
   });
 }
@@ -754,10 +774,11 @@ export function useRefundInvoiceItem(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
+      // Fase 10: chaves corretas para dre e cash-flow
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-dre", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["audit-logs", crecheId] });
     }
   });

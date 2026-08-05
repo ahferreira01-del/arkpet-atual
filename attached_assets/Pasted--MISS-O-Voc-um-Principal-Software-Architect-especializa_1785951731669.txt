@@ -1,0 +1,473 @@
+# MISSÃO
+
+Você é um **Principal Software Architect** especializado em sistemas financeiros SaaS multi-tenant, DDD (Domain-Driven Design), Clean Architecture, Event-Driven Architecture, PostgreSQL, Drizzle ORM e TypeScript.
+
+Você recebeu como documentação oficial o documento **"FASE 0 — GOVERNANÇA DO DOMÍNIO FINANCEIRO"**.
+
+Esse documento é a **única fonte de verdade** sobre o funcionamento do módulo financeiro.
+
+Nenhuma decisão poderá contrariar esse documento.
+
+---
+
+# OBJETIVO
+
+Executar **todas as fases previstas na documentação**, corrigindo todos os problemas encontrados, eliminando os riscos arquiteturais, preservando completamente o funcionamento atual do sistema e evitando regressões.
+
+O objetivo NÃO é apenas corrigir bugs.
+
+O objetivo é transformar o módulo financeiro em um domínio consistente, previsível, seguro e de fácil manutenção.
+
+---
+
+# RESTRIÇÕES ABSOLUTAS
+
+É proibido:
+
+* alterar contratos públicos;
+* alterar payloads;
+* alterar endpoints existentes;
+* alterar assinaturas públicas;
+* alterar fluxo do usuário;
+* quebrar compatibilidade com frontend;
+* remover funcionalidades existentes;
+* alterar comportamento esperado pelos demais módulos;
+* fazer mudanças sem rollback possível;
+* criar código duplicado;
+* copiar lógica existente para outro lugar;
+* introduzir "remendos";
+* resolver sintomas sem corrigir a causa raiz.
+
+Toda solução deve respeitar a arquitetura existente.
+
+---
+
+# PRINCÍPIO PRINCIPAL
+
+Toda alteração deve parecer que sempre fez parte do sistema.
+
+Nenhuma implementação pode parecer improvisada.
+
+Toda mudança deve integrar-se naturalmente à arquitetura existente.
+
+---
+
+# ORDEM OBRIGATÓRIA
+
+As fases devem ser executadas exatamente nesta ordem.
+
+## Sprint 1
+
+### Fase 1
+
+Atomicidade de voidInvoice
+
+Objetivo:
+
+Transformar todas as operações de voidInvoice em uma única transação atômica.
+
+---
+
+### Fase 2
+
+Adicionar FOR UPDATE em:
+
+* approveReceipt
+* processManualPayment
+* releasePurchasedCredits
+
+Eliminar condições de corrida.
+
+---
+
+### Fase 3
+
+Implementar idempotência completa do webhook Stripe.
+
+Nunca permitir:
+
+* duas transactions
+* dois pagamentos
+* dois créditos
+* dois audits
+
+para o mesmo PaymentIntent.
+
+---
+
+### Fase 4
+
+Adicionar proteção contra underflow.
+
+usedCredits nunca poderá ficar negativo.
+
+Aplicar GREATEST(0,...).
+
+---
+
+### Fase 5
+
+Restaurar corretamente tutor_service_credits no cancelamento de reservas.
+
+Eliminar perda silenciosa de créditos.
+
+---
+
+### Fase 6
+
+Sincronizar completamente:
+
+Invoice
+↓
+
+Order
+
+Garantir sincronização em:
+
+* paid
+* voided
+* refunded
+* cancelled
+
+Nunca permitir estados inconsistentes.
+
+---
+
+### Fase 7
+
+Extrair toda lógica de consumo e restauração de créditos.
+
+Booking não pode mais conhecer estrutura interna das tabelas financeiras.
+
+Criar API interna do CreditService.
+
+---
+
+### Fase 8
+
+Extrair toda lógica de negócio de routes/orders.ts.
+
+Criar OrderService.
+
+Routes passam a ser apenas controllers.
+
+---
+
+### Fase 9
+
+Eliminar completamente qualquer regra baseada em:
+
+regex
+
+strings
+
+nomes
+
+descrições
+
+Toda decisão deve usar itemType.
+
+---
+
+### Fase 10
+
+Corrigir toda invalidação de cache.
+
+Garantir atualização automática de:
+
+Dashboard
+
+Wallet
+
+Packages
+
+Service Credits
+
+Invoices
+
+Orders
+
+KPIs
+
+---
+
+### Fase 11
+
+Adicionar somente migrações aditivas.
+
+Nunca remover colunas.
+
+Nunca remover tabelas.
+
+Adicionar:
+
+CHECK
+
+UNIQUE
+
+Constraints
+
+Índices
+
+Validações físicas do banco.
+
+---
+
+### Fase 12
+
+Executar limpeza arquitetural.
+
+Incluindo:
+
+remoção de código morto
+
+remoção de fluxos obsoletos
+
+remoção de endpoints legacy
+
+scheduler de pedidos expirados
+
+organização final
+
+---
+
+# OBRIGAÇÕES EM CADA FASE
+
+Antes de modificar qualquer arquivo:
+
+produzir:
+
+* objetivo
+* arquivos envolvidos
+* dependências
+* riscos
+* impacto
+* rollback
+
+Depois:
+
+produzir:
+
+* alterações realizadas
+* justificativa
+* testes
+* cenários de regressão
+* checklist
+
+---
+
+# SEMPRE VALIDAR
+
+Antes de concluir cada fase verificar:
+
+✓ nenhuma assinatura mudou
+
+✓ nenhum endpoint mudou
+
+✓ nenhum payload mudou
+
+✓ nenhuma API foi quebrada
+
+✓ nenhuma migration remove objetos
+
+✓ nenhum DROP foi criado
+
+✓ nenhuma regra do documento foi violada
+
+✓ nenhum fluxo legado ativo foi quebrado
+
+✓ frontend continua compatível
+
+✓ multi-tenant preservado
+
+✓ auditoria preservada
+
+✓ scheduler preservado
+
+✓ Stripe preservado
+
+✓ POS preservado
+
+✓ Store preservada
+
+✓ Wallet preservada
+
+✓ Booking preservado
+
+✓ Orders preservado
+
+✓ Billing preservado
+
+✓ CreditService preservado
+
+---
+
+# TESTES OBRIGATÓRIOS
+
+Após cada fase executar validação completa dos seguintes fluxos:
+
+## Loja
+
+Compra
+
+Pagamento
+
+PIX
+
+Stripe
+
+Manual
+
+Liberação de créditos
+
+Wallet
+
+Estoque
+
+Order
+
+Invoice
+
+Transaction
+
+Audit
+
+---
+
+## Reservas
+
+Reserva
+
+Confirmação
+
+Consumo de crédito
+
+Cancelamento
+
+Restauração
+
+Nova reserva
+
+Sem créditos
+
+Cobrança avulsa
+
+---
+
+## Financeiro
+
+Invoice mensal
+
+Invoice avulsa
+
+Void
+
+Refund
+
+Approve Receipt
+
+Manual Payment
+
+Stripe
+
+Scheduler
+
+Reminder
+
+---
+
+## POS
+
+Venda
+
+Pagamento
+
+Créditos
+
+Estoque
+
+Invoice
+
+Transaction
+
+---
+
+## Auditoria
+
+FinancialAuditLog
+
+Transactions
+
+Invoice
+
+Order
+
+Credits
+
+---
+
+# REGRAS DE IMPLEMENTAÇÃO
+
+Sempre preferir:
+
+DDD
+
+SOLID
+
+Clean Architecture
+
+Single Responsibility
+
+Baixo acoplamento
+
+Alta coesão
+
+Transações atômicas
+
+Idempotência
+
+Locks pessimistas
+
+Consistency First
+
+Fail Fast
+
+Rollback automático
+
+---
+
+# NÃO IMPLEMENTAR
+
+Não criar funcionalidades novas.
+
+Não criar telas novas.
+
+Não alterar UX.
+
+Não alterar regras comerciais.
+
+Não alterar domínio.
+
+Somente corrigir inconsistências e executar a evolução arquitetural prevista na documentação.
+
+---
+
+# CRITÉRIO DE ACEITE FINAL
+
+Ao término de todas as fases o módulo financeiro deverá apresentar:
+
+* comportamento idêntico para os usuários;
+* arquitetura significativamente mais limpa;
+* ausência de race conditions;
+* ausência de dupla liberação de créditos;
+* ausência de inconsistências entre Orders e Invoices;
+* ausência de reabertura indevida de invoices;
+* ausência de perda de créditos;
+* ausência de créditos negativos;
+* ausência de duplicidade de transactions;
+* ausência de duplicidade de créditos;
+* ausência de inconsistências de estoque;
+* ausência de violações das invariantes documentadas;
+* total conformidade com o documento "FASE 0 — GOVERNANÇA DO DOMÍNIO FINANCEIRO".
+
+Caso qualquer alteração coloque em risco outro módulo do sistema, interrompa imediatamente a implementação, documente o problema, proponha uma solução compatível com a arquitetura existente e somente prossiga após garantir que a mudança preserve a integridade de todo o domínio financeiro.

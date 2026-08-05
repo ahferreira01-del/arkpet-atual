@@ -1,24 +1,25 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+/**
+ * routes/orders.ts — Fase 8: controller fino
+ *
+ * Toda lógica de negócio foi extraída para services/orders.ts.
+ * Esta rota apenas recebe, valida e delega.
+ */
+
+import { Router, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
-import { 
+import {
   ordersTable,
   orderItemsTable,
   catalogueItemsTable,
-  catalogueStockTransactionsTable,
   invoicesTable,
   usersTable,
-  crechesTable,
-  tutorServiceCreditsTable,
 } from "@workspace/db/schema";
-import { BillingService } from "../services/billing.js";
-import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
+import { createOrder, cancelOrder, dispatchLowStockAlerts } from "../services/orders.js";
 import { releasePurchasedCredits } from "../services/credits.js";
-import { normalizeServiceType } from "../utils/service-name.js";
-import { hasOverdueInvoices, calculateDueDate } from "../services/billing.js";
-import { sendLowStockAlertEmail } from "../services/email.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -42,185 +43,26 @@ const createOrderSchema = z.object({
   deliveryFee: z.number().nonnegative().default(0)
 });
 
+// ─── POST / — Criar pedido ───────────────────────────────────────────────────
 router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
     const tutorId = req.user!.id;
     const { items, deliveryMethod, deliveryAddress, deliveryFee } = req.body;
 
-    // Collect items that cross the low-stock threshold so we can alert after the transaction
-    const lowStockAlerts: Array<{ itemName: string; currentStock: number; reorderThreshold: number }> = [];
-
-    await db.transaction(async (tx) => {
-      // 1. Sort item IDs to prevent deadlocks when acquiring multiple row locks
-      const sortedReqItems = [...items].sort((a: any, b: any) => a.catalogueItemId - b.catalogueItemId);
-      const catalogueItems = [];
-      const batchAllocations: any[] = [];
-      const orderItemsToInsert: any[] = [];
-      const inventoryMovementsToInsert: any[] = [];
-      let subtotal = 0;
-
-      for (const reqItem of sortedReqItems) {
-        const [lockedItem] = await tx.select().from(catalogueItemsTable)
-          .where(
-            and(
-              eq(catalogueItemsTable.id, reqItem.catalogueItemId),
-              eq(catalogueItemsTable.crecheId, crecheId),
-              eq(catalogueItemsTable.isActive, true)
-            )
-          )
-          .for('update'); // Acquire row lock
-
-        if (!lockedItem) {
-          throw new Error(`Item ID ${reqItem.catalogueItemId} não encontrado ou inativo.`);
-        }
-
-        if (lockedItem.type === 'product') {
-          if (lockedItem.stockQuantity < reqItem.quantity) {
-            throw new Error(`Estoque insuficiente para o item: ${lockedItem.name}. Saldo: ${lockedItem.stockQuantity}`);
-          }
-
-          // Deduct stock directly from the catalogue item
-          await tx.update(catalogueItemsTable)
-            .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${reqItem.quantity}` })
-            .where(eq(catalogueItemsTable.id, lockedItem.id));
-
-          // Check if the new quantity will be at or below the reorder threshold
-          const newQuantity = lockedItem.stockQuantity - reqItem.quantity;
-          if (newQuantity <= lockedItem.minStockAlert) {
-            lowStockAlerts.push({
-              itemName: lockedItem.name,
-              currentStock: newQuantity,
-              reorderThreshold: lockedItem.minStockAlert,
-            });
-          }
-        }
-        
-        catalogueItems.push(lockedItem);
-      }
-
-      for (const reqItem of items) {
-        const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-        if (!catItem) continue;
-
-        const unitPrice = Number(catItem.basePrice);
-        const totalPrice = unitPrice * reqItem.quantity;
-        subtotal += totalPrice;
-
-        orderItemsToInsert.push({
-          tempId: catItem.id, // temporary reference
-          catalogueItemId: catItem.id,
-          quantity: reqItem.quantity,
-          unitPrice: unitPrice.toString(),
-          totalPrice: totalPrice.toString()
-        });
-      }
-
-      const total = subtotal + Number(deliveryFee);
-
-      let firstInvoiceId: number | null = null;
-
-      // 2. Add Charges via BillingService and grant service credits
-      // All order items share one standalone (avulso) invoice so they never
-      // re-open or inflate the tutor's monthly cycle invoice.
-      for (const reqItem of orderItemsToInsert) {
-        const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-        
-        const invId = await BillingService.addCharge({
-          crecheId,
-          tutorId,
-          amount: reqItem.unitPrice,
-          quantity: reqItem.quantity,
-          description: catItem!.name,
-          type: catItem?.type ?? "product", // preserve "service" / "package" / "product"
-          itemDate: new Date(),
-          isAvulso: !firstInvoiceId,            // first item creates the avulso invoice
-          existingInvoiceId: firstInvoiceId ?? undefined, // subsequent items append to it
-          tx: tx
-        });
-        if (!firstInvoiceId) firstInvoiceId = invId;
-      }
-      
-      if (Number(deliveryFee) > 0) {
-        const invId = await BillingService.addCharge({
-          crecheId,
-          tutorId,
-          amount: deliveryFee.toString(),
-          quantity: 1,
-          description: "Taxa de Entrega",
-          type: "fee",
-          itemDate: new Date(),
-          isAvulso: !firstInvoiceId,
-          existingInvoiceId: firstInvoiceId ?? undefined,
-          tx: tx
-        });
-        if (!firstInvoiceId) firstInvoiceId = invId;
-      }
-
-      // 3. Create Order
-      const [order] = await tx.insert(ordersTable).values({
-        crecheId,
-        tutorId,
-        invoiceId: firstInvoiceId!,
-        status: "pending_payment",
-        deliveryMethod,
-        deliveryAddress,
-        deliveryFee: deliveryFee.toString(),
-        subtotal: subtotal.toString(),
-        total: total.toString()
-      }).returning();
-
-      // 5. Create Order Items
-      for (const oi of orderItemsToInsert) {
-        await tx.insert(orderItemsTable).values({
-          orderId: order.id,
-          catalogueItemId: oi.catalogueItemId,
-          quantity: oi.quantity,
-          unitPrice: oi.unitPrice,
-          totalPrice: oi.totalPrice
-        });
-      }
-
-      let invoice = null;
-      if (firstInvoiceId) {
-        const [fetchedInvoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, firstInvoiceId));
-        invoice = fetchedInvoice;
-      }
-
-      res.status(201).json({ order, invoice });
+    const { result, lowStockAlerts } = await createOrder({
+      crecheId,
+      tutorId,
+      items,
+      deliveryMethod,
+      deliveryAddress,
+      deliveryFee,
     });
 
-    // Fire low-stock alerts asynchronously after the transaction commits — does not block the response
-    if (lowStockAlerts.length > 0) {
-      (async () => {
-        try {
-          const [admin] = await db
-            .select({ email: usersTable.email, name: usersTable.name })
-            .from(usersTable)
-            .where(and(eq(usersTable.crecheId, crecheId), eq(usersTable.role, "creche_admin")))
-            .limit(1);
-          const [creche] = await db
-            .select({ name: crechesTable.name })
-            .from(crechesTable)
-            .where(eq(crechesTable.id, crecheId))
-            .limit(1);
-          if (admin && creche) {
-            for (const alert of lowStockAlerts) {
-              await sendLowStockAlertEmail({
-                adminEmail: admin.email,
-                adminName: admin.name,
-                crecheName: creche.name,
-                itemName: alert.itemName,
-                currentStock: alert.currentStock,
-                reorderThreshold: alert.reorderThreshold,
-              });
-            }
-          }
-        } catch (alertErr) {
-          console.error("[low-stock-alert] Failed to send alert after POS sale:", alertErr);
-        }
-      })();
-    }
+    res.status(201).json(result);
+
+    // Disparar alertas de baixo estoque de forma assíncrona — não bloqueia a resposta
+    dispatchLowStockAlerts(crecheId, lowStockAlerts).catch(() => {});
   } catch (err: any) {
     if (err.message && err.message.includes("Estoque")) {
       res.status(400).json({ error: err.message });
@@ -230,13 +72,14 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
   }
 });
 
+// ─── GET / — Listar pedidos ──────────────────────────────────────────────────
 router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
     const tutorId = req.user!.id;
     const role = req.user!.role;
 
-    let query = db.select({
+    const results = await db.select({
       order: ordersTable,
       tutor: {
         id: usersTable.id,
@@ -252,16 +95,12 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
     .where(eq(ordersTable.crecheId, crecheId))
     .orderBy(desc(ordersTable.createdAt));
 
-    const results = await query;
-    
-    // Filtro em memória simples para tutor (poderia ser na query tb)
-    const filtered = role === 'tutor' 
+    const filtered = role === "tutor"
       ? results.filter(r => r.order.tutorId === tutorId)
       : results;
 
-    // Fetch items for each order
     const ordersWithItems = await Promise.all(filtered.map(async (r) => {
-      const items = await db.select({
+      const orderItems = await db.select({
         quantity: orderItemsTable.quantity,
         unitPrice: orderItemsTable.unitPrice,
         totalPrice: orderItemsTable.totalPrice,
@@ -277,7 +116,7 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
         tutor: r.tutor,
         invoiceStatus: r.invoiceStatus,
         invoiceAmount: r.invoiceAmount,
-        items
+        items: orderItems,
       };
     }));
 
@@ -291,6 +130,7 @@ const updateStatusSchema = z.object({
   status: z.enum(["pending_payment", "paid", "preparing", "ready_for_pickup", "delivering", "delivered", "cancelled"])
 });
 
+// ─── PUT /:orderId/status — Atualizar status ─────────────────────────────────
 router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
@@ -303,86 +143,9 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       return;
     }
 
-    if (status === 'cancelled' && order.status !== 'cancelled') {
-      // Restore stock and revoke any service credits that were already released.
-      const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
-
-      // Build catalogue info for each order item (needed for type check and stock)
-      const catIds = [...new Set(items.map(i => i.catalogueItemId))];
-      const catItems = catIds.length
-        ? await db.select().from(catalogueItemsTable).where(inArray(catalogueItemsTable.id, catIds))
-        : [];
-
-      for (const item of items) {
-        const catItem = catItems.find(c => c.id === item.catalogueItemId);
-
-        // Restore physical stock only for product-type items (services have no stock to restore)
-        if (catItem?.type !== 'service') {
-          await db.update(catalogueItemsTable)
-            .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${item.quantity}` })
-            .where(eq(catalogueItemsTable.id, item.catalogueItemId));
-
-          await db.insert(catalogueStockTransactionsTable).values({
-            itemId: item.catalogueItemId,
-            crecheId,
-            type: 'in',
-            quantity: item.quantity,
-            reason: 'Cancelamento de Pedido',
-            userId: req.user!.id
-          });
-        }
-      }
-
-      // Revoke service credits for this order if they were already released.
-      // We look for service items in the order and take back the granted credits
-      // (up to what remains unused — used credits cannot be reverted).
-      if (order.invoiceId) {
-        const [inv] = await db.select({ creditsReleased: invoicesTable.creditsReleased, tutorId: invoicesTable.tutorId })
-          .from(invoicesTable).where(eq(invoicesTable.id, order.invoiceId));
-
-        if (inv?.creditsReleased && inv.tutorId) {
-          for (const item of items) {
-            const catItem = catItems.find(c => c.id === item.catalogueItemId);
-            if (catItem?.type !== 'service') continue;
-
-            // Find the corresponding credit rows for this tutor/item, newest first
-            // (most likely to be the ones created by this order)
-            const creditRows = await db
-              .select()
-              .from(tutorServiceCreditsTable)
-              .where(and(
-                eq(tutorServiceCreditsTable.tutorId, inv.tutorId),
-                eq(tutorServiceCreditsTable.crecheId, crecheId),
-                eq(tutorServiceCreditsTable.catalogueItemId, item.catalogueItemId),
-              ))
-              .orderBy(desc(tutorServiceCreditsTable.id));
-
-            let toRevoke = item.quantity; // total credits to take back
-            for (const row of creditRows) {
-              if (toRevoke <= 0) break;
-              const revokable = row.totalCredits - row.usedCredits; // only unused credits can be revoked
-              const actualRevoke = Math.min(revokable, toRevoke);
-              if (actualRevoke <= 0) continue;
-              await db.update(tutorServiceCreditsTable)
-                .set({ totalCredits: row.totalCredits - actualRevoke })
-                .where(eq(tutorServiceCreditsTable.id, row.id));
-              toRevoke -= actualRevoke;
-            }
-          }
-
-          // Mark invoice credits as no longer released so a re-payment would re-grant them
-          await db.update(invoicesTable)
-            .set({ creditsReleased: false })
-            .where(eq(invoicesTable.id, order.invoiceId));
-        }
-      }
-
-      // Void the invoice
-      if (order.invoiceId) {
-        await db.update(invoicesTable)
-          .set({ status: 'voided' })
-          .where(eq(invoicesTable.id, order.invoiceId));
-      }
+    // Fase 8: cancelamento delegado ao OrderService
+    if (status === "cancelled" && order.status !== "cancelled") {
+      await cancelOrder({ order, crecheId, userId: req.user!.id });
     }
 
     const [updatedOrder] = await db.update(ordersTable)
@@ -390,6 +153,7 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       .where(eq(ordersTable.id, orderId))
       .returning();
 
+    // Liberação de créditos ao marcar como entregue/pago
     if (["delivered", "ready_for_pickup", "paid"].includes(status) && order.invoiceId) {
       await db.transaction(async (tx) => {
         await releasePurchasedCredits(order.invoiceId!, req.user!.id, tx);

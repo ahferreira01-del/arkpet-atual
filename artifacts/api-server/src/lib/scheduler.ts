@@ -1,6 +1,6 @@
 import cron from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable } from "@workspace/db/schema";
 import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
@@ -624,4 +624,51 @@ export function startReceiptCleanupJob() {
     await deleteOldReceipts();
   });
   console.log("[scheduler] Receipt cleanup job iniciado.");
+}
+
+// ─── Phase 12: Auto-cancel expired unpaid orders ──────────────────────────────
+// Orders that stay in "pending_payment" for more than EXPIRED_ORDER_DAYS days
+// are automatically cancelled, and their reserved stock is released.
+
+const EXPIRED_ORDER_DAYS = 7;
+
+async function cancelExpiredOrders(): Promise<void> {
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - EXPIRED_ORDER_DAYS);
+
+    const expired = await db
+      .select({ id: ordersTable.id, crecheId: ordersTable.crecheId })
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.status, "pending_payment"),
+          lte(ordersTable.createdAt, cutoff),
+        ),
+      );
+
+    if (!expired.length) return;
+    console.log(`[scheduler] Cancelando ${expired.length} pedido(s) expirado(s) (>${EXPIRED_ORDER_DAYS} dias em pending_payment)...`);
+
+    for (const order of expired) {
+      await db
+        .update(ordersTable)
+        .set({ status: "cancelled" })
+        .where(eq(ordersTable.id, order.id));
+      console.log(`[scheduler] Pedido #${order.id} cancelado por expiração (crecheId=${order.crecheId}).`);
+    }
+  } catch (err) {
+    console.error("[scheduler] erro ao cancelar pedidos expirados:", err);
+  }
+}
+
+export function startExpiredOrderCanceller() {
+  // Runs daily at 05:00 BRT (after receipt cleanup at 04:00)
+  cron.schedule("0 5 * * *", async () => {
+    console.log("[scheduler] Verificando pedidos expirados...");
+    await cancelExpiredOrders();
+  });
+  // Also run on startup to catch any orders that expired while server was down
+  cancelExpiredOrders();
+  console.log(`[scheduler] Expired-order canceller iniciado (graça: ${EXPIRED_ORDER_DAYS} dias).`);
 }

@@ -1,8 +1,7 @@
 import { db } from "@workspace/db";
-import { invoicesTable, transactionsTable, financialAuditLogsTable, invoiceItemsTable, usersTable } from "@workspace/db/schema";
+import { invoicesTable, transactionsTable, invoiceItemsTable, usersTable, ordersTable } from "@workspace/db/schema";
 import { eq, and, or, sql } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
-import { ordersTable } from "@workspace/db/schema";
 import { logFinancialAudit } from "./audit.js";
 
 /**
@@ -52,7 +51,6 @@ export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
           eq(invoicesTable.status, "overdue"),
           and(
             eq(invoicesTable.status, "pending"),
-            // Usamos sql para comparar strings yyyy-mm-dd
             sql`${invoicesTable.dueDate} < ${todayStr}`
           )
         )
@@ -63,12 +61,15 @@ export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
   return !!overdue;
 }
 
+// ─── Fase 2: FOR UPDATE adicionado em processManualPayment ───────────────────
 export async function processManualPayment(invoiceId: number, crecheId: number, userId: number, paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip") {
   return await db.transaction(async (tx) => {
+    // Fase 2: lock pessimista impede processamento duplo concorrente
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
+      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
+      .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
     if (invoice.status === "paid" || invoice.status === "voided" || invoice.status === "refunded") {
@@ -100,6 +101,7 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
+    // Fase 6: sincronizar Order → paid quando invoice é paga
     await tx.update(ordersTable)
       .set({ status: "paid" })
       .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
@@ -108,12 +110,15 @@ export async function processManualPayment(invoiceId: number, crecheId: number, 
   });
 }
 
+// ─── Fase 2: FOR UPDATE adicionado em approveReceipt ─────────────────────────
 export async function approveReceipt(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
+    // Fase 2: lock pessimista impede aprovação dupla concorrente
     const [invoice] = await tx
       .select()
       .from(invoicesTable)
-      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
+      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
+      .for("update");
 
     if (!invoice) throw new Error("Fatura não encontrada");
     if (invoice.status === "paid" || invoice.status === "voided" || invoice.status === "refunded") {
@@ -145,6 +150,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
     await releasePurchasedCredits(invoice.id, userId, tx);
 
+    // Fase 6: sincronizar Order → paid quando invoice é aprovada
     await tx.update(ordersTable)
       .set({ status: "paid" })
       .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
@@ -153,34 +159,60 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
   });
 }
 
+// ─── Fase 1: voidInvoice agora é 100% atômica + Fase 2: FOR UPDATE + Fase 6: Order sync ───
 export async function voidInvoice(invoiceId: number, crecheId: number, userId: number) {
-  const [invoice] = await db.select().from(invoicesTable).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
-  if (!invoice) throw new Error("Fatura não encontrada");
-  if (invoice.status === "paid" || invoice.status === "refunded" || invoice.status === "voided") {
-    throw new Error("A fatura já foi processada ou cancelada");
-  }
+  return await db.transaction(async (tx) => {
+    // Fase 2: lock pessimista — impede void duplicado concorrente
+    const [invoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
+      .for("update");
 
-  await db.update(invoicesTable).set({ status: "voided", updatedAt: new Date() }).where(eq(invoicesTable.id, invoiceId));
+    if (!invoice) throw new Error("Fatura não encontrada");
+    if (invoice.status === "paid" || invoice.status === "refunded" || invoice.status === "voided") {
+      throw new Error("A fatura já foi processada ou cancelada");
+    }
 
-  await logFinancialAudit({
-    crecheId,
-    userId,
-    action: "invoice_void",
-    referenceId: invoice.id,
-    referenceType: "invoices",
-    details: `Fatura #${invoice.id} cancelada.`
-  }, db);
+    await tx.update(invoicesTable)
+      .set({ status: "voided", updatedAt: new Date() })
+      .where(eq(invoicesTable.id, invoiceId));
 
-  return invoice;
+    // Fase 6: sincronizar Orders pendentes → cancelled quando invoice é cancelada
+    await tx.update(ordersTable)
+      .set({ status: "cancelled" })
+      .where(and(eq(ordersTable.invoiceId, invoiceId), eq(ordersTable.status, "pending_payment")));
+
+    // Fase 1: audit dentro da mesma transação — se falhar, o void também reverte
+    await logFinancialAudit({
+      crecheId,
+      userId,
+      action: "invoice_void",
+      referenceId: invoice.id,
+      referenceType: "invoices",
+      details: `Fatura #${invoice.id} cancelada.`
+    }, tx);
+
+    return invoice;
+  });
 }
 
+// ─── Fase 6: refundInvoice sincroniza Order → cancelled ──────────────────────
 export async function refundInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const [invoice] = await tx.select().from(invoicesTable).where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)));
+    // Fase 2: lock pessimista
+    const [invoice] = await tx
+      .select()
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.id, invoiceId), eq(invoicesTable.crecheId, crecheId)))
+      .for("update");
+
     if (!invoice) throw new Error("Fatura não encontrada");
     if (invoice.status !== "paid") throw new Error("Apenas faturas pagas podem ser estornadas");
 
-    await tx.update(invoicesTable).set({ status: "refunded", updatedAt: new Date() }).where(eq(invoicesTable.id, invoiceId));
+    await tx.update(invoicesTable)
+      .set({ status: "refunded", updatedAt: new Date() })
+      .where(eq(invoicesTable.id, invoiceId));
 
     await tx.insert(transactionsTable).values({
       crecheId: invoice.crecheId,
@@ -191,6 +223,14 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Estorno da Fatura #${invoice.id}`
     });
+
+    // Fase 6: sincronizar Order → cancelled quando invoice é estornada
+    await tx.update(ordersTable)
+      .set({ status: "cancelled" })
+      .where(and(
+        eq(ordersTable.invoiceId, invoiceId),
+        or(eq(ordersTable.status, "pending_payment"), eq(ordersTable.status, "paid"))
+      ));
 
     await logFinancialAudit({
       crecheId,
