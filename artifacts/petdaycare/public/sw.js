@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v24";
+const CACHE_NAME = "arkpet-v25";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -235,6 +235,11 @@ function resolveTargetPath(data) {
   // "mensalidade" notifications come from invoice reminders — send the tutor
   // directly to their wallet so they can see and pay the invoice.
   if (type === "mensalidade") return "/tutor/financial";
+  // Tutor: invoice paid/approved/voided/refunded → their financial page.
+  if (type === "invoice_paid" || type === "invoice_voided" || type === "invoice_refunded")
+    return "/tutor/financial";
+  // Creche admin: receipt waiting for confirmation → accounts-receivable tab.
+  if (type === "invoice_receipt") return "/financial";
 
   // ── Test push (sent from Settings) ───────────────────
   if (type === "test") return "/settings";

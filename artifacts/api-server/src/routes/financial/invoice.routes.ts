@@ -20,6 +20,7 @@ import { db } from "@workspace/db";
 import { crechesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { requireFinancialAccess } from "./middleware.js";
+import { sendPushToUser, sendPushToRole } from "../../lib/push.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -250,6 +251,14 @@ router.post(
         details: "Tutor enviou comprovante de pagamento.",
       }).catch((err: unknown) => financialLog({ operation: "audit_log_failed", level: "error", invoiceId, error: String(err) }));
 
+      // Notify creche admins that a receipt is waiting for confirmation.
+      sendPushToRole(crecheId, "creche_admin", {
+        title: "📎 Comprovante recebido",
+        body: `Um tutor enviou um comprovante para a Fatura #${invoiceId}. Confirme o pagamento no Financeiro.`,
+        tag: `invoice-receipt-${invoiceId}`,
+        data: { type: "invoice_receipt", invoiceId },
+      }).catch(() => {});
+
       res.json({ ok: true });
     } catch (err) {
       next(err);
@@ -265,12 +274,22 @@ router.post(
   validate(payManualSchema),
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      await processManualPayment(
+      const paid = await processManualPayment(
         Number(req.params.invoiceId),
         Number(req.params.crecheId),
         req.user!.id,
         req.body.paymentMethod
       );
+      // Notify the tutor that their invoice was settled manually.
+      if (paid.tutorId) {
+        const fmtAmt = (Number(paid.amount) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        sendPushToUser(paid.tutorId, {
+          title: "✅ Fatura paga",
+          body: `Sua fatura de ${fmtAmt} foi confirmada pela creche.`,
+          tag: `invoice-paid-${paid.id}`,
+          data: { type: "invoice_paid", invoiceId: paid.id },
+        }).catch(() => {});
+      }
       res.json({ ok: true });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -285,11 +304,21 @@ router.post(
   requireFinancialAccess,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      await approveReceipt(
+      const approved = await approveReceipt(
         Number(req.params.invoiceId),
         Number(req.params.crecheId),
         req.user!.id
       );
+      // Notify the tutor that their receipt was accepted.
+      if (approved.tutorId) {
+        const fmtAmt = (Number(approved.amount) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        sendPushToUser(approved.tutorId, {
+          title: "✅ Comprovante aprovado",
+          body: `Seu comprovante da fatura de ${fmtAmt} foi aceito. Pagamento confirmado!`,
+          tag: `invoice-paid-${approved.id}`,
+          data: { type: "invoice_paid", invoiceId: approved.id },
+        }).catch(() => {});
+      }
       res.json({ ok: true });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -304,11 +333,20 @@ router.post(
   requireFinancialAccess,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      await voidInvoice(
+      const voided = await voidInvoice(
         Number(req.params.invoiceId),
         Number(req.params.crecheId),
         req.user!.id
       );
+      // Notify the tutor that their invoice was cancelled.
+      if (voided.tutorId) {
+        sendPushToUser(voided.tutorId, {
+          title: "❌ Fatura cancelada",
+          body: `Sua Fatura #${voided.id} foi cancelada pela creche.`,
+          tag: `invoice-voided-${voided.id}`,
+          data: { type: "invoice_voided", invoiceId: voided.id },
+        }).catch(() => {});
+      }
       res.json({ ok: true });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
@@ -323,11 +361,21 @@ router.post(
   requireFinancialAccess,
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      await refundInvoice(
+      const refunded = await refundInvoice(
         Number(req.params.invoiceId),
         Number(req.params.crecheId),
         req.user!.id
       );
+      // Notify the tutor that their invoice was refunded.
+      if (refunded.tutorId) {
+        const fmtAmt = (Number(refunded.amount) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+        sendPushToUser(refunded.tutorId, {
+          title: "↩️ Pagamento estornado",
+          body: `Sua fatura de ${fmtAmt} foi estornada pela creche.`,
+          tag: `invoice-refunded-${refunded.id}`,
+          data: { type: "invoice_refunded", invoiceId: refunded.id },
+        }).catch(() => {});
+      }
       res.json({ ok: true });
     } catch (err: unknown) {
       res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
