@@ -5,11 +5,18 @@ import { usePush } from "@/hooks/use-push";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon, PackageOpen, CircleDollarSign } from "lucide-react";
+import { Building2, MapPin, Phone, Globe, Save, Users, Bell, BellOff, BellRing, ShieldCheck, LogOut, UserCircle, Settings as SettingsIcon, PackageOpen, CircleDollarSign, Smartphone } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { cn, uploadFileDirect } from "@/lib/utils";
+
+function isIos() {
+  return typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function isInStandaloneMode() {
+  return typeof navigator !== "undefined" && "standalone" in navigator && (navigator as any).standalone === true;
+}
 
 export default function Settings() {
   const { user, logout } = useAuth();
@@ -20,6 +27,8 @@ export default function Settings() {
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const { isSupported, isIosWithoutPwa, permission, isSubscribed, isLoading: pushLoading, subscribe, unsubscribe } = usePush();
 
   const { toast } = useToast();
 
@@ -258,6 +267,112 @@ export default function Settings() {
           </CardContent>
         </Card>
       )}
+
+      {/* Push Notifications */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/10">
+            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
+              <Bell className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-lg font-display font-semibold text-white">Notificações</h2>
+              <p className="text-xs text-muted-foreground">Alertas em tempo real neste dispositivo</p>
+            </div>
+          </div>
+
+          {/* iOS without PWA — show install guide */}
+          {isIosWithoutPwa ? (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Smartphone className="h-4 w-4 text-primary flex-shrink-0" />
+                <p className="text-sm font-semibold text-white">Instale o app para ativar</p>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                O iOS exige que o app esteja instalado na tela inicial para receber notificações push. Siga os passos:
+              </p>
+              <ol className="space-y-1.5 text-xs text-muted-foreground">
+                <li className="flex items-start gap-2">
+                  <span className="text-primary font-bold mt-0.5">1.</span>
+                  <span>Abra este site no <span className="text-white font-medium">Safari</span> (não funciona em Chrome/Firefox no iOS).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary font-bold mt-0.5">2.</span>
+                  <span>Toque no ícone <span className="text-white font-medium">Compartilhar</span> (□↑) na barra inferior.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary font-bold mt-0.5">3.</span>
+                  <span>Selecione <span className="text-white font-medium">"Adicionar à Tela de Início"</span>.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-primary font-bold mt-0.5">4.</span>
+                  <span>Abra o app instalado e ative as notificações aqui.</span>
+                </li>
+              </ol>
+            </div>
+          ) : !isSupported ? (
+            /* Browser doesn't support push */
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
+              <BellOff className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              <p className="text-sm text-muted-foreground">Seu navegador não suporta notificações push.</p>
+            </div>
+          ) : permission === "denied" ? (
+            /* User blocked notifications in browser */
+            <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <BellOff className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                <p className="text-sm font-semibold text-white">Notificações bloqueadas</p>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Você bloqueou as notificações neste navegador. Para reativar: acesse as configurações do navegador → Privacidade → Notificações → encontre este site e mude para <span className="text-white font-medium">"Permitir"</span>.
+              </p>
+            </div>
+          ) : isSubscribed ? (
+            /* Active — show deactivate option */
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <BellRing className="h-4 w-4 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Notificações ativas</p>
+                  <p className="text-xs text-muted-foreground">Você está recebendo alertas neste dispositivo.</p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={unsubscribe}
+                isLoading={pushLoading}
+                className="flex-shrink-0 text-muted-foreground hover:text-destructive hover:border-destructive/40"
+              >
+                <BellOff className="h-3.5 w-3.5 mr-1.5" /> Desativar
+              </Button>
+            </div>
+          ) : (
+            /* Not subscribed — show activate option */
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0">
+                  <BellOff className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">Notificações inativas</p>
+                  <p className="text-xs text-muted-foreground">Ative para receber alertas em tempo real.</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={subscribe}
+                isLoading={pushLoading}
+                className="flex-shrink-0"
+              >
+                <Bell className="h-3.5 w-3.5 mr-1.5" /> Ativar
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Account Info */}
       <Card>
