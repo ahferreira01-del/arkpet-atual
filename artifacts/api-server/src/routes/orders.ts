@@ -19,6 +19,7 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { createOrder, cancelOrder, dispatchLowStockAlerts } from "../services/orders.js";
+import { sendPushToRole, sendPushToUser } from "../lib/push.js";
 import { releasePurchasedCredits } from "../services/credits.js";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import type { FinancialDomainEvent } from "../services/events.js";
@@ -62,6 +63,14 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
     });
 
     res.status(201).json(result);
+
+    // Notificar a creche sobre o novo pedido — fire-and-forget.
+    sendPushToRole(crecheId, "creche_admin", {
+      title: "🛍️ Novo pedido recebido",
+      body: `Um tutor realizou um pedido na loja. Verifique os pedidos.`,
+      tag: `order-new-${result.order.id}`,
+      data: { type: "order", orderId: result.order.id, crecheId },
+    }).catch(() => {});
 
     // Disparar alertas de baixo estoque de forma assíncrona — não bloqueia a resposta
     dispatchLowStockAlerts(crecheId, lowStockAlerts).catch(() => {});
@@ -151,6 +160,13 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
     if (status === "cancelled" && order.status !== "cancelled") {
       const cancelledOrder = await cancelOrder({ order, crecheId, userId: req.user!.id });
       res.json(cancelledOrder);
+      // Notificar tutor que o pedido foi cancelado — fire-and-forget.
+      sendPushToUser(order.tutorId, {
+        title: "❌ Pedido cancelado",
+        body: "Seu pedido na loja foi cancelado pela creche.",
+        tag: `order-status-${orderId}`,
+        data: { type: "order_status", orderId, crecheId },
+      }).catch(() => {});
       return;
     }
 
@@ -201,6 +217,23 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
     });
 
     res.json(updatedOrder);
+
+    // Notificar tutor sobre a mudança de status — fire-and-forget.
+    const statusLabels: Record<string, string> = {
+      pending_payment: "Aguardando pagamento",
+      paid: "Pagamento confirmado ✅",
+      preparing: "Em preparação 👨‍🍳",
+      ready_for_pickup: "Pronto para retirada 🛍️",
+      delivering: "Saiu para entrega 🚚",
+      delivered: "Pedido entregue! 🎉",
+      cancelled: "Pedido cancelado ❌",
+    };
+    sendPushToUser(updatedOrder.tutorId, {
+      title: "📦 Pedido atualizado",
+      body: statusLabels[status] ?? `Status: ${status}`,
+      tag: `order-status-${orderId}`,
+      data: { type: "order_status", orderId, crecheId },
+    }).catch(() => {});
   } catch (err) {
     next(err);
   }

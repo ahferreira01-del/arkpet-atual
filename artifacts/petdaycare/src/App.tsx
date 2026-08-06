@@ -141,6 +141,18 @@ function ServiceWorkerBridge() {
           }
         } else if (type === "walk") {
           queryClient.invalidateQueries({ queryKey: ["listWalks"] });
+        } else if (type === "order") {
+          // Creche: novo pedido da loja — atualiza lista e mostra toast.
+          queryClient.invalidateQueries({ queryKey: ["listOrders"] });
+          const title = msg.payload?.title;
+          const body = msg.payload?.body;
+          if (title) toast({ title, description: body });
+        } else if (type === "order_status") {
+          // Tutor: status do pedido atualizado — atualiza lista e mostra toast.
+          queryClient.invalidateQueries({ queryKey: ["listOrders"] });
+          const title = msg.payload?.title;
+          const body = msg.payload?.body;
+          if (title) toast({ title, description: body });
         } else if (type === "invoice_receipt") {
           // Creche admin: tutor sent a receipt — update the financial badge
           // immediately and show an in-app toast so they know even with the

@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v27";
+const CACHE_NAME = "arkpet-v28";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -189,9 +189,11 @@ self.addEventListener("push", (event) => {
         notifType === "checkin" ||
         notifType === "checkout" ||
         notifType === "ontheway";
+      // Store orders: creche must see new orders; tutor must see status changes.
+      const isOrder = notifType === "order" || notifType === "order_status";
       const anyVisible = list.some((c) => c.visibilityState === "visible");
 
-      if (!isChat && !isTest && !isFinancial && !isBooking && anyVisible) {
+      if (!isChat && !isTest && !isFinancial && !isBooking && !isOrder && anyVisible) {
         // App is open and visible — in-app UI handles the update.
         return;
       }
@@ -246,6 +248,12 @@ function resolveTargetPath(data) {
     if (data.petId) return `/pets/${data.petId}?tab=medical`;
     return "/pets";
   }
+
+  // ── Store orders ──────────────────────────────────────
+  // Creche: new order placed by tutor → orders management.
+  if (type === "order") return "/financial?tab=orders";
+  // Tutor: order status updated → their store/orders page.
+  if (type === "order_status") return "/tutor/store";
 
   // ── Financial ─────────────────────────────────────────
   // "mensalidade" notifications come from invoice reminders — send the tutor
