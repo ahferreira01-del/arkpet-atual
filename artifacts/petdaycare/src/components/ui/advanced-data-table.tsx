@@ -104,6 +104,11 @@ export function AdvancedDataTable<TData, TValue>({
       return cols.map(c => {
          let val = r.getValue(c.id)
          if (val === null || val === undefined) return ""
+         // If the column provides a custom export formatter, use it.
+         // This ensures formatted values (e.g. currency cents → R$) appear
+         // in the exported file instead of raw database values.
+         const exportFn = (c.columnDef.meta as any)?.exportValue
+         if (exportFn) return String(exportFn(val))
          return String(val)
       })
     })

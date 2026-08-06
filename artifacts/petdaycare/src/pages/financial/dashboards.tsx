@@ -114,33 +114,36 @@ export function ReportsCentralTab({ crecheId }: { crecheId: number }) {
     { value: "products-sold", label: "Produtos Vendidos" },
   ];
 
+  // Shared export formatter for cent-stored monetary values.
+  const fmtBRL = (v: any) => (Number(v) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
   const columnsMap: Record<string, any[]> = {
     "cash-flow": [
       { accessorKey: "date", header: "Data", cell: (info: any) => new Date(info.getValue()).toLocaleDateString('pt-BR') },
       { accessorKey: "description", header: "Descrição" },
       { accessorKey: "type", header: "Tipo" },
-      { accessorKey: "amount", header: "Valor", cell: (info: any) => (Number(info.getValue()) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+      { accessorKey: "amount", header: "Valor", meta: { exportValue: fmtBRL }, cell: (info: any) => fmtBRL(info.getValue()) },
     ],
     "accounts-receivable": [
       { accessorKey: "id", header: "Fatura" },
       { accessorKey: "tutorName", header: "Tutor" },
       { accessorKey: "issueDate", header: "Emissão", cell: (info: any) => new Date(info.getValue()).toLocaleDateString('pt-BR') },
       { accessorKey: "status", header: "Status" },
-      { accessorKey: "amount", header: "Valor", cell: (info: any) => (Number(info.getValue()) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+      { accessorKey: "amount", header: "Valor", meta: { exportValue: fmtBRL }, cell: (info: any) => fmtBRL(info.getValue()) },
     ],
     "accounts-payable": [
       { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => new Date(info.getValue()).toLocaleDateString('pt-BR') },
       { accessorKey: "description", header: "Descrição" },
       { accessorKey: "supplier", header: "Fornecedor" },
       { accessorKey: "status", header: "Status", cell: (info: any) => info.row.original.isPaid ? 'Pago' : 'Pendente' },
-      { accessorKey: "amount", header: "Valor", cell: (info: any) => (Number(info.getValue()) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+      { accessorKey: "amount", header: "Valor", meta: { exportValue: fmtBRL }, cell: (info: any) => fmtBRL(info.getValue()) },
     ],
     "products-sold": [
       { accessorKey: "date", header: "Data", cell: (info: any) => new Date(info.getValue()).toLocaleDateString('pt-BR') },
       { accessorKey: "productName", header: "Produto" },
       { accessorKey: "tutorName", header: "Tutor" },
       { accessorKey: "quantity", header: "Qtd" },
-      { accessorKey: "unitPrice", header: "Preço", cell: (info: any) => (Number(info.getValue()) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+      { accessorKey: "unitPrice", header: "Preço", meta: { exportValue: fmtBRL }, cell: (info: any) => fmtBRL(info.getValue()) },
     ]
   };
 

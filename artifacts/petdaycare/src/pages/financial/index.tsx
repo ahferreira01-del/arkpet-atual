@@ -372,7 +372,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
         const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(val).getTime() < new Date().setHours(0,0,0,0);
         return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
     } },
-    { accessorKey: "amount", header: "Valor", cell: (info: any) => formatBRL(info.getValue()) },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => formatBRL(info.getValue()) },
     { accessorKey: "status", header: "Status", cell: (info: any) => {
         const status = info.getValue();
         return (
@@ -578,7 +578,7 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
         const d = info.getValue() || info.row.original.date || new Date();
         return format(new Date(d), "dd/MM/yyyy", { locale: ptBR });
     } },
-    { accessorKey: "amount", header: "Valor", cell: (info: any) => <span className="text-red-400 font-medium">-{formatBRL(info.getValue())}</span> },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => <span className="text-red-400 font-medium">-{formatBRL(info.getValue())}</span> },
     { accessorKey: "isPaid", header: "Status", cell: (info: any) => {
         return info.getValue() 
           ? <Badge variant="default" className="bg-emerald-500/10 text-emerald-500">Pago</Badge> 
@@ -1265,7 +1265,7 @@ function DefaultersTab({ crecheId }: { crecheId: number }) {
   const columns = React.useMemo(() => [
     { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => <span className="font-medium text-white">{info.getValue() || "Desconhecido"}</span> },
     { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => info.getValue() ? format(parseLocalDate(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
-    { accessorKey: "amount", header: "Valor", cell: (info: any) => <span className="font-medium text-white">{formatBRL(info.getValue())}</span> },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => <span className="font-medium text-white">{formatBRL(info.getValue())}</span> },
     { 
       id: "daysLate", 
       header: "Dias Atraso", 
