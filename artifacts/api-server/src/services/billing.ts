@@ -412,16 +412,16 @@ export class BillingService {
 
       } else if (params.isAvulso || params.tutorId == null) {
         // ── Avulso: invoice standalone, nunca reabrir mensal.
-        // Also covers anonymous POS sales (tutorId=null) — they are always
-        // standalone so each sale gets its own invoice and the unique index
-        // on (tutorId, cycleStart, cycleEnd) is never contested.
+        // cycleStart/cycleEnd are intentionally left NULL for ALL avulso invoices
+        // (both anonymous and named). Avulso invoices are standalone — they don't
+        // belong to a billing cycle. Keeping them NULL also ensures the
+        // tutor_cycle_unique_idx (which fires only when all three cols are NOT NULL)
+        // never blocks a second purchase from the same tutor on the same day.
         const newInv = await InvoiceRepository.create({
           crecheId: params.crecheId,
           tutorId: params.tutorId ?? null,
-          // Anonymous sales omit cycleStart/cycleEnd so concurrent invoices
-          // don't collide on the unique index (NULL != NULL in Postgres).
-          cycleStart: params.isAvulso ? itemDateStr : undefined,
-          cycleEnd: params.isAvulso ? itemDateStr : undefined,
+          cycleStart: undefined,
+          cycleEnd: undefined,
           dueDate: itemDateStr,
           amount: totalItemAmount.toFixed(2),
           status: "pending",

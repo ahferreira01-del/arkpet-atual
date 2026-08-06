@@ -373,7 +373,18 @@ async function ensureInvoicesSchema(): Promise<void> {
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS cycle_end       DATE;
     ALTER TABLE invoices ADD COLUMN IF NOT EXISTS updated_at      TIMESTAMP NOT NULL DEFAULT NOW();
 
+    -- SET DEFAULT for columns that may already exist without one.
+    -- If the column existed before these migrations, ADD COLUMN IF NOT EXISTS
+    -- is a no-op and the column keeps no DEFAULT — which makes Drizzle's
+    -- "insert … values (…, default, …)" fail. Running SET DEFAULT is safe
+    -- and idempotent: it replaces any existing default or creates one fresh.
+    ALTER TABLE invoices ALTER COLUMN discount         SET DEFAULT 0.00;
+    ALTER TABLE invoices ALTER COLUMN credits_released SET DEFAULT FALSE;
+    ALTER TABLE invoices ALTER COLUMN created_at       SET DEFAULT NOW();
+    ALTER TABLE invoices ALTER COLUMN updated_at       SET DEFAULT NOW();
+
     -- tutor × cycle unique index (nullable cols → only one non-null row per tutor+cycle)
+    -- NOTE: avulso orders leave cycle_start/cycle_end NULL so they never conflict.
     CREATE UNIQUE INDEX IF NOT EXISTS tutor_cycle_unique_idx
       ON invoices (tutor_id, cycle_start, cycle_end)
       WHERE tutor_id IS NOT NULL AND cycle_start IS NOT NULL AND cycle_end IS NOT NULL;
