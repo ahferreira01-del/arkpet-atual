@@ -25,6 +25,7 @@ const catalogueItemSchema = z.object({
     medium: z.number().nonnegative(),
     large: z.number().nonnegative(),
   }).optional().nullable(),
+  stockQuantity: z.number().int().nonnegative().optional().nullable(),
   reorderThreshold: z.number().int().nonnegative().optional().nullable(),
   creditsAmount: z.number().int().positive().optional().nullable(),
   category: z.string().max(100).optional().nullable(),
@@ -148,8 +149,9 @@ router.put(
       const crecheId = Number(req.params.crecheId);
       const itemId = Number(req.params.itemId);
       const {
-        name, type, description, price, pricingBySize, reorderThreshold,
-        creditsAmount, maxPetsPerDay, category, sku, barcode, costPrice, mediaUrls,
+        name, type, description, price, pricingBySize, stockQuantity,
+        reorderThreshold, creditsAmount, maxPetsPerDay, category, sku, barcode,
+        costPrice, mediaUrls,
       } = req.body;
 
       const oldItem = await CatalogueRepository.findByIdAndCreche(itemId, crecheId);
@@ -164,36 +166,64 @@ router.put(
         return;
       }
 
-      const updated = await CatalogueRepository.update(itemId, crecheId, {
-        name,
-        type,
-        description,
-        category,
-        sku,
-        ...(barcode !== undefined ? { barcode } : {}),
-        ...(costPrice !== undefined
-          ? { costPrice: costPrice !== null ? costPrice.toString() : null }
-          : {}),
-        mediaUrls: mediaUrls ?? oldItem.mediaUrls,
-        basePrice: price,
-        priceSmall: pricingBySize?.small ?? price,
-        priceMedium: pricingBySize?.medium ?? price,
-        priceLarge: pricingBySize?.large ?? price,
-        creditsAmount: type === "package" ? creditsAmount : null,
-        maxPetsPerDay:
-          type === "package" && maxPetsPerDay ? maxPetsPerDay : oldItem.maxPetsPerDay,
-        ...(reorderThreshold !== undefined && reorderThreshold !== null
-          ? { minStockAlert: reorderThreshold }
-          : {}),
-      });
+      let updated: any;
 
-      await logFinancialAudit({
-        crecheId,
-        userId: req.user!.id,
-        action: "stock_adjustment",
-        referenceId: itemId,
-        referenceType: "catalogue_items",
-        details: `Atualizou item de catálogo: ${updated?.name}`,
+      await db.transaction(async (tx) => {
+        updated = await CatalogueRepository.update(itemId, crecheId, {
+          name,
+          type,
+          description,
+          category,
+          sku,
+          ...(barcode !== undefined ? { barcode } : {}),
+          ...(costPrice !== undefined
+            ? { costPrice: costPrice !== null ? costPrice.toString() : null }
+            : {}),
+          mediaUrls: mediaUrls ?? oldItem.mediaUrls,
+          basePrice: price,
+          priceSmall: pricingBySize?.small ?? price,
+          priceMedium: pricingBySize?.medium ?? price,
+          priceLarge: pricingBySize?.large ?? price,
+          creditsAmount: type === "package" ? creditsAmount : null,
+          maxPetsPerDay:
+            type === "package" && maxPetsPerDay ? maxPetsPerDay : oldItem.maxPetsPerDay,
+          ...(reorderThreshold !== undefined && reorderThreshold !== null
+            ? { minStockAlert: reorderThreshold }
+            : {}),
+        }, tx);
+
+        // Apply stock quantity adjustment when the value changed
+        if (stockQuantity !== undefined && stockQuantity !== null && type === "product") {
+          const currentQty = oldItem.stockQuantity ?? 0;
+          const delta = stockQuantity - currentQty;
+          if (delta !== 0) {
+            const newQty = currentQty + delta;
+            if (newQty < 0) {
+              throw Object.assign(
+                new Error(`Estoque insuficiente. Saldo atual: ${currentQty}, valor solicitado: ${stockQuantity}.`),
+                { status: 400 }
+              );
+            }
+            updated = await CatalogueRepository.applyDeltaStock(itemId, crecheId, delta, tx);
+            await CatalogueRepository.createStockTransaction({
+              crecheId,
+              itemId,
+              quantity: Math.abs(delta),
+              type: delta > 0 ? "in" : "out",
+              reason: "Ajuste via edição de produto",
+              userId: req.user!.id,
+            }, tx);
+          }
+        }
+
+        await logFinancialAudit({
+          crecheId,
+          userId: req.user!.id,
+          action: "stock_adjustment",
+          referenceId: itemId,
+          referenceType: "catalogue_items",
+          details: `Atualizou item de catálogo: ${updated?.name}`,
+        }, tx);
       });
 
       res.json(updated);

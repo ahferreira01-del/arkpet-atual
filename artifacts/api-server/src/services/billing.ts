@@ -375,6 +375,19 @@ export class BillingService {
   }) {
     const amountVal =
       typeof params.amount === "string" ? parseFloat(params.amount) : params.amount;
+
+    // Guard: never create a zero or NaN invoice item — this would silently corrupt
+    // the tutor's invoice total and generate meaningless R$0,00 charges.
+    if (!Number.isFinite(amountVal) || amountVal <= 0) {
+      throw Object.assign(
+        new Error(
+          `[BillingService.addCharge] Valor inválido (${params.amount}) para "${params.description}". ` +
+          `Verifique se o item do catálogo tem preço maior que zero.`
+        ),
+        { status: 422 }
+      );
+    }
+
     const quantity = params.quantity || 1;
     const totalItemAmount = amountVal * quantity;
     const itemDateStr = (params.itemDate || new Date()).toISOString().split("T")[0];

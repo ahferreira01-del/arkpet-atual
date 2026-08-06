@@ -394,6 +394,81 @@ async function ensureInvoicesSchema(): Promise<void> {
   console.log("[startup] invoices/invoice_items: schema verificado (idempotente).");
 }
 
+/**
+ * Ensures creches has pix columns, and that tutor_service_credits,
+ * booking_service_credits, booking_credits, and catalogue_stock_transactions
+ * exist with all columns the ORM expects.
+ * Idempotent — safe to run on every startup.
+ */
+async function ensureCrechesAndCreditsSchema(): Promise<void> {
+  await (db as any).execute(`
+    -- creches: pix configuration columns
+    ALTER TABLE creches ADD COLUMN IF NOT EXISTS pix_key  TEXT;
+    ALTER TABLE creches ADD COLUMN IF NOT EXISTS pix_name TEXT;
+
+    -- catalogue_stock_transactions: ensure table and columns exist
+    CREATE TABLE IF NOT EXISTS catalogue_stock_transactions (
+      id          SERIAL PRIMARY KEY,
+      creche_id   INTEGER NOT NULL,
+      item_id     INTEGER NOT NULL,
+      quantity    INTEGER NOT NULL,
+      type        VARCHAR(10) NOT NULL,
+      reason      VARCHAR(255),
+      user_id     INTEGER,
+      created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS creche_id  INTEGER;
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS item_id    INTEGER;
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS quantity   INTEGER;
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS type       VARCHAR(10);
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS reason     VARCHAR(255);
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS user_id    INTEGER;
+    ALTER TABLE catalogue_stock_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- tutor_service_credits: ensure catalogue_item_id column exists
+    CREATE TABLE IF NOT EXISTS tutor_service_credits (
+      id                SERIAL PRIMARY KEY,
+      creche_id         INTEGER NOT NULL,
+      tutor_id          INTEGER NOT NULL,
+      catalogue_item_id INTEGER NOT NULL DEFAULT 0,
+      total_credits     INTEGER NOT NULL,
+      used_credits      INTEGER NOT NULL DEFAULT 0,
+      created_at        TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE tutor_service_credits
+      ADD COLUMN IF NOT EXISTS catalogue_item_id INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tutor_service_credits
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- booking_service_credits: link table (used to restore credits on cancel)
+    CREATE TABLE IF NOT EXISTS booking_service_credits (
+      id                      SERIAL PRIMARY KEY,
+      booking_id              INTEGER NOT NULL,
+      tutor_service_credit_id INTEGER NOT NULL,
+      credits_consumed        INTEGER NOT NULL,
+      restored_at             TIMESTAMP,
+      created_at              TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE booking_service_credits ADD COLUMN IF NOT EXISTS restored_at TIMESTAMP;
+    ALTER TABLE booking_service_credits ADD COLUMN IF NOT EXISTS created_at  TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- booking_credits: ensure consumed_date and restored_at columns exist
+    CREATE TABLE IF NOT EXISTS booking_credits (
+      id               SERIAL PRIMARY KEY,
+      booking_id       INTEGER NOT NULL,
+      tutor_credit_id  INTEGER NOT NULL,
+      credits_consumed INTEGER NOT NULL,
+      consumed_date    DATE,
+      restored_at      TIMESTAMP,
+      created_at       TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE booking_credits ADD COLUMN IF NOT EXISTS consumed_date DATE;
+    ALTER TABLE booking_credits ADD COLUMN IF NOT EXISTS restored_at  TIMESTAMP;
+    ALTER TABLE booking_credits ADD COLUMN IF NOT EXISTS created_at   TIMESTAMP NOT NULL DEFAULT NOW();
+  `);
+  console.log("[startup] creches/credits/stock-transactions: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -401,6 +476,8 @@ export async function initializeDatabase() {
   await ensureBookingServicesSchema();
   // Invoices/invoice_items column drift (runs in all environments)
   await ensureInvoicesSchema();
+  // creches pix columns + service-credits tables (runs in all environments)
+  await ensureCrechesAndCreditsSchema();
 
   await seedPlans();
 

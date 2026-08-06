@@ -96,6 +96,9 @@ router.post(
       if (!item.creditsAmount || item.creditsAmount <= 0) {
         res.status(422).json({ error: "Este pacote não possui créditos configurados" }); return;
       }
+      if (!item.basePrice || Number(item.basePrice) <= 0) {
+        res.status(422).json({ error: "Este pacote não possui preço definido. Configure o preço antes de vender." }); return;
+      }
 
       const { invoiceId } = await BillingService.addCharge({
         crecheId,
