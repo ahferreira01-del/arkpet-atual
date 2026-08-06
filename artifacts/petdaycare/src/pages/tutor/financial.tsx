@@ -14,6 +14,7 @@ import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, Eye, Package
 import { ThermalReceiptModal } from "@/components/modals/ThermalReceiptModal";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { parseLocalDate } from "@/lib/date-utils";
 import { useInvoiceItems } from "@/hooks/use-financial";
 import QRCode from "qrcode";
 import { generatePixPayload } from "@/lib/pix";
@@ -119,7 +120,7 @@ export default function TutorFinancial() {
       const isPaid = inv.status === "paid";
       const isOverdue = inv.status === "overdue";
       const isAwaiting = inv.status === "awaiting_confirmation";
-      const dateLabel = isPaid && inv.updatedAt ? `Pago em ${format(new Date(inv.updatedAt), "dd/MM", { locale: ptBR })}` : `Venc: ${format(new Date(inv.dueDate), "dd/MM", { locale: ptBR })}`;
+      const dateLabel = isPaid && inv.updatedAt ? `Pago em ${format(new Date(inv.updatedAt + "Z"), "dd/MM", { locale: ptBR })}` : `Venc: ${format(parseLocalDate(inv.dueDate), "dd/MM", { locale: ptBR })}`;
       
       return (
         <div key={inv.id} className="group relative flex flex-col sm:flex-row sm:items-center justify-between p-4 mb-3 rounded-2xl border border-white/5 bg-white/[0.03] hover:bg-white/[0.06] transition-all">

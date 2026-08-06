@@ -427,16 +427,17 @@ async function sendInvoiceReminders() {
       let tutorTitle = "📅 Lembrete de Fatura";
       let tutorBody = "";
 
+      const fmtAmt = (Number(invoice.amount) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
       if (notifyType === "5_days") {
-        tutorBody = `Sua fatura de R$ ${invoice.amount} vence em 5 dias (${dueDateStr}).`;
+        tutorBody = `Sua fatura de ${fmtAmt} vence em 5 dias (${dueDateStr}).`;
       } else if (notifyType === "3_days") {
-        tutorBody = `Sua fatura de R$ ${invoice.amount} vence em 3 dias (${dueDateStr}).`;
+        tutorBody = `Sua fatura de ${fmtAmt} vence em 3 dias (${dueDateStr}).`;
       } else if (notifyType === "today") {
         tutorTitle = "⚠️ Fatura Vence HOJE";
-        tutorBody = `Sua fatura de R$ ${invoice.amount} vence HOJE. Pague para evitar bloqueios.`;
+        tutorBody = `Sua fatura de ${fmtAmt} vence HOJE. Pague para evitar bloqueios.`;
       } else if (notifyType === "overdue") {
         tutorTitle = "🚨 Fatura Atrasada";
-        tutorBody = `Sua fatura de R$ ${invoice.amount} está atrasada. Novos agendamentos estão bloqueados até a regularização.`;
+        tutorBody = `Sua fatura de ${fmtAmt} está atrasada. Novos agendamentos estão bloqueados até a regularização.`;
       }
 
       await sendPushToUser(invoice.tutorId, {
@@ -447,14 +448,14 @@ async function sendInvoiceReminders() {
       }).catch(() => {});
 
       let adminTitle = "📅 Fatura de Tutor";
-      let adminBody = `A fatura de ${invoice.tutorName} no valor de R$ ${invoice.amount} vence em ${diffDays} dia(s).`;
+      let adminBody = `A fatura de ${invoice.tutorName} no valor de ${fmtAmt} vence em ${diffDays} dia(s).`;
 
       if (notifyType === "today") {
         adminTitle = "⚠️ Fatura Vence Hoje";
-        adminBody = `A fatura de ${invoice.tutorName} (R$ ${invoice.amount}) vence HOJE.`;
+        adminBody = `A fatura de ${invoice.tutorName} (${fmtAmt}) vence HOJE.`;
       } else if (notifyType === "overdue") {
         adminTitle = "🚨 Fatura Atrasada";
-        adminBody = `A fatura de ${invoice.tutorName} (R$ ${invoice.amount}) está atrasada e o tutor foi bloqueado para novos agendamentos.`;
+        adminBody = `A fatura de ${invoice.tutorName} (${fmtAmt}) está atrasada e o tutor foi bloqueado para novos agendamentos.`;
       }
 
       await sendPushToRole(invoice.crecheId, "creche_admin", {

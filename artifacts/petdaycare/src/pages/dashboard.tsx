@@ -584,6 +584,14 @@ function TutorDashboard({ user }: { user: any }) {
     return diffDays >= 0 && diffDays <= 5;
   });
 
+  // Days until the nearest upcoming invoice (for dynamic badge copy)
+  const minDaysUntilDue = upcomingInvoices.reduce((min: number, inv: any) => {
+    const diff = new Date(`${inv.dueDate}T00:00:00`).getTime() - new Date(`${todayBrazil()}T00:00:00`).getTime();
+    const d = Math.round(diff / (1000 * 60 * 60 * 24));
+    return d < min ? d : min;
+  }, Infinity);
+  const dueBadge = minDaysUntilDue === 0 ? "vence hoje" : minDaysUntilDue === 1 ? "vence em 1 dia" : `vence em ${minDaysUntilDue} dias`;
+
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
       <NotificationPrompt />
@@ -616,7 +624,7 @@ function TutorDashboard({ user }: { user: any }) {
             </div>
             <div className="flex-1">
               <h3 className="text-sm font-semibold text-white">Fatura Próxima do Vencimento</h3>
-              <p className="text-xs text-amber-400 mt-0.5 leading-relaxed">Você possui uma fatura vencendo nos próximos 5 dias.</p>
+              <p className="text-xs text-amber-400 mt-0.5 leading-relaxed">Você possui uma fatura que {dueBadge}.</p>
             </div>
           </div>
           <Link href="/tutor/financial">

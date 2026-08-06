@@ -12,6 +12,7 @@ import { DateFilterPopover } from "@/components/ui/date-filter-popover";
 import { useListAuditLogs, useDashboardCashFlow, useListAllInvoices, useListExpenses, useListCatalogue, useCreateExpense, usePayExpense, useDashboardDre, useRefundInvoice, useVoidInvoice, useCreateCatalogueItem, usePayManualInvoice, useApproveReceipt, useUpdateExpense, useDeleteExpense, useUpdateCatalogueItem, useDeleteCatalogueItem, useCreche, useUpdateCrecheSettings, useInvoiceItems, useListOrders, useUpdateOrderStatus, useRefundInvoiceItem, useStockTransactions, useStockAdjustment } from "@/hooks/use-financial";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { parseLocalDate } from "@/lib/date-utils";
 import { useSearch, useLocation } from "wouter";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -368,8 +369,8 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
     { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => {
         const val = info.getValue();
         const inv = info.row.original;
-        const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && new Date(val).getTime() < new Date().setHours(0,0,0,0);
-        return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(new Date(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
+        const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(val).getTime() < new Date().setHours(0,0,0,0);
+        return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
     } },
     { accessorKey: "amount", header: "Valor", cell: (info: any) => formatBRL(info.getValue()) },
     { accessorKey: "status", header: "Status", cell: (info: any) => {
@@ -1256,21 +1257,21 @@ function DefaultersTab({ crecheId }: { crecheId: number }) {
     if (inv.status === 'overdue') return true;
     if (inv.status === 'pending' && inv.dueDate) {
       // Consider overdue if due date is before today
-      return new Date(inv.dueDate).getTime() < new Date().setHours(0,0,0,0);
+      return parseLocalDate(inv.dueDate).getTime() < new Date().setHours(0,0,0,0);
     }
     return false;
   });
 
   const columns = React.useMemo(() => [
     { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => <span className="font-medium text-white">{info.getValue() || "Desconhecido"}</span> },
-    { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => info.getValue() ? format(new Date(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
+    { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => info.getValue() ? format(parseLocalDate(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
     { accessorKey: "amount", header: "Valor", cell: (info: any) => <span className="font-medium text-white">{formatBRL(info.getValue())}</span> },
     { 
       id: "daysLate", 
       header: "Dias Atraso", 
       cell: ({ row }: any) => {
          const inv = row.original;
-         const daysLate = inv.dueDate ? Math.floor((new Date().getTime() - new Date(inv.dueDate).getTime()) / (1000 * 3600 * 24)) : 0;
+         const daysLate = inv.dueDate ? Math.floor((new Date().getTime() - parseLocalDate(inv.dueDate).getTime()) / (1000 * 3600 * 24)) : 0;
          return <span className="text-destructive font-bold">{daysLate} dias</span>;
       }
     },
@@ -1401,7 +1402,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                   <tr key={inv.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-6 py-4 font-medium text-white">{inv.tutorName || "Desconhecido"}</td>
                     <td className="px-6 py-4 text-muted-foreground">
-                      {inv.dueDate ? format(new Date(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                      {inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}
                     </td>
                     <td className="px-6 py-4 text-white font-medium">{formatBRL(inv.amount)}</td>
                     <td className="px-6 py-4 text-right space-x-2">
