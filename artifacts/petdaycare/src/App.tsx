@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { AuthProvider, useAuth } from "./hooks/use-auth";
@@ -98,6 +99,7 @@ function RedirectToStaffBoard() {
 function ServiceWorkerBridge() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     const handler = (event: MessageEvent) => {
@@ -131,6 +133,23 @@ function ServiceWorkerBridge() {
           queryClient.invalidateQueries({ queryKey: ["listPets"] });
         } else if (type === "walk") {
           queryClient.invalidateQueries({ queryKey: ["listWalks"] });
+        } else if (type === "invoice_receipt") {
+          // Creche admin: tutor sent a receipt — update the financial badge
+          // immediately and show an in-app toast so they know even with the
+          // app open (OS notification also always fires for this type).
+          queryClient.invalidateQueries({ queryKey: ["financial-awaiting-count"] });
+          toast({
+            title: msg.payload?.title ?? "📎 Comprovante recebido",
+            description: msg.payload?.body ?? "Um tutor enviou um comprovante.",
+          });
+        } else if (
+          type === "invoice_paid" ||
+          type === "invoice_voided" ||
+          type === "invoice_refunded"
+        ) {
+          // Tutor: invoice status changed — refresh financial data and badge.
+          queryClient.invalidateQueries({ queryKey: ["financial-awaiting-count"] });
+          queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
         } else if (petId) {
           queryClient.invalidateQueries({ queryKey: ["getPet"] });
         }
@@ -139,7 +158,7 @@ function ServiceWorkerBridge() {
     navigator.serviceWorker.addEventListener("message", handler);
     return () =>
       navigator.serviceWorker.removeEventListener("message", handler);
-  }, [navigate, queryClient]);
+  }, [navigate, queryClient, toast]);
   return null;
 }
 

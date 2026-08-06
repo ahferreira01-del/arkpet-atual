@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v25";
+const CACHE_NAME = "arkpet-v26";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -173,10 +173,19 @@ self.addEventListener("push", (event) => {
       const notifType = (data.data?.type ?? data.type) || "";
       const isChat = notifType === "chat";
       const isTest = notifType === "test";
+      // Financial events (receipts, payments, voids, refunds) must always show
+      // an OS notification — they require action or are critical status changes.
+      // Suppressing them when the app is open causes silent misses.
+      const isFinancial =
+        notifType === "invoice_receipt" ||
+        notifType === "invoice_paid" ||
+        notifType === "invoice_voided" ||
+        notifType === "invoice_refunded" ||
+        notifType === "mensalidade";
       const anyVisible = list.some((c) => c.visibilityState === "visible");
 
-      if (!isChat && !isTest && anyVisible) {
-        // App is open and visible — in-app toast/UI handles the update.
+      if (!isChat && !isTest && !isFinancial && anyVisible) {
+        // App is open and visible — in-app UI handles the update.
         return;
       }
 
