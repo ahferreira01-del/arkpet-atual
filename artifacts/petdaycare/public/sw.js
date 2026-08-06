@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v26";
+const CACHE_NAME = "arkpet-v27";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -142,7 +142,7 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: data.body || "",
-    icon: data.icon || scopedUrl("icons/icon-192.png"),
+    icon: data.icon || scopedUrl("icons/arkpet-logo.png"),
     badge: scopedUrl("icons/icon-192.png"),
     tag,
     renotify: true,
@@ -182,9 +182,16 @@ self.addEventListener("push", (event) => {
         notifType === "invoice_voided" ||
         notifType === "invoice_refunded" ||
         notifType === "mensalidade";
+      // New booking requests and status changes must reach the admin even when
+      // the app is open — they are actionable and time-sensitive.
+      const isBooking =
+        notifType === "booking" ||
+        notifType === "checkin" ||
+        notifType === "checkout" ||
+        notifType === "ontheway";
       const anyVisible = list.some((c) => c.visibilityState === "visible");
 
-      if (!isChat && !isTest && !isFinancial && anyVisible) {
+      if (!isChat && !isTest && !isFinancial && !isBooking && anyVisible) {
         // App is open and visible — in-app UI handles the update.
         return;
       }

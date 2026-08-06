@@ -129,8 +129,16 @@ function ServiceWorkerBridge() {
           type === "checkout" ||
           type === "ontheway"
         ) {
+          // Booking created or status changed — refresh lists and show a toast
+          // so the creche sees an in-app alert even when the app is open.
+          // The SW also always fires an OS notification for these types.
           queryClient.invalidateQueries({ queryKey: ["listBookings"] });
           queryClient.invalidateQueries({ queryKey: ["listPets"] });
+          const title = msg.payload?.title;
+          const body = msg.payload?.body;
+          if (title) {
+            toast({ title, description: body });
+          }
         } else if (type === "walk") {
           queryClient.invalidateQueries({ queryKey: ["listWalks"] });
         } else if (type === "invoice_receipt") {
