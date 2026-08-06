@@ -123,6 +123,20 @@ export class InvoiceRepository {
     return { data, total: Number(total) };
   }
 
+  /** Count invoices awaiting creche confirmation (tutor sent receipt, not yet approved). */
+  static async countAwaitingConfirmation(crecheId: number, tx?: any) {
+    const [{ total }] = await c(tx)
+      .select({ total: count() })
+      .from(invoicesTable)
+      .where(
+        and(
+          eq(invoicesTable.crecheId, crecheId),
+          eq(invoicesTable.status, "awaiting_confirmation")
+        )
+      );
+    return Number(total);
+  }
+
   /** Returns invoice + tutor info for printable receipt. */
   static async findReceiptData(invoiceId: number, crecheId: number, tx?: any) {
     const [r] = await c(tx)

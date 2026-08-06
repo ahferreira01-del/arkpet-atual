@@ -19,15 +19,36 @@ import {
   Receipt
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 
 interface SidebarProps {
   user: UserProfile;
+}
+
+function useFinancialBadge(user: UserProfile) {
+  const token = localStorage.getItem("auth_token");
+  const { data } = useQuery({
+    queryKey: ["financial-awaiting-count", user?.crecheId],
+    queryFn: async () => {
+      if (!user?.crecheId) return { count: 0 };
+      const r = await fetch(
+        `/api/creches/${user.crecheId}/financial/invoices/awaiting-count`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return r.ok ? r.json() : { count: 0 };
+    },
+    enabled: !!user?.crecheId && user?.role === "creche_admin",
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+  return (data?.count ?? 0) as number;
 }
 
 export function Sidebar({ user }: SidebarProps) {
   const [location] = useLocation();
   const { logout } = useAuth();
   const { data: creche } = useGetCreche(user.crecheId || 1);
+  const financialBadge = useFinancialBadge(user);
 
   const getLinks = () => {
     switch (user.role) {
@@ -46,7 +67,7 @@ export function Sidebar({ user }: SidebarProps) {
           { name: "Mensagens", href: "/chat", icon: MessageSquare },
           { name: "Equipe", href: "/staff/manage", icon: Users },
           { name: "Tutores", href: "/tutors", icon: Users },
-          { name: "Financeiro", href: "/financial", icon: CircleDollarSign },
+          { name: "Financeiro", href: "/financial", icon: CircleDollarSign, badge: financialBadge },
           { name: "Assinatura", href: "/assinatura", icon: CreditCard },
           { name: "Configurações", href: "/settings", icon: Settings },
         ];
@@ -122,7 +143,14 @@ export function Sidebar({ user }: SidebarProps) {
                     : "text-muted-foreground hover:bg-white/5 hover:text-white"
                 )}
               >
-                <link.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", isActive && "text-primary")} />
+                <div className="relative">
+                  <link.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", isActive && "text-primary")} />
+                  {(link as any).badge > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center leading-none">
+                      {(link as any).badge > 99 ? "99+" : (link as any).badge}
+                    </span>
+                  )}
+                </div>
                 <span className="font-medium text-sm">{link.name}</span>
               </div>
             </Link>

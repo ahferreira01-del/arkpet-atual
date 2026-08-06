@@ -56,6 +56,26 @@ function useBookingsBadge(user: UserProfile) {
   return (data ?? 0) as number;
 }
 
+// Badge for creche_admin: invoices awaiting receipt confirmation ("comprovantes a dar baixa").
+function useFinancialBadge(user: UserProfile) {
+  const token = localStorage.getItem("auth_token");
+  const { data } = useQuery({
+    queryKey: ["financial-awaiting-count", user?.crecheId],
+    queryFn: async () => {
+      if (!user?.crecheId) return { count: 0 };
+      const r = await fetch(
+        `/api/creches/${user.crecheId}/financial/invoices/awaiting-count`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return r.ok ? r.json() : { count: 0 };
+    },
+    enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+  return (data?.count ?? 0) as number;
+}
+
 // Badge showing how many pending/overdue invoices the tutor has.
 // Invalidated by usePayManualInvoice, useApproveReceipt, etc.
 function useTutorInvoiceBadge(user: UserProfile) {
@@ -103,6 +123,7 @@ export function BottomNav({ user }: BottomNavProps) {
   const unreadChat = useChatUnread(user);
   const bookingsBadge = useBookingsBadge(user);
   const invoiceBadge = useTutorInvoiceBadge(user);
+  const financialBadge = useFinancialBadge(user);
   const { logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -125,7 +146,7 @@ export function BottomNav({ user }: BottomNavProps) {
           { name: "Equipe", href: "/staff/manage", icon: UserCog },
           { name: "Tarefas", href: "/staff/board", icon: CheckSquare },
           { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
-          { name: "Finanças", href: "/financial", icon: CircleDollarSign },
+          { name: "Finanças", href: "/financial", icon: CircleDollarSign, badge: financialBadge },
           { name: "Plano", href: "/assinatura", icon: CreditCard },
           { name: "Config.", href: "/settings", icon: Settings },
         ];

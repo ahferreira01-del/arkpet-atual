@@ -50,6 +50,22 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   }
 });
 
+// ── GET /invoices/awaiting-count ─────────────────────────────────────────────
+// Must be declared before /:invoiceId routes so Express does not match it as an ID.
+
+router.get(
+  "/awaiting-count",
+  requireFinancialAccess,
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const count = await InvoiceRepository.countAwaitingConfirmation(Number(req.params.crecheId));
+      res.json({ count });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // ── GET /invoices/:invoiceId/items ───────────────────────────────────────────
 
 router.get(
