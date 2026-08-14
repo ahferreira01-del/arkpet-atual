@@ -8,9 +8,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Dog, Plus, Search, UserPlus, Users, AlertTriangle, Filter, LayoutGrid, List as ListIcon, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
+import { Dog, Plus, UserPlus, Users, AlertTriangle, Filter, LayoutGrid, List as ListIcon, ChevronLeft, ChevronRight, MoreVertical } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll";
 import { Link } from "wouter";
@@ -23,7 +24,7 @@ const genderLabel: Record<string, string> = {
   unknown: "Desconhecido",
 };
 
-const selectClass = "flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-white";
+const selectClass = "flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary backdrop-blur-md text-foreground";
 
 interface Tutor { id: number; name: string; email: string; }
 
@@ -46,19 +47,19 @@ export default function PetsDirectory() {
   
   const [page, setPage] = useState(1);
   const [allPets, setAllPets] = useState<any[]>([]);
-  const { data: petsResponse, isLoading } = useListPets(crecheId, { page, limit: 20 });
+  const { data: petsResponse, isLoading } = useListPets(crecheId);
   const { data: stats } = useGetCrecheStats(crecheId);
   
   useEffect(() => {
-    if ((petsResponse as any)?.items) {
+    if (petsResponse?.items) {
       setAllPets(prev => {
-        if (page === 1 && prev.length === 0) return (petsResponse as any).items;
+        if (page === 1 && prev.length === 0) return petsResponse.items;
         const map = new Map(prev.map((p: any) => [p.id, p]));
-        (petsResponse as any).items.forEach((item: any) => map.set(item.id, item));
+        petsResponse.items.forEach((item: any) => map.set(item.id, item));
         return Array.from(map.values()).sort((a: any, b: any) => a.name.localeCompare(b.name));
       });
     }
-  }, [(petsResponse as any)?.items, page]);
+  }, [petsResponse?.items, page]);
   
   const pets = allPets;
   const hasMore = petsResponse ? petsResponse.total > allPets.length : false;
@@ -73,7 +74,7 @@ export default function PetsDirectory() {
   const tutors = useTutors(crecheId);
   const [, navigate] = useLocation();
   const { data: subscription } = useGetBillingSubscription();
-  const activePetCount = stats?.activePets ?? 0;
+  const activePetCount = stats?.totalPets ?? 0;
   const petLimit = subscription?.plan?.petLimit;
   const isLimitReached = typeof petLimit === "number" && activePetCount >= petLimit;
   const subStatus = subscription?.status;
@@ -224,24 +225,24 @@ export default function PetsDirectory() {
           {/* Top Row: Search and View Mode */}
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0 sm:max-w-md">
-              <Input
-                icon={<Search className="h-4 w-4" />}
-                placeholder="Buscar pets..."
+              <SearchInput
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                onChange={(val) => { setSearch(val); setPage(1); }}
+                placeholder="Buscar pets..."
+                onClear={() => { setSearch(""); setPage(1); }}
               />
             </div>
             
-            <div className="flex shrink-0 items-center justify-center p-1 rounded-lg border border-white/10 bg-black/20 backdrop-blur-md">
+            <div className="flex shrink-0 items-center justify-center p-1 rounded-lg border border-border bg-background backdrop-blur-md">
               <button 
                 onClick={() => setViewMode("grid")}
-                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "grid" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button 
                 onClick={() => setViewMode("list")}
-                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white"}`}
+                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <ListIcon className="h-4 w-4" />
               </button>
@@ -254,18 +255,18 @@ export default function PetsDirectory() {
               onClick={() => { setOnlyPresent(!onlyPresent); setPage(1); }}
               className={`flex-1 flex items-center justify-center gap-2 h-10 px-3 rounded-lg text-[13px] font-medium border transition-all whitespace-nowrap ${
                 onlyPresent
-                  ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.15)]"
-                  : "bg-black/20 text-muted-foreground hover:text-white border-white/10 hover:bg-white/5 backdrop-blur-md"
+                  ? "bg-success/20 text-success border-success/40"
+                  : "bg-background text-muted-foreground hover:text-foreground border-border hover:bg-secondary backdrop-blur-md"
               }`}
             >
-              <Filter className={`h-3.5 w-3.5 ${onlyPresent ? "text-emerald-400" : "text-muted-foreground"}`} />
+              <Filter className={`h-3.5 w-3.5 ${onlyPresent ? "text-success" : "text-muted-foreground"}`} />
               Presentes
             </button>
             
             <select 
               value={sortBy} 
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="flex-1 h-10 px-2 py-2 rounded-lg border border-white/10 bg-black/20 text-[13px] text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary backdrop-blur-md"
+              className="flex-1 h-10 px-3 py-2 rounded-lg border border-border bg-background text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary backdrop-blur-md"
             >
               <option value="name_asc">A-Z (Nome)</option>
               <option value="name_desc">Z-A (Nome)</option>
@@ -277,27 +278,27 @@ export default function PetsDirectory() {
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[1,2,3,4].map(i => <Card key={i} className="h-64 animate-pulse bg-white/5" />)}
+          {[1,2,3,4].map(i => <Card key={i} className="h-64 animate-pulse bg-muted" />)}
         </div>
       ) : paginatedPets?.length ? (
         <>
         <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4"}>
           {paginatedPets.map((pet) => (
-            <Card key={pet.id} className={`group ${viewMode === "grid" ? "h-full flex flex-col" : "flex flex-row items-center py-2 px-4"} overflow-hidden bg-black/20 border-white/10 transition-all hover:bg-black/30`}>
-              <div className={`${viewMode === "grid" ? "h-32 w-full border-b" : "h-14 w-14 rounded-full border shadow-inner"} bg-white/5 relative flex-shrink-0 border-white/10 overflow-hidden`}>
+            <Card key={pet.id} className={`group ${viewMode === "grid" ? "h-full flex flex-col" : "flex flex-row items-center py-2 px-4"} overflow-hidden bg-background border-border transition-all hover:bg-secondary/40`}>
+              <div className={`${viewMode === "grid" ? "h-32 w-full border-b" : "h-14 w-14 rounded-full border shadow-inner"} bg-secondary relative flex-shrink-0 border-border overflow-hidden`}>
                 <PetAvatar
                   photoUrl={pet.photoUrl}
                   name={pet.name}
                   species={(pet as any).species}
                   className="w-full h-full object-cover"
-                  iconClassName={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-white/30`}
+                  iconClassName={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-muted-foreground/30`}
                 />
                 {viewMode === "grid" && (
                   <div className="absolute top-3 right-3">
                     {pet.isCheckedIn ? (
-                      <Badge variant="success" className="shadow-sm shadow-black/50 backdrop-blur-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Presente</Badge>
+                      <Badge variant="success" className="shadow-sm backdrop-blur-md">Presente</Badge>
                     ) : (
-                      <Badge variant="secondary" className="shadow-sm shadow-black/50 backdrop-blur-md bg-black/60 text-white/80 border border-white/10">Em casa</Badge>
+                      <Badge variant="secondary" className="shadow-sm backdrop-blur-md">Em casa</Badge>
                     )}
                   </div>
                 )}
@@ -307,48 +308,48 @@ export default function PetsDirectory() {
                 <div className="flex-1 flex flex-col p-5">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-lg font-display font-semibold text-white group-hover:text-primary transition-colors">{pet.name}</h3>
+                      <h3 className="text-lg font-display font-semibold text-foreground group-hover:text-primary transition-colors">{pet.name}</h3>
                       <p className="text-sm text-muted-foreground capitalize mt-1">
                         {pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}
                       </p>
                     </div>
                     <Link href={`/pets/${pet.id}`}>
-                      <button className="p-1 text-muted-foreground hover:text-white hover:bg-white/10 rounded-md transition-colors">
+                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
                         <MoreVertical className="h-5 w-5" />
                       </button>
                     </Link>
                   </div>
-                  <div className="border-t border-white/5 my-4" />
+                  <div className="border-t border-border my-4" />
                   <div>
                     <p className="text-[10px] font-bold tracking-wider text-muted-foreground/70 mb-1">TUTOR</p>
-                    <p className="text-sm text-white/80 truncate">{pet.tutorName || "Sem tutor"}</p>
+                    <p className="text-sm text-foreground/80 truncate">{pet.tutorName || "Sem tutor"}</p>
                   </div>
-                  <div className="border-t border-white/5 my-4" />
+                  <div className="border-t border-border my-4" />
                   <div className="flex items-center justify-between mt-auto">
                     <Link href={`/pets/${pet.id}`}>
-                      <Button variant="outline" size="sm" className="rounded-full bg-transparent border-white/20 text-white hover:bg-white/10">
+                      <Button variant="outline" size="sm" className="rounded-full bg-transparent border-border text-foreground hover:bg-secondary">
                         Ver perfil
                       </Button>
                     </Link>
-                    {pet.temperament && <Badge variant="outline" className="capitalize text-xs bg-white/5 border-white/10 text-white/80">{pet.temperament}</Badge>}
+                    {pet.temperament && <Badge variant="outline" className="capitalize text-xs bg-secondary border-border text-foreground/80">{pet.temperament}</Badge>}
                   </div>
                 </div>
               ) : (
                 <div className="flex-1 flex flex-row items-center gap-4 sm:gap-6 ml-4 min-w-0">
                   <div className="min-w-[120px] sm:min-w-[160px] truncate">
-                    <h3 className="text-base font-semibold text-white group-hover:text-primary transition-colors truncate">{pet.name}</h3>
+                    <h3 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">{pet.name}</h3>
                     <p className="text-xs text-muted-foreground capitalize mt-0.5 truncate">{pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}</p>
                   </div>
                   <div className="min-w-[120px] hidden md:block truncate">
                     <p className="text-[10px] font-bold tracking-wider text-muted-foreground/70 mb-0.5">TUTOR</p>
-                    <p className="text-sm text-white/80 truncate">{pet.tutorName || "Sem tutor"}</p>
+                    <p className="text-sm text-foreground/80 truncate">{pet.tutorName || "Sem tutor"}</p>
                   </div>
                   <div className="flex-1 flex items-center justify-end gap-3 min-w-0">
-                    {pet.temperament && <Badge variant="outline" className="hidden lg:inline-flex capitalize text-xs bg-white/5 border-white/10 text-white/80">{pet.temperament}</Badge>}
+                    {pet.temperament && <Badge variant="outline" className="hidden lg:inline-flex capitalize text-xs bg-secondary border-border text-foreground/80">{pet.temperament}</Badge>}
                     {pet.isCheckedIn ? (
-                      <Badge variant="success" className="shadow-sm shadow-black/50 backdrop-blur-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Presente</Badge>
+                      <Badge variant="success" className="shadow-sm backdrop-blur-md">Presente</Badge>
                     ) : (
-                      <Badge variant="secondary" className="shadow-sm shadow-black/50 backdrop-blur-md bg-black/60 text-white/80 border border-white/10">Em casa</Badge>
+                      <Badge variant="secondary" className="shadow-sm backdrop-blur-md">Em casa</Badge>
                     )}
                     <Link href={`/pets/${pet.id}`}>
                       <Button variant="ghost" size="sm" className="hidden sm:flex text-primary hover:bg-primary/20">
@@ -356,7 +357,7 @@ export default function PetsDirectory() {
                       </Button>
                     </Link>
                     <Link href={`/pets/${pet.id}`}>
-                      <button className="p-1 text-muted-foreground hover:text-white hover:bg-white/10 rounded-md transition-colors cursor-pointer">
+                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors cursor-pointer">
                         <MoreVertical className="h-5 w-5" />
                       </button>
                     </Link>
@@ -385,10 +386,10 @@ export default function PetsDirectory() {
         {createdTutorPassword ? (
           /* Success: show temp password */
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 space-y-2">
-              <p className="text-sm font-semibold text-emerald-400">Tutor criado com sucesso!</p>
+            <div className="p-4 rounded-xl bg-success/10 border border-success/30 space-y-2">
+              <p className="text-sm font-semibold text-success">Tutor criado com sucesso!</p>
               <p className="text-sm text-muted-foreground">Compartilhe as credenciais abaixo com o tutor:</p>
-              <div className="p-3 rounded-lg bg-black/30 font-mono text-sm text-white space-y-1">
+              <div className="p-3 rounded-lg bg-background font-mono text-sm text-foreground space-y-1 border border-border">
                 <p><span className="text-muted-foreground">E-mail:</span> {newTutorEmail}</p>
                 <p><span className="text-muted-foreground">Senha temp.:</span> <span className="text-primary font-bold">{createdTutorPassword}</span></p>
               </div>
@@ -398,14 +399,14 @@ export default function PetsDirectory() {
           </div>
         ) : isBlocked ? (
           <div className="space-y-4">
-            <div className="flex flex-col gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+            <div className="flex flex-col gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20">
               <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-red-200">
+                  <p className="text-sm font-semibold text-destructive">
                     {isSubBlocked ? "Assinatura inativa" : "Limite de pets atingido"}
                   </p>
-                  <p className="text-sm text-red-200/80">
+                  <p className="text-sm text-destructive/90">
                     {isSubBlocked
                       ? "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
                       : `Você atingiu o limite de ${petLimit} ${petLimit === 1 ? "pet" : "pets"} do plano ${subscription?.plan?.name ?? ""}. Faça upgrade para cadastrar mais.`}
@@ -417,7 +418,7 @@ export default function PetsDirectory() {
                   Fazer upgrade
                 </Button>
               ) : (
-                <p className="text-xs text-red-200/70">
+                <p className="text-xs text-destructive/80">
                   Fale com o administrador da creche para liberar mais vagas.
                 </p>
               )}
@@ -429,7 +430,7 @@ export default function PetsDirectory() {
         ) : (
           <form onSubmit={handleCreate} className="space-y-6">
             <div className="space-y-4">
-              <h4 className="text-sm font-semibold text-primary uppercase tracking-wider border-b border-white/10 pb-1">Dados Básicos</h4>
+              <h4 className="text-sm font-semibold text-primary uppercase tracking-wider border-b border-border pb-1">Dados Básicos</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Nome do Pet</label>
@@ -437,7 +438,7 @@ export default function PetsDirectory() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Data de Nasc.</label>
-                  <Input name="birthDate" type="date" className="h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2" />
+                  <Input name="birthDate" type="date" className="h-12 w-full rounded-xl border border-border bg-background px-3 py-2" />
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -466,7 +467,7 @@ export default function PetsDirectory() {
             </div>
 
             <div className="space-y-4">
-              <h4 className="text-sm font-semibold text-primary uppercase tracking-wider border-b border-white/10 pb-1">Perfil e Saúde</h4>
+              <h4 className="text-sm font-semibold text-primary uppercase tracking-wider border-b border-border pb-1">Perfil e Saúde</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Peso (kg)</label>
@@ -498,10 +499,10 @@ export default function PetsDirectory() {
                   <Input name="specialNeeds" placeholder="Ex: Ração sênior..." />
                 </div>
               </div>
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/8 transition-colors">
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-secondary border border-border cursor-pointer hover:bg-secondary/80 transition-colors">
                 <input type="checkbox" name="isCastrated" className="h-4 w-4 rounded accent-primary" />
                 <div>
-                  <p className="text-sm font-medium text-white">Castrado(a)</p>
+                  <p className="text-sm font-medium text-foreground">Castrado(a)</p>
                 </div>
               </label>
             </div>
@@ -516,14 +517,14 @@ export default function PetsDirectory() {
                       <button
                         type="button"
                         onClick={() => setTutorMode("existing")}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "existing" ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground hover:bg-white/10"}`}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "existing" ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}
                       >
                         <Users className="h-3 w-3" /> Existente
                       </button>
                       <button
                         type="button"
                         onClick={() => setTutorMode("new")}
-                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "new" ? "bg-primary/20 text-primary" : "bg-white/5 text-muted-foreground hover:bg-white/10"}`}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${tutorMode === "new" ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground hover:bg-secondary/80"}`}
                       >
                         <UserPlus className="h-3 w-3" /> Novo
                       </button>
@@ -545,7 +546,7 @@ export default function PetsDirectory() {
                 )}
 
                 {tutorMode === "new" && canManageTutors && (
-                  <div className="space-y-3 p-3 rounded-xl bg-white/5 border border-white/10">
+                  <div className="space-y-3 p-3 rounded-xl bg-secondary border border-border">
                     <p className="text-xs text-muted-foreground">Um acesso será criado automaticamente. A senha temporária será exibida após o cadastro.</p>
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-muted-foreground">Nome completo *</label>
@@ -579,7 +580,7 @@ export default function PetsDirectory() {
               </div>
             )}
 
-            <div className="modal-sticky-footer flex justify-end gap-3">
+            <div className="modal-sticky-footer flex justify-end gap-3 pt-4 border-t border-border mt-4">
               <Button type="button" variant="ghost" onClick={() => { setIsModalOpen(false); resetModal(); }}>Cancelar</Button>
               <Button
                 type="submit"

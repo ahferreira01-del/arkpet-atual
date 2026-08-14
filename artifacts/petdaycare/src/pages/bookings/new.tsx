@@ -254,7 +254,7 @@ export default function NewBooking() {
 
   return (
     <div className="min-h-[100dvh] bg-background">
-      <div className="border-b border-white/5 bg-background">
+      <div className="border-b border-border bg-background">
         <div className="max-w-4xl mx-auto px-4 md:px-8 py-4 flex items-center gap-4">
           <Button
             variant="ghost"
@@ -265,7 +265,7 @@ export default function NewBooking() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-display font-semibold text-white">
+            <h1 className="text-xl font-display font-semibold text-foreground">
               Nova Reserva
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -278,7 +278,7 @@ export default function NewBooking() {
       <div className="max-w-4xl mx-auto px-4 md:px-8 py-8 pb-32">
         {/* Stepper Progress */}
         <div className="flex items-center justify-between mb-8 relative">
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-white/5 rounded-full -z-10" />
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-1 bg-secondary rounded-full -z-10" />
           <div
             className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-primary rounded-full -z-10 transition-all duration-500 ease-in-out"
             style={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }}
@@ -298,13 +298,13 @@ export default function NewBooking() {
                       ? "bg-primary text-primary-foreground scale-95"
                       : isCurrent
                         ? "bg-primary text-primary-foreground scale-110 ring-4 ring-primary/20"
-                        : "bg-white/5 border border-white/10 text-muted-foreground"
+                        : "bg-secondary border border-border text-muted-foreground"
                   }`}
                 >
                   {isCompleted ? <Check className="w-5 h-5" /> : s.id}
                 </div>
                 <span
-                  className={`text-xs font-medium hidden sm:block ${isCurrent || isCompleted ? "text-white" : "text-muted-foreground"}`}
+                  className={`text-xs font-medium hidden sm:block ${isCurrent || isCompleted ? "text-foreground" : "text-muted-foreground"}`}
                 >
                   {s.title}
                 </span>
@@ -317,7 +317,7 @@ export default function NewBooking() {
         {step === 1 && (
           <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white font-display">
+              <h2 className="text-2xl font-semibold text-foreground font-display">
                 Quais pets farão a reserva?
               </h2>
               <p className="text-muted-foreground">
@@ -326,9 +326,9 @@ export default function NewBooking() {
             </div>
 
             {!availablePets?.length ? (
-              <div className="text-center p-8 bg-white/5 border border-white/10 rounded-2xl">
-                <Bone className="w-12 h-12 text-white/20 mx-auto mb-4" />
-                <h3 className="text-white font-medium mb-1">
+              <div className="text-center p-8 bg-secondary border border-border rounded-2xl">
+                <Bone className="w-12 h-12 text-foreground/20 mx-auto mb-4" />
+                <h3 className="text-foreground font-medium mb-1">
                   Nenhum pet encontrado
                 </h3>
                 <p className="text-sm text-muted-foreground">
@@ -342,7 +342,7 @@ export default function NewBooking() {
                   return (
                     <Card
                       key={pet.id}
-                      className={`cursor-pointer transition-all duration-300 overflow-hidden ${isSelected ? "ring-2 ring-primary border-primary bg-primary/5" : "hover:border-white/20"}`}
+                      className={`cursor-pointer transition-all duration-300 overflow-hidden ${isSelected ? "ring-2 ring-primary border-primary bg-primary/5" : "hover:border-border"}`}
                       onClick={() =>
                         setSelectedPetIds((prev) =>
                           isSelected
@@ -352,16 +352,16 @@ export default function NewBooking() {
                       }
                     >
                       <CardContent className="p-4 flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center overflow-hidden flex-shrink-0">
                           <PetAvatar
                             photoUrl={pet.photoUrl}
                             name={pet.name}
                             className="w-full h-full object-cover"
-                            iconClassName="w-6 h-6 text-white/30"
+                            iconClassName="w-6 h-6 text-muted-foreground/50"
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-white truncate">
+                          <h4 className="font-semibold text-foreground truncate">
                             {pet.name}
                           </h4>
                           <p className="text-xs text-muted-foreground truncate">
@@ -376,7 +376,7 @@ export default function NewBooking() {
                           </p>
                         </div>
                         <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${isSelected ? "bg-primary border-primary text-white" : "border-white/20 text-transparent"}`}
+                          className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${isSelected ? "bg-primary border-primary text-foreground" : "border-border text-transparent"}`}
                         >
                           <CheckCircle2 className="w-4 h-4" />
                         </div>
@@ -393,7 +393,7 @@ export default function NewBooking() {
         {step === 2 && (
           <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white font-display">
+              <h2 className="text-2xl font-semibold text-foreground font-display">
                 Qual serviço você deseja?
               </h2>
               <p className="text-muted-foreground">
@@ -407,8 +407,8 @@ export default function NewBooking() {
                 Carregando catálogo...
               </div>
             ) : services.length === 0 ? (
-              <div className="text-center p-8 bg-white/5 border border-white/10 rounded-2xl">
-                <h3 className="text-white font-medium mb-1">Catálogo vazio</h3>
+              <div className="text-center p-8 bg-secondary border border-border rounded-2xl">
+                <h3 className="text-foreground font-medium mb-1">Catálogo vazio</h3>
                 <p className="text-sm text-muted-foreground">
                   Nenhum serviço ou pacote disponível no momento.
                 </p>
@@ -425,7 +425,7 @@ export default function NewBooking() {
                     return (
                       <Card
                         key={service.id}
-                        className={`transition-all duration-300 ${isSuboptimalPackage ? "opacity-50 grayscale cursor-not-allowed" : "cursor-pointer hover:border-white/20"} ${isSelected && !isSuboptimalPackage ? "ring-2 ring-primary border-primary bg-primary/5" : ""}`}
+                        className={`transition-all duration-300 ${isSuboptimalPackage ? "opacity-50 grayscale cursor-not-allowed" : "cursor-pointer hover:border-border"} ${isSelected && !isSuboptimalPackage ? "ring-2 ring-primary border-primary bg-primary/5" : ""}`}
                         onClick={() => {
                           if (!isSuboptimalPackage) {
                             setSelectedServiceId(service.id);
@@ -438,7 +438,7 @@ export default function NewBooking() {
                         <div className="flex justify-between items-start mb-2">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`p-2 rounded-xl ${isPackage ? "bg-purple-500/20 text-purple-400" : "bg-blue-500/20 text-blue-400"}`}
+                              className={`p-2 rounded-xl ${isPackage ? "bg-primary/10 text-primary" : "bg-primary/10 text-primary"}`}
                             >
                               {isPackage ? (
                                 <CalendarIcon className="w-5 h-5" />
@@ -447,7 +447,7 @@ export default function NewBooking() {
                               )}
                             </div>
                             <div>
-                              <h4 className="font-semibold text-white">
+                              <h4 className="font-semibold text-foreground">
                                 {service.name}
                               </h4>
                               <span className="text-[10px] uppercase font-bold text-muted-foreground">
@@ -456,7 +456,7 @@ export default function NewBooking() {
                             </div>
                           </div>
                           <div
-                            className={`w-5 h-5 rounded-full flex items-center justify-center border transition-colors ${isSelected ? "bg-primary border-primary text-white" : "border-white/20 text-transparent"}`}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center border transition-colors ${isSelected ? "bg-primary border-primary text-foreground" : "border-border text-transparent"}`}
                           >
                             <CheckCircle2 className="w-3 h-3" />
                           </div>
@@ -503,7 +503,7 @@ export default function NewBooking() {
                                 );
                                 if (remaining > 0) {
                                   return (
-                                    <div className="mt-2 inline-flex items-center rounded-md bg-purple-500/10 px-2 py-1 text-xs font-medium text-purple-400 ring-1 ring-inset ring-purple-500/30">
+                                    <div className="mt-2 inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/30">
                                       {remaining} {remaining === 1 ? 'Pré-pago disponível' : 'Pré-pagos disponíveis'}
                                     </div>
                                   );
@@ -525,7 +525,7 @@ export default function NewBooking() {
             {selectedServiceId !== null && addonServices.length > 0 && (
               <div className="mt-6 space-y-4 animate-in fade-in slide-in-from-bottom-2">
                 <div>
-                  <h3 className="text-base font-semibold text-white mb-1">
+                  <h3 className="text-base font-semibold text-foreground mb-1">
                     Adicionar Serviços Extra
                   </h3>
                   <p className="text-sm text-muted-foreground">
@@ -540,22 +540,22 @@ export default function NewBooking() {
                         key={addon.id}
                         className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                           isSelected
-                            ? "bg-indigo-500/10 border-indigo-500/40 ring-1 ring-indigo-500/30"
-                            : "bg-white/3 border-white/10 hover:border-white/20"
+                            ? "bg-primary/10 border-primary/40 ring-1 ring-primary/30"
+                            : "bg-background border-border hover:border-border"
                         }`}
                         onClick={() => toggleAddon(addon.id)}
                       >
                         <div
                           className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
                             isSelected
-                              ? "bg-indigo-500 border-indigo-500 text-white"
-                              : "border-white/20"
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-border"
                           }`}
                         >
                           {isSelected && <CheckCircle2 className="w-3 h-3" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{addon.name}</p>
+                          <p className="text-sm font-medium text-foreground truncate">{addon.name}</p>
                           <p className="text-xs text-muted-foreground">
                             {(() => {
                               const pet = availablePets?.find((p: any) => selectedPetIds[0] && p.id === selectedPetIds[0]);
@@ -575,7 +575,7 @@ export default function NewBooking() {
             )}
 
             {selectedServiceId !== null && selectedServiceId < 0 && selectedService?.maxPets > 1 && (
-              <div className="mt-4 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex gap-3 animate-in fade-in slide-in-from-bottom-2">
+              <div className="mt-4 p-4 rounded-xl bg-primary/10 border border-primary/20 text-primary flex gap-3 animate-in fade-in slide-in-from-bottom-2">
                 <Info className="w-5 h-5 shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-semibold mb-1">Pacote Multi-Pet ({selectedService.maxPets} pets/diária)</p>
@@ -596,7 +596,7 @@ export default function NewBooking() {
         {step === 3 && (
           <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white font-display">
+              <h2 className="text-2xl font-semibold text-foreground font-display">
                 Para quando?
               </h2>
               <p className="text-muted-foreground">
@@ -604,15 +604,15 @@ export default function NewBooking() {
               </p>
             </div>
 
-            <div className="bg-white/5 border border-white/10 p-6 rounded-2xl space-y-5">
+            <div className="bg-secondary border border-border p-6 rounded-2xl space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
-                    Data de Entrada <span className="text-red-400">*</span>
+                  <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                    Data de Entrada <span className="text-destructive">*</span>
                   </label>
                   <Input
                     type="date"
-                    className="h-12 bg-black/40 border-white/10 text-white [color-scheme:dark]"
+                    className="h-12 bg-background border-border text-foreground [color-scheme:dark]"
                     value={form.startDate}
                     min={format(new Date(), "yyyy-MM-dd")}
                     onChange={(e) =>
@@ -621,7 +621,7 @@ export default function NewBooking() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-white flex items-center gap-2">
+                  <label className="text-sm font-medium text-foreground flex items-center gap-2">
                     Data de Saída{" "}
                     <span className="text-muted-foreground font-normal text-xs">
                       (Opcional)
@@ -629,7 +629,7 @@ export default function NewBooking() {
                   </label>
                   <Input
                     type="date"
-                    className="h-12 bg-black/40 border-white/10 text-white [color-scheme:dark]"
+                    className="h-12 bg-background border-border text-foreground [color-scheme:dark]"
                     value={form.endDate}
                     onChange={(e) =>
                       setForm({ ...form, endDate: e.target.value })
@@ -640,11 +640,11 @@ export default function NewBooking() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium text-white">
+                <label className="text-sm font-medium text-foreground">
                   Observações Especiais
                 </label>
                 <textarea
-                  className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-sm min-h-[100px] text-white focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground"
+                  className="w-full bg-background border border-border rounded-xl p-3 text-sm min-h-[100px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-muted-foreground"
                   placeholder="Ex: Precisa de medicação às 14h, tem alergia a frango..."
                   value={form.notes}
                   onChange={(e) => setForm({ ...form, notes: e.target.value })}
@@ -658,7 +658,7 @@ export default function NewBooking() {
         {step === 4 && (
           <div className="space-y-6 animate-in slide-in-from-right-4 fade-in duration-300">
             <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white font-display">
+              <h2 className="text-2xl font-semibold text-foreground font-display">
                 Revisão Final
               </h2>
               <p className="text-muted-foreground">
@@ -669,13 +669,13 @@ export default function NewBooking() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Context Column */}
               <div className="space-y-4">
-                <Card className="bg-white/5 border-white/10">
+                <Card className="bg-secondary border-border">
                   <CardContent className="p-5 space-y-4">
                     <div>
                       <span className="text-xs text-muted-foreground block mb-1">
                         Serviço Principal
                       </span>
-                      <h4 className="font-semibold text-lg text-white">
+                      <h4 className="font-semibold text-lg text-foreground">
                         {selectedService?.name}
                       </h4>
                     </div>
@@ -706,7 +706,7 @@ export default function NewBooking() {
                         <span className="text-xs text-muted-foreground block mb-1">
                           Data de Entrada
                         </span>
-                        <p className="text-white font-medium">
+                        <p className="text-foreground font-medium">
                           {form.startDate
                             ? format(
                                 new Date(form.startDate + "T12:00:00"),
@@ -720,7 +720,7 @@ export default function NewBooking() {
                           <span className="text-xs text-muted-foreground block mb-1">
                             Data de Saída
                           </span>
-                          <p className="text-white font-medium">
+                          <p className="text-foreground font-medium">
                             {format(
                               new Date(form.endDate + "T12:00:00"),
                               "dd/MM/yyyy",
@@ -735,7 +735,7 @@ export default function NewBooking() {
                         <span className="text-xs text-muted-foreground block mb-1">
                           Observações
                         </span>
-                        <p className="text-white text-sm bg-black/20 p-3 rounded-lg border border-white/5">
+                        <p className="text-foreground text-sm bg-background p-3 rounded-lg border border-border">
                           {form.notes}
                         </p>
                       </div>
@@ -744,9 +744,9 @@ export default function NewBooking() {
                 </Card>
 
                 {isTutor && (
-                  <div className="flex gap-3 items-start p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
+                  <div className="flex gap-3 items-start p-4 bg-primary/10 border border-primary/20 rounded-xl text-primary">
                     <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm">
+                    <p className="text-sm text-foreground">
                       Sua reserva será enviada com o status{" "}
                       <strong>Pendente</strong>. Nossa equipe irá verificar a
                       disponibilidade e aprovar o agendamento em breve.
@@ -839,7 +839,7 @@ export default function NewBooking() {
                   return (
                     <>
                       {isPackage && excessDays > 0 && (
-                        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-500 text-sm flex gap-3">
+                        <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-warning-foreground text-sm flex gap-3">
                           <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                           <p>
                             Você possui <strong>{packagesData?.availableCredits || 0} diárias</strong>, mas esta reserva consumirá <strong>{totalDaysRequested} diárias</strong> no total (calculado por pet). 
@@ -852,10 +852,10 @@ export default function NewBooking() {
                         </div>
                       )}
                       
-                      <Card className="bg-gradient-to-br from-white/5 to-transparent border-white/10">
+                      <Card className="bg-gradient-to-br from-white/5 to-transparent border-border">
                         <CardContent className="p-5">
-                          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-                            <span className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                          <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+                            <span className="w-8 h-8 rounded-lg bg-success/20 text-success flex items-center justify-center">
                               <span className="text-lg">💰</span>
                             </span>
                             Resumo Financeiro
@@ -873,18 +873,18 @@ export default function NewBooking() {
                               return (
                                 <div
                                   key={petId}
-                                  className={`flex justify-between items-center p-3 rounded-xl border ${fullyByCredit ? "bg-purple-500/10 border-purple-500/20" : partiallyByCredit ? "bg-purple-500/5 border-purple-500/10" : "bg-black/20 border-white/5"}`}
+                                  className={`flex justify-between items-center p-3 rounded-xl border ${fullyByCredit ? "bg-primary/10 border-primary/20" : partiallyByCredit ? "bg-primary/5 border-primary/10" : "bg-background border-border"}`}
                                 >
                                   <div>
-                                    <p className="text-sm font-medium text-white flex items-center gap-2">
+                                    <p className="text-sm font-medium text-foreground flex items-center gap-2">
                                       {pet?.name}
                                       {fullyByCredit && (
-                                        <span className="text-[10px] font-semibold bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                        <span className="text-[10px] font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                                           Crédito
                                         </span>
                                       )}
                                       {partiallyByCredit && (
-                                        <span className="text-[10px] font-semibold bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                                        <span className="text-[10px] font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-full uppercase tracking-wide">
                                           {petCreditedDays}d crédito
                                         </span>
                                       )}
@@ -893,7 +893,7 @@ export default function NewBooking() {
                                       {isPackage ? "Consumo de Diária" : (usedSize ? "Calculado por porte" : "Valor Base")} {durationDays > 1 && !isPackage && `(x${durationDays} dias)`}
                                     </p>
                                   </div>
-                                  <span className={`font-semibold ${fullyByCredit ? "text-purple-300" : "text-white"}`}>
+                                  <span className={`font-semibold ${fullyByCredit ? "text-primary" : "text-foreground"}`}>
                                     {isPackage ? "--" : fullyByCredit
                                       ? (0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
                                       : (petCost / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -904,16 +904,16 @@ export default function NewBooking() {
                             })}
                             
                             {!isPackage && discountCost > 0 && (
-                                <div className="flex justify-between items-center p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 mt-2">
+                                <div className="flex justify-between items-center p-3 rounded-xl bg-primary/10 border border-primary/20 mt-2">
                                   <div>
-                                    <p className="text-sm font-medium text-purple-400 flex items-center gap-1.5">
+                                    <p className="text-sm font-medium text-primary flex items-center gap-1.5">
                                       🎟️ Crédito pré-pago aplicado
                                     </p>
-                                    <p className="text-[10px] text-purple-400/80 uppercase tracking-wide mt-0.5">
+                                    <p className="text-[10px] text-primary/80 uppercase tracking-wide mt-0.5">
                                       {creditsToUse} {creditsToUse === 1 ? `crédito de ${selectedService?.name}` : `créditos de ${selectedService?.name}`}
                                     </p>
                                   </div>
-                                  <span className="font-semibold text-purple-400">
+                                  <span className="font-semibold text-primary">
                                     - {(discountCost / 100).toLocaleString("pt-BR", {
                                       style: "currency",
                                       currency: "BRL",
@@ -923,7 +923,7 @@ export default function NewBooking() {
                             )}
                           </div>
 
-                          <div className="pt-4 border-t border-white/10 flex justify-between items-end">
+                          <div className="pt-4 border-t border-border flex justify-between items-end">
                             <span className="text-muted-foreground font-medium">
                               {isPackage && excessDays > 0 ? "Fatura (Excedente Estimado)" : "Total Estimado"}
                             </span>
@@ -946,12 +946,12 @@ export default function NewBooking() {
       </div>
 
       {/* Floating Action Footer */}
-      <div className="fixed bottom-0 left-0 w-full bg-[#11111a]/90 backdrop-blur-xl border-t border-white/10 p-4 md:p-6 z-20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+      <div className="fixed bottom-0 left-0 w-full bg-background/90 backdrop-blur-xl border-t border-border p-4 md:p-6 z-20 shadow-[0_-10px_40px_hsl(var(--background)_/_0.5)]">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <Button
             variant="ghost"
             onClick={step === 1 ? () => setLocation("/bookings") : handlePrev}
-            className="text-muted-foreground hover:text-white"
+            className="text-muted-foreground hover:text-foreground"
           >
             {step === 1 ? "Cancelar" : "Voltar"}
           </Button>
@@ -967,7 +967,7 @@ export default function NewBooking() {
           ) : (
             <Button
               size="lg"
-              className="bg-emerald-500 hover:bg-emerald-600 text-white min-w-[150px] shadow-lg shadow-emerald-500/20"
+              className="bg-success hover:bg-success/90 text-success-foreground min-w-[150px] shadow-lg shadow-success/20"
               onClick={handleConfirm}
               isLoading={createMutation.isPending}
             >

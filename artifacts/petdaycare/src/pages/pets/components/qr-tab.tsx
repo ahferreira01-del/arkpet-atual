@@ -44,16 +44,16 @@ export function QrTab({ pet }: { pet: any }) {
       <Card>
         <CardContent className="p-8 flex flex-col items-center gap-6">
           <div>
-            <h3 className="text-xl font-display font-semibold text-white text-center">{pet.name}</h3>
+            <h3 className="text-xl font-display font-semibold text-foreground text-center">{pet.name}</h3>
             <p className="text-sm text-muted-foreground text-center mt-1">QR Code de Identificação</p>
           </div>
 
-          <div className="p-3 rounded-2xl bg-white shadow-[0_0_30px_rgba(139,92,246,0.3)]">
+          <div className="p-3 rounded-2xl bg-white shadow-md">
             <canvas ref={canvasRef} className="rounded-lg block" />
           </div>
 
           <div className="w-full space-y-3">
-            <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-center">
+            <div className="p-3 rounded-xl bg-secondary border border-border text-center">
               <p className="text-xs text-muted-foreground mb-1">Token de Identificação</p>
               <p className="text-xs font-mono text-primary break-all">{pet.qrToken}</p>
             </div>

@@ -113,7 +113,7 @@ async function signObjectURL({
       `Failed to sign object URL (${response.status}) — ensure you are running on Replit`,
     );
   }
-  const { signed_url: signedURL } = await response.json();
+  const { signed_url: signedURL } = (await response.json()) as { signed_url: string };
   return signedURL;
 }
 
@@ -388,3 +388,4 @@ export class ObjectStorageService {
     }
   }
 }
+

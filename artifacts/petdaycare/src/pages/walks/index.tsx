@@ -67,21 +67,21 @@ function ActiveWalkCard({ walk, onEnd, isEnding }: { walk: any, onEnd: (id: numb
   };
 
   return (
-    <Card className="border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)] relative overflow-hidden">
+    <Card className="border-primary/20 shadow-sm relative overflow-hidden">
       {timeLeft !== null && timeLeft > 0 && (
-        <div className="absolute top-0 left-0 h-1 bg-emerald-500/50" style={{ width: `${(timeLeft / (walk.durationMinutes * 60)) * 100}%`, transition: 'width 1s linear' }} />
+        <div className="absolute top-0 left-0 h-1.5 bg-primary/80" style={{ width: `${(timeLeft / (walk.durationMinutes * 60)) * 100}%`, transition: 'width 1s linear' }} />
       )}
       <CardContent className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-emerald-500/20 flex items-center justify-center relative z-10">
-            <Footprints className="h-5 w-5 text-emerald-400" />
+          <div className="h-12 w-12 flex-shrink-0 rounded-full bg-primary/10 flex items-center justify-center relative z-10">
+            <Footprints className="h-6 w-6 text-primary" />
           </div>
           <div className="relative z-10">
-            <p className="font-semibold text-white text-lg">{walk.petName}</p>
+            <p className="font-semibold text-foreground text-lg">{walk.petName}</p>
             <p className="text-sm text-muted-foreground flex items-center gap-1 mt-0.5">
               <Clock className="h-3.5 w-3.5" />
               {timeLeft !== null ? (
-                <span className={timeLeft < 60 ? "text-red-400 font-medium" : "text-emerald-400 font-medium"}>
+                <span className={timeLeft < 60 ? "text-error font-medium" : "text-success font-medium"}>
                   Restam {formatTime(timeLeft)}
                 </span>
               ) : (
@@ -97,7 +97,7 @@ function ActiveWalkCard({ walk, onEnd, isEnding }: { walk: any, onEnd: (id: numb
           onClick={() => onEnd(walk.id)}
           isLoading={isEnding}
           variant="outline"
-          className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 w-full sm:w-auto relative z-10"
+          className="w-full sm:w-auto min-h-[44px] relative z-10 shadow-sm hover:bg-primary/5 hover:text-primary hover:border-primary/30"
         >
           <Square className="mr-2 h-4 w-4" /> Finalizar Passeio
         </Button>
@@ -108,7 +108,7 @@ function ActiveWalkCard({ walk, onEnd, isEnding }: { walk: any, onEnd: (id: numb
 
 export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.crecheId as number;
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPetId, setSelectedPetId] = useState<number>(0);
@@ -116,7 +116,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
 
   const { data: walks, isLoading } = useCreecheWalks(crecheId);
   const { data: petsResponse } = useListPets(crecheId);
-  const pets = (petsResponse as any)?.items;
+  const pets = petsResponse?.items;
 
   const startMutation = useMutation({
     mutationFn: async ({ petId, durationMinutes }: { petId: number, durationMinutes: number }) => {
@@ -189,8 +189,8 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
       {/* Active walks */}
       {activeWalks.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-xl font-display font-semibold text-white flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+          <h2 className="text-xl font-display font-semibold text-foreground flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-success animate-pulse" />
             Em Andamento ({activeWalks.length})
           </h2>
           {activeWalks.map((walk) => (
@@ -206,21 +206,21 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
 
       {/* History */}
       <div className="space-y-4">
-        <h2 className="text-xl font-display font-semibold text-white">Histórico de Passeios</h2>
+        <h2 className="text-xl font-display font-semibold text-foreground">Histórico de Passeios</h2>
         <Card>
           <CardContent className="p-0">
             {isLoading ? (
               <div className="p-8 text-center text-muted-foreground">Carregando passeios...</div>
             ) : completedWalks.length ? (
-              <div className="divide-y divide-white/5">
+              <div className="divide-y divide-border">
                 {completedWalks.map((walk) => (
-                  <div key={walk.id} className="px-4 py-4 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                  <div key={walk.id} className="px-4 py-4 flex items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center flex-shrink-0">
+                      <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
                         <Dog className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium text-white truncate">{walk.petName}</p>
+                        <p className="font-medium text-foreground truncate">{walk.petName}</p>
                         <p className="text-sm text-muted-foreground truncate">
                           {format(new Date(walk.startedAt), "dd/MM HH:mm")}
                           {walk.endedAt && ` → ${format(new Date(walk.endedAt), "HH:mm")}`}
@@ -232,7 +232,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
                     </div>
                     <div className="text-right flex-shrink-0">
                       {walk.durationMinutes ? (
-                        <Badge variant="outline" className="bg-white/5">
+                        <Badge variant="outline" className="bg-secondary/50">
                           <Clock className="h-3 w-3 mr-1" />
                           {walk.durationMinutes} min
                         </Badge>
@@ -274,7 +274,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
                   }
                 }}
                 required
-                className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
               >
                 <option value={0} disabled>Escolha um pet com check-in...</option>
                 {checkedInPets.map((p) => (
@@ -282,7 +282,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
                 ))}
               </select>
             ) : (
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300">
+              <div className="p-4 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning font-medium">
                 Nenhum pet fez check-in. Realize o check-in de um pet antes de iniciar o passeio.
               </div>
             )}
@@ -295,12 +295,12 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
               value={duration}
               readOnly
               disabled
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-base text-white/70 focus:outline-none cursor-not-allowed"
+              className="flex h-12 w-full rounded-xl border border-border bg-muted/50 px-3 py-2 text-base text-muted-foreground focus:outline-none cursor-not-allowed"
             />
           </div>
-          <div className="modal-sticky-footer flex justify-end gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId}>
+          <div className="modal-sticky-footer flex justify-end gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="min-h-[44px]">Cancelar</Button>
+            <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId} className="min-h-[44px]">
               <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
             </Button>
           </div>

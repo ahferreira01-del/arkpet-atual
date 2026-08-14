@@ -42,6 +42,7 @@ interface AdvancedDataTableProps<TData, TValue> {
   searchKey?: string
   searchPlaceholder?: string
   fileName?: string
+  renderMobileCard?: (row: any) => React.ReactNode
 }
 
 export function AdvancedDataTable<TData, TValue>({
@@ -49,7 +50,8 @@ export function AdvancedDataTable<TData, TValue>({
   data,
   searchKey,
   searchPlaceholder = "Pesquisar...",
-  fileName = "Relatorio"
+  fileName = "Relatorio",
+  renderMobileCard
 }: AdvancedDataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
@@ -229,7 +231,7 @@ export function AdvancedDataTable<TData, TValue>({
           </DropdownMenu>
         </div>
       </div>
-      <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden hidden md:block">
+      <div className="rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden hidden md:block">
         <Table>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -284,31 +286,37 @@ export function AdvancedDataTable<TData, TValue>({
       <div className="md:hidden grid grid-cols-1 gap-4">
         {table.getRowModel().rows?.length ? (
           table.getRowModel().rows.map((row) => (
-            <div key={row.id} className="bg-card border border-white/5 rounded-xl p-4 flex flex-col gap-3 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
-              {row.getVisibleCells().map((cell) => {
-                if (cell.column.id === 'actions') {
+            renderMobileCard ? (
+              <React.Fragment key={row.id}>
+                {renderMobileCard(row)}
+              </React.Fragment>
+            ) : (
+              <div key={row.id} className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-primary/20" />
+                {row.getVisibleCells().map((cell) => {
+                  if (cell.column.id === 'actions') {
+                    return (
+                      <div key={cell.id} className="pt-3 mt-1 border-t border-border flex justify-end">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </div>
+                    )
+                  }
                   return (
-                    <div key={cell.id} className="pt-3 mt-1 border-t border-white/5 flex justify-end">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    <div key={cell.id} className="flex justify-between items-center gap-4">
+                      <span className="text-xs text-muted-foreground font-medium shrink-0">
+                        {typeof cell.column.columnDef.header === 'string' ? cell.column.columnDef.header : cell.column.id}
+                      </span>
+                      <div className="text-sm font-medium text-right break-words overflow-hidden">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </div>
                     </div>
                   )
-                }
-                return (
-                  <div key={cell.id} className="flex justify-between items-center gap-4">
-                    <span className="text-xs text-muted-foreground font-medium shrink-0">
-                      {typeof cell.column.columnDef.header === 'string' ? cell.column.columnDef.header : cell.column.id}
-                    </span>
-                    <div className="text-sm font-medium text-right break-words overflow-hidden">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                })}
+              </div>
+            )
           ))
         ) : (
-          <div className="text-center p-8 text-muted-foreground bg-card rounded-xl border border-white/5">
+          <div className="text-center p-8 text-muted-foreground bg-card rounded-xl border border-border">
             Nenhum resultado encontrado.
           </div>
         )}
@@ -320,12 +328,12 @@ export function AdvancedDataTable<TData, TValue>({
         </div>
         <div className="flex items-center space-x-2 w-full md:w-auto justify-between md:justify-end">
           <select 
-            className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring text-foreground"
+            className="flex h-9 rounded-xl border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-foreground"
             value={table.getState().pagination.pageSize}
             onChange={e => table.setPageSize(Number(e.target.value))}
           >
             {[25, 50, 100, 250, 500].map(pageSize => (
-              <option key={pageSize} value={pageSize} className="bg-zinc-900 text-foreground">
+              <option key={pageSize} value={pageSize} className="bg-background text-foreground">
                 Mostrar {pageSize}
               </option>
             ))}

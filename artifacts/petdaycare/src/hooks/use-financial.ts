@@ -17,6 +17,23 @@ export function useTutorInvoices(crecheId: number, tutorId: number | undefined) 
   });
 }
 
+export function useUpcomingInvoices(crecheId: number, tutorId: number | undefined) {
+  return useQuery({
+    staleTime: 30 * 1000,
+    queryKey: ["upcoming-invoices", crecheId, tutorId],
+    queryFn: async () => {
+      if (!tutorId) return [];
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/creches/${crecheId}/financial/invoices/upcoming?tutorId=${tutorId}&limit=5`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Erro ao carregar faturas a vencer");
+      return res.json();
+    },
+    enabled: !!crecheId && !!tutorId,
+  });
+}
+
 export function useBookingConsumables(crecheId: number, bookingId: number | undefined) {
   return useQuery({
     staleTime: 5 * 60 * 1000, // 5 minutos de cache para evitar refetching
@@ -103,6 +120,7 @@ export function useFinancialCheckOut(crecheId: number) {
 export function useStripeCheckout(crecheId: number) {
   return useMutation({
     mutationFn: async ({ invoiceId }: { invoiceId: number }) => {
+      if (!crecheId) throw new Error("Tenant não identificado");
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/creches/${crecheId}/financial/invoices/${invoiceId}/stripe-checkout`, {
         method: "POST",
@@ -129,7 +147,8 @@ export function useDashboardCashFlow(crecheId: number, startDate?: string, endDa
       });
       if (!res.ok) throw new Error("Erro ao carregar fluxo de caixa");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -148,7 +167,8 @@ export function useDashboardDre(crecheId: number, startDate?: string, endDate?: 
       });
       if (!res.ok) throw new Error("Erro ao carregar dre");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -163,7 +183,8 @@ export function useListAllInvoices(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao carregar faturas");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -261,7 +282,8 @@ export function useListExpenses(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao carregar despesas");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -360,7 +382,8 @@ export function useListCatalogue(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao carregar catálogo");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -368,6 +391,7 @@ export function usePurchasePackage(crecheId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ tutorId, packageId, paymentMethod }: { tutorId: number; packageId: number; paymentMethod: 'stripe' | 'pix' }) => {
+      if (!crecheId) throw new Error("Tenant não identificado");
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/creches/${crecheId}/financial/packages/purchase`, {
         method: "POST",
@@ -397,7 +421,8 @@ export function usePackagesBalance(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao carregar saldo de pacotes");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -415,7 +440,8 @@ export function useServiceCredits(crecheId: number, params?: { page?: number; pa
       });
       if (!res.ok) throw new Error("Erro ao carregar carteira de serviços");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -594,7 +620,7 @@ export function useInvoiceItems(crecheId: number, invoiceId: number | undefined)
       if (!res.ok) throw new Error("Erro ao carregar itens da fatura");
       return res.json();
     },
-    enabled: !!invoiceId,
+    enabled: !!crecheId && !!invoiceId,
   });
 }
 export function useListAuditLogs(crecheId: number) {
@@ -608,7 +634,8 @@ export function useListAuditLogs(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao carregar auditoria");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 export function useCreche(crecheId: number) {
@@ -622,7 +649,8 @@ export function useCreche(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao buscar dados da creche");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -662,7 +690,8 @@ export function useListOrders(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao buscar pedidos");
       return res.json();
-    }
+    },
+    enabled: !!crecheId,
   });
 }
 
@@ -700,6 +729,7 @@ export function useCreateOrder(crecheId: number) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { items: { catalogueItemId: number, quantity: number }[], deliveryMethod: string, deliveryAddress?: string, deliveryFee: number }) => {
+      if (!crecheId) throw new Error("Tenant não identificado");
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/creches/${crecheId}/orders`, {
         method: "POST",

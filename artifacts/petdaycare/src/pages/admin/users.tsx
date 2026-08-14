@@ -214,7 +214,7 @@ export default function AdminUsers() {
         ].map(({ role, label, color }) => (
           <Card
             key={role}
-            className="cursor-pointer hover:border-white/20 transition-all"
+            className="cursor-pointer hover:border-primary/30 transition-all"
             onClick={() => setRoleFilter(roleFilter === role ? "all" : role)}
           >
             <CardContent className="p-5">
@@ -233,13 +233,13 @@ export default function AdminUsers() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome ou email..."
-            className="w-full h-11 pl-9 pr-4 rounded-xl border border-white/10 bg-black/20 text-base text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+            className="w-full h-11 pl-9 pr-4 rounded-xl border border-border bg-background text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
           />
         </div>
         <select
           value={roleFilter}
           onChange={(e) => setRoleFilter(e.target.value)}
-          className="h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+          className="h-11 rounded-xl border border-border bg-background px-3 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
         >
           <option value="all">Todos os papéis</option>
           <option value="master_admin">Master Admin</option>
@@ -257,7 +257,7 @@ export default function AdminUsers() {
           ) : filtered?.length ? (
             <div className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-sm text-left">
-                <thead className="text-xs text-muted-foreground uppercase bg-white/5">
+                <thead className="text-xs text-muted-foreground uppercase bg-secondary">
                   <tr>
                     <th className="px-4 md:px-6 py-4 font-medium">Usuário</th>
                     <th className="px-4 md:px-6 py-4 font-medium">Papel</th>
@@ -267,16 +267,16 @@ export default function AdminUsers() {
                     <th className="px-4 md:px-6 py-4 font-medium text-right">Ações</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-border">
                   {filtered.map((u) => (
-                    <tr key={u.id} className={`hover:bg-white/5 transition-colors ${!u.isActive ? "opacity-50" : ""}`}>
+                    <tr key={u.id} className={`hover:bg-secondary/40 transition-colors ${!u.isActive ? "opacity-50" : ""}`}>
                       <td className="px-4 md:px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold flex-shrink-0 text-sm">
+                          <div className="h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-primary-foreground font-bold flex-shrink-0 text-sm">
                             {u.name.charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-medium text-white truncate max-w-[120px] md:max-w-none">{u.name}</p>
+                            <p className="font-medium text-foreground truncate max-w-[120px] md:max-w-none">{u.name}</p>
                             <p className="text-xs text-muted-foreground truncate max-w-[120px] md:max-w-none hidden sm:flex items-center gap-1">
                               <Mail className="h-3 w-3 flex-shrink-0" />{u.email}
                             </p>
@@ -394,7 +394,7 @@ export default function AdminUsers() {
               />
               <button
                 type="button"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => setShowPassword((v) => !v)}
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -414,7 +414,7 @@ export default function AdminUsers() {
                   className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition-all ${
                     createForm.role === role
                       ? "bg-primary/20 border-primary/30 text-primary"
-                      : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-white"
+                      : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
                   }`}
                 >
                   {ROLE_LABELS[role]}
@@ -429,7 +429,7 @@ export default function AdminUsers() {
               <select
                 value={createForm.crecheId}
                 onChange={(e) => setCreateForm((f) => ({ ...f, crecheId: e.target.value }))}
-                className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
               >
                 <option value="">Sem creche vinculada</option>
                 {creches?.map((c) => (
@@ -458,12 +458,12 @@ export default function AdminUsers() {
       {editUser && (
         <Modal isOpen={!!editUser} onClose={() => setEditUser(null)} title="Editar Usuário">
           <div className="space-y-5">
-            <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
-              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-white font-bold text-xl">
+            <div className="flex items-center gap-4 p-4 rounded-xl bg-secondary border border-border">
+              <div className="h-12 w-12 rounded-full bg-gradient-to-br from-primary/40 to-accent/40 flex items-center justify-center text-primary-foreground font-bold text-xl">
                 {editUser.name.charAt(0)}
               </div>
               <div>
-                <p className="font-semibold text-white">{editUser.name}</p>
+                <p className="font-semibold text-foreground">{editUser.name}</p>
                 <p className="text-sm text-muted-foreground">{editUser.email}</p>
               </div>
             </div>
@@ -488,7 +488,7 @@ export default function AdminUsers() {
                     className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
                       editRole === role
                         ? "bg-primary/20 border-primary/30 text-primary"
-                        : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-white"
+                        : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                   >
                     {ROLE_LABELS[role]}
@@ -523,15 +523,15 @@ export default function AdminUsers() {
                     <button
                       type="button"
                       onClick={copyTempPassword}
-                      className="p-1.5 text-muted-foreground hover:text-white transition-colors"
+                      className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                       title="Copiar senha"
                     >
-                      {copiedTempPw ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      {copiedTempPw ? <Check className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
                     </button>
                   )}
                   <button
                     type="button"
-                    className="p-1.5 text-muted-foreground hover:text-white transition-colors"
+                    className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setShowEditPassword((v) => !v)}
                   >
                     {showEditPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -553,7 +553,7 @@ export default function AdminUsers() {
               </div>
             )}
 
-            <div className="flex justify-between items-center pt-2 border-t border-white/10">
+            <div className="flex justify-between items-center pt-2 border-t border-border">
               {currentUser?.id !== editUser.id && (
                 <Button
                   variant="outline"

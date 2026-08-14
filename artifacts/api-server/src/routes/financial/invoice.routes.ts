@@ -51,7 +51,40 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   }
 });
 
-// ── GET /invoices/awaiting-count ─────────────────────────────────────────────
+// ── GET /invoices/upcoming ───────────────────────────────────────────────────
+// Endpoint especializado (Bug 1 - PROMPT MASTER)
+// Deve ser declarado antes de /:invoiceId
+
+router.get("/upcoming", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const crecheId = Number(req.params.crecheId);
+    
+    // Admin/Staff explicit tutorId filtering, or null for all (wait, if Admin queries without tutorId, is it allowed? 
+    // The PROMPT says: "Para Staff/Admin: tutorId deve ser explicitamente informado quando a operação for referente a um tutor".
+    // But for invoices, maybe it's different than credits? The prompt says: "A consulta deve: respeitar crecheId; respeitar tutorId; retornar somente invoices elegíveis; ... impedir cross-tenant access."
+    // Let's implement it defensively:
+    let tutorId: number | null = null;
+
+    if (req.user!.role === "tutor") {
+      tutorId = req.user!.id; // Tutor só acessa a si mesmo
+    } else {
+      // Staff/Admin
+      if (req.query.tutorId) {
+        tutorId = Number(req.query.tutorId);
+      } else {
+        res.status(400).json({ error: "tutorId é obrigatório para consultas de previsão financeira administrativa." });
+        return;
+      }
+    }
+
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    
+    const data = await InvoiceRepository.listUpcomingByCreche(crecheId, tutorId, limit);
+    res.json({ data });
+  } catch (err) {
+    next(err);
+  }
+});
 // Must be declared before /:invoiceId routes so Express does not match it as an ID.
 
 router.get(

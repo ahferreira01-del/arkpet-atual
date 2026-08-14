@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DateFilterPopover } from "@/components/ui/date-filter-popover";
 import { resolvePhotoUrl, formatCurrency } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
+import { FilterSelect } from "@/components/ui/filter-controls";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
-import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package, CheckCircle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { CalendarDays as Calendar, Plus, LogIn, LogOut, Navigation, Car, ChevronDown, Search, X, ClipboardList, Package, CheckCircle, PawPrint, UserRound, SlidersHorizontal, Clock, MoreHorizontal, ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/date-utils";
@@ -93,43 +95,30 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
 
   return (
     <div ref={ref} className="relative flex-1 min-w-0">
-      <button
-        type="button"
+      <FilterSelect
+        label={selected ? `🐾 ${selected.name}` : "Todos os pets"}
+        icon={PawPrint}
+        isActive={!!value}
         onClick={() => { setOpen((v) => !v); setSearch(""); }}
-        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-full bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
-      >
-        <span className="text-left truncate">
-          {selected ? `🐾 ${selected.name}` : "Todos os pets"}
-        </span>
-        {selected ? (
-          <X
-            className="h-3.5 w-3.5 text-muted-foreground hover:text-white flex-shrink-0"
-            onClick={(e) => { e.stopPropagation(); onChange(null); setOpen(false); }}
-          />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-        )}
-      </button>
+        className="w-full"
+      />
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-          <div className="p-2 border-b border-white/10">
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
-              <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar pet..."
-                className="flex-1 bg-transparent text-sm text-white placeholder:text-muted-foreground outline-none"
-              />
-            </div>
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-popover border border-border rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <SearchInput
+              autoFocus
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar pet..."
+              className="h-9"
+            />
           </div>
           <div className="max-h-52 overflow-y-auto py-1">
             <button
               type="button"
               onClick={() => { onChange(null); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 ${!value ? "text-primary font-medium" : "text-muted-foreground hover:text-white"}`}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary ${!value ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
               Todos os pets
             </button>
@@ -141,7 +130,7 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
                 key={p.id}
                 type="button"
                 onClick={() => { onChange(p.id); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2 ${value === p.id ? "text-primary font-medium" : "text-white hover:text-white"}`}
+                className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary flex items-center gap-2 ${value === p.id ? "text-primary font-medium" : "text-foreground hover:text-foreground"}`}
               >
                 🐾 <span className="truncate">{p.name}</span>
                 {value === p.id && <span className="ml-auto text-xs text-primary">✓</span>}
@@ -172,43 +161,30 @@ function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: numb
 
   return (
     <div ref={ref} className="relative flex-1 min-w-[200px]">
-      <button
-        type="button"
+      <FilterSelect
+        label={selected ? `👤 ${selected.name}` : "Todos os tutores"}
+        icon={UserRound}
+        isActive={!!value}
         onClick={() => { setOpen((v) => !v); setSearch(""); }}
-        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-xl bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
-      >
-        <span className="text-left truncate">
-          {selected ? `👤 ${selected.name}` : "Todos os tutores"}
-        </span>
-        {selected ? (
-          <X
-            className="h-3.5 w-3.5 text-muted-foreground hover:text-white flex-shrink-0"
-            onClick={(e) => { e.stopPropagation(); onChange(null); setOpen(false); }}
-          />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-        )}
-      </button>
+        className="w-full"
+      />
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden">
-          <div className="p-2 border-b border-white/10">
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5">
-              <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar tutor..."
-                className="bg-transparent border-none text-sm text-white placeholder:text-muted-foreground focus:outline-none w-full"
-              />
-            </div>
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-popover border border-border rounded-xl shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-border">
+            <SearchInput
+              autoFocus
+              value={search}
+              onChange={setSearch}
+              placeholder="Buscar tutor..."
+              className="h-9"
+            />
           </div>
           <div className="max-h-60 overflow-y-auto p-1">
             <button
               type="button"
               onClick={() => { onChange(null); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 ${value === null ? "text-white font-medium" : "text-muted-foreground"}`}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary ${value === null ? "text-foreground font-medium" : "text-muted-foreground"}`}
             >
               Todos os tutores
             </button>
@@ -217,7 +193,7 @@ function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: numb
                 key={t.id}
                 type="button"
                 onClick={() => { onChange(t.id); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-white/5 truncate flex justify-between items-center ${value === t.id ? "text-primary font-medium" : "text-white"}`}
+                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary truncate flex justify-between items-center ${value === t.id ? "text-primary font-medium" : "text-foreground"}`}
               >
                 {t.name}
                 {value === t.id && <CheckCircle className="h-3 w-3" />}
@@ -244,25 +220,22 @@ function StatusCombobox({ statuses, counts, value, onChange }: { statuses: strin
 
   return (
     <div ref={ref} className="relative flex-1 min-w-0">
-      <button
-        type="button"
+      <FilterSelect
+        label={statusLabel[value] || value}
+        icon={SlidersHorizontal}
+        isActive={value !== "all"}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center justify-between gap-2 pl-4 pr-3 py-2 rounded-full bg-[#1e1e2d] border border-white/5 text-sm text-white hover:bg-white/10 transition-all w-full"
-      >
-        <span className="text-left truncate">
-          {statusLabel[value] || value}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-      </button>
+        className="w-full"
+      />
 
       {open && (
-        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-[#1a1a2e] border border-white/10 rounded-xl shadow-xl overflow-hidden py-1">
+        <div className="absolute top-full mt-1 left-0 z-50 w-full sm:w-64 bg-popover border border-border rounded-xl shadow-xl overflow-hidden py-1">
           {statuses.map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => { onChange(s); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-white/5 flex items-center gap-2 ${value === s ? "text-primary font-medium" : "text-white hover:text-white"}`}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary flex items-center gap-2 ${value === s ? "text-primary font-medium" : "text-foreground hover:text-foreground"}`}
             >
               <span className="truncate">{s === "all" ? "Todos" : (statusLabel[s] || s)}</span>
               <span className="text-xs opacity-70 ml-1">({counts[s] || 0})</span>
@@ -588,8 +561,8 @@ export default function Bookings() {
 
       {/* Recovery banner: pets stuck as present without an active booking */}
       {stuckPets.length > 0 && (
-        <div className="rounded-xl border border-red-500/25 bg-red-500/8 p-4 space-y-3">
-          <p className="text-sm font-medium text-red-400 flex items-center gap-2">
+        <div className="rounded-xl border border-warning/20 bg-warning/10 p-4 space-y-3">
+          <p className="text-sm font-medium text-warning-foreground flex items-center gap-2">
             <span>⚠️</span>
             {stuckPets.length === 1
               ? `${stuckPets[0].name} está marcado como presente mas não tem reserva ativa.`
@@ -601,7 +574,7 @@ export default function Bookings() {
                 key={p.id}
                 size="sm"
                 variant="outline"
-                className="border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs"
+                className="border-warning/30 text-warning-foreground hover:bg-warning/10 text-xs"
                 onClick={() => handleForceCheckout(p)}
                 isLoading={forceCheckoutMutation.isPending}
               >
@@ -614,7 +587,7 @@ export default function Bookings() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 w-full mb-2">
-        <Button onClick={() => setLocation("/bookings/new")} className="bg-[#a3d84b] text-[#1a1a2e] hover:bg-[#92c73a] shrink-0 w-full sm:w-auto h-10 rounded-xl">
+        <Button onClick={() => setLocation("/bookings/new")} className="w-full sm:w-auto h-10 rounded-xl">
           <Plus className="h-5 w-5 mr-2" /> Nova Reserva
         </Button>
         
@@ -649,213 +622,224 @@ export default function Bookings() {
           ) : filtered?.length ? (
             <>
               {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
-              <div className="md:hidden divide-y divide-white/5">
+              <div className="md:hidden divide-y divide-border">
                 {filtered.map((booking: any) => (
                   <div
                     key={booking.id}
                     id={`booking-${booking.id}`}
-                    className={`p-5 space-y-4 transition-colors ${highlightBookingId === booking.id ? "bg-violet-500/8 ring-1 ring-inset ring-violet-400/30" : ""}`}
+                    className={`p-4 flex flex-col gap-3 transition-colors ${highlightBookingId === booking.id ? "bg-primary/5 ring-1 ring-inset ring-primary/20" : ""}`}
                   >
-                    {/* ── CONCEPT A LAYOUT ── */}
-                    {/* Row 1: Pet Name (Left) + Badges (Right) */}
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <h3 className="text-xl font-bold text-white leading-none">{booking.petName}</h3>
-                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                        <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors px-2 py-0.5 text-[10px] h-6">
-                          {statusLabel[booking.status] || booking.status}
-                        </Badge>
-                        <Badge variant="outline" className="bg-white/5 border-white/10 hover:bg-white/10 transition-colors px-2 py-0.5 text-[10px] h-6">
-                          {bookingTypeLabel[booking.type] || booking.type}
-                        </Badge>
-                        {(booking as any).onTheWayAt && booking.status !== "completed" && (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 flex items-center gap-1 flex-shrink-0 border border-blue-500/20 h-6">
-                            <Car className="h-3 w-3" /> A caminho
-                          </span>
+                    {/* Row 1 & 2: Pet Name, Photo, Tutor & Badges */}
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center">
+                        {pets?.find((p: any) => p.id === booking.petId)?.photoUrl ? (
+                          <img src={resolvePhotoUrl(pets.find((p: any) => p.id === booking.petId)?.photoUrl) || undefined} alt={booking.petName} className="h-full w-full object-cover" />
+                        ) : (
+                          <PawPrint className="h-5 w-5 text-muted-foreground opacity-50" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="text-base font-semibold text-foreground truncate leading-tight">{booking.petName}</h3>
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                            <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="h-5 px-1.5 text-[10px]">
+                              {statusLabel[booking.status] || booking.status}
+                            </Badge>
+                            <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground bg-secondary border-border">
+                              {bookingTypeLabel[booking.type] || booking.type}
+                            </Badge>
+                          </div>
+                        </div>
+                        {!isTutor && (
+                          <p className="text-sm text-muted-foreground truncate leading-tight mt-0.5">{booking.tutorName || "—"}</p>
                         )}
                       </div>
                     </div>
 
-                    {/* Row 2: Tutor */}
-                    {!isTutor && (
-                      <p className="text-sm text-muted-foreground mb-3">{booking.tutorName || "—"}</p>
-                    )}
-
-                    {/* Row 3: Dates and Times */}
-                    <div className="flex flex-col gap-1.5 mb-4">
-                      <div className="text-sm text-muted-foreground font-medium">
-                        {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
-                        {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
-                      </div>
-                      {(booking.checkInTime || (booking as any).checkOutTime) && (
-                        <div className="flex items-center gap-3">
-                          {booking.checkInTime && (
-                            <span className="text-sm text-emerald-400 font-medium flex items-center gap-1">
-                              <CheckCircle className="h-3.5 w-3.5" /> In: {format(new Date(booking.checkInTime), "HH:mm")}
-                            </span>
-                          )}
-                          {(booking as any).checkOutTime && (
-                            <span className="text-sm text-amber-500 font-medium flex items-center gap-1">
-                              <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
-                            </span>
-                          )}
+                    {/* Row 3: Dates, Times, Services, Observations */}
+                    <div className="flex flex-col gap-2 mt-1">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>
+                            {format(parseLocalDate(booking.startDate), "dd/MM/yyyy")}
+                            {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
+                          </span>
                         </div>
+                        {(booking.checkInTime || (booking as any).checkOutTime) && (
+                          <div className="flex items-center gap-3">
+                            {booking.checkInTime && (
+                              <span className="text-emerald-500 font-medium flex items-center gap-1">
+                                <Clock className="h-3.5 w-3.5" /> In: {format(new Date(booking.checkInTime), "HH:mm")}
+                              </span>
+                            )}
+                            {(booking as any).checkOutTime && (
+                              <span className="text-amber-500 font-medium flex items-center gap-1">
+                                <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {Array.isArray((booking as any).additionalServices) && (booking as any).additionalServices.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-0.5">
+                          {(booking as any).additionalServices.map((addon: any) => (
+                            <Badge key={addon.id} variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-medium h-5">
+                              + {addon.itemName}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {(booking as any).onTheWayAt && booking.status !== "completed" && (
+                        <div className="mt-0.5">
+                          <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-medium h-5 flex items-center gap-1 w-fit">
+                            <Car className="h-3 w-3" /> A caminho
+                          </Badge>
+                        </div>
+                      )}
+
+                      {booking.notes && (
+                        <p className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-2.5 py-2 italic border border-border/50">
+                          💬 {booking.notes}
+                        </p>
                       )}
                     </div>
 
-                    {/* Row 3b: Add-on services chips */}
-                    {Array.isArray((booking as any).additionalServices) && (booking as any).additionalServices.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {(booking as any).additionalServices.map((addon: any) => (
-                          <span
-                            key={addon.id}
-                            className="inline-flex items-center gap-1 rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-medium text-indigo-300 ring-1 ring-inset ring-indigo-500/20"
-                          >
-                            + {addon.itemName}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Row 3c: Observations */}
-                    {booking.notes && (
-                      <p className="text-xs text-muted-foreground/80 bg-white/5 rounded px-2.5 py-1.5 italic">
-                        💬 {booking.notes}
-                      </p>
-                    )}
-
                     {/* Row 4: Horizontal Action Buttons */}
-                    <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/5">
+                    <div className="flex items-center gap-2 flex-wrap pt-3 border-t border-border mt-1">
                       {(booking.status === "confirmed" || booking.status === "active") && (
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 font-medium bg-transparent"
+                          variant="secondary"
+                          className="h-10 text-sm px-4"
                           onClick={() => setOnTheWayBooking(booking)}
                         >
                           <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
                         </Button>
                       )}
-                        {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 font-medium bg-transparent"
-                            onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
-                            isLoading={updateMutation.isPending}
-                          >
-                            Solicitar Cancelamento
-                          </Button>
-                        )}
-                        {!isTutor && (
-                          <>
-                            {booking.status === "cancel_requested" && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-destructive/40 text-destructive/80 hover:bg-destructive/10 font-medium bg-transparent"
-                                  onClick={() => handleStatusUpdate(booking.id, "cancelled")}
-                                  isLoading={updateMutation.isPending}
-                                >
-                                  Aprovar Cancel.
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-medium bg-transparent"
-                                  onClick={() => handleStatusUpdate(booking.id, "confirmed")}
-                                  isLoading={updateMutation.isPending}
-                                >
-                                  Recusar
-                                </Button>
-                              </>
-                            )}
-                            {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
+                      {isTutor && (booking.status === "pending" || booking.status === "confirmed") && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                          onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
+                          isLoading={updateMutation.isPending}
+                        >
+                          Solicitar Cancelamento
+                        </Button>
+                      )}
+                      {!isTutor && (
+                        <>
+                          {booking.status === "cancel_requested" && (
+                            <>
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 font-medium bg-transparent"
-                                onClick={() => handleCheckIn(booking)}
-                                isLoading={checkInMutation.isPending}
+                                className="h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                                onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                                isLoading={updateMutation.isPending}
                               >
-                                <LogIn className="mr-1.5 h-3.5 w-3.5" />
-                                {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
+                                Aprovar Cancel.
                               </Button>
-                            )}
-                            {booking.status === "confirmed" && isPetPresent(booking.petId) && (
                               <Button
                                 size="sm"
-                                variant="outline"
-                                className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10 font-medium bg-transparent"
-                                onClick={() => handleCompleteService(booking)}
-                                isLoading={completeServiceMutation.isPending}
-                              >
-                                <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
-                              </Button>
-                            )}
-                            {booking.status === "active" && isServiceBooking(booking.type) && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
-                                onClick={() => handleCompleteService(booking)}
-                                isLoading={completeServiceMutation.isPending}
-                              >
-                                <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
-                              </Button>
-                            )}
-                            {booking.status === "active" && !isServiceBooking(booking.type) && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-amber-500/40 text-amber-500 hover:bg-amber-500/10 hover:text-amber-400 font-medium bg-transparent"
-                                  onClick={() => handleCheckOut(booking)}
-                                  isLoading={checkOutMutation.isPending}
-                                >
-                                  <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
-                                  onClick={() => setConsumableBooking(booking)}
-                                >
-                                  <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
-                                </Button>
-                              </>
-                            )}
-                            {booking.status === "pending" && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-400 font-medium bg-transparent"
+                                variant="secondary"
+                                className="h-10 text-sm px-4"
                                 onClick={() => handleStatusUpdate(booking.id, "confirmed")}
                                 isLoading={updateMutation.isPending}
                               >
-                                Confirmar
+                                Recusar
                               </Button>
-                            )}
-                            
-                            <Button 
-                              size="sm" 
-                              variant="ghost" 
-                              className="text-white hover:bg-white/10 font-semibold px-4 ml-auto sm:ml-0" 
-                              onClick={() => setEditBooking(booking)}
+                            </>
+                          )}
+                          {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-10 text-sm px-4"
+                              onClick={() => handleCheckIn(booking)}
+                              isLoading={checkInMutation.isPending}
                             >
-                              Editar
+                              <LogIn className="mr-1.5 h-3.5 w-3.5" />
+                              {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
                             </Button>
-                          </>
-                        )}
-                      </div>
+                          )}
+                          {booking.status === "confirmed" && isPetPresent(booking.petId) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-10 text-sm px-4"
+                              onClick={() => handleCompleteService(booking)}
+                              isLoading={completeServiceMutation.isPending}
+                            >
+                              <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                            </Button>
+                          )}
+                          {booking.status === "active" && isServiceBooking(booking.type) && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-10 text-sm px-4"
+                              onClick={() => handleCompleteService(booking)}
+                              isLoading={completeServiceMutation.isPending}
+                            >
+                              <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                            </Button>
+                          )}
+                          {booking.status === "active" && !isServiceBooking(booking.type) && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="h-10 text-sm px-4"
+                                onClick={() => handleCheckOut(booking)}
+                                isLoading={checkOutMutation.isPending}
+                              >
+                                <LogOut className="mr-1.5 h-3.5 w-3.5" /> Check-out
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-10 text-sm px-4 bg-secondary/50"
+                                onClick={() => setConsumableBooking(booking)}
+                              >
+                                <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
+                              </Button>
+                            </>
+                          )}
+                          {booking.status === "pending" && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              className="h-10 text-sm px-4"
+                              onClick={() => handleStatusUpdate(booking.id, "confirmed")}
+                              isLoading={updateMutation.isPending}
+                            >
+                              Confirmar
+                            </Button>
+                          )}
+                          
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="h-10 text-sm px-4 ml-auto text-muted-foreground hover:text-foreground" 
+                            onClick={() => setEditBooking(booking)}
+                          >
+                            Editar
+                          </Button>
+                        </>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
+              </div>
 
               {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
               <div className="hidden md:block overflow-x-auto custom-scrollbar">
                 <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-muted-foreground uppercase bg-white/5">
+                  <thead className="text-xs text-muted-foreground uppercase bg-secondary">
                     <tr>
                       <th className="px-6 py-4 font-medium">Pet {!isTutor && "/ Tutor"}</th>
                       <th className="px-6 py-4 font-medium">Tipo</th>
@@ -864,17 +848,17 @@ export default function Bookings() {
                       <th className="px-6 py-4 font-medium text-right">Ações</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/5">
+                  <tbody className="divide-y divide-border">
                     {filtered.map((booking: any) => (
-                      <tr key={booking.id} className="hover:bg-white/5 transition-colors">
+                      <tr key={booking.id} className="hover:bg-secondary transition-colors">
                         <td className="px-6 py-4">
-                          <p className="font-medium text-white">{booking.petName}</p>
+                          <p className="font-medium text-foreground">{booking.petName}</p>
                           {!isTutor && (
                             <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                           )}
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant="outline" className="bg-white/5 capitalize">
+                          <Badge variant="outline" className="bg-secondary capitalize">
                             {bookingTypeLabel[booking.type] || booking.type}
                           </Badge>
                         </td>
@@ -902,7 +886,7 @@ export default function Bookings() {
                             {statusLabel[booking.status] || booking.status}
                           </Badge>
                           {(booking as any).onTheWayAt && booking.status !== "completed" && (
-                            <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
+                            <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
                               <Car className="h-3 w-3" /> A caminho
                             </p>
                           )}
@@ -913,7 +897,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                                className="border-primary/30 text-primary hover:bg-primary/10"
                                 onClick={() => setOnTheWayBooking(booking)}
                               >
                                 <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
@@ -946,7 +930,7 @@ export default function Bookings() {
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                      className="border-success/30 text-success hover:bg-success/10"
                                       onClick={() => handleStatusUpdate(booking.id, "confirmed")}
                                       isLoading={updateMutation.isPending}
                                     >
@@ -958,7 +942,7 @@ export default function Bookings() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                    className="border-success/30 text-success hover:bg-success/10"
                                     onClick={() => handleCheckIn(booking)}
                                     isLoading={checkInMutation.isPending}
                                   >
@@ -981,7 +965,7 @@ export default function Bookings() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                    className="border-success/30 text-success hover:bg-success/10"
                                     onClick={() => handleCompleteService(booking)}
                                     isLoading={completeServiceMutation.isPending}
                                   >
@@ -1002,7 +986,7 @@ export default function Bookings() {
                                     <Button
                                       size="sm"
                                       variant="outline"
-                                      className="border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                                      className="border-success/30 text-success hover:bg-success/10"
                                       onClick={() => setConsumableBooking(booking)}
                                     >
                                       <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
@@ -1046,18 +1030,18 @@ export default function Bookings() {
       {editBooking && !isTutor && (
         <Modal isOpen={!!editBooking} onClose={() => setEditBooking(null)} title="Editar Reserva">
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+            <div className="p-4 rounded-xl bg-secondary border border-border space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Pet</span>
-                <span className="font-medium text-white">{editBooking.petName}</span>
+                <span className="font-medium text-foreground">{editBooking.petName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Tipo</span>
-                <span className="font-medium text-white capitalize">{bookingTypeLabel[editBooking.type] || editBooking.type}</span>
+                <span className="font-medium text-foreground capitalize">{bookingTypeLabel[editBooking.type] || editBooking.type}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Início</span>
-                <span className="font-medium text-white">{format(parseLocalDate(editBooking.startDate), "dd/MM/yyyy")}</span>
+                <span className="font-medium text-foreground">{format(parseLocalDate(editBooking.startDate), "dd/MM/yyyy")}</span>
               </div>
               {/* Add-on services */}
               {(editBooking as any).additionalServices?.length > 0 && (
@@ -1094,7 +1078,7 @@ export default function Bookings() {
                     className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
                       editBooking.status === s
                         ? "bg-primary/20 border-primary/30 text-primary"
-                        : "border-white/10 text-muted-foreground hover:bg-white/5 hover:text-white"
+                        : "border-border text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`}
                   >
                     {statusLabel[s]}
@@ -1151,11 +1135,11 @@ export default function Bookings() {
                   <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
                     <Package className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold text-white">⚠️ Pet veio com itens pessoais</p>
+                      <p className="text-sm font-semibold text-foreground">⚠️ Pet veio com itens pessoais</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Lembre-se de devolver todos os itens ao tutor.</p>
                     </div>
                   </div>
-                  <div className="rounded-xl overflow-hidden border border-white/10 aspect-[4/3]">
+                  <div className="rounded-xl overflow-hidden border border-border aspect-[4/3]">
                     <img
                       src={resolvePhotoUrl(photoUrl) ?? ""}
                       alt="Itens pessoais registrados no check-in"
@@ -1171,7 +1155,7 @@ export default function Bookings() {
                 <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
                   <ClipboardList className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-semibold text-white">
+                    <p className="text-sm font-semibold text-foreground">
                       {checkoutBooking.petName} tem{" "}
                       {pendingTasksForBooking(checkoutBooking).length} tarefa
                       {pendingTasksForBooking(checkoutBooking).length !== 1 ? "s" : ""} pendente
@@ -1207,14 +1191,14 @@ export default function Bookings() {
                 variant="outline"
                 onClick={() => doCheckOut(checkoutBooking.id)}
                 disabled={checkoutStep === "completing" || checkOutMutation.isPending}
-                className="w-full border-white/10 text-muted-foreground hover:text-white"
+                className="w-full border-border text-muted-foreground hover:text-foreground"
               >
                 {pendingTasksForBooking(checkoutBooking).length > 0 ? "Fazer check-out sem concluir" : "Confirmar check-out"}
               </Button>
               <button
                 onClick={() => setCheckoutBooking(null)}
                 disabled={checkoutStep === "completing" || checkOutMutation.isPending}
-                className="text-xs text-muted-foreground hover:text-white transition-colors py-1"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
               >
                 Cancelar
               </button>
@@ -1229,8 +1213,8 @@ export default function Bookings() {
           <div className="space-y-5">
             <p className="text-sm text-muted-foreground">
               {isTutor
-                ? <>Avise a creche que você está a caminho para <span className="text-white font-medium">{onTheWayBooking.petName}</span>.</>
-                : <>Avise o tutor que a equipe está a caminho para <span className="text-white font-medium">{onTheWayBooking.petName}</span>.</>
+                ? <>Avise a creche que você está a caminho para <span className="text-foreground font-medium">{onTheWayBooking.petName}</span>.</>
+                : <>Avise o tutor que a equipe está a caminho para <span className="text-foreground font-medium">{onTheWayBooking.petName}</span>.</>
               }
             </p>
 
@@ -1250,7 +1234,7 @@ export default function Bookings() {
               <Button
                 onClick={() => handleOnTheWay("drop_off")}
                 isLoading={onTheWayMutation.isPending}
-                className="bg-blue-600/80 hover:bg-blue-600 border-blue-500/30"
+                className="bg-primary/90 hover:bg-primary border-primary/30"
               >
                 <Car className="mr-2 h-4 w-4" /> Levar o pet
               </Button>
@@ -1258,7 +1242,7 @@ export default function Bookings() {
                 onClick={() => handleOnTheWay("pickup")}
                 isLoading={onTheWayMutation.isPending}
                 variant="outline"
-                className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10"
+                className="border-primary/30 text-primary hover:bg-primary/10"
               >
                 <Navigation className="mr-2 h-4 w-4" /> Buscar o pet
               </Button>

@@ -9,6 +9,7 @@ import { logFinancialAudit } from "./audit.js";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { type FinancialDomainEvent } from "./events.js";
 import { financialLog } from "../lib/logger.js";
+import { getBusinessDate } from "../lib/date.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Máquina de Estados da Invoice (Fase 14)
@@ -60,15 +61,15 @@ export function calculateDueDate(
 ): string {
   if (!tutorMensalidadeDia) {
     const fallback = new Date(fallbackDate);
-    fallback.setDate(fallback.getDate() + 3);
+    fallback.setUTCDate(fallback.getUTCDate() + 3);
     return fallback.toISOString().split("T")[0];
   }
 
   const today = new Date();
-  let dueMonth = today.getMonth();
-  let dueYear = today.getFullYear();
+  let dueMonth = today.getUTCMonth();
+  let dueYear = today.getUTCFullYear();
 
-  if (today.getDate() > tutorMensalidadeDia) {
+  if (today.getUTCDate() > tutorMensalidadeDia) {
     dueMonth += 1;
     if (dueMonth > 11) {
       dueMonth = 0;
@@ -76,9 +77,9 @@ export function calculateDueDate(
     }
   }
 
-  const lastDayOfMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+  const lastDayOfMonth = new Date(Date.UTC(dueYear, dueMonth + 1, 0)).getUTCDate();
   const actualDay = Math.min(tutorMensalidadeDia, lastDayOfMonth);
-  const finalDueDate = new Date(dueYear, dueMonth, actualDay);
+  const finalDueDate = new Date(Date.UTC(dueYear, dueMonth, actualDay));
   return finalDueDate.toISOString().split("T")[0];
 }
 
@@ -86,8 +87,8 @@ export function calculateDueDate(
 // hasOverdueInvoices
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function hasOverdueInvoices(tutorId: number): Promise<boolean> {
-  return InvoiceRepository.hasOverdue(tutorId);
+export async function hasOverdueInvoices(tutorId: number, crecheId: number): Promise<boolean> {
+  return InvoiceRepository.hasOverdue(tutorId, crecheId);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,7 +113,7 @@ export async function processManualPayment(
       invoiceId: invoice.id,
       type: "income",
       amount: invoice.amount,
-      transactionDate: new Date().toISOString().split("T")[0],
+      transactionDate: getBusinessDate(),
       paymentMethod,
       description: `Pagamento da Fatura #${invoice.id}`,
     }, tx);
@@ -169,7 +170,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
       invoiceId: invoice.id,
       type: "income",
       amount: invoice.amount,
-      transactionDate: new Date().toISOString().split("T")[0],
+      transactionDate: getBusinessDate(),
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Comprovante aprovado da Fatura #${invoice.id}`,
     }, tx);
@@ -260,7 +261,7 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       invoiceId: invoice.id,
       type: "expense",
       amount: invoice.amount,
-      transactionDate: new Date().toISOString().split("T")[0],
+      transactionDate: getBusinessDate(),
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Estorno da Fatura #${invoice.id}`,
     }, tx);
@@ -300,7 +301,7 @@ export class BillingService {
    */
   static getCycleDates(
     mensalidadeDia: number | null | undefined,
-    txDateStr: string = new Date().toISOString().split("T")[0]
+    txDateStr: string = getBusinessDate()
   ) {
     const txDate = new Date(txDateStr + "T12:00:00Z");
     const day = mensalidadeDia || 10;
@@ -390,7 +391,9 @@ export class BillingService {
 
     const quantity = params.quantity || 1;
     const totalItemAmount = amountVal * quantity;
-    const itemDateStr = (params.itemDate || new Date()).toISOString().split("T")[0];
+    const itemDateStr = params.itemDate 
+      ? params.itemDate.toISOString().split("T")[0]
+      : getBusinessDate();
 
     const executeLogic = async (txClient: any) => {
       let invoiceId: number;
@@ -594,7 +597,7 @@ export class BillingService {
           invoiceId: invoice.id,
           type: "income",
           amount: (-itemTotalValue).toString(),
-          transactionDate: new Date().toISOString().split("T")[0],
+          transactionDate: getBusinessDate(),
           paymentMethod: "cash",
           description: `Estorno de Venda: ${invoiceItem.description} (Qtd: ${quantity})`,
         }, tx);
@@ -650,7 +653,7 @@ export class BillingService {
       invoiceId,
       type: "income",
       amount: invoice.amount,
-      transactionDate: new Date().toISOString().split("T")[0],
+      transactionDate: getBusinessDate(),
       paymentMethod: "stripe",
       description: `Pagamento Stripe da Fatura #${invoiceId}`,
     }, tx);

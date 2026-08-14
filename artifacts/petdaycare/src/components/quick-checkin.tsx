@@ -11,7 +11,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export function QuickCheckIn() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.crecheId as number;
+  const isAuthorized = Boolean(crecheId && (user?.role === "staff" || user?.role === "creche_admin"));
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -19,7 +20,7 @@ export function QuickCheckIn() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: petsResponse, isLoading } = useListPets(crecheId);
+  const { data: petsResponse, isLoading } = useListPets(crecheId, undefined, { query: { enabled: isAuthorized } } as any);
   const checkInMutation = useCheckIn();
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function QuickCheckIn() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
-  if (user?.role !== "staff" && user?.role !== "creche_admin") {
+  if (!isAuthorized) {
     return null;
   }
 

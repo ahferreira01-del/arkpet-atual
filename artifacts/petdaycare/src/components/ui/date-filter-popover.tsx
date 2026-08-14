@@ -27,19 +27,19 @@ export function DateFilterPopover({ start, end, onChangeStart, onChangeEnd }: Da
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center justify-center h-[38px] w-[38px] rounded-full border transition-all ${
+        className={`flex items-center justify-center h-10 w-10 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
           isActive 
-            ? "bg-primary/20 border-primary/50 text-primary" 
-            : "bg-[#1e1e2d] border-white/5 text-white hover:bg-white/10"
+            ? "bg-primary/10 border-primary text-primary" 
+            : "bg-card border-border text-foreground hover:bg-secondary active:bg-secondary/80"
         }`}
       >
-        <Calendar className="h-4 w-4" />
+        <Calendar className="h-[18px] w-[18px]" />
       </button>
 
       {open && (
-        <div className="absolute top-full mt-2 left-0 sm:left-0 z-50 w-64 bg-[#1a1a2e] border border-white/10 rounded-2xl shadow-xl overflow-hidden p-4 space-y-3">
+        <div className="absolute top-full mt-2 left-0 sm:left-0 z-50 w-64 bg-card border border-border rounded-2xl shadow-xl overflow-hidden p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-white">Filtrar por Período</span>
+            <span className="text-sm font-semibold text-foreground">Filtrar por Período</span>
             {isActive && (
               <button
                 onClick={() => {
@@ -47,7 +47,7 @@ export function DateFilterPopover({ start, end, onChangeStart, onChangeEnd }: Da
                   onChangeEnd("");
                   setOpen(false);
                 }}
-                className="text-xs text-muted-foreground hover:text-white transition-colors"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 Limpar
               </button>
@@ -60,7 +60,7 @@ export function DateFilterPopover({ start, end, onChangeStart, onChangeEnd }: Da
                 type="date"
                 value={start}
                 onChange={(e) => onChangeStart(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
               />
             </div>
             <div>
@@ -69,7 +69,7 @@ export function DateFilterPopover({ start, end, onChangeStart, onChangeEnd }: Da
                 type="date"
                 value={end}
                 onChange={(e) => onChangeEnd(e.target.value)}
-                className="w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary [color-scheme:dark]"
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
               />
             </div>
           </div>

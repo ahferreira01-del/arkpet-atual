@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../lib/date.js";
 import { SQLWrapper } from "drizzle-orm";
 import {
   Router,
@@ -308,7 +309,7 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
 
       const tutorId = req.user!.role === "tutor" ? req.user!.id : (pet.tutorId ?? req.user!.id);
 
-      if (await hasOverdueInvoices(tutorId)) {
+      if (await hasOverdueInvoices(tutorId, crecheId)) {
         throw clientError("Este tutor possui faturas em atraso. Regularize a situação para realizar novos agendamentos.");
       }
 
@@ -1107,7 +1108,7 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
           ilike(vaccinesTable.name, "%antirr%"),
           ilike(vaccinesTable.name, "%raiva%"),
         ),
-        lte(vaccinesTable.nextDueDate, new Date().toISOString().split("T")[0]),
+        lte(vaccinesTable.nextDueDate, getBusinessDate()),
       ),
     )
     .limit(1);
@@ -1600,3 +1601,4 @@ router.delete(
 );
 
 export default router;
+

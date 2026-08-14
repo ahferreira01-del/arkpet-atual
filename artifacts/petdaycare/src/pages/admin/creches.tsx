@@ -127,13 +127,13 @@ export default function AdminCreches() {
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground mb-1">Total</p>
-            <p className="text-3xl font-display font-bold text-white">{creches?.length || 0}</p>
+            <p className="text-3xl font-display font-bold text-foreground">{creches?.length || 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground mb-1">Ativas</p>
-            <p className="text-3xl font-display font-bold text-emerald-400">
+            <p className="text-3xl font-display font-bold text-success">
               {creches?.filter((c) => c.status === "active").length || 0}
             </p>
           </CardContent>
@@ -168,7 +168,7 @@ export default function AdminCreches() {
                     {creche.status === "active" ? "Ativa" : "Inativa"}
                   </Badge>
                 </div>
-                <h3 className="text-xl font-display font-semibold text-white mb-3">{creche.name}</h3>
+                <h3 className="text-xl font-display font-semibold text-foreground mb-3">{creche.name}</h3>
                 <div className="space-y-2 text-sm text-muted-foreground">
                   {creche.address && (
                     <p className="flex items-center gap-2">
@@ -192,7 +192,7 @@ export default function AdminCreches() {
                 </div>
 
                 {/* Action bar */}
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between gap-2">
+                <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(creche.createdAt), "dd/MM/yyyy")}
                   </p>
@@ -247,7 +247,7 @@ export default function AdminCreches() {
       {/* ── Create Creche Modal ── */}
       <Modal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} title="Cadastrar Nova Creche">
         <form onSubmit={handleCreate} className="space-y-4">
-          <p className="text-sm text-muted-foreground pb-2 border-b border-white/10">Dados da Unidade</p>
+          <p className="text-sm text-muted-foreground pb-2 border-b border-border">Dados da Unidade</p>
           <div className="space-y-2">
             <label className="text-sm font-medium">Nome da Creche</label>
             <Input name="name" required placeholder="Pet Paradise São Paulo" />
@@ -279,7 +279,7 @@ export default function AdminCreches() {
             <Input name="maxCapacity" type="number" min={1} max={500} defaultValue={20} />
           </div>
 
-          <p className="text-sm text-muted-foreground pt-2 pb-1 border-b border-white/10">Admin da Creche <span className="text-xs">(opcional)</span></p>
+          <p className="text-sm text-muted-foreground pt-2 pb-1 border-b border-border">Admin da Creche <span className="text-xs">(opcional)</span></p>
           <p className="text-xs text-muted-foreground">Se preenchido, cria o administrador automaticamente com senha provisória.</p>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -367,7 +367,7 @@ export default function AdminCreches() {
                 <select
                   value={editForm.status}
                   onChange={(e) => setEditForm((f) => ({ ...f, status: e.target.value }))}
-                  className="w-full h-11 rounded-xl border border-white/10 bg-black/20 px-3 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+                  className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
                 >
                   <option value="active">Ativa</option>
                   <option value="inactive">Inativa</option>
@@ -375,7 +375,7 @@ export default function AdminCreches() {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-3 border-t border-white/10">
+            <div className="pt-4 flex justify-end gap-3 border-t border-border">
               <Button variant="ghost" onClick={() => setEditCreche(null)}>Cancelar</Button>
               <Button onClick={handleSaveEdit} isLoading={updateMutation.isPending}>
                 Salvar alterações
@@ -391,10 +391,10 @@ export default function AdminCreches() {
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Tem certeza que deseja excluir permanentemente a creche{" "}
-              <span className="font-semibold text-white">{deleteTarget.name.trim()}</span>?
+              <span className="font-semibold text-foreground">{deleteTarget.name.trim()}</span>?
               Esta ação não pode ser desfeita.
             </p>
-            <div className="pt-2 flex justify-end gap-3 border-t border-white/10">
+            <div className="pt-2 flex justify-end gap-3 border-t border-border">
               <Button variant="ghost" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
               <Button
                 onClick={handleDeleteConfirm}

@@ -4,10 +4,8 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { QrCode, Printer, Share2 } from 'lucide-react';
+import { formatCentsToBRL } from "@/lib/money";
 
-function formatBRL(value: number) {
-  return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 export function ThermalReceiptModal({ invoiceId, onClose }: { invoiceId: number, onClose: () => void }) {
   const [data, setData] = useState<any>(null);
@@ -57,7 +55,7 @@ export function ThermalReceiptModal({ invoiceId, onClose }: { invoiceId: number,
   const handleShare = async () => {
     if (!data) return;
     
-    const itemsText = data.items?.map((i: any) => `${i.quantity}x ${i.description} - ${formatBRL(Number(i.amount))}`).join('\n') || '';
+    const itemsText = data.items?.map((i: any) => `${i.quantity}x ${i.description} - ${formatCentsToBRL(Number(i.amount))}`).join('\n') || '';
     
     const text = `🧾 *RECIBO DE PRESTAÇÃO DE SERVIÇOS* 🧾
 *${data.creche?.name || "Creche ArkPet"}*
@@ -69,7 +67,7 @@ Emissão: ${format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}
 *Itens:*
 ${itemsText}
 
-*Valor Total:* ${formatBRL(Number(data.invoice.amount))}
+*Valor Total:* ${formatCentsToBRL(Number(data.invoice.amount))}
 *Situação:* PAGO (${data.invoice.paymentMethod || "Não informado"})
 
 🐾 Gerado pelo aplicativo ArkPet`;
@@ -94,10 +92,10 @@ ${itemsText}
     <Modal isOpen={true} onClose={onClose} title="Visualização do Recibo" description={`Fatura #${invoiceId}`}>
       <div className="flex flex-col items-center">
         {loading && <div className="py-12 text-sm text-muted-foreground font-mono">Buscando dados...</div>}
-        {error && <div className="py-12 text-sm text-red-400 font-mono">{error}</div>}
+        {error && <div className="py-12 text-sm text-destructive font-mono">{error}</div>}
         
         {data && (
-          <div className="bg-white text-black font-mono text-[10px] sm:text-xs p-4 shadow-sm w-full max-w-[300px] mb-6 overflow-hidden relative border border-gray-200">
+          <div className="bg-white text-black font-mono text-[10px] sm:text-xs p-4 shadow-sm w-full max-w-[300px] mb-6 overflow-hidden relative border-none">
             {/* Header */}
             <div className="text-center mb-4">
               <h1 className="font-bold text-sm uppercase">{data.creche?.name || "Creche ArkPet"}</h1>
@@ -119,8 +117,8 @@ ${itemsText}
               {data.items?.map((item: any, idx: number) => (
                 <div key={idx} className="flex justify-between py-1 border-b border-dotted border-gray-400 last:border-0">
                   <span className="w-8 text-left">{item.quantity}x</span>
-                  <span className="flex-1 text-left px-1 truncate">{item.description}</span>
-                  <span className="w-16 text-right">{formatBRL(Number(item.amount))}</span>
+                  <span className="flex-1 text-left px-1 break-words whitespace-normal leading-tight">{item.description}</span>
+                  <span className="w-16 text-right">{formatCentsToBRL(Number(item.amount))}</span>
                 </div>
               ))}
             </div>
@@ -131,7 +129,7 @@ ${itemsText}
             <div className="space-y-1 mb-4">
               <div className="flex justify-between font-bold">
                 <span>Valor Total</span>
-                <span>{formatBRL(Number(data.invoice.amount))}</span>
+                <span>{formatCentsToBRL(Number(data.invoice.amount))}</span>
               </div>
               <div className="flex justify-between">
                 <span>Pagamento</span>
@@ -151,7 +149,7 @@ ${itemsText}
             {/* Footer */}
             <div className="text-center text-[10px] flex flex-col items-center">
               <QrCode className="h-16 w-16 mb-2" />
-              <p>Fatura #{data.invoice.id}</p>
+              <p>Fatura #${data.invoice.id}</p>
               <p>Emissão: {format(new Date(), "dd/MM/yyyy HH:mm", { locale: ptBR })}</p>
               <div className="my-2 border-b border-dashed border-black w-full"></div>
               <p>Gerado pelo sistema ArkPet</p>
@@ -159,13 +157,15 @@ ${itemsText}
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row justify-end gap-2 w-full pt-4 border-t border-border">
-          <Button variant="outline" onClick={onClose} className="sm:mr-auto">Cancelar</Button>
-          <Button onClick={handleShare} disabled={!data || loading || !!error} className="bg-blue-500 hover:bg-blue-600 text-white border-0">
-            <Share2 className="mr-2 h-4 w-4" /> Compartilhar
+        <div className="flex flex-col sm:flex-row justify-end gap-3 w-full pt-6 mt-2 border-t border-border">
+          <Button variant="outline" onClick={onClose} className="sm:mr-auto h-12 rounded-xl text-[15px] font-semibold">
+            Cancelar
           </Button>
-          <Button onClick={handlePrint} disabled={!data || loading || !!error} className="bg-emerald-500 hover:bg-emerald-600 text-white border-0">
-            <Printer className="mr-2 h-4 w-4" /> Imprimir
+          <Button onClick={handleShare} disabled={!data || loading || !!error} variant="secondary" className="h-12 rounded-xl text-[15px] font-semibold gap-2 shadow-sm">
+            <Share2 className="h-4 w-4" /> Compartilhar
+          </Button>
+          <Button onClick={handlePrint} disabled={!data || loading || !!error} className="h-12 rounded-xl text-[15px] font-bold gap-2">
+            <Printer className="h-4 w-4" /> Imprimir
           </Button>
         </div>
       </div>

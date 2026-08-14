@@ -120,27 +120,27 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
 
       {step === "ask" && (
         <div className="flex flex-col items-center gap-6 py-4 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/15 flex items-center justify-center">
-            <Package className="h-8 w-8 text-amber-400" />
+          <div className="w-16 h-16 rounded-2xl bg-warning/15 flex items-center justify-center">
+            <Package className="h-8 w-8 text-warning-foreground" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-white mb-1">Itens pessoais</h2>
+            <h2 className="text-lg font-semibold text-foreground mb-1">Itens pessoais</h2>
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-white">{petName}</span> trouxe itens pessoais?<br />
+              <span className="font-medium text-foreground">{petName}</span> trouxe itens pessoais?<br />
               <span className="text-xs">(coleira, ração, pote, etc.)</span>
             </p>
           </div>
           <div className="flex gap-3 w-full">
             <Button
               variant="outline"
-              className="flex-1 border-white/15 text-muted-foreground hover:text-white"
+              className="flex-1 border-border text-muted-foreground hover:text-foreground"
               onClick={handleNoItems}
             >
               <PackageX className="mr-2 h-4 w-4" />
               Não trouxe
             </Button>
             <Button
-              className="flex-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
+              className="flex-1 bg-warning/20 border border-warning/40 text-warning-foreground hover:bg-warning/30"
               onClick={handleHasItems}
             >
               <Camera className="mr-2 h-4 w-4" />
@@ -160,10 +160,10 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
       {step === "preview" && previewUrl && (
         <div className="flex flex-col gap-4">
           <div>
-            <h2 className="text-base font-semibold text-white mb-0.5">Confirmar foto</h2>
+            <h2 className="text-base font-semibold text-foreground mb-0.5">Confirmar foto</h2>
             <p className="text-xs text-muted-foreground">Verifique se todos os itens estão visíveis na foto.</p>
           </div>
-          <div className="relative rounded-xl overflow-hidden bg-white/5 aspect-[4/3]">
+          <div className="relative rounded-xl overflow-hidden bg-secondary aspect-[4/3]">
             <img
               src={previewUrl}
               alt="Itens pessoais"
@@ -171,7 +171,7 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
             />
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 border-white/15" onClick={handleRetake}>
+            <Button variant="outline" className="flex-1 border-border" onClick={handleRetake}>
               <Camera className="mr-2 h-4 w-4" /> Repetir
             </Button>
             <Button className="flex-1" onClick={handleConfirmPhoto}>
@@ -185,7 +185,7 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
         <div className="flex flex-col items-center gap-4 py-8 text-center">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <div>
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-foreground">
               {step === "uploading" ? "Enviando foto..." : "Salvando registro..."}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">Aguarde um momento</p>
@@ -195,10 +195,10 @@ export function PersonalItemsModal({ booking, open, onComplete }: PersonalItemsM
 
       {step === "done" && (
         <div className="flex flex-col items-center gap-4 py-8 text-center">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center">
-            <CheckCircle className="h-8 w-8 text-emerald-400" />
+          <div className="w-14 h-14 rounded-2xl bg-success/15 flex items-center justify-center">
+            <CheckCircle className="h-8 w-8 text-success" />
           </div>
-          <p className="text-sm font-medium text-white">Itens registrados com sucesso!</p>
+          <p className="text-sm font-medium text-foreground">Itens registrados com sucesso!</p>
         </div>
       )}
     </Modal>

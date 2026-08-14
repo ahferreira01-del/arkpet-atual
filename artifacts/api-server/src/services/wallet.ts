@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../lib/date.js";
 /**
  * WalletService (Fase 15A) — autoridade central para saldo e créditos de pacote.
  * Nenhuma rota acessa tutorCreditsTable ou tutorServiceCreditsTable diretamente.
@@ -12,7 +13,7 @@ export class WalletService {
    * Returns the full balance summary for a tutor.
    */
   static async getBalance(tutorId: number, crecheId: number) {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getBusinessDate();
     const packages = await WalletRepository.getActivePackages(tutorId, crecheId, today);
 
     const totalCredits = packages.reduce((sum: number, p: any) => sum + p.totalCredits, 0);
@@ -86,3 +87,4 @@ export class WalletService {
     return credits;
   }
 }
+

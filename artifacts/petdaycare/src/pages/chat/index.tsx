@@ -67,41 +67,41 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left p-4 rounded-[20px] flex items-center gap-4 transition-all mb-2 ${
+      className={`w-full text-left p-4 rounded-3xl flex items-center gap-4 transition-all mb-2 border ${
         isActive
-          ? "bg-[#16171a] border border-[#84a93a]/30"
-          : "bg-[#16171a] border border-white/5 hover:border-white/10 opacity-80 hover:opacity-100"
+          ? "bg-card border-primary ring-1 ring-primary/20 shadow-sm"
+          : "bg-card border-border hover:border-border/80 opacity-90 hover:opacity-100"
       }`}
     >
       <div className="relative shrink-0">
-         <div className="w-12 h-12 rounded-full bg-[#1e2417] border border-[#84a93a]/20 flex items-center justify-center text-[15px] font-bold text-[#84a93a]">
+         <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-[15px] font-bold text-foreground">
            {avatarInitials(conv.tutorName)}
          </div>
-         <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-[#16171a] rounded-full flex items-center justify-center">
-            <div className="h-2.5 w-2.5 bg-emerald-500 rounded-full" />
+         <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-card rounded-full flex items-center justify-center">
+            <div className="h-2.5 w-2.5 bg-success rounded-full" />
          </div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <p className={`text-[15px] font-semibold truncate ${isActive ? "text-white" : "text-gray-300"}`}>
+          <p className={`text-[15px] font-semibold truncate ${isActive ? "text-foreground" : "text-muted-foreground"}`}>
             {conv.tutorName}
           </p>
           {conv.lastAt && (
-            <span className="text-[12px] font-medium text-gray-500 shrink-0">
+            <span className="text-[12px] font-medium text-muted-foreground shrink-0">
               {relativeTime(conv.lastAt)}
             </span>
           )}
         </div>
-        <p className="text-[13px] text-gray-400 truncate">
+        <p className="text-[13px] text-muted-foreground truncate">
           {conv.lastMessage ?? petList}
         </p>
       </div>
       {conv.unread > 0 ? (
-        <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-[#84a93a] text-white text-[11px] font-bold flex items-center justify-center">
+        <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">
           {conv.unread > 99 ? "99+" : conv.unread}
         </span>
       ) : (
-        <ChevronRight className="h-5 w-5 text-gray-600 shrink-0" />
+        <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0" />
       )}
     </button>
   );
@@ -314,25 +314,25 @@ export default function Chat() {
   // ── Conversation View (Tela B) ─────────────────────────────────────────────
 
   const conversationView = (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 bg-background">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/10 flex-shrink-0 flex items-center gap-3">
+      <div className="px-4 py-3 border-b border-border flex-shrink-0 flex items-center gap-3 bg-card shadow-sm z-10 relative">
         <button
           onClick={handleBack}
-          className="md:hidden p-1.5 rounded-lg hover:bg-white/10 text-muted-foreground hover:text-white transition-colors flex-shrink-0"
+          className="md:hidden h-11 w-11 -ml-2 rounded-xl hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center flex-shrink-0"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white truncate">
+          <p className="text-sm font-semibold text-foreground truncate">
             {selectedConv?.tutorName ?? "..."}
           </p>
           {(selectedConv?.pets.length ?? 0) > 0 && (
-            <div className="flex gap-1 mt-0.5 flex-wrap">
+            <div className="flex gap-1 mt-1 flex-wrap">
               {selectedConv!.pets.map((p) => (
                 <span
                   key={p.id}
-                  className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full"
+                  className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-secondary px-2 py-0.5 rounded-full"
                 >
                   <Dog className="h-2.5 w-2.5" />
                   {p.name}
@@ -341,29 +341,29 @@ export default function Chat() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 text-xs text-emerald-400 flex-shrink-0">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          ao vivo
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-success flex-shrink-0 bg-success/10 px-2.5 py-1 rounded-full uppercase tracking-wider">
+          <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
+          Online
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-background">
         {!allOlderLoaded && (serverMessages?.length ?? 0) >= 50 && (
-          <div className="flex justify-center mb-2">
+          <div className="flex justify-center mb-4">
             <button
               onClick={handleLoadOlder}
               disabled={loadingOlder}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground bg-secondary hover:bg-secondary/80 px-4 py-2 rounded-full transition-colors disabled:opacity-50 min-h-[44px]"
             >
-              <ChevronUp className="h-3 w-3" />
+              <ChevronUp className="h-4 w-4" />
               {loadingOlder ? "Carregando..." : "Ver mensagens anteriores"}
             </button>
           </div>
         )}
 
         {msgsLoading && !olderMessages.length ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">
+          <div className="text-center py-8 text-muted-foreground text-sm font-medium">
             Carregando mensagens...
           </div>
         ) : allMessages.length ? (
@@ -374,16 +374,21 @@ export default function Chat() {
               return (
                 <div
                   key={msg.id}
-                  className={`flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"} ${isOptimistic ? "opacity-75" : ""}`}
+                  className={`flex flex-col gap-1 ${isOwn ? "items-end" : "items-start"} ${isOptimistic ? "opacity-70" : ""}`}
                 >
-                  <p className="text-xs text-muted-foreground px-1">{msg.senderName}</p>
+                  <div className="flex items-baseline gap-2 px-1">
+                    <span className="text-[11px] font-medium text-muted-foreground">{msg.senderName}</span>
+                    <span className="text-[10px] text-muted-foreground/60">
+                      {format(parseUTC(msg.createdAt), "HH:mm", { locale: ptBR })}
+                    </span>
+                  </div>
                   {msg.petName && (
-                    <div className="px-1">
+                    <div className="px-1 mb-0.5">
                       <span
-                        className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           isOwn
-                            ? "bg-primary/20 text-primary border border-primary/30"
-                            : "bg-white/10 text-muted-foreground border border-white/10"
+                            ? "bg-primary/10 text-primary border border-primary/20"
+                            : "bg-secondary text-muted-foreground border border-border"
                         }`}
                       >
                         <Dog className="h-2.5 w-2.5" />
@@ -392,45 +397,44 @@ export default function Chat() {
                     </div>
                   )}
                   <div
-                    className={`max-w-[80%] md:max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
+                    className={`max-w-[85%] md:max-w-md px-4 py-2.5 rounded-2xl text-[15px] leading-relaxed shadow-sm ${
                       isOwn
-                        ? "bg-primary text-white rounded-br-md shadow-[0_0_20px_rgba(139,92,246,0.3)]"
-                        : "bg-white/10 text-white rounded-bl-md border border-white/10"
+                        ? "bg-primary text-primary-foreground rounded-tr-sm"
+                        : "bg-card text-card-foreground rounded-tl-sm border border-border"
                     }`}
                   >
                     {msg.content}
                     {isOptimistic && (
-                      <span className="ml-2 text-white/50 text-[10px]">enviando…</span>
+                      <span className="block mt-1.5 text-primary-foreground/70 text-[10px] font-bold uppercase tracking-wider">Enviando...</span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground/60 px-1">
-                    {format(parseUTC(msg.createdAt), "HH:mm", { locale: ptBR })}
-                  </p>
                 </div>
               );
             })}
-            <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} className="h-2" />
           </>
         ) : (
-          <EmptyState
-            icon={MessageSquare}
-            title="Nenhuma mensagem ainda"
-            description="Inicie a conversa."
-          />
+          <div className="h-full flex items-center justify-center">
+            <EmptyState
+              icon={MessageSquare}
+              title="Nenhuma mensagem ainda"
+              description="Inicie a conversa."
+            />
+          </div>
         )}
       </div>
 
       {/* Input */}
-      <div className="p-3 md:p-4 border-t border-white/10 flex-shrink-0">
+      <div className="p-3 md:p-4 border-t border-border flex-shrink-0 bg-card shadow-sm relative z-10">
         {taggedPetId && selectedConv && (
-          <div className="flex items-center gap-2 mb-2">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-primary/20 text-primary border border-primary/30">
-              <Dog className="h-3 w-3" />
+          <div className="flex items-center gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full bg-primary text-primary-foreground">
+              <Dog className="h-3.5 w-3.5" />
               {selectedConv.pets.find((p) => p.id === taggedPetId)?.name}
               <button
                 type="button"
                 onClick={() => setTaggedPetId(undefined)}
-                className="ml-0.5 hover:text-white transition-colors"
+                className="ml-1 -mr-1 h-5 w-5 rounded-full flex items-center justify-center hover:bg-primary-foreground/20 transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -438,23 +442,25 @@ export default function Chat() {
           </div>
         )}
 
-        <form onSubmit={handleSend} className="flex gap-2">
+        <form onSubmit={handleSend} className="flex gap-2 items-end">
           {(selectedConv?.pets.length ?? 0) > 0 && (
             <div className="relative" ref={petPickerRef}>
               <button
                 type="button"
                 onClick={() => setShowPetPicker((v) => !v)}
-                className={`h-11 px-3 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-medium flex-shrink-0 ${
+                className={`h-[44px] px-3.5 rounded-2xl transition-colors flex items-center justify-center gap-2 text-[13px] font-medium flex-shrink-0 min-w-[44px] ${
                   taggedPetId
-                    ? "bg-primary/20 border-primary/40 text-primary"
-                    : "bg-white/5 border-white/10 text-muted-foreground hover:text-white hover:bg-white/10"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
                 }`}
               >
-                <Dog className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Pet</span>
+                <Dog className="h-4 w-4" />
               </button>
               {showPetPicker && (
-                <div className="absolute bottom-full mb-2 left-0 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-50 min-w-[140px] p-1">
+                <div className="absolute bottom-[calc(100%+8px)] left-0 bg-popover border border-border rounded-xl shadow-xl z-50 min-w-[160px] p-1.5">
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                    Vincular Pet
+                  </div>
                   {selectedConv!.pets.map((p) => (
                     <button
                       key={p.id}
@@ -463,13 +469,13 @@ export default function Chat() {
                         setTaggedPetId(taggedPetId === p.id ? undefined : p.id);
                         setShowPetPicker(false);
                       }}
-                      className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
+                      className={`w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[14px] font-medium transition-colors min-h-[44px] ${
                         taggedPetId === p.id
-                          ? "bg-primary/20 text-primary"
-                          : "text-white hover:bg-white/5"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-popover-foreground hover:bg-secondary"
                       }`}
                     >
-                      <Dog className="h-3.5 w-3.5 flex-shrink-0" />
+                      <Dog className="h-4 w-4 flex-shrink-0" />
                       {p.name}
                     </button>
                   ))}
@@ -478,18 +484,20 @@ export default function Chat() {
             </div>
           )}
 
-          <Input
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Mensagem..."
-            className="flex-1 h-11"
-          />
+          <div className="flex-1 bg-background border border-border rounded-2xl flex items-center px-1 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all shadow-sm">
+            <Input
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Escreva uma mensagem..."
+              className="flex-1 min-h-[44px] border-0 shadow-none focus-visible:ring-0 bg-transparent text-[16px] px-3 py-0"
+            />
+          </div>
           <Button
             type="submit"
             disabled={!message.trim()}
-            className="h-11 px-4 flex-shrink-0 bg-[#3a4d2b] hover:bg-[#2d3a21] text-white rounded-xl shadow-none"
+            className="h-[44px] w-[44px] p-0 flex items-center justify-center flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl shadow-none transition-transform active:scale-95"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-5 w-5 ml-0.5" />
           </Button>
         </form>
       </div>
@@ -499,20 +507,20 @@ export default function Chat() {
   // ── List View (Tela A) ────────────────────────────────────────────────────
 
   const listView = (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="relative mb-3 flex-shrink-0">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+    <div className="flex flex-col h-full min-h-0 bg-background md:bg-transparent">
+      <div className="relative mb-4 flex-shrink-0 px-4 md:px-0 pt-4 md:pt-0">
+        <Search className="absolute left-7 md:left-3 top-[calc(50%+8px)] md:top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <input
           type="text"
           placeholder="Buscar tutor ou pet..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-3 py-3 rounded-2xl bg-[#16171a] border border-white/5 text-[15px] text-white placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-[#84a93a]"
+          className="w-full pl-10 pr-4 py-3 min-h-[44px] rounded-2xl bg-card border border-border text-[16px] md:text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/50 shadow-sm"
         />
       </div>
-      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-0.5 min-h-0">
+      <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 min-h-0 px-4 md:px-0 pb-4">
         {convLoading ? (
-          <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>
+          <div className="text-center py-8 text-muted-foreground text-[15px] font-medium">Carregando conversas...</div>
         ) : filteredConversations.length ? (
           filteredConversations.map((conv) => (
             <ConversationItem
@@ -523,11 +531,13 @@ export default function Chat() {
             />
           ))
         ) : (
-          <EmptyState
-            icon={MessageSquare}
-            title="Nenhuma conversa"
-            description="Nenhum tutor cadastrado ainda."
-          />
+          <div className="h-full flex items-center justify-center pb-12">
+            <EmptyState
+              icon={MessageSquare}
+              title="Nenhuma conversa"
+              description="Nenhum tutor cadastrado ainda."
+            />
+          </div>
         )}
       </div>
     </div>
@@ -536,8 +546,8 @@ export default function Chat() {
   // ── Layout ────────────────────────────────────────────────────────────────
 
   const pageHeaderAction = (
-    <div className="flex items-center gap-1.5 text-xs text-emerald-400 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-      <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+    <div className="flex items-center gap-1.5 text-xs text-success font-semibold px-2.5 py-1.5 rounded-full bg-success/10 border border-success/20 uppercase tracking-wider">
+      <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
       Ao vivo
     </div>
   );
@@ -546,7 +556,7 @@ export default function Chat() {
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* ── PageHeader — hidden on mobile when inside a conversation ── */}
-      <div className={`mb-4 ${showConversation ? "hidden md:block" : "block"}`}>
+      <div className={`mb-4 md:mb-6 ${showConversation ? "hidden md:block" : "block"} px-4 md:px-0`}>
         <PageHeader
           title="Mensagens"
           description="Conversas em tempo real com os tutores."
@@ -568,17 +578,17 @@ export default function Chat() {
           so the input is never clipped by the bottom nav spacer.            */}
       {(isTutor || showConversation) && (
         <div
-          className="md:hidden fixed inset-x-0 z-30 flex flex-col"
+          className="md:hidden fixed inset-x-0 z-30 flex flex-col shadow-2xl"
           style={{
             top: "4rem",
             bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
           }}
         >
-          <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-card border-t border-white/10">
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background border-t border-border">
             {selectedTutorId ? (
               conversationView
             ) : (
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex-1 flex items-center justify-center p-6">
                 <EmptyState
                   icon={MessageSquare}
                   title="Selecione uma conversa"
@@ -591,18 +601,18 @@ export default function Chat() {
       )}
 
       {/* ── DESKTOP: side-by-side layout ──────────────────────────────────── */}
-      <div className="hidden md:flex gap-4 h-[calc(100dvh-13rem)] min-h-0">
+      <div className="hidden md:flex gap-6 h-[calc(100dvh-14rem)] min-h-0 px-4 md:px-0">
         {!isTutor && (
-          <div className="w-72 flex-shrink-0 flex flex-col min-h-0">
+          <div className="w-80 flex-shrink-0 flex flex-col min-h-0">
             {listView}
           </div>
         )}
-        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden bg-[#16171a] border-0 rounded-[24px]">
+        <Card className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background border-border rounded-[2rem] shadow-sm">
           <CardContent className="p-0 flex flex-col h-full min-h-0">
             {selectedTutorId ? (
               conversationView
             ) : (
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex-1 flex items-center justify-center bg-card">
                 <EmptyState
                   icon={MessageSquare}
                   title="Selecione uma conversa"

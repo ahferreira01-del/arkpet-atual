@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { UserProfile, useGetCreche } from "@workspace/api-client-react";
+import { UserProfile, useGetCreche, getGetCrecheQueryKey } from "@workspace/api-client-react";
 import { 
   LayoutDashboard, 
   Users, 
@@ -47,7 +47,12 @@ function useFinancialBadge(user: UserProfile) {
 export function Sidebar({ user }: SidebarProps) {
   const [location] = useLocation();
   const { logout } = useAuth();
-  const { data: creche } = useGetCreche(user.crecheId || 1);
+  const { data: creche } = useGetCreche(user.crecheId as number, {
+    query: {
+      queryKey: getGetCrecheQueryKey(user.crecheId as number),
+      enabled: Boolean(user.crecheId)
+    }
+  });
   const financialBadge = useFinancialBadge(user);
 
   const getLinks = () => {
@@ -98,11 +103,11 @@ export function Sidebar({ user }: SidebarProps) {
   const links = getLinks();
 
   return (
-    <div className="w-64 glass-panel border-y-0 border-l-0 border-r-white/10 hidden md:flex flex-col h-full z-10 relative">
+    <div className="w-64 bg-background border-r border-border hidden md:flex flex-col h-full z-10 relative">
       <div className="p-6 flex items-center gap-3">
         {creche?.logoUrl ? (
           <>
-            <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0 shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+            <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0 border border-white/10">
               <img src={creche.logoUrl} alt={creche.name} className="h-full w-full object-cover" />
             </div>
             <div className="flex flex-col">
@@ -112,8 +117,8 @@ export function Sidebar({ user }: SidebarProps) {
           </>
         ) : (
           <>
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-              <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8" />
+            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center border border-primary/30">
+              <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8 opacity-90" />
             </div>
             <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
           </>
@@ -139,7 +144,7 @@ export function Sidebar({ user }: SidebarProps) {
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer",
                   isActive 
-                    ? "bg-primary/20 text-primary border border-primary/20 shadow-[0_0_15px_rgba(139,92,246,0.1)]" 
+                    ? "bg-primary/10 text-primary border border-primary/20" 
                     : "text-muted-foreground hover:bg-white/5 hover:text-white"
                 )}
               >

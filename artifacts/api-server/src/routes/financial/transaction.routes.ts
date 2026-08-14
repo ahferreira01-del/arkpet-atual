@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../../lib/date.js";
 import { Router, type Response, type NextFunction } from "express";
 import { authenticate, type AuthRequest } from "../../middlewares/authenticate.js";
 import { TransactionRepository } from "../../repositories/transaction.repository.js";
@@ -51,7 +52,7 @@ router.get("/dre", async (req: AuthRequest, res: Response, next: NextFunction) =
       : "1970-01-01";
     const end = endDate
       ? new Date(String(endDate)).toISOString().split("T")[0]
-      : new Date().toISOString().split("T")[0];
+      : getBusinessDate();
 
     const aggregated = await TransactionRepository.getDRE(crecheId, start, end);
 
@@ -78,3 +79,4 @@ router.get("/dre", async (req: AuthRequest, res: Response, next: NextFunction) =
 });
 
 export default router;
+

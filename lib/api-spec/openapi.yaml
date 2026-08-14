@@ -311,9 +311,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Pet"
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Pet"
+                  total:
+                    type: number
+                required: [items, total]
     post:
       operationId: createPet
       tags: [pets]
@@ -1146,10 +1152,21 @@ components:
         adminId:
           type: integer
           nullable: true
+        deliveryType:
+          type: string
+          enum: [fixed, on_demand]
+        deliveryFee:
+          type: string
+        pixKey:
+          type: string
+          nullable: true
+        pixName:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
-      required: [id, name, address, phone, email, maxCapacity, currentOccupancy, status, createdAt]
+      required: [id, name, address, phone, email, maxCapacity, currentOccupancy, status, deliveryType, deliveryFee, createdAt]
 
     CreateCrecheRequest:
       type: object
@@ -1186,6 +1203,19 @@ components:
           type: string
           enum: [active, inactive]
         logoUrl:
+          type: string
+          nullable: true
+        deliveryType:
+          type: string
+          enum: [fixed, on_demand]
+          nullable: true
+        deliveryFee:
+          type: string
+          nullable: true
+        pixKey:
+          type: string
+          nullable: true
+        pixName:
           type: string
           nullable: true
 
@@ -1282,6 +1312,11 @@ components:
         feedingSchedule:
           $ref: "#/components/schemas/FeedingSchedule"
           nullable: true
+        walkSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetWalkScheduleItem"
+          nullable: true
         status:
           type: string
           enum: [active, inactive]
@@ -1302,6 +1337,7 @@ components:
         dinnerTime:
           type: string
           nullable: true
+
         foodType:
           type: string
           nullable: true
@@ -1311,6 +1347,19 @@ components:
         notes:
           type: string
           nullable: true
+
+    PetWalkScheduleItem:
+      type: object
+      properties:
+        time:
+          type: string
+        durationMinutes:
+          type: integer
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [time]
 
     CreatePetRequest:
       type: object
@@ -1354,6 +1403,11 @@ components:
         feedingSchedule:
           $ref: "#/components/schemas/FeedingSchedule"
           nullable: true
+        walkSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetWalkScheduleItem"
+          nullable: true
       required: [tutorId, name, species, gender]
 
     UpdatePetRequest:
@@ -1389,6 +1443,11 @@ components:
           nullable: true
         feedingSchedule:
           $ref: "#/components/schemas/FeedingSchedule"
+          nullable: true
+        walkSchedule:
+          type: array
+          items:
+            $ref: "#/components/schemas/PetWalkScheduleItem"
           nullable: true
         status:
           type: string
@@ -1611,6 +1670,17 @@ components:
           nullable: true
         price:
           type: number
+          nullable: true
+        packageMaxPets:
+          type: integer
+          nullable: true
+        primaryCatalogueItemId:
+          type: integer
+          nullable: true
+        additionalServiceIds:
+          type: array
+          items:
+            type: integer
           nullable: true
       required: [petId, type, startDate, isRecurring]
 

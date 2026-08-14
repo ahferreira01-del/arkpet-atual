@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../lib/date.js";
 import { db } from "@workspace/db";
 import { invoiceItemsTable, invoicesTable } from "@workspace/db/schema";
 import { CreditRepository } from "../repositories/credit.repository.js";
@@ -231,7 +232,7 @@ export async function consumePackageCredits(
     }
 
     // 2. Consumo normal de crédito do pacote
-    const todayStr = new Date().toISOString().split("T")[0];
+    const todayStr = getBusinessDate();
     const creditPack = await CreditRepository.findOldestAvailablePackageCreditForUpdate(
       tutorId, crecheId, packageMaxPets, todayStr, tx
     );
@@ -687,3 +688,4 @@ export async function restoreBookingServiceCredits(
     } as FinancialDomainEvent, tx);
   }
 }
+

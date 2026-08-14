@@ -93,12 +93,12 @@ export function CommandPalette({ crecheId }: CommandPaletteProps) {
                     key={`${res.type}-${res.id}`}
                     value={`${res.type}-${res.id}`}
                     onSelect={() => handleSelect(res)}
-                    className="flex items-center px-2 py-3 rounded-md hover:bg-muted cursor-pointer text-sm"
+                    className="flex items-center px-2 py-3 min-h-11 rounded-md hover:bg-muted cursor-pointer text-sm"
                   >
-                    {res.type === 'tutor' && <User className="mr-3 h-4 w-4 text-blue-500" />}
-                    {res.type === 'invoice' && <Receipt className="mr-3 h-4 w-4 text-emerald-500" />}
-                    {res.type === 'product' && <Package className="mr-3 h-4 w-4 text-amber-500" />}
-                    {res.type === 'service' && <FileText className="mr-3 h-4 w-4 text-purple-500" />}
+                    {res.type === 'tutor' && <User className="mr-3 h-4 w-4 text-primary" />}
+                    {res.type === 'invoice' && <Receipt className="mr-3 h-4 w-4 text-success" />}
+                    {res.type === 'product' && <Package className="mr-3 h-4 w-4 text-warning" />}
+                    {res.type === 'service' && <FileText className="mr-3 h-4 w-4 text-primary" />}
                     {res.type === 'transaction' && <Calculator className="mr-3 h-4 w-4 text-muted-foreground" />}
                     
                     <div className="flex flex-col flex-1">
@@ -114,11 +114,11 @@ export function CommandPalette({ crecheId }: CommandPaletteProps) {
 
             {query.length === 0 && (
               <Command.Group heading="Comandos Rápidos">
-                <Command.Item className="flex items-center px-2 py-2 rounded-md hover:bg-muted cursor-pointer text-sm" onSelect={() => setLocation(`/creches/${crecheId}/financial?tab=reports`)}>
+                <Command.Item className="flex items-center px-2 py-2 min-h-11 rounded-md hover:bg-muted cursor-pointer text-sm" onSelect={() => setLocation(`/creches/${crecheId}/financial?tab=reports`)}>
                   <FileText className="mr-3 h-4 w-4 text-muted-foreground" />
                   Ir para Relatórios
                 </Command.Item>
-                <Command.Item className="flex items-center px-2 py-2 rounded-md hover:bg-muted cursor-pointer text-sm" onSelect={() => setLocation(`/creches/${crecheId}/financial?tab=sales`)}>
+                <Command.Item className="flex items-center px-2 py-2 min-h-11 rounded-md hover:bg-muted cursor-pointer text-sm" onSelect={() => setLocation(`/creches/${crecheId}/financial?tab=sales`)}>
                   <Calculator className="mr-3 h-4 w-4 text-muted-foreground" />
                   Ver Dashboard de Vendas
                 </Command.Item>

@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Mail, Lock, Eye, EyeOff, User } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, User, ArrowRight } from "lucide-react";
 
 export default function Login() {
   const { login } = useAuth();
@@ -21,50 +21,59 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col bg-[#24272c] font-sans relative overflow-hidden">
-      {/* Opcional: Efeito de glow sutil no fundo */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-white/[0.02] rounded-full blur-[100px] pointer-events-none" />
-
-      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-6 py-8 relative z-10">
+    <div className="min-h-svh w-full flex flex-col bg-background font-sans">
+      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-6 py-12">
         
         {/* Logo */}
         <div className="mb-8 w-full flex flex-col items-center">
-          <img
-            src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
-            alt="ArkPet"
-            className="w-48 sm:w-64 object-contain -ml-2"
-          />
+          <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+            <img
+              src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+              alt="ArkPet"
+              className="h-12 w-12 object-contain"
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mb-2">Bem-vindo de volta</h1>
+          <p className="text-sm text-muted-foreground text-center px-4">
+            Acesse o sistema da sua creche
+          </p>
         </div>
 
         {/* Card do Formulário */}
-        <div className="w-full bg-[#2a2d33] rounded-[28px] p-6 sm:p-8 shadow-2xl">
-          <div className="mb-6">
-            <h1 className="text-xl sm:text-2xl font-bold text-white mb-1 tracking-tight">Bem-vindo de volta!</h1>
-            <p className="text-sm text-gray-400">Entre na sua conta para continuar</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="email" className="pl-1 text-sm font-medium text-gray-200">E-mail</Label>
-              <Input
-                id="email"
-                type="email"
-                inputMode="email"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                autoComplete="email"
-                placeholder="seu@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                icon={<Mail className="h-5 w-5 text-gray-500 z-10" />}
-                className="h-12 bg-[#1f2125] border-transparent focus:border-[#7a8c54] focus:ring-[#7a8c54] rounded-xl text-white placeholder:text-gray-500"
-              />
+        <div className="w-full bg-card rounded-2xl border border-border p-6 shadow-sm">
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="email" className="pl-1 text-sm font-medium text-foreground">
+                E-mail
+              </Label>
+              <div className="relative">
+                <Input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  autoComplete="email"
+                  placeholder="seu@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="pl-10 h-12 text-base md:text-sm"
+                />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="password" className="pl-1 text-sm font-medium text-gray-200">Senha</Label>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between pl-1 pr-1">
+                <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                  Senha
+                </Label>
+                <Link href="/recuperar-senha" className="text-xs font-medium text-primary hover:text-primary/80 transition-colors py-1">
+                  Esqueceu a senha?
+                </Link>
+              </div>
               <div className="relative">
                 <Input
                   id="password"
@@ -73,61 +82,60 @@ export default function Login() {
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   required
-                  icon={<Lock className="h-5 w-5 text-gray-500 z-10" />}
-                  className="pr-11 h-12 bg-[#1f2125] border-transparent focus:border-[#7a8c54] focus:ring-[#7a8c54] rounded-xl text-white placeholder:text-gray-500"
+                  className="pl-10 pr-12 h-12 text-base md:text-sm"
                 />
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-500 hover:text-gray-300 transition-colors z-20"
+                  className="absolute inset-y-0 right-0 w-12 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex justify-end !mt-2">
-              <Link href="/recuperar-senha" className="text-xs font-medium text-[#849857] hover:text-[#9bb366] transition-colors">
-                Esqueceu a senha?
-              </Link>
-            </div>
-
             <Button 
               type="submit" 
-              className="w-full h-12 rounded-xl text-white font-medium bg-[#7a8c54] hover:bg-[#687a43] active:scale-[0.98] transition-all shadow-lg shadow-[#7a8c54]/20 border-0" 
+              className="w-full h-12 text-base font-medium mt-2" 
               isLoading={isSubmitting}
             >
               Entrar
             </Button>
           </form>
-
-          {/* Divisor */}
-          <div className="my-6 flex items-center">
-            <div className="flex-1 h-px bg-white/5"></div>
-            <span className="px-4 text-xs font-medium text-gray-500 lowercase">ou</span>
-            <div className="flex-1 h-px bg-white/5"></div>
+        </div>
+        
+        {/* Cadastrar botão (Fora do card para visual limpo) */}
+        <div className="w-full mt-8 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-px bg-border"></div>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">ou</span>
+            <div className="flex-1 h-px bg-border"></div>
           </div>
 
-          {/* Cadastrar botão */}
           <Link href="/cadastro" className="block w-full">
             <Button 
               type="button" 
               variant="outline"
-              className="w-full h-12 rounded-xl border border-white/10 bg-transparent text-white font-medium hover:bg-white/5 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              className="w-full h-12 flex items-center justify-between px-5 bg-card hover:bg-accent/50"
             >
-              <User className="h-5 w-5 text-gray-400" />
-              <span>Cadastrar minha creche</span>
+              <div className="flex items-center gap-3 text-muted-foreground">
+                <User className="h-5 w-5" />
+                <span className="font-medium text-foreground">Cadastrar minha creche</span>
+              </div>
+              <ArrowRight className="h-5 w-5 text-muted-foreground" />
             </Button>
           </Link>
         </div>
-        
+
         {/* Termos */}
-        <div className="mt-8 text-center px-4">
-          <p className="text-xs text-gray-500 leading-relaxed">
+        <div className="mt-8 text-center px-4 w-full max-w-[280px]">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             Ao continuar, você concorda com nossos<br/>
-            <Link href="/termos" className="text-[#849857] hover:underline">Termos de uso</Link> 
+            <Link href="/termos" className="text-foreground hover:text-primary transition-colors py-1 inline-block">Termos de uso</Link> 
             {" "}e{" "}
-            <Link href="/privacidade" className="text-[#849857] hover:underline">Política de privacidade</Link>
+            <Link href="/privacidade" className="text-foreground hover:text-primary transition-colors py-1 inline-block">Política de privacidade</Link>
           </p>
         </div>
 

@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: 'DM Sans', sans-serif;
-  --font-display: 'Outfit', sans-serif;
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'Inter', sans-serif;
 
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -25,42 +25,94 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+  --color-error: hsl(var(--error));
+
   --radius-sm: 0.5rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
+  --radius-md: 0.75rem; /* 12px for buttons/inputs */
+  --radius-lg: 1rem;    /* 16px for cards */
   --radius-xl: 1.5rem;
   --radius-2xl: 2rem;
+  --radius-full: 9999px;
 }
 
 :root {
-  /* Dark Mode Premium ArkPet */
-  --background: 220 6% 9%;
-  --foreground: 210 18% 95%;
+  /* 
+   * LIGHT MODE (Refinamento da Fase 1)
+   * Baseado na Especificação Visual Autossuficiente
+   */
+  --background: 90 11% 97%; /* #F7F8F6 */
+  --foreground: 225 9% 9%;
 
-  --card: 220 6% 12%;
-  --card-foreground: 210 18% 95%;
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 225 9% 9%;
 
-  --popover: 220 6% 12%;
-  --popover-foreground: 210 18% 95%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 225 9% 9%;
 
-  --primary: 77 39% 47%;
-  --primary-foreground: 0 0% 100%;
+  /* Identidade ArkPet - Intocável */
+  --primary: 78 57% 50%;
+  --primary-foreground: 225 9% 9%;
 
-  --secondary: 220 6% 18%;
-  --secondary-foreground: 210 18% 95%;
+  --secondary: 90 14% 93%; /* #EEF0EC */
+  --secondary-foreground: 220 8% 14%; /* #202226 */
 
-  --muted: 220 6% 15%;
-  --muted-foreground: 220 6% 65%;
+  --muted: 90 12% 94%; /* #F0F1EE */
+  --muted-foreground: 135 4% 41%; /* #667069 */
 
-  --accent: 77 39% 47%;
-  --accent-foreground: 0 0% 100%;
+  --accent: 78 57% 50%;
+  --accent-foreground: 225 9% 9%;
 
-  --destructive: 0 72% 58%;
+  --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 220 6% 18%;
-  --input: 220 6% 15%;
-  --ring: 77 39% 47%;
+  --border: 90 12% 85%; /* #D9DDD5 */
+  --input: 90 12% 85%;
+  --ring: 78 57% 50%;
+
+  /* Semânticas preservadas */
+  --success: 142 76% 36%;
+  --warning: 48 96% 53%;
+  --error: 0 84% 60%;
+}
+
+.dark {
+  /* 
+   * DARK MODE (Baseline de Regressão)
+   * Nenhum valor foi alterado, idêntico ao estado anterior (FASE 0)
+   */
+  --background: 225 9% 9%;
+  --foreground: 0 0% 100%;
+
+  --card: 220 8% 14%;
+  --card-foreground: 0 0% 100%;
+
+  --popover: 220 8% 14%;
+  --popover-foreground: 0 0% 100%;
+
+  --primary: 78 57% 50%;
+  --primary-foreground: 225 9% 9%;
+
+  --secondary: 220 8% 18%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 220 8% 18%;
+  --muted-foreground: 215 14% 65%;
+
+  --accent: 78 57% 50%;
+  --accent-foreground: 225 9% 9%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 8% 22%;
+  --input: 220 8% 22%;
+  --ring: 78 57% 50%;
+
+  --success: 142 76% 36%;
+  --warning: 48 96% 53%;
+  --error: 0 84% 60%;
 }
 
 @layer base {
@@ -176,15 +228,15 @@ select {
   z-index: 5;
 }
 
-/* Glass panel — mais sutil */
+/* Cards globais (antigo glass-panel, agora sólido) */
 .glass-panel {
-  @apply bg-card/70 backdrop-blur-md border border-white/8 shadow-lg shadow-black/20;
+  @apply bg-card border border-border shadow-sm text-card-foreground;
 }
 .glass-button {
-  @apply relative overflow-hidden bg-white/5 border border-white/10 hover:bg-white/8 hover:border-white/18 transition-all duration-200;
+  @apply relative bg-secondary border border-border hover:bg-secondary/80 transition-colors text-secondary-foreground;
 }
 .text-gradient {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
+  @apply text-primary;
 }\n
 /* Ocultar scrollbar mantendo o scroll funcional */
 .scrollbar-hide::-webkit-scrollbar {

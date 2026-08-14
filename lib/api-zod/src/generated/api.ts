@@ -108,6 +108,10 @@ export const ListCrechesResponseItem = zod.object({
   logoUrl: zod.string().nullish(),
   status: zod.enum(["active", "inactive"]),
   adminId: zod.number().nullish(),
+  deliveryType: zod.enum(["fixed", "on_demand"]),
+  deliveryFee: zod.string(),
+  pixKey: zod.string().nullish(),
+  pixName: zod.string().nullish(),
   createdAt: zod.date(),
 });
 export const ListCrechesResponse = zod.array(ListCrechesResponseItem);
@@ -142,6 +146,10 @@ export const GetCrecheResponse = zod.object({
   logoUrl: zod.string().nullish(),
   status: zod.enum(["active", "inactive"]),
   adminId: zod.number().nullish(),
+  deliveryType: zod.enum(["fixed", "on_demand"]),
+  deliveryFee: zod.string(),
+  pixKey: zod.string().nullish(),
+  pixName: zod.string().nullish(),
   createdAt: zod.date(),
 });
 
@@ -160,6 +168,10 @@ export const UpdateCrecheBody = zod.object({
   maxCapacity: zod.number().optional(),
   status: zod.enum(["active", "inactive"]).optional(),
   logoUrl: zod.string().nullish(),
+  deliveryType: zod.enum(["fixed", "on_demand"]).nullish(),
+  deliveryFee: zod.string().nullish(),
+  pixKey: zod.string().nullish(),
+  pixName: zod.string().nullish(),
 });
 
 export const UpdateCrecheResponse = zod.object({
@@ -173,6 +185,10 @@ export const UpdateCrecheResponse = zod.object({
   logoUrl: zod.string().nullish(),
   status: zod.enum(["active", "inactive"]),
   adminId: zod.number().nullish(),
+  deliveryType: zod.enum(["fixed", "on_demand"]),
+  deliveryFee: zod.string(),
+  pixKey: zod.string().nullish(),
+  pixName: zod.string().nullish(),
   createdAt: zod.date(),
 });
 
@@ -241,39 +257,52 @@ export const ListPetsQueryParams = zod.object({
   tutorId: zod.coerce.string().optional(),
 });
 
-export const ListPetsResponseItem = zod.object({
-  id: zod.number(),
-  crecheId: zod.number(),
-  tutorId: zod.number(),
-  tutorName: zod.string().nullish(),
-  name: zod.string(),
-  species: zod.enum(["dog", "cat", "bird", "rabbit", "other"]),
-  breed: zod.string().nullish(),
-  birthDate: zod.date().nullish(),
-  gender: zod.enum(["male", "female", "unknown"]),
-  weight: zod.number().nullish(),
-  color: zod.string().nullish(),
-  temperament: zod
-    .enum(["calm", "playful", "aggressive", "shy", "sociable"])
-    .nullish(),
-  allergies: zod.string().nullish(),
-  specialNeeds: zod.string().nullish(),
-  photoUrl: zod.string().nullish(),
-  isCheckedIn: zod.boolean(),
-  feedingSchedule: zod
-    .object({
-      breakfastTime: zod.string().nullish(),
-      lunchTime: zod.string().nullish(),
-      dinnerTime: zod.string().nullish(),
-      foodType: zod.string().nullish(),
-      portionSize: zod.string().nullish(),
-      notes: zod.string().nullish(),
-    })
-    .nullish(),
-  status: zod.enum(["active", "inactive"]),
-  createdAt: zod.date(),
+export const ListPetsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      crecheId: zod.number(),
+      tutorId: zod.number(),
+      tutorName: zod.string().nullish(),
+      name: zod.string(),
+      species: zod.enum(["dog", "cat", "bird", "rabbit", "other"]),
+      breed: zod.string().nullish(),
+      birthDate: zod.date().nullish(),
+      gender: zod.enum(["male", "female", "unknown"]),
+      weight: zod.number().nullish(),
+      color: zod.string().nullish(),
+      temperament: zod
+        .enum(["calm", "playful", "aggressive", "shy", "sociable"])
+        .nullish(),
+      allergies: zod.string().nullish(),
+      specialNeeds: zod.string().nullish(),
+      photoUrl: zod.string().nullish(),
+      isCheckedIn: zod.boolean(),
+      feedingSchedule: zod
+        .object({
+          breakfastTime: zod.string().nullish(),
+          lunchTime: zod.string().nullish(),
+          dinnerTime: zod.string().nullish(),
+          foodType: zod.string().nullish(),
+          portionSize: zod.string().nullish(),
+          notes: zod.string().nullish(),
+        })
+        .nullish(),
+      walkSchedule: zod
+        .array(
+          zod.object({
+            time: zod.string(),
+            durationMinutes: zod.number().nullish(),
+            notes: zod.string().nullish(),
+          }),
+        )
+        .nullish(),
+      status: zod.enum(["active", "inactive"]),
+      createdAt: zod.date(),
+    }),
+  ),
+  total: zod.number(),
 });
-export const ListPetsResponse = zod.array(ListPetsResponseItem);
 
 /**
  * @summary Register a new pet
@@ -306,6 +335,15 @@ export const CreatePetBody = zod.object({
       portionSize: zod.string().nullish(),
       notes: zod.string().nullish(),
     })
+    .nullish(),
+  walkSchedule: zod
+    .array(
+      zod.object({
+        time: zod.string(),
+        durationMinutes: zod.number().nullish(),
+        notes: zod.string().nullish(),
+      }),
+    )
     .nullish(),
 });
 
@@ -346,6 +384,15 @@ export const GetPetResponse = zod.object({
       notes: zod.string().nullish(),
     })
     .nullish(),
+  walkSchedule: zod
+    .array(
+      zod.object({
+        time: zod.string(),
+        durationMinutes: zod.number().nullish(),
+        notes: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
   status: zod.enum(["active", "inactive"]),
   createdAt: zod.date(),
 });
@@ -380,6 +427,15 @@ export const UpdatePetBody = zod.object({
       notes: zod.string().nullish(),
     })
     .nullish(),
+  walkSchedule: zod
+    .array(
+      zod.object({
+        time: zod.string(),
+        durationMinutes: zod.number().nullish(),
+        notes: zod.string().nullish(),
+      }),
+    )
+    .nullish(),
   status: zod.enum(["active", "inactive"]).nullish(),
 });
 
@@ -411,6 +467,15 @@ export const UpdatePetResponse = zod.object({
       portionSize: zod.string().nullish(),
       notes: zod.string().nullish(),
     })
+    .nullish(),
+  walkSchedule: zod
+    .array(
+      zod.object({
+        time: zod.string(),
+        durationMinutes: zod.number().nullish(),
+        notes: zod.string().nullish(),
+      }),
+    )
     .nullish(),
   status: zod.enum(["active", "inactive"]),
   createdAt: zod.date(),
@@ -596,6 +661,9 @@ export const CreateBookingBody = zod.object({
   isRecurring: zod.boolean(),
   recurringDays: zod.array(zod.number()).nullish(),
   price: zod.number().nullish(),
+  packageMaxPets: zod.number().nullish(),
+  primaryCatalogueItemId: zod.number().nullish(),
+  additionalServiceIds: zod.array(zod.number()).nullish(),
 });
 
 /**

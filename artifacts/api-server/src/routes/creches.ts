@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../lib/date.js";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "@workspace/db";
@@ -31,6 +32,8 @@ const updateCrecheSchema = z.object({
   logoUrl: z.string().url("logoUrl inválido").optional().nullable(),
   pixKey: z.string().optional().nullable(),
   pixName: z.string().optional().nullable(),
+  deliveryType: z.enum(["fixed", "on_demand"]).optional().nullable(),
+  deliveryFee: z.string().optional().nullable(),
   auditEnabled: z.boolean().optional(),
 });
 
@@ -231,7 +234,7 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
     res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName } = parsed.data;
+  const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName, deliveryType, deliveryFee } = parsed.data;
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (address !== undefined) updates.address = address;
@@ -242,6 +245,8 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
   if (logoUrl !== undefined) updates.logoUrl = logoUrl;
   if (pixKey !== undefined) updates.pixKey = pixKey;
   if (pixName !== undefined) updates.pixName = pixName;
+  if (deliveryType !== undefined) updates.deliveryType = deliveryType;
+  if (deliveryFee !== undefined) updates.deliveryFee = deliveryFee;
   if (parsed.data.auditEnabled !== undefined) updates.auditEnabled = parsed.data.auditEnabled;
   const [creche] = await db.update(crechesTable).set(updates).where(eq(crechesTable.id, id)).returning();
   res.json(creche);
@@ -256,7 +261,7 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
   const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Not found" }); return; }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getBusinessDate();
   const [checkedInPets] = await db.select({ count: count() }).from(petsTable)
     .where(and(eq(petsTable.crecheId, id), eq(petsTable.isCheckedIn, true)));
   const [totalPets] = await db.select({ count: count() }).from(petsTable)
@@ -340,3 +345,4 @@ router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), asy
 });
 
 export default router;
+

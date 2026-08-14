@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound, ChevronRight, PawPrint, ToggleLeft, ToggleRight,
 } from "lucide-react";
@@ -155,23 +156,23 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
               key={pet.id}
               className={`flex items-center gap-4 p-3 rounded-xl border transition-all ${
                 pet.status === "inactive"
-                  ? "bg-white/3 border-white/5 opacity-60"
-                  : "bg-white/5 border-white/10"
+                  ? "bg-secondary/30 border-border/50 opacity-60"
+                  : "bg-card border-border"
               }`}
             >
               {/* Avatar */}
-              <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-primary/20 flex items-center justify-center">
+              <div className="h-10 w-10 flex-shrink-0 rounded-full overflow-hidden bg-secondary flex items-center justify-center">
                 <PetAvatar
                   photoUrl={pet.photoUrl}
                   name={pet.name}
                   className="h-full w-full object-cover"
-                  iconClassName="h-5 w-5 text-primary"
+                  iconClassName="h-5 w-5 text-muted-foreground"
                 />
               </div>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-white text-sm leading-tight truncate">{pet.name}</p>
+                <p className="font-semibold text-foreground text-sm leading-tight truncate">{pet.name}</p>
                 <p className="text-xs text-muted-foreground capitalize">{pet.breed || pet.species || "—"}</p>
               </div>
 
@@ -189,8 +190,8 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
                 disabled={togglePet.isPending}
                 className={`flex-shrink-0 transition-all ${
                   pet.status === "active"
-                    ? "text-red-400 hover:text-red-300"
-                    : "text-emerald-400 hover:text-emerald-300"
+                    ? "text-destructive hover:text-destructive/80"
+                    : "text-success hover:text-success/80"
                 }`}
                 title={pet.status === "active" ? "Desativar pet" : "Reativar pet"}
               >
@@ -205,7 +206,7 @@ function TutorPetsModal({ tutor, crecheId, onClose }: { tutor: any; crecheId: nu
         )}
 
         <div className="pt-2">
-          <Button variant="outline" className="w-full" onClick={onClose}>
+          <Button variant="outline" className="w-full min-h-[44px]" onClick={onClose}>
             Fechar
           </Button>
         </div>
@@ -288,7 +289,7 @@ export default function TutorsPage() {
         description="Gerencie os tutores cadastrados na sua creche."
         icon={Users}
         action={
-          <Button onClick={() => { setShowModal(true); setCreatedPassword(null); }}>
+          <Button onClick={() => { setShowModal(true); setCreatedPassword(null); }} className="min-h-[44px]">
             <Plus className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">Novo Tutor</span>
           </Button>
@@ -297,28 +298,28 @@ export default function TutorsPage() {
 
       {/* Temp password banner */}
       {createdPassword && createdName && (
-        <Card className="border-emerald-500/30 bg-emerald-500/10">
+        <Card className="border-border bg-secondary">
           <CardContent className="p-4">
-            <p className="text-sm font-semibold text-emerald-400 mb-1">
+            <p className="text-sm font-semibold text-foreground mb-1">
               Tutor <span className="font-bold">{createdName}</span> criado!
             </p>
-            <p className="text-xs text-emerald-300/80 mb-2">
+            <p className="text-xs text-muted-foreground mb-2">
               Compartilhe a senha temporária abaixo. O tutor deverá alterá-la no primeiro acesso.
             </p>
-            <div className="flex items-center gap-2 bg-black/30 rounded-lg px-3 py-2 border border-emerald-500/20">
-              <KeyRound className="h-4 w-4 text-emerald-400 flex-shrink-0" />
-              <span className="font-mono text-sm text-white flex-1">
+            <div className="flex items-center gap-2 bg-background rounded-lg px-3 py-2 border border-border">
+              <KeyRound className="h-4 w-4 text-primary flex-shrink-0" />
+              <span className="font-mono text-sm text-foreground flex-1">
                 {showPassword ? createdPassword : "•".repeat(createdPassword.length)}
               </span>
               <button
                 onClick={() => setShowPassword((v) => !v)}
-                className="text-muted-foreground hover:text-white transition-colors"
+                className="text-muted-foreground hover:text-foreground transition-colors min-h-[44px] sm:min-h-0 px-2"
               >
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
               <button
                 onClick={() => { navigator.clipboard.writeText(createdPassword!); toast({ title: "Copiado!" }); }}
-                className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
+                className="text-xs text-primary hover:text-primary/80 font-medium min-h-[44px] sm:min-h-0 px-2"
               >
                 Copiar
               </button>
@@ -328,15 +329,12 @@ export default function TutorsPage() {
       )}
 
       {/* Search */}
-      <div className="relative w-full sm:max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome ou e-mail..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <SearchInput
+        placeholder="Buscar por nome ou e-mail..."
+        value={search}
+        onChange={(val) => setSearch(val)}
+        className="w-full sm:max-w-sm"
+      />
 
       {/* Tutors list */}
       {isLoading ? (
@@ -355,9 +353,9 @@ export default function TutorsPage() {
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-white truncate">{tutor.name}</p>
+                      <p className="font-semibold text-foreground truncate">{tutor.name}</p>
                       {!tutor.isActive && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-red-500/20 text-red-300 border-red-500/30">
+                        <Badge variant="destructive" className="text-[10px] px-1.5 py-0 flex-shrink-0">
                           Inativo
                         </Badge>
                       )}
@@ -367,8 +365,8 @@ export default function TutorsPage() {
                       <span className="truncate">{tutor.email}</span>
                     </div>
                   </div>
-                  <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center">
-                    <Users className="h-5 w-5 text-amber-400" />
+                  <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-secondary border border-border flex items-center justify-center">
+                    <Users className="h-5 w-5 text-muted-foreground" />
                   </div>
                 </div>
 
@@ -378,7 +376,7 @@ export default function TutorsPage() {
                     <span>{tutor.petCount ?? 0} pet{tutor.petCount !== 1 ? "s" : ""}</span>
                   </div>
                   {tutor.mensalidadeDia ? (
-                    <span className="text-[10px] text-amber-400/80 font-medium">
+                    <span className="text-[10px] text-warning font-medium">
                       Venc. dia {tutor.mensalidadeDia}
                     </span>
                   ) : tutor.createdAt ? (
@@ -388,22 +386,22 @@ export default function TutorsPage() {
                   ) : null}
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-white/5 flex gap-2">
+                <div className="mt-3 pt-3 border-t border-border flex gap-2">
                   <button
                     onClick={() => setSelectedTutor(tutor)}
-                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors min-h-[44px]"
                   >
                     <Dog className="h-3.5 w-3.5" /> Ver Pets
                     <ChevronRight className="h-3 w-3 opacity-60" />
                   </button>
-                  <div className="w-px bg-white/5" />
+                  <div className="w-px bg-border my-2" />
                   <button
                     onClick={() => handleToggle(tutor)}
                     disabled={toggleMutation.isPending}
-                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg transition-colors ${
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg transition-colors min-h-[44px] ${
                       tutor.isActive
-                        ? "text-red-400 hover:bg-red-500/10"
-                        : "text-emerald-400 hover:bg-emerald-500/10"
+                        ? "text-destructive hover:bg-destructive/10"
+                        : "text-success hover:bg-success/10"
                     }`}
                   >
                     {tutor.isActive ? (
@@ -437,7 +435,7 @@ export default function TutorsPage() {
       >
         <form onSubmit={handleCreate} className="space-y-4 mt-4">
           <div>
-            <label className="block text-sm font-medium text-white mb-1.5">Nome completo</label>
+            <label className="block text-sm font-medium text-foreground mb-1.5">Nome completo</label>
             <Input
               placeholder="Ex: Maria Oliveira"
               value={form.name}
@@ -446,7 +444,7 @@ export default function TutorsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-white mb-1.5">CPF <span className="text-muted-foreground font-normal ml-1">(opcional)</span></label>
+            <label className="block text-sm font-medium text-foreground mb-1.5">CPF <span className="text-muted-foreground font-normal ml-1">(opcional)</span></label>
             <Input
               placeholder="000.000.000-00"
               value={form.cpf}
@@ -454,7 +452,7 @@ export default function TutorsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-white mb-1.5">E-mail</label>
+            <label className="block text-sm font-medium text-foreground mb-1.5">E-mail</label>
             <Input
               type="email"
               placeholder="tutor@email.com"
@@ -464,7 +462,7 @@ export default function TutorsPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-white mb-1.5">Senha temporária</label>
+            <label className="block text-sm font-medium text-foreground mb-1.5">Senha temporária</label>
             <div className="flex gap-2">
               <Input
                 value={form.password}
@@ -486,7 +484,7 @@ export default function TutorsPage() {
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-white mb-1.5">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
               Dia de vencimento da mensalidade
               <span className="text-muted-foreground font-normal ml-1">(opcional)</span>
             </label>
@@ -502,11 +500,11 @@ export default function TutorsPage() {
               O tutor receberá uma notificação 3 dias antes do vencimento.
             </p>
           </div>
-          <div className="modal-sticky-footer flex gap-3">
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setShowModal(false)}>
+          <div className="modal-sticky-footer flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1 min-h-[44px]" onClick={() => setShowModal(false)}>
               Cancelar
             </Button>
-            <Button type="submit" className="flex-1" disabled={createMutation.isPending}>
+            <Button type="submit" className="flex-1 min-h-[44px]" disabled={createMutation.isPending}>
               {createMutation.isPending ? "Criando..." : "Criar Tutor"}
             </Button>
           </div>

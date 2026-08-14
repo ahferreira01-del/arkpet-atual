@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs } from "@/components/ui/tabs";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Camera, ShieldAlert, BarChart3, Receipt, FileText, PackageOpen, ShoppingBag, Plus, MoreHorizontal, CircleDollarSign, ShoppingCart, Printer } from "lucide-react";
+import { Camera, ShieldAlert, BarChart3, Receipt, FileText, PackageOpen, ShoppingBag, Plus, MoreHorizontal, CircleDollarSign, ShoppingCart, Printer, Trash2, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,19 +18,16 @@ import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { POSSaleModal } from "@/components/financial/pos-sale-modal";
 import { ExecutiveDashboardTab, SalesDashboardTab, ReportsCentralTab } from "./dashboards";
-import { LayoutDashboard, Activity, ArrowRight, ChevronDown, CheckCircle, Clock } from "lucide-react";
+import { LayoutDashboard, ArrowRight, ChevronDown, CheckCircle, Clock, Pencil } from "lucide-react";
 import { CommandPalette } from "@/components/financial/command-palette";
 import { CatalogueSmartIndicators } from "@/components/financial/smart-indicators";
 import { FinancialProvider, useFinancialContext } from "@/components/financial/financial-context";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
 import { uploadFileDirect } from "@/lib/utils";
 
-function formatBRL(value: number) {
-  return (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
 
 function CashFlowTab({ crecheId }: { crecheId: number }) {
   const [startDate, setStartDate] = useState(() => {
@@ -81,50 +78,50 @@ function CashFlowTab({ crecheId }: { crecheId: number }) {
           onChangeEnd={(val) => handleDateChange("end", val)}
         />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="bg-gradient-to-br from-emerald-500/10 to-transparent border-emerald-500/20">
+        <Card className="bg-card border-border">
           <CardContent className="p-6">
-            <h3 className="text-sm font-medium text-emerald-400 mb-2">Entradas</h3>
-            <p className="text-3xl font-display font-bold text-white">
-              {formatBRL(totalIncome)}
+            <h3 className="text-sm font-medium text-success mb-2">Entradas</h3>
+            <p className="text-3xl font-display font-bold text-foreground">
+              {formatCentsToBRL(totalIncome)}
             </p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-red-500/10 to-transparent border-red-500/20">
+        <Card className="bg-card border-border">
           <CardContent className="p-6">
-            <h3 className="text-sm font-medium text-red-400 mb-2">Saídas</h3>
-            <p className="text-3xl font-display font-bold text-white">
-              {formatBRL(totalExpenses)}
+            <h3 className="text-sm font-medium text-destructive mb-2">Saídas</h3>
+            <p className="text-3xl font-display font-bold text-foreground">
+              {formatCentsToBRL(totalExpenses)}
             </p>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-blue-500/10 to-transparent border-blue-500/20">
+        <Card className="bg-card border-border">
           <CardContent className="p-6">
-            <h3 className="text-sm font-medium text-blue-400 mb-2">Saldo Líquido</h3>
-            <p className="text-3xl font-display font-bold text-white">
-              {formatBRL(totalIncome - totalExpenses)}
+            <h3 className="text-sm font-medium text-primary mb-2">Saldo Líquido</h3>
+            <p className="text-3xl font-display font-bold text-foreground">
+              {formatCentsToBRL(totalIncome - totalExpenses)}
             </p>
           </CardContent>
         </Card>
       </div>
 
       {chartData.length > 0 && (
-        <Card>
+        <Card className="bg-card border-border">
           <CardContent className="p-6">
-            <h3 className="text-lg font-display font-semibold mb-6">Evolução Diária</h3>
+            <h3 className="text-lg font-display font-semibold mb-6 text-foreground">Evolução Diária</h3>
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-                  <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="rgba(255,255,255,0.5)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatBRL(value)} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => formatCentsToBRL(value)} />
                   <RechartsTooltip 
-                    cursor={{ fill: 'rgba(255,255,255,0.05)' }} 
-                    contentStyle={{ backgroundColor: '#18181b', borderColor: 'rgba(255,255,255,0.1)', color: '#fff', borderRadius: '8px' }}
-                    itemStyle={{ color: '#fff' }}
+                    cursor={{ fill: 'hsl(var(--muted))' }} 
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }}
+                    itemStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                   <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                  <Bar dataKey="Entradas" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                  <Bar dataKey="Saídas" fill="#f87171" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="Entradas" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                  <Bar dataKey="Saídas" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -172,59 +169,60 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
       <div className="space-y-6 text-foreground">
         
         {/* Executive Header */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-card rounded-lg border shadow-sm">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Tutor / Cliente</p>
-            <p className="text-sm font-semibold truncate">{tutorName}</p>
+        <div className="flex flex-col gap-3 p-5 bg-card rounded-2xl border shadow-sm">
+          <div className="flex justify-between items-center border-b border-border/50 pb-2">
+            <span className="text-sm text-muted-foreground font-medium">Tutor / Cliente</span>
+            <span className="text-sm font-semibold truncate text-foreground">{tutorName}</span>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Data de Emissão</p>
-            <p className="text-sm font-semibold">{new Date(issueDate).toLocaleDateString('pt-BR')}</p>
+          <div className="flex justify-between items-center border-b border-border/50 pb-2">
+            <span className="text-sm text-muted-foreground font-medium">Data de Emissão</span>
+            <span className="text-sm font-semibold text-foreground">{new Date(issueDate).toLocaleDateString('pt-BR')}</span>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Status da Fatura</p>
+          <div className="flex justify-between items-center border-b border-border/50 pb-2">
+            <span className="text-sm text-muted-foreground font-medium">Status da Fatura</span>
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(invoiceStatus)}`}>
               {getStatusLabel(invoiceStatus)}
             </span>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">Valor Total</p>
-            <p className="text-lg font-bold text-emerald-500">{formatBRL(total)}</p>
+          <div className="flex justify-between items-center pt-1">
+            <span className="text-sm text-muted-foreground font-medium">Valor Total</span>
+            <span className="text-lg font-bold text-emerald-500">{formatCentsToBRL(total)}</span>
           </div>
         </div>
 
         {/* Timeline */}
-        <div className="p-4 bg-card rounded-lg border shadow-sm">
-          <h4 className="text-sm font-bold text-card-foreground mb-4">Linha do Tempo (Timeline)</h4>
-          <div className="flex items-center justify-between relative">
-            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-muted -z-10 -translate-y-1/2"></div>
+        <div className="p-4 bg-card rounded-lg border shadow-sm overflow-hidden">
+          <h4 className="text-sm font-bold text-card-foreground mb-4">Linha do Tempo</h4>
+          <div className="flex sm:items-center sm:justify-between relative flex-col sm:flex-row gap-6 sm:gap-0">
+            <div className="hidden sm:block absolute top-1/2 left-0 w-full h-0.5 bg-muted -z-10 -translate-y-1/2"></div>
+            <div className="sm:hidden absolute top-0 left-[15px] w-0.5 h-full bg-muted -z-10"></div>
             
-            <div className="flex flex-col items-center">
-              <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center border-4 border-card shadow-sm z-10">
+            <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
+              <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <FileText className="w-4 h-4" />
               </div>
-              <p className="text-xs font-medium mt-2 text-card-foreground">Criada</p>
+              <p className="text-xs font-medium sm:mt-2 text-card-foreground">Criada</p>
             </div>
             
-            <div className="flex flex-col items-center">
-              <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center border-4 border-card shadow-sm z-10">
+            <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
+              <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <Receipt className="w-4 h-4" />
               </div>
-              <p className="text-xs font-medium mt-2 text-card-foreground">Enviada</p>
+              <p className="text-xs font-medium sm:mt-2 text-card-foreground">Enviada</p>
             </div>
 
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 ${invoiceStatus === 'paid' ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+            <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'paid' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
                 <CircleDollarSign className="w-4 h-4" />
               </div>
-              <p className={`text-xs font-medium mt-2 ${invoiceStatus === 'paid' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Paga</p>
+              <p className={`text-xs font-medium sm:mt-2 ${invoiceStatus === 'paid' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Paga</p>
             </div>
 
-            <div className="flex flex-col items-center">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 ${invoiceStatus === 'refunded' ? 'bg-purple-500 text-white' : 'bg-muted text-muted-foreground'}`}>
+            <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'refunded' ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>
                 <ArrowRight className="w-4 h-4" />
               </div>
-              <p className={`text-xs font-medium mt-2 ${invoiceStatus === 'refunded' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Estornada</p>
+              <p className={`text-xs font-medium sm:mt-2 ${invoiceStatus === 'refunded' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Estornada</p>
             </div>
           </div>
         </div>
@@ -252,14 +250,14 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                           {item.description}
                           {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{item.petName}</span>}
                         </p>
-                        <p className="text-xs text-slate-500 flex items-center space-x-2 mt-1">
+                        <p className="text-xs text-muted-foreground flex items-center space-x-2 mt-1">
                           {formattedDate && <span>{formattedDate} &bull;</span>}
-                          <span>{qty} unidade(s) x {formatBRL(unitPrice)}</span>
+                          <span>{qty} unidade(s) x {formatCentsToBRL(unitPrice)}</span>
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm font-bold text-slate-800">
-                      {formatBRL(lineTotal)}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm font-bold text-foreground">
+                      <span className="text-right">{formatCentsToBRL(lineTotal)}</span>
                       <Button 
                         size="sm" 
                         variant="outline" 
@@ -372,7 +370,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
         const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(val).getTime() < new Date().setHours(0,0,0,0);
         return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
     } },
-    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => formatBRL(info.getValue()) },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => formatCentsToBRL(info.getValue()) },
     { accessorKey: "status", header: "Status", cell: (info: any) => {
         const status = info.getValue();
         return (
@@ -427,6 +425,94 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
     }
   ], [approveReceiptMutation.isPending, refundMutation.isPending, voidMutation.isPending]);
 
+  const renderMobileCard = React.useCallback((row: any) => {
+    const inv = row.original;
+    const isOverdue = inv.dueDate && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(inv.dueDate).getTime() < new Date().setHours(0,0,0,0);
+    const dueDateStr = inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—";
+    
+    return (
+      <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-4 shadow-sm relative overflow-hidden">
+        {/* Top: Tutor + Status */}
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex flex-col">
+            <span className="font-semibold text-foreground leading-tight truncate max-w-[200px]">{inv.tutorName || "Desconhecido"}</span>
+            <span className="text-xs text-muted-foreground mt-0.5">#{inv.id}</span>
+          </div>
+          <Badge variant={inv.status === "paid" ? "success" : inv.status === "awaiting_confirmation" ? "default" : inv.status === "refunded" ? "outline" : inv.status === "void" ? "secondary" : inv.status === "overdue" ? "destructive" : "secondary"}>
+            {inv.status === "paid" ? "Pago" : inv.status === "awaiting_confirmation" ? "Em Análise" : inv.status === "refunded" ? "Estornado" : inv.status === "void" ? "Cancelado" : inv.status === "overdue" ? "Atrasado" : "Pendente"}
+          </Badge>
+        </div>
+
+        {/* Middle: Value + Dates */}
+        <div className="grid grid-cols-2 gap-2 bg-muted/30 p-3 rounded-xl border border-border">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Valor</span>
+            <span className="text-sm font-bold text-foreground">{formatCentsToBRL(inv.amount)}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Vencimento</span>
+            <span className={`text-sm font-semibold ${isOverdue ? "text-destructive" : "text-foreground"}`}>{dueDateStr}</span>
+          </div>
+        </div>
+
+        {/* Footer: Actions */}
+        <div className="flex justify-end items-center gap-2 pt-1">
+          {(inv.status === "pending" || inv.status === "overdue") && (
+            <Button size="sm" onClick={() => setPayModal({ open: true, invoiceId: inv.id })} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px] h-9">
+              Receber
+            </Button>
+          )}
+          {inv.status === "awaiting_confirmation" && (
+            <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px] h-9">
+              Aprovar
+            </Button>
+          )}
+          
+          {inv.status !== "pending" && inv.status !== "overdue" && inv.status !== "awaiting_confirmation" && (
+             <Button variant="outline" size="sm" onClick={() => setDetailsModal({ open: true, invoiceId: inv.id })} className="h-9 border-border">
+              Detalhes
+             </Button>
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {(inv.status === "pending" || inv.status === "overdue" || inv.status === "awaiting_confirmation") && (
+                 <DropdownMenuItem onClick={() => setDetailsModal({ open: true, invoiceId: inv.id })}>
+                   Detalhes
+                 </DropdownMenuItem>
+              )}
+              {inv.receiptPhotoPath && (
+                <DropdownMenuItem onClick={() => handleViewReceipt(inv.receiptPhotoPath)}>
+                  Ver Comprovante
+                </DropdownMenuItem>
+              )}
+              {inv.status === "paid" && (
+                <>
+                  <DropdownMenuItem onClick={() => setReceiptModalId(inv.id)}>
+                    <Printer className="mr-2 h-4 w-4" /> Recibo NFC-e
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRefund(inv.id)} disabled={refundMutation.isPending} className="text-destructive focus:text-destructive">
+                    Estornar
+                  </DropdownMenuItem>
+                </>
+              )}
+              {(inv.status === "pending" || inv.status === "overdue") && (
+                <DropdownMenuItem onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending} className="text-destructive focus:text-destructive">
+                  Cancelar Fatura
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    );
+  }, [approveReceiptMutation.isPending, refundMutation.isPending, voidMutation.isPending]);
+
   if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando contas a receber...</div>;
   return (
     <div className="space-y-4">
@@ -439,6 +525,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
               searchKey="tutorName" 
               searchPlaceholder="Buscar por tutor..." 
               fileName="A_Receber" 
+              renderMobileCard={renderMobileCard}
             />
           </div>
         </CardContent>
@@ -446,23 +533,41 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
       
       {payModal.open && (
         <Modal isOpen={true} onClose={() => setPayModal({ open: false, invoiceId: null })} title="Dar Baixa Manual">
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm">Método de Pagamento</label>
+          <div className="space-y-6 pt-2">
+            {invoiceList.find((i:any) => i.id === payModal.invoiceId) && (
+              <div className="bg-muted/30 p-4 rounded-xl flex flex-col gap-1 border border-border shadow-sm">
+                <div className="flex justify-between items-start">
+                  <span className="font-semibold text-foreground truncate mr-2">{invoiceList.find((i:any) => i.id === payModal.invoiceId)?.tutorName || "Desconhecido"}</span>
+                  <span className="text-xs text-muted-foreground shrink-0 mt-0.5">#{payModal.invoiceId}</span>
+                </div>
+                <div className="text-2xl font-bold text-foreground mt-1 tracking-tight">
+                  {formatCentsToBRL(invoiceList.find((i:any) => i.id === payModal.invoiceId)?.amount)}
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Método de Pagamento</label>
               <select 
-                className="w-full bg-white/5 border border-white/10 rounded-md h-10 px-3 text-sm mt-1"
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 value={paymentMethod}
                 onChange={e => setPaymentMethod(e.target.value)}
               >
-                <option value="pix" className="bg-zinc-900">Pix</option>
-                <option value="cash" className="bg-zinc-900">Dinheiro</option>
-                <option value="credit_card" className="bg-zinc-900">Cartão de Crédito/Débito (Maquininha)</option>
-                <option value="bank_slip" className="bg-zinc-900">Boleto (Externo)</option>
+                <option value="pix" className="bg-background text-foreground">Pix</option>
+                <option value="cash" className="bg-background text-foreground">Dinheiro</option>
+                <option value="credit_card" className="bg-background text-foreground">Cartão de Crédito/Débito (Maquininha)</option>
+                <option value="bank_slip" className="bg-background text-foreground">Boleto (Externo)</option>
               </select>
             </div>
-            <Button onClick={handlePayManual} isLoading={payManualMutation.isPending} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white">
-              Confirmar Recebimento
-            </Button>
+
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setPayModal({ open: false, invoiceId: null })} className="h-11 sm:h-10 min-w-[120px] rounded-full">
+                Cancelar
+              </Button>
+              <Button onClick={handlePayManual} isLoading={payManualMutation.isPending} className="h-11 sm:h-10 min-w-[150px] rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+                Confirmar Recebimento
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -478,12 +583,19 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
       />
       {previewUrl && (
         <Modal isOpen onClose={() => setPreviewUrl(null)} title="Comprovante de Pagamento">
-          <div className="flex justify-center p-2">
-            <img
-              src={previewUrl}
-              alt="Comprovante"
-              className="max-w-full max-h-[75vh] rounded-lg object-contain"
-            />
+          <div className="flex flex-col gap-4 pt-2">
+            <div className="flex justify-center bg-muted/30 rounded-xl border border-border p-2 sm:p-4 overflow-hidden">
+              <img
+                src={previewUrl}
+                alt="Comprovante"
+                className="max-w-full max-h-[70vh] rounded-lg object-contain shadow-sm"
+              />
+            </div>
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setPreviewUrl(null)} className="h-11 sm:h-10 min-w-[120px] rounded-full">
+                Fechar
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -521,15 +633,16 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
       toast({ title: "Erro", description: "Preencha todos os campos obrigatórios.", variant: "destructive" });
       return;
     }
-    const val = parseFloat(form.amount);
-    if (isNaN(val) || val < 0) {
-      toast({ title: "Erro", description: "O valor deve ser positivo.", variant: "destructive" });
+    const rawAmount = form.amount.trim();
+    if (rawAmount === "") {
+      toast({ title: "Erro", description: "O valor é obrigatório.", variant: "destructive" });
       return;
     }
-
-    // All financial values are stored as integer centavos.
-    // Convert the user-entered BRL reals to centavos before persisting.
-    const amountCents = Math.round(val * 100);
+    const amountCents = parseReaisInputToCents(rawAmount);
+    if (amountCents === null || amountCents < 0) {
+      toast({ title: "Erro", description: "O valor deve ser um formato monetário válido e positivo.", variant: "destructive" });
+      return;
+    }
 
     if (editingId) {
       updateMutation.mutate({ id: editingId, ...form, amount: amountCents }, {
@@ -572,54 +685,121 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
 
   
   const columns = React.useMemo(() => [
-    { accessorKey: "description", header: "Descrição", cell: (info: any) => info.getValue() },
-    { accessorKey: "category", header: "Categoria", cell: (info: any) => <span className="capitalize">{info.getValue()}</span> },
-    { accessorKey: "dueDate", header: "Data", cell: (info: any) => {
+    { accessorKey: "description", header: "Descrição", cell: (info: any) => <span className="font-medium text-foreground">{info.getValue()}</span> },
+    { accessorKey: "category", header: "Categoria", cell: (info: any) => <Badge variant="outline" className="capitalize font-normal text-muted-foreground">{info.getValue()}</Badge> },
+    { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => {
         const d = info.getValue() || info.row.original.date || new Date();
-        return format(new Date(d), "dd/MM/yyyy", { locale: ptBR });
+        return <span className="text-muted-foreground">{format(new Date(d), "dd/MM/yyyy", { locale: ptBR })}</span>;
     } },
-    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => <span className="text-red-400 font-medium">-{formatBRL(info.getValue())}</span> },
+    { accessorKey: "amount", header: () => <div className="text-right">Valor</div>, meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <div className="text-right font-semibold text-destructive">-{formatCentsToBRL(info.getValue())}</div> },
     { accessorKey: "isPaid", header: "Status", cell: (info: any) => {
         return info.getValue() 
-          ? <Badge variant="default" className="bg-emerald-500/10 text-emerald-500">Pago</Badge> 
-          : <Badge variant="default" className="bg-white/10 text-white">Pendente</Badge>;
+          ? <Badge variant="success">Pago</Badge> 
+          : <Badge variant="secondary" className="text-muted-foreground">Pendente</Badge>;
     } },
     {
       id: "actions",
-      header: () => <div className="text-right">Ação</div>,
+      header: () => <div className="text-right">Ações</div>,
       cell: ({ row }: any) => {
         const exp = row.original;
-  if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando despesas...</div>;
         return (
-          <div className="flex justify-end space-x-2 gap-1">
+          <div className="flex justify-end gap-1">
             {!exp.isPaid && (
-              <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-emerald-500 hover:bg-emerald-600">
+              <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground h-8">
                 Pagar
               </Button>
             )}
-            <Button size="sm" variant="default" className="bg-white/10 text-white" onClick={() => openEditModal(exp)}>
-              Editar
-            </Button>
-            <Button size="sm" variant="destructive" onClick={() => handleDelete(exp.id)} isLoading={deleteMutation.isPending}>
-              Excluir
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem onClick={() => openEditModal(exp)}>
+                  <Pencil className="mr-2 h-4 w-4" /> Editar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         );
       }
     }
   ], [payMutation.isPending, deleteMutation.isPending]);
 
+  const renderMobileCard = React.useCallback((row: any) => {
+    const exp = row.original;
+    const d = exp.dueDate || exp.date || new Date();
+    const dueDateStr = format(new Date(d), "dd/MM/yyyy", { locale: ptBR });
+
+    return (
+      <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-4 shadow-sm relative overflow-hidden">
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex flex-col">
+            <span className="font-semibold text-foreground leading-tight">{exp.description}</span>
+            <span className="text-xs text-muted-foreground mt-0.5 capitalize">{exp.category}</span>
+          </div>
+          {exp.isPaid 
+            ? <Badge variant="success" className="shrink-0">Pago</Badge> 
+            : <Badge variant="secondary" className="text-muted-foreground shrink-0">Pendente</Badge>
+          }
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 bg-muted/30 p-3 rounded-xl border border-border">
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Valor</span>
+            <span className="text-sm font-bold text-destructive">-{formatCentsToBRL(exp.amount)}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Vencimento</span>
+            <span className="text-sm font-semibold text-foreground">{dueDateStr}</span>
+          </div>
+        </div>
+
+        <div className="flex justify-end items-center gap-2 pt-1">
+          {!exp.isPaid && (
+            <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[100px] h-9">
+              Pagar
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => openEditModal(exp)}>
+                <Pencil className="mr-2 h-4 w-4" /> Editar Despesa
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" /> Excluir Despesa
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    );
+  }, [payMutation.isPending, deleteMutation.isPending]);
+
+  if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando despesas...</div>;
+
   return (
     <>
     <Card>
       <CardContent className="p-0">
-        <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/5">
-          <h3 className="font-medium text-white">Despesas Registradas</h3>
+        <div className="p-4 border-b border-border flex justify-between items-center bg-muted/20">
+          <h3 className="font-semibold text-foreground">Despesas Registradas</h3>
           <Button size="sm" onClick={() => {
             setEditingId(null);
             setForm({ description: "", category: "operacional", amount: "", dueDate: "" });
             setModalOpen(true);
-          }}>
+          }} className="h-9">
             <Plus className="mr-2 h-4 w-4" /> Nova Despesa
           </Button>
         </div>
@@ -630,32 +810,65 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
             searchKey="description" 
             searchPlaceholder="Buscar despesa..." 
             fileName="Despesas" 
+            renderMobileCard={renderMobileCard}
           />
         </div>
       </CardContent>
     </Card>
-{modalOpen && (
+
+    {modalOpen && (
       <Modal isOpen={true} onClose={() => setModalOpen(false)} title={editingId ? "Editar Despesa" : "Nova Despesa"}>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm">Descrição *</label>
-            <Input value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Ex: Conta de Luz" />
+        <div className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Descrição <span className="text-destructive">*</span></label>
+            <Input 
+              value={form.description} 
+              onChange={e => setForm({...form, description: e.target.value})} 
+              placeholder="Ex: Conta de Luz" 
+              className="h-11 sm:h-10 text-base sm:text-sm"
+            />
           </div>
-          <div>
-            <label className="text-sm">Categoria *</label>
-            <Input value={form.category} onChange={e => setForm({...form, category: e.target.value})} placeholder="Ex: operacional" />
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Categoria <span className="text-destructive">*</span></label>
+            <Input 
+              value={form.category} 
+              onChange={e => setForm({...form, category: e.target.value})} 
+              placeholder="Ex: operacional" 
+              className="h-11 sm:h-10 text-base sm:text-sm"
+            />
           </div>
-          <div>
-            <label className="text-sm">Valor *</label>
-            <Input type="number" min="0" step="0.01" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="Ex: 150.00" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Valor (R$) <span className="text-destructive">*</span></label>
+              <Input 
+                type="number" 
+                min="0" 
+                step="0.01" 
+                value={form.amount} 
+                onChange={e => setForm({...form, amount: e.target.value})} 
+                placeholder="Ex: 150.00" 
+                className="h-11 sm:h-10 text-base sm:text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Vencimento <span className="text-destructive">*</span></label>
+              <Input 
+                type="date" 
+                value={form.dueDate} 
+                onChange={e => setForm({...form, dueDate: e.target.value})} 
+                className="h-11 sm:h-10 text-base sm:text-sm"
+              />
+            </div>
           </div>
-          <div>
-            <label className="text-sm">Vencimento *</label>
-            <Input type="date" value={form.dueDate} onChange={e => setForm({...form, dueDate: e.target.value})} />
+          
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setModalOpen(false)} className="h-11 sm:h-10 min-w-[120px] rounded-full">
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} isLoading={createMutation.isPending || updateMutation.isPending} className="h-11 sm:h-10 min-w-[150px] rounded-full bg-primary text-primary-foreground hover:bg-primary/90">
+              {editingId ? "Salvar Alterações" : "Salvar Despesa"}
+            </Button>
           </div>
-          <Button onClick={handleSave} isLoading={createMutation.isPending || updateMutation.isPending} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white">
-            {editingId ? "Salvar Alterações" : "Salvar Despesa"}
-          </Button>
         </div>
       </Modal>
     )}
@@ -699,9 +912,9 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
   const totalPages = data?.totalPages || 1;
 
   const typeLabel = (type: string) => {
-    if (type === "in") return { label: "Entrada", color: "text-emerald-400" };
-    if (type === "out") return { label: "Saída", color: "text-red-400" };
-    return { label: "Ajuste", color: "text-amber-400" };
+    if (type === "in") return { label: "Entrada", color: "text-success bg-success/10" };
+    if (type === "out") return { label: "Saída", color: "text-destructive bg-destructive/10" };
+    return { label: "Ajuste", color: "text-warning bg-warning/10" };
   };
 
   const typeDelta = (type: string, qty: number) => {
@@ -712,28 +925,29 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Histórico de Estoque — ${itemName}`} className="max-w-2xl">
-      <div className="space-y-4">
+      <div className="space-y-6">
+        
         {/* Inline adjustment form */}
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-          <h4 className="text-sm font-semibold text-white mb-3">Ajustar Estoque</h4>
-          <div className="flex gap-2 items-end">
-            <div className="w-28 shrink-0">
-              <label className="text-xs text-muted-foreground mb-1 block">Delta (+ / -)</label>
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+          <h4 className="text-sm font-semibold text-foreground mb-4">Ajustar Estoque</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-3 items-end">
+            <div className="w-full sm:w-28">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Delta (+ / -)</label>
               <Input
                 type="number"
                 placeholder="ex: -3"
                 value={adjDelta}
                 onChange={e => setAdjDelta(e.target.value)}
-                className="h-9 bg-white/5 border-white/10 text-white"
+                className="h-11 bg-background border-input text-foreground"
               />
             </div>
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Motivo</label>
+            <div className="w-full">
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Motivo</label>
               <Input
                 placeholder="ex: Quebra, recontagem..."
                 value={adjReason}
                 onChange={e => setAdjReason(e.target.value)}
-                className="h-9 bg-white/5 border-white/10 text-white"
+                className="h-11 bg-background border-input text-foreground"
                 onKeyDown={e => { if (e.key === "Enter") handleAdjust(); }}
               />
             </div>
@@ -741,56 +955,83 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
               onClick={handleAdjust}
               isLoading={adjustMutation.isPending}
               disabled={adjustMutation.isPending}
-              className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+              className="h-11 w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               Confirmar
             </Button>
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="text-center p-8 text-muted-foreground">Carregando histórico...</div>
-        ) : transactions.length === 0 ? (
-          <div className="text-center p-8 text-muted-foreground">Nenhuma movimentação registrada.</div>
-        ) : (
-          <div className="divide-y divide-white/5 border border-white/10 rounded-lg overflow-hidden">
-            <div className="grid grid-cols-5 gap-2 px-4 py-2 bg-white/5 text-xs font-medium text-muted-foreground uppercase">
-              <span className="col-span-2">Data / Responsável</span>
-              <span>Tipo</span>
-              <span className="text-right">Delta</span>
-              <span className="col-span-1 text-right">Motivo</span>
+        {/* Histórico */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-foreground">Movimentações</h4>
+          
+          {isLoading ? (
+            <div className="text-center p-8 text-muted-foreground bg-muted/30 rounded-xl border border-border">Carregando histórico...</div>
+          ) : transactions.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground bg-muted/30 rounded-xl border border-border">Nenhuma movimentação registrada.</div>
+          ) : (
+            <div className="rounded-xl border border-border overflow-hidden bg-card shadow-sm">
+              <div className="hidden sm:grid grid-cols-5 gap-4 px-4 py-3 bg-muted/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-b border-border">
+                <span className="col-span-2">Data / Responsável</span>
+                <span>Tipo</span>
+                <span className="text-right">Delta</span>
+                <span className="text-right">Motivo</span>
+              </div>
+              
+              <div className="divide-y divide-border">
+                {transactions.map((tx: any) => {
+                  const { label, color } = typeLabel(tx.type);
+                  return (
+                    <div key={tx.id} className="flex flex-col sm:grid sm:grid-cols-5 gap-3 sm:gap-4 px-4 py-3.5 text-sm hover:bg-muted/30 transition-colors sm:items-center">
+                      <div className="col-span-2 flex flex-col justify-center">
+                        <p className="text-foreground font-medium">
+                          {tx.createdAt ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tx.createdAt)) : "—"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{tx.userName || "Sistema"}</p>
+                      </div>
+                      
+                      <div className="flex justify-between sm:contents items-center mt-2 sm:mt-0">
+                        <span className="sm:hidden text-xs text-muted-foreground font-medium">Tipo:</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold w-fit ${color}`}>{label}</span>
+                      </div>
+                      
+                      <div className="flex justify-between sm:contents items-center mt-1 sm:mt-0">
+                        <span className="sm:hidden text-xs text-muted-foreground font-medium">Delta:</span>
+                        <span className={`sm:text-right font-bold text-base ${color.split(' ')[0]}`}>{typeDelta(tx.type, tx.quantity)}</span>
+                      </div>
+                      
+                      {tx.reason && (
+                        <div className="flex flex-col sm:block mt-1 sm:mt-0">
+                          <span className="sm:hidden text-xs text-muted-foreground font-medium mb-0.5">Motivo:</span>
+                          <span className="sm:text-right text-muted-foreground text-sm line-clamp-2 sm:line-clamp-1 break-words" title={tx.reason}>{tx.reason}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            {transactions.map((tx: any) => {
-              const { label, color } = typeLabel(tx.type);
-              return (
-                <div key={tx.id} className="grid grid-cols-5 gap-2 px-4 py-3 text-sm hover:bg-white/5 transition-colors items-start">
-                  <div className="col-span-2">
-                    <p className="text-white font-medium">
-                      {tx.createdAt ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(tx.createdAt)) : "—"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{tx.userName || "Sistema"}</p>
-                  </div>
-                  <span className={`font-medium ${color}`}>{label}</span>
-                  <span className={`text-right font-bold ${color}`}>{typeDelta(tx.type, tx.quantity)}</span>
-                  <span className="text-right text-muted-foreground text-xs truncate" title={tx.reason}>{tx.reason}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {totalPages > 1 && (
-          <div className="flex justify-between items-center pt-2">
-            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
-              Anterior
-            </Button>
-            <span className="text-sm text-muted-foreground">Página {page} de {totalPages}</span>
-            <Button size="sm" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
-              Próxima
-            </Button>
-          </div>
-        )}
-        <div className="flex justify-end pt-2">
-          <Button variant="outline" onClick={onClose}>Fechar</Button>
+          )}
+        </div>
+
+        {/* Pagination & Close */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-2">
+          {totalPages > 1 ? (
+            <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-start">
+              <Button className="h-11 px-4" variant="outline" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>
+                Anterior
+              </Button>
+              <span className="text-sm font-medium text-muted-foreground">Página {page} de {totalPages}</span>
+              <Button className="h-11 px-4" variant="outline" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                Próxima
+              </Button>
+            </div>
+          ) : (
+            <div className="hidden sm:block"></div>
+          )}
+          
+          <Button className="h-11 w-full sm:w-auto" variant="outline" onClick={onClose}>Fechar</Button>
         </div>
       </div>
     </Modal>
@@ -867,10 +1108,57 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       toast({ title: "Erro", description: "Nome e preço são obrigatórios", variant: "destructive" });
       return;
     }
-    const val = parseFloat(form.price);
-    if (isNaN(val) || val < 0) {
-      toast({ title: "Erro", description: "Preço não pode ser negativo", variant: "destructive" });
+    const rawPrice = form.price.trim();
+    if (rawPrice === "") {
+      toast({ title: "Erro", description: "Preço é obrigatório.", variant: "destructive" });
       return;
+    }
+    const priceCents = parseReaisInputToCents(rawPrice);
+    if (priceCents === null || priceCents < 0) {
+      toast({ title: "Erro", description: "Preço não pode ser negativo e deve ser monetário válido.", variant: "destructive" });
+      return;
+    }
+
+    let costPriceCents: number | null = null;
+    if (form.type === "product") {
+      const rawCostPrice = form.costPrice.trim();
+      if (rawCostPrice !== "") {
+        costPriceCents = parseReaisInputToCents(rawCostPrice);
+        if (costPriceCents === null || costPriceCents < 0) {
+          toast({ title: "Erro", description: "Preço de custo monetário inválido.", variant: "destructive" });
+          return;
+        }
+      }
+    }
+
+    let priceSmallCents: number | null = null;
+    let priceMediumCents: number | null = null;
+    let priceLargeCents: number | null = null;
+    if (form.type === "service" || form.type === "day_use") {
+      const rawSmall = form.priceSmall.trim();
+      if (rawSmall !== "") {
+        priceSmallCents = parseReaisInputToCents(rawSmall);
+        if (priceSmallCents === null || priceSmallCents < 0) {
+          toast({ title: "Erro", description: "Preço pequeno monetário inválido.", variant: "destructive" });
+          return;
+        }
+      }
+      const rawMedium = form.priceMedium.trim();
+      if (rawMedium !== "") {
+        priceMediumCents = parseReaisInputToCents(rawMedium);
+        if (priceMediumCents === null || priceMediumCents < 0) {
+          toast({ title: "Erro", description: "Preço médio monetário inválido.", variant: "destructive" });
+          return;
+        }
+      }
+      const rawLarge = form.priceLarge.trim();
+      if (rawLarge !== "") {
+        priceLargeCents = parseReaisInputToCents(rawLarge);
+        if (priceLargeCents === null || priceLargeCents < 0) {
+          toast({ title: "Erro", description: "Preço grande monetário inválido.", variant: "destructive" });
+          return;
+        }
+      }
     }
     if (form.type === "package" && (!form.creditsAmount || parseInt(form.creditsAmount) <= 0)) {
       toast({ title: "Erro", description: "Informe a quantidade de diárias (créditos) do pacote", variant: "destructive" });
@@ -881,20 +1169,20 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
       name: form.name,
       type: form.type,
       description: form.description,
-      price: val * 100, // convert to cents
+      price: priceCents,
       stockQuantity: form.type === "product" && form.stockQuantity ? parseInt(form.stockQuantity) : null,
       reorderThreshold: form.type === "product" && form.reorderThreshold !== "" ? parseInt(form.reorderThreshold) : null,
       creditsAmount: form.type === "package" && form.creditsAmount ? parseInt(form.creditsAmount) : null,
       maxPetsPerDay: form.type === "package" && form.maxPetsPerDay ? parseInt(form.maxPetsPerDay) : 1,
-      pricingBySize: form.type === "service" ? {
-        small: form.priceSmall ? parseFloat(form.priceSmall) * 100 : val * 100,
-        medium: form.priceMedium ? parseFloat(form.priceMedium) * 100 : val * 100,
-        large: form.priceLarge ? parseFloat(form.priceLarge) * 100 : val * 100,
+      pricingBySize: (form.type === "service" || form.type === "day_use") ? {
+        small: priceSmallCents !== null ? priceSmallCents : priceCents,
+        medium: priceMediumCents !== null ? priceMediumCents : priceCents,
+        large: priceLargeCents !== null ? priceLargeCents : priceCents,
       } : undefined,
       category: form.category || null,
       sku: form.sku || null,
       barcode: form.barcode || null,
-      costPrice: form.costPrice && form.type === "product" ? parseFloat(form.costPrice) * 100 : null,
+      costPrice: costPriceCents,
       mediaUrls: form.imageUrl ? [form.imageUrl] : []
     };
 
@@ -908,7 +1196,6 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
           toast({ title: "Sucesso", description: "Item atualizado no catálogo", variant: "default" });
         },
         onError: (err: any) => {
-          // Show error inline inside the modal; do NOT close it
           setModalError(err.message || "Erro ao atualizar item do catálogo");
         }
       });
@@ -921,7 +1208,6 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
           toast({ title: "Sucesso", description: "Item adicionado ao catálogo", variant: "default" });
         },
         onError: (err: any) => {
-          // Show error inline inside the modal; do NOT close it
           setModalError(err.message || "Erro ao criar item do catálogo");
         }
       });
@@ -936,20 +1222,20 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
     item.stockQuantity <= item.reorderThreshold
   );
 
-  if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando catálogo...</div>;
+  if (isLoading) return <div className="text-center p-12 text-muted-foreground">Carregando catálogo...</div>;
   return (
-    <>
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-3">
-          <h3 className="font-medium text-white">Catálogo de Produtos e Serviços</h3>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <h3 className="text-lg font-medium text-foreground">Catálogo</h3>
           {lowStockItems.length > 0 && (
-            <div className="flex items-center gap-1.5 bg-destructive/15 border border-destructive/30 text-destructive px-2.5 py-1 rounded-full text-xs font-semibold">
-              <ShieldAlert className="w-3 h-3" />
-              {lowStockItems.length} {lowStockItems.length === 1 ? "item com estoque baixo" : "itens com estoque baixo"}
-            </div>
+            <Badge variant="destructive" className="flex items-center gap-1.5 font-semibold">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              {lowStockItems.length} {lowStockItems.length === 1 ? "com estoque baixo" : "com estoque baixo"}
+            </Badge>
           )}
         </div>
-        <Button size="sm" onClick={() => {
+        <Button onClick={() => {
           setEditingId(null);
           setModalError(null);
           setForm({ name: "", type: "product", description: "", price: "", stockQuantity: "", reorderThreshold: "", priceSmall: "", priceMedium: "", priceLarge: "", creditsAmount: "", maxPetsPerDay: "1", category: "", sku: "", barcode: "", costPrice: "", imageUrl: "" });
@@ -959,268 +1245,312 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {catalogue?.map((item: any) => (
-          <Card key={item.id} className="overflow-hidden group">
-            <CardContent className="p-0">
-              <div className="h-32 bg-white/5 relative flex items-center justify-center overflow-hidden">
+      {!catalogue || catalogue.length === 0 ? (
+        <div className="text-center p-12 border border-dashed rounded-xl bg-muted/20">
+          <PackageOpen className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-1">Nenhum item no catálogo</h3>
+          <p className="text-muted-foreground">Adicione produtos e serviços para começar.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {catalogue.map((item: any) => (
+            <Card key={item.id} className="overflow-hidden group flex flex-col h-full bg-card shadow-sm border border-border">
+              <div className="h-40 bg-muted relative flex items-center justify-center overflow-hidden shrink-0">
                 {item.mediaUrls && item.mediaUrls.length > 0 ? (
-                  <img src={buildMediaSrc(item.mediaUrls[0], getMediaToken())} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                  <img src={buildMediaSrc(item.mediaUrls[0], getMediaToken())} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                 ) : (
-                  <PackageOpen className="h-10 w-10 text-white/20 group-hover:scale-110 transition-transform" />
+                  <PackageOpen className="h-10 w-10 text-muted-foreground opacity-30 group-hover:scale-110 transition-transform duration-300" />
                 )}
                 
                 {item.type === "product" && item.stockQuantity !== null && item.reorderThreshold != null && item.stockQuantity <= item.reorderThreshold && (
-                  <div className="absolute top-2 right-2 bg-destructive/80 text-white text-[10px] px-2 py-1 rounded-full font-bold">
+                  <Badge variant="destructive" className="absolute top-2 right-2 shadow-sm font-bold">
                     Estoque Baixo
-                  </div>
+                  </Badge>
                 )}
               </div>
-              <div className="p-4 space-y-2">
-                <div className="flex justify-between items-start">
-                  <h4 className="font-medium text-white">{item.name}</h4>
-                  <Badge variant="outline" className="capitalize text-[10px]">
-                    {item.type === 'package' ? 'Pacote' : item.type}
+              <CardContent className="p-4 flex-1 flex flex-col">
+                <div className="flex justify-between items-start gap-2 mb-2">
+                  <h4 className="font-semibold text-foreground leading-tight line-clamp-2">{item.name}</h4>
+                  <Badge variant="outline" className="capitalize text-[10px] shrink-0 font-medium">
+                    {item.type === 'package' ? 'Pacote' : 
+                     item.type === 'day_use' ? 'Day Use' :
+                     item.type === 'service' ? 'Serviço' : 'Produto'}
                   </Badge>
                 </div>
-                {item.type === "service" && (item.pricingBySize?.small || item.pricingBySize?.medium || item.pricingBySize?.large) ? (
-                  <p className="text-2xl font-bold text-emerald-400">
-                    <span className="text-sm font-normal text-muted-foreground mr-1">A partir de</span>
-                    {formatBRL(
-                      Math.min(
-                        Number(item.price),
-                        Number(item.pricingBySize?.small || item.price),
-                        Number(item.pricingBySize?.medium || item.price),
-                        Number(item.pricingBySize?.large || item.price)
-                      )
-                    )}
-                  </p>
-                ) : (
-                  <p className="text-2xl font-bold text-emerald-400">{formatBRL(item.price)}</p>
-                )}
-                {item.type === "product" && (
-                  <p className="text-xs text-muted-foreground pt-2">
-                    Em estoque: <strong className="text-white">{item.stockQuantity ?? 'Ilimitado'}</strong>
-                  </p>
-                )}
-                {item.type === "package" && item.creditsAmount && (
-                  <p className="text-xs text-muted-foreground pt-2">
-                    <strong className="text-white">{item.creditsAmount} diárias</strong>
-                    {item.maxPetsPerDay && item.maxPetsPerDay > 1 && (
-                      <span className="ml-1 text-emerald-400 font-medium">(Até {item.maxPetsPerDay} pets/dia)</span>
-                    )}
-                  </p>
-                )}
-                
-                <div className="pt-4 flex gap-2 flex-wrap">
-                  {item.type === "product" && (
-                    <Button size="sm" variant="outline" className="border-white/20 text-white/70 hover:text-white flex-1" onClick={() => setHistoryItem({ id: item.id, name: item.name })}>
-                      Histórico
-                    </Button>
+
+                <div className="mt-auto pt-2 space-y-1">
+                  {(item.type === "service" || item.type === "day_use") && (item.pricingBySize?.small || item.pricingBySize?.medium || item.pricingBySize?.large) ? (
+                    <p className="text-lg font-bold text-primary flex items-baseline gap-1">
+                      <span className="text-xs font-medium text-muted-foreground">A partir de</span>
+                      {formatCentsToBRL(
+                        Math.min(
+                          Number(item.price),
+                          Number(item.pricingBySize?.small || item.price),
+                          Number(item.pricingBySize?.medium || item.price),
+                          Number(item.pricingBySize?.large || item.price)
+                        )
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-lg font-bold text-primary">{formatCentsToBRL(item.price)}</p>
                   )}
-                  <Button size="sm" variant="default" className="bg-white/10 text-white flex-1" onClick={() => openEditModal(item)}>
+
+                  {item.type === "product" && (
+                    <p className="text-xs text-muted-foreground">
+                      Em estoque: <strong className="text-foreground">{item.stockQuantity ?? 'Ilimitado'}</strong>
+                    </p>
+                  )}
+                  {item.type === "package" && item.creditsAmount && (
+                    <p className="text-xs text-muted-foreground">
+                      <strong className="text-foreground">{item.creditsAmount} diárias</strong>
+                      {item.maxPetsPerDay && item.maxPetsPerDay > 1 && (
+                        <span className="ml-1 text-primary font-medium">(Até {item.maxPetsPerDay} pets/dia)</span>
+                      )}
+                    </p>
+                  )}
+                  {item.category && (
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {item.category}
+                    </p>
+                  )}
+                </div>
+
+                <div className="pt-4 mt-4 border-t border-border flex items-center gap-2">
+                  <Button size="sm" variant="outline" className="flex-1 text-xs" onClick={() => openEditModal(item)}>
                     Editar
                   </Button>
 
-                  <Button size="sm" variant="destructive" className="flex-1" onClick={() => handleDelete(item.id)} isLoading={deleteMutation.isPending}>
-                    Excluir
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="ghost" className="px-2 w-9 h-9 shrink-0">
+                        <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40">
+                      {item.type === "product" && (
+                        <DropdownMenuItem onClick={() => setHistoryItem({ id: item.id, name: item.name })}>
+                          <Activity className="h-4 w-4 mr-2" /> Histórico
+                        </DropdownMenuItem>
+                      )}
+                      {item.type === "product" && <DropdownMenuSeparator />}
+                      <DropdownMenuItem onClick={() => handleDelete(item.id)} className="text-destructive focus:text-destructive">
+                        <Trash2 className="h-4 w-4 mr-2" /> Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {modalOpen && (
-        <Modal isOpen={true} onClose={() => { setModalOpen(false); setModalError(null); }} title={editingId ? "Editar Item do Catálogo" : "Novo Item no Catálogo"} className="max-w-2xl">
-          <div className="space-y-4">
+        <Modal isOpen={true} onClose={() => { setModalOpen(false); setModalError(null); }} title={editingId ? "Editar Item" : "Novo Item"} className="max-w-2xl">
+          <div className="space-y-6">
             {editingId && (
               <CatalogueSmartIndicators crecheId={crecheId} itemId={editingId} type={form.type} />
             )}
 
-            {/* Inline error banner — shown when save fails; keeps modal open */}
             {modalError && (
-              <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive font-medium">
                 <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{modalError}</span>
               </div>
             )}
 
-            <div>
-              <label className="text-sm">Nome *</label>
-              <Input
-                value={form.name}
-                onChange={e => { setForm({...form, name: e.target.value}); setModalError(null); }}
-                placeholder="Nome do item"
-              />
-              {/* Duplicate name warning for create mode */}
-              {!editingId && form.name.trim() && catalogue?.some((item: any) =>
-                item.name.trim().toLowerCase() === form.name.trim().toLowerCase()
-              ) && (
-                <p className="mt-1 text-xs text-amber-400 flex items-center gap-1">
-                  <ShieldAlert className="h-3 w-3" />
-                  Já existe um item com este nome no catálogo.
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm">Tipo</label>
-              <select 
-                className="w-full bg-white/5 border border-white/10 rounded-md h-10 px-3 text-sm"
-                value={form.type} 
-                onChange={e => setForm({...form, type: e.target.value})}
-              >
-                <option value="product" className="bg-zinc-900">Produto</option>
-                <option value="service" className="bg-zinc-900">Serviço</option>
-                <option value="day_use" className="bg-zinc-900">Day Use</option>
-                <option value="package" className="bg-zinc-900">Pacote de Diárias</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm">Categoria</label>
-              <Input value={form.category} onChange={e => setForm({...form, category: e.target.value})} placeholder="Ex: Rações, Brinquedos" />
-            </div>
-            <div>
-              <label className="text-sm">Descrição</label>
-              <textarea 
-                value={form.description} 
-                onChange={e => setForm({...form, description: e.target.value})} 
-                className="w-full bg-white/5 border border-white/10 rounded-md p-3 text-sm min-h-[80px]"
-                placeholder="Detalhes do item..." 
-              />
-            </div>
-            <div>
-              <label className="text-sm">Foto do Item</label>
-              <input
-                ref={imageFileRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setImageUploading(true);
-                  try {
-                    const token = localStorage.getItem("auth_token") ?? "";
-                    const objectPath = await uploadFileDirect(file, token);
-                    setForm(f => ({ ...f, imageUrl: objectPath }));
-                  } catch (err: any) {
-                    toast({ title: "Erro no upload", description: err.message || "Não foi possível enviar a imagem.", variant: "destructive" });
-                  } finally {
-                    setImageUploading(false);
-                    if (imageFileRef.current) imageFileRef.current.value = "";
-                  }
-                }}
-              />
-              <div className="flex items-center gap-2 mt-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="border border-white/10 gap-2"
-                  disabled={imageUploading}
-                  onClick={() => imageFileRef.current?.click()}
-                >
-                  <Camera className="h-4 w-4" />
-                  {imageUploading ? "Enviando…" : "Selecionar foto"}
-                </Button>
-                {form.imageUrl && (
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <img
-                      src={buildMediaSrc(form.imageUrl, getMediaToken())}
-                      alt="preview"
-                      className="h-8 w-8 rounded object-cover shrink-0"
-                      onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                    <span className="text-xs text-muted-foreground truncate">{form.imageUrl.split("/").pop()}</span>
-                    <button
-                      type="button"
-                      className="text-xs text-red-400 hover:text-red-300 shrink-0"
-                      onClick={() => setForm(f => ({ ...f, imageUrl: "" }))}
-                    >
-                      Remover
-                    </button>
-                  </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium">Nome <span className="text-destructive">*</span></label>
+                <Input
+                  value={form.name}
+                  onChange={e => { setForm({...form, name: e.target.value}); setModalError(null); }}
+                  placeholder="Ex: Ração Premium 10kg"
+                  className="mt-1.5"
+                />
+                {!editingId && form.name.trim() && catalogue?.some((item: any) =>
+                  item.name.trim().toLowerCase() === form.name.trim().toLowerCase()
+                ) && (
+                  <p className="mt-1.5 text-xs text-warning flex items-center gap-1 font-medium">
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    Já existe um item com este nome.
+                  </p>
                 )}
               </div>
-            </div>
-            <div>
-              <label className="text-sm">Preço (R$) *</label>
-              <Input type="number" min="0" step="0.01" value={form.price} onChange={e => setForm({...form, price: e.target.value})} placeholder="10.00" />
+
+              <div>
+                <label className="text-sm font-medium">Tipo</label>
+                <select 
+                  className="w-full bg-background border border-input rounded-md h-10 px-3 text-sm mt-1.5 text-foreground focus:ring-2 focus:ring-ring outline-none"
+                  value={form.type} 
+                  onChange={e => setForm({...form, type: e.target.value})}
+                >
+                  <option value="product">Produto</option>
+                  <option value="service">Serviço</option>
+                  <option value="day_use">Day Use</option>
+                  <option value="package">Pacote de Diárias</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Categoria</label>
+                <Input value={form.category} onChange={e => setForm({...form, category: e.target.value})} placeholder="Ex: Rações, Banho" className="mt-1.5" />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium">Preço Base (R$) <span className="text-destructive">*</span></label>
+                <Input type="number" min="0" step="0.01" value={form.price} onChange={e => setForm({...form, price: e.target.value})} placeholder="0,00" className="mt-1.5 font-medium" />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium">Descrição</label>
+                <textarea 
+                  value={form.description} 
+                  onChange={e => setForm({...form, description: e.target.value})} 
+                  className="w-full bg-background border border-input rounded-md p-3 text-sm min-h-[80px] mt-1.5 resize-y focus:ring-2 focus:ring-ring outline-none"
+                  placeholder="Detalhes opcionais do item..." 
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-sm font-medium">Foto do Item</label>
+                <input
+                  ref={imageFileRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setImageUploading(true);
+                    try {
+                      const token = localStorage.getItem("auth_token") ?? "";
+                      const objectPath = await uploadFileDirect(file, token);
+                      setForm(f => ({ ...f, imageUrl: objectPath }));
+                    } catch (err: any) {
+                      toast({ title: "Erro no upload", description: err.message || "Não foi possível enviar a imagem.", variant: "destructive" });
+                    } finally {
+                      setImageUploading(false);
+                      if (imageFileRef.current) imageFileRef.current.value = "";
+                    }
+                  }}
+                />
+                <div className="flex items-center gap-3 mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    disabled={imageUploading}
+                    onClick={() => imageFileRef.current?.click()}
+                  >
+                    <Camera className="h-4 w-4" />
+                    {imageUploading ? "Enviando…" : "Selecionar foto"}
+                  </Button>
+                  {form.imageUrl && (
+                    <div className="flex items-center gap-2 flex-1 min-w-0 bg-muted/50 p-1.5 rounded-md border border-border">
+                      <img
+                        src={buildMediaSrc(form.imageUrl, getMediaToken())}
+                        alt="preview"
+                        className="h-8 w-8 rounded object-cover shrink-0"
+                        onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                      <span className="text-xs text-muted-foreground truncate" title={form.imageUrl}>{form.imageUrl.split("/").pop()}</span>
+                      <button
+                        type="button"
+                        className="text-xs text-destructive hover:text-destructive/80 shrink-0 font-medium ml-auto px-2"
+                        onClick={() => setForm(f => ({ ...f, imageUrl: "" }))}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
             
             {form.type === "product" && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4 pt-4 border-t border-border">
+                <h4 className="text-sm font-semibold text-foreground">Controle de Estoque</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm">Preço de Custo (R$)</label>
-                    <Input type="number" min="0" step="0.01" value={form.costPrice} onChange={e => setForm({...form, costPrice: e.target.value})} placeholder="Opcional" />
+                    <label className="text-sm font-medium">Preço de Custo (R$)</label>
+                    <Input type="number" min="0" step="0.01" value={form.costPrice} onChange={e => setForm({...form, costPrice: e.target.value})} placeholder="Opcional" className="mt-1.5" />
                   </div>
                   <div>
-                    <label className="text-sm">Estoque (opcional)</label>
-                    <Input type="number" min="0" value={form.stockQuantity} onChange={e => setForm({...form, stockQuantity: e.target.value})} placeholder="Quantidade" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm">Ponto de Reposição</label>
-                    <Input type="number" min="0" value={form.reorderThreshold} onChange={e => setForm({...form, reorderThreshold: e.target.value})} placeholder="Ex: 5" />
-                    <p className="text-xs text-muted-foreground mt-1">Alerta de estoque baixo ao atingir esta quantidade.</p>
+                    <label className="text-sm font-medium">Estoque (opcional)</label>
+                    <Input type="number" min="0" value={form.stockQuantity} onChange={e => setForm({...form, stockQuantity: e.target.value})} placeholder="Quantidade atual" className="mt-1.5" />
                   </div>
                   <div>
-                    <label className="text-sm">Código de Barras</label>
-                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." autoFocus={modalOpen && form.type === 'product'} />
+                    <label className="text-sm font-medium">Ponto de Reposição</label>
+                    <Input type="number" min="0" value={form.reorderThreshold} onChange={e => setForm({...form, reorderThreshold: e.target.value})} placeholder="Ex: 5" className="mt-1.5" />
+                    <p className="text-[11px] text-muted-foreground mt-1">Alerte quando o estoque chegar aqui.</p>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm">SKU (opcional)</label>
-                    <Input value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Código interno" />
+                    <label className="text-sm font-medium">Código de Barras</label>
+                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." autoFocus={modalOpen && form.type === 'product'} className="mt-1.5" />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">SKU (opcional)</label>
+                    <Input value={form.sku} onChange={e => setForm({...form, sku: e.target.value})} placeholder="Código interno" className="mt-1.5" />
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
             {form.type === "package" && (
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm">Quantidade de Diárias (Créditos) *</label>
-                  <Input type="number" min="1" value={form.creditsAmount} onChange={e => setForm({...form, creditsAmount: e.target.value})} placeholder="Ex: 20" />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Ao comprar este pacote, o tutor receberá exatamente este número de diárias.
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm">Limite de Pets por Diária</label>
-                  <Input type="number" min="1" value={form.maxPetsPerDay} onChange={e => setForm({...form, maxPetsPerDay: e.target.value})} placeholder="Ex: 1" />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Uma mesma diária cobrirá até esta quantidade de pets simultâneos. Deixe 1 para pacotes normais.
-                  </p>
+              <div className="space-y-4 pt-4 border-t border-border">
+                <h4 className="text-sm font-semibold text-foreground">Regras do Pacote</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Diárias (Créditos) <span className="text-destructive">*</span></label>
+                    <Input type="number" min="1" value={form.creditsAmount} onChange={e => setForm({...form, creditsAmount: e.target.value})} placeholder="Ex: 20" className="mt-1.5" />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      O tutor receberá este número de diárias.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Limite de Pets por Diária</label>
+                    <Input type="number" min="1" value={form.maxPetsPerDay} onChange={e => setForm({...form, maxPetsPerDay: e.target.value})} placeholder="Ex: 1" className="mt-1.5" />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Deixe 1 para pacotes normais.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
 
             {(form.type === "service" || form.type === "day_use") && (
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-xs">Preço Pequeno (opcional)</label>
-                  <Input type="number" min="0" step="0.01" value={form.priceSmall} onChange={e => setForm({...form, priceSmall: e.target.value})} />
+              <div className="space-y-4 pt-4 border-t border-border">
+                <h4 className="text-sm font-semibold text-foreground">Preços por Porte</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs font-medium">Pequeno</label>
+                    <Input type="number" min="0" step="0.01" value={form.priceSmall} onChange={e => setForm({...form, priceSmall: e.target.value})} placeholder="Padrão" className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Médio</label>
+                    <Input type="number" min="0" step="0.01" value={form.priceMedium} onChange={e => setForm({...form, priceMedium: e.target.value})} placeholder="Padrão" className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Grande</label>
+                    <Input type="number" min="0" step="0.01" value={form.priceLarge} onChange={e => setForm({...form, priceLarge: e.target.value})} placeholder="Padrão" className="mt-1 h-9 text-sm" />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs">Preço Médio (opcional)</label>
-                  <Input type="number" min="0" step="0.01" value={form.priceMedium} onChange={e => setForm({...form, priceMedium: e.target.value})} />
-                </div>
-                <div>
-                  <label className="text-xs">Preço Grande (opcional)</label>
-                  <Input type="number" min="0" step="0.01" value={form.priceLarge} onChange={e => setForm({...form, priceLarge: e.target.value})} />
-                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Se não informados, o porte usará o Preço Base do item.
+                </p>
               </div>
             )}
 
-            <Button onClick={handleSave} isLoading={createMutation.isPending || updateMutation.isPending} className="w-full">
-              Salvar Item
-            </Button>
+            <div className="flex justify-end gap-2 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => { setModalOpen(false); setModalError(null); }} type="button">
+                Cancelar
+              </Button>
+              <Button onClick={handleSave} isLoading={createMutation.isPending || updateMutation.isPending} className="min-w-[120px]">
+                Salvar Item
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1233,7 +1563,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
           onClose={() => setHistoryItem(null)}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -1265,7 +1595,7 @@ function DefaultersTab({ crecheId }: { crecheId: number }) {
   const columns = React.useMemo(() => [
     { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => <span className="font-medium text-white">{info.getValue() || "Desconhecido"}</span> },
     { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => info.getValue() ? format(parseLocalDate(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
-    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatBRL(Number(v)) }, cell: (info: any) => <span className="font-medium text-white">{formatBRL(info.getValue())}</span> },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <span className="font-medium text-white">{formatCentsToBRL(info.getValue())}</span> },
     { 
       id: "daysLate", 
       header: "Dias Atraso", 
@@ -1280,7 +1610,7 @@ function DefaultersTab({ crecheId }: { crecheId: number }) {
       header: () => <div className="text-right">Ações</div>,
       cell: ({ row }: any) => {
         const inv = row.original;
-        const msg = encodeURIComponent(`Olá ${inv.tutorName || "Tutor"}, notamos que há uma fatura em aberto no valor de ${formatBRL(inv.amount)}. Poderia verificar?`);
+        const msg = encodeURIComponent(`Olá ${inv.tutorName || "Tutor"}, notamos que há uma fatura em aberto no valor de ${formatCentsToBRL(inv.amount)}. Poderia verificar?`);
         return (
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-white" onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending}>
@@ -1305,7 +1635,7 @@ function DefaultersTab({ crecheId }: { crecheId: number }) {
         <CardContent className="p-6">
           <h3 className="text-sm font-medium text-red-400 mb-2">Total em Inadimplência</h3>
           <p className="text-3xl font-display font-bold text-white">
-            {formatBRL(totalDefaulters)}
+            {formatCentsToBRL(totalDefaulters)}
           </p>
         </CardContent>
       </Card>
@@ -1360,7 +1690,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
               <div key={inv.id} className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                   <p className="font-semibold text-white">{inv.tutorName || "Desconhecido"}</p>
-                  <p className="font-bold text-white">{formatBRL(inv.amount)}</p>
+                  <p className="font-bold text-white">{formatCentsToBRL(inv.amount)}</p>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Vencimento:</span>
@@ -1404,7 +1734,7 @@ function ReceiptsTab({ crecheId }: { crecheId: number }) {
                     <td className="px-6 py-4 text-muted-foreground">
                       {inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}
                     </td>
-                    <td className="px-6 py-4 text-white font-medium">{formatBRL(inv.amount)}</td>
+                    <td className="px-6 py-4 text-white font-medium">{formatCentsToBRL(inv.amount)}</td>
                     <td className="px-6 py-4 text-right space-x-2">
                       {inv.receiptPhotoPath && (
                         <Button variant="ghost" size="sm" onClick={() => {
@@ -1559,13 +1889,13 @@ function OrdersTab({ crecheId }: { crecheId: number }) {
 
   const getStatusBadge = (status: string) => {
     switch(status) {
-      case 'pending_payment': return <Badge variant="outline" className="text-yellow-400 border-yellow-400">Pendente</Badge>;
-      case 'paid': return <Badge variant="outline" className="text-emerald-400 border-emerald-400">Pago</Badge>;
-      case 'preparing': return <Badge variant="outline" className="text-blue-400 border-blue-400">Separando</Badge>;
-      case 'ready_for_pickup': return <Badge variant="outline" className="text-purple-400 border-purple-400">Pronto p/ Retirada</Badge>;
-      case 'delivering': return <Badge variant="outline" className="text-indigo-400 border-indigo-400">Em Rota</Badge>;
-      case 'delivered': return <Badge variant="outline" className="text-zinc-400 border-zinc-400">Entregue</Badge>;
-      case 'cancelled': return <Badge variant="outline" className="text-red-400 border-red-400">Cancelado</Badge>;
+      case 'pending_payment': return <Badge variant="outline" className="text-warning border-warning/20 bg-warning/10">Pendente</Badge>;
+      case 'paid': return <Badge variant="outline" className="text-success border-success/20 bg-success/10">Pago</Badge>;
+      case 'preparing': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Separando</Badge>;
+      case 'ready_for_pickup': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Pronto p/ Retirada</Badge>;
+      case 'delivering': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Em Rota</Badge>;
+      case 'delivered': return <Badge variant="outline" className="text-muted-foreground border-border bg-muted">Entregue</Badge>;
+      case 'cancelled': return <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10">Cancelado</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -1614,72 +1944,103 @@ function OrdersTab({ crecheId }: { crecheId: number }) {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="font-medium text-white">Pedidos da Loja</h3>
+        <h3 className="font-medium text-foreground">Pedidos da Loja</h3>
       </div>
       
-      <div className="overflow-y-auto max-h-[70vh] pr-1 grid grid-cols-1 gap-4">
-        {orders?.length === 0 && <p className="text-muted-foreground">Nenhum pedido encontrado.</p>}
+      <div className="overflow-y-auto max-h-[70vh] pr-1 grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar">
+        {orders?.length === 0 && <p className="text-muted-foreground col-span-full text-center py-8">Nenhum pedido encontrado.</p>}
         {orders?.map((order: any) => (
-          <Card key={order.id} className="bg-white/5 border-white/10">
-            <CardContent className="p-4 flex flex-col md:flex-row justify-between gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-white text-lg">Pedido #{order.id}</h4>
+          <Card key={order.id} className="bg-card border-border shadow-sm flex flex-col">
+            <CardContent className="p-4 flex flex-col h-full">
+              
+              <div className="flex justify-between items-start gap-2 mb-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-bold text-foreground text-lg">#{order.id}</h4>
                   {getStatusBadge(order.status)}
-                  <Badge variant="secondary">{order.deliveryMethod === 'delivery' ? 'Entrega' : 'Retirada'}</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">Tutor: <span className="text-white">{order.tutor?.name}</span> {order.tutor?.phone && `(${order.tutor?.phone})`}</p>
-                {order.deliveryMethod === 'delivery' && (
-                  <p className="text-sm text-muted-foreground">Endereço: <span className="text-white">{order.deliveryAddress}</span></p>
-                )}
-                <div className="pt-2 space-y-1">
-                  {order.items?.map((item: any, idx: number) => (
-                    <p key={idx} className="text-sm text-muted-foreground">
-                      {item.quantity}x <span className="text-white">{item.name}</span> - {formatBRL(item.totalPrice)}
-                    </p>
-                  ))}
+                  <Badge variant="secondary" className="bg-muted text-muted-foreground border-border">
+                    {order.deliveryMethod === 'delivery' ? 'Entrega' : 'Retirada'}
+                  </Badge>
                 </div>
               </div>
-              <div className="flex flex-col items-end justify-between space-y-4">
-                <div className="text-right">
-                  <p className="text-sm text-muted-foreground">Frete: {formatBRL(order.deliveryFee)}</p>
-                  <p className="text-xl font-bold text-emerald-400">Total: {formatBRL(order.total)}</p>
+              
+              <div className="space-y-1 mb-4">
+                <p className="text-sm text-foreground font-medium flex items-center gap-2">
+                  <span className="text-muted-foreground">Tutor:</span> {order.tutor?.name} {order.tutor?.phone && <span className="text-muted-foreground font-normal">({order.tutor?.phone})</span>}
+                </p>
+                {order.deliveryMethod === 'delivery' && (
+                  <p className="text-sm text-foreground flex items-start gap-2">
+                    <span className="text-muted-foreground shrink-0">Endereço:</span>
+                    <span className="leading-tight">{order.deliveryAddress}</span>
+                  </p>
+                )}
+              </div>
+              
+              <div className="bg-muted/30 rounded-xl border border-border p-3 mb-4 space-y-2">
+                {order.items?.map((item: any, idx: number) => (
+                  <div key={idx} className="flex justify-between items-center text-sm">
+                    <span className="text-foreground">
+                      <span className="font-semibold text-muted-foreground mr-1">{item.quantity}x</span> 
+                      {item.name}
+                    </span>
+                    <span className="text-muted-foreground font-medium">{formatCentsToBRL(item.totalPrice)}</span>
+                  </div>
+                ))}
+                
+                <div className="pt-2 mt-2 border-t border-border/50 flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Frete</span>
+                  <span className="text-sm text-muted-foreground">{formatCentsToBRL(order.deliveryFee)}</span>
+                </div>
+              </div>
+
+              <div className="mt-auto flex flex-col space-y-4">
+                <div className="flex justify-between items-end border-t border-border pt-4">
+                  <span className="text-muted-foreground font-medium">Total</span>
+                  <span className="text-2xl font-bold text-foreground tracking-tight">{formatCentsToBRL(order.total)}</span>
                 </div>
                 
-                <div className="flex gap-2 flex-wrap justify-end">
+                <div className="flex gap-2 flex-wrap items-center">
                   {order.status === 'pending_payment' && (
                     <>
-                      <Button size="sm" variant="outline" className="border-emerald-500 text-emerald-500 hover:bg-emerald-500 hover:text-white" onClick={() => handleUpdateStatus(order.id, 'paid', order)}>Confirmar Pagamento</Button>
-                      <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(order.id, 'cancelled', order)}>Cancelar</Button>
+                      <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'paid', order)}>
+                        Confirmar Pagamento
+                      </Button>
+                      <Button variant="destructive" className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'cancelled', order)}>
+                        Cancelar
+                      </Button>
                     </>
                   )}
                   {order.status === 'paid' && (
-                    <Button size="sm" onClick={() => handleUpdateStatus(order.id, 'preparing', order)}>Iniciar Separação</Button>
+                    <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'preparing', order)}>
+                      Iniciar Separação
+                    </Button>
                   )}
                   {order.status === 'preparing' && (
-                    <Button size="sm" onClick={() => handleUpdateStatus(order.id, order.deliveryMethod === 'delivery' ? 'delivering' : 'ready_for_pickup', order)}>
+                    <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, order.deliveryMethod === 'delivery' ? 'delivering' : 'ready_for_pickup', order)}>
                       {order.deliveryMethod === 'delivery' ? 'Saiu p/ Entrega' : 'Pronto p/ Retirada'}
                     </Button>
                   )}
                   {(order.status === 'delivering' || order.status === 'ready_for_pickup') && (
-                    <Button size="sm" variant="default" className="bg-emerald-500 hover:bg-emerald-600" onClick={() => handleUpdateStatus(order.id, 'delivered', order)}>Marcar Entregue</Button>
+                    <Button className="h-11 flex-1 sm:flex-none bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleUpdateStatus(order.id, 'delivered', order)}>
+                      Marcar Entregue
+                    </Button>
                   )}
                 </div>
               </div>
+              
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Modal isOpen={confirmModal?.isOpen || false} onClose={() => setConfirmModal(null)} title="Fatura em Aberto ⚠️" description={`Este pedido possui uma fatura pendente no valor de ${formatBRL(confirmModal?.order?.invoiceAmount || 0)}. O tutor já realizou o pagamento no balcão/Pix?`}>
+      <Modal isOpen={confirmModal?.isOpen || false} onClose={() => setConfirmModal(null)} title="Fatura em Aberto ⚠️" description={`Este pedido possui uma fatura pendente no valor de ${formatCentsToBRL(confirmModal?.order?.invoiceAmount || 0)}. O tutor já realizou o pagamento no balcão/Pix?`}>
           <div className="flex flex-col gap-3 mt-4">
-            <Button onClick={handleConfirmWithPayment} className="bg-emerald-500 hover:bg-emerald-600 text-white w-full justify-start">
+            <Button onClick={handleConfirmWithPayment} className="h-11 w-full justify-start">
               <CheckCircle className="mr-2 h-4 w-4" /> Sim, confirmar pagamento e dar baixa na fatura
             </Button>
-            <Button variant="outline" onClick={handleConfirmWithoutPayment} className="border-white/10 hover:bg-white/5 w-full justify-start">
-              <Clock className="mr-2 h-4 w-4 text-yellow-500" /> Não, vai pagar depois (manter fatura aberta)
+            <Button variant="outline" onClick={handleConfirmWithoutPayment} className="h-11 w-full justify-start border-border hover:bg-muted text-foreground">
+              <Clock className="mr-2 h-4 w-4 text-warning" /> Não, vai pagar depois (manter fatura aberta)
             </Button>
-            <Button variant="ghost" onClick={() => setConfirmModal(null)} className="w-full">
+            <Button variant="ghost" onClick={() => setConfirmModal(null)} className="h-11 w-full text-muted-foreground hover:text-foreground">
               Cancelar alteração
             </Button>
           </div>
@@ -1690,7 +2051,7 @@ function OrdersTab({ crecheId }: { crecheId: number }) {
 
 function FinancialDashboardContent() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.crecheId as number;
   const searchStr = useSearch();
   const urlParams = new URLSearchParams(searchStr);
   const activeTab = urlParams.get("tab") || "cashflow";
@@ -1817,6 +2178,7 @@ function FinancialDashboardContent() {
 }
 
 import { ThermalReceiptModal } from "@/components/modals/ThermalReceiptModal";
+import { formatCentsToBRL, parseReaisInputToCents } from "@/lib/money";
 
 export default function FinancialDashboard() {
   return (

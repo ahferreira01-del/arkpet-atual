@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { AuthProvider, useAuth } from "./hooks/use-auth";
+import { ThemeProvider } from "./components/theme-provider";
 import { AppLayout } from "./components/layout/app-layout";
 import { PushPrompt } from "./components/push-prompt";
 import { UpdatePrompt } from "./components/update-prompt";
@@ -70,18 +71,38 @@ function ChangePasswordGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function FinancialGuard({ children }: { children: React.ReactNode }) {
+
+function OperationGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && user && user.role === "staff") {
-      setLocation("/");
+    if (!isLoading && user) {
+      if (!["staff", "creche_admin"].includes(user.role) || !user.crecheId) {
+        setLocation("/");
+      }
     }
   }, [user, isLoading, setLocation]);
 
   if (isLoading) return null;
-  if (user?.role === "staff") return null;
+  if (user && (!["staff", "creche_admin"].includes(user.role) || !user.crecheId)) return null;
+  return <>{children}</>;
+}
+
+function CrecheAdminGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (user.role !== "creche_admin" || !user.crecheId) {
+        setLocation("/");
+      }
+    }
+  }, [user, isLoading, setLocation]);
+
+  if (isLoading) return null;
+  if (user && (user.role !== "creche_admin" || !user.crecheId)) return null;
   return <>{children}</>;
 }
 
@@ -185,8 +206,9 @@ function ServiceWorkerBridge() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <UpdatePrompt />
+      <ThemeProvider>
+        <TooltipProvider>
+          <UpdatePrompt />
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AuthProvider>
             <ServiceWorkerBridge />
@@ -245,23 +267,31 @@ function App() {
                 </Route>
 
                 <Route path="/staff">
-                  <RedirectToStaffBoard />
+                  <OperationGuard>
+                    <RedirectToStaffBoard />
+                  </OperationGuard>
                 </Route>
 
                 <Route path="/staff/board">
-                  <AppLayout>
-                    <StaffBoard />
-                  </AppLayout>
+                  <OperationGuard>
+                    <AppLayout>
+                      <StaffBoard />
+                    </AppLayout>
+                  </OperationGuard>
                 </Route>
 
                 <Route path="/staff/manage">
-                  <AppLayout>
-                    <ManageStaff />
-                  </AppLayout>
+                  <CrecheAdminGuard>
+                    <AppLayout>
+                      <ManageStaff />
+                    </AppLayout>
+                  </CrecheAdminGuard>
                 </Route>
 
                 <Route path="/walks">
-                  <RedirectToStaffBoard />
+                  <OperationGuard>
+                    <RedirectToStaffBoard />
+                  </OperationGuard>
                 </Route>
 
                 <Route path="/chat">
@@ -295,9 +325,11 @@ function App() {
                 </Route>
 
                 <Route path="/staff/qr-scanner">
-                  <AppLayout>
-                    <QrScanner />
-                  </AppLayout>
+                  <OperationGuard>
+                    <AppLayout>
+                      <QrScanner />
+                    </AppLayout>
+                  </OperationGuard>
                 </Route>
 
                 <Route path="/tutors">
@@ -319,11 +351,11 @@ function App() {
                 </Route>
 
                 <Route path="/financial">
-                  <FinancialGuard>
+                  <CrecheAdminGuard>
                     <AppLayout>
                       <FinancialDashboard />
                     </AppLayout>
-                  </FinancialGuard>
+                  </CrecheAdminGuard>
                 </Route>
 
                 <Route path="/tutor/financial">
@@ -349,7 +381,8 @@ function App() {
           </AuthProvider>
         </WouterRouter>
         <Toaster />
-      </TooltipProvider>
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

@@ -188,25 +188,25 @@ export function BottomNav({ user }: BottomNavProps) {
     const inner = (
       <div
         className={cn(
-          "relative flex flex-col items-center justify-center gap-1 transition-all duration-200 overflow-hidden",
-          isInsideMenu ? "py-4 rounded-2xl bg-white/5 hover:bg-white/10" : "py-2.5 mx-0.5 mt-1 rounded-xl",
-          isActive ? "text-primary" : action ? "text-destructive/70" : "text-gray-500"
+          "relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 overflow-hidden active:bg-secondary/50",
+          isInsideMenu ? "py-4 rounded-3xl bg-card active:bg-card/80 aspect-square border border-border" : "py-2.5 mx-0.5 mt-1 rounded-xl",
+          isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
         )}
       >
-        <div className={cn("relative flex items-center justify-center rounded-lg transition-all duration-200", isInsideMenu ? "h-8 w-8 mb-1" : "h-7 w-7")}>
-          <link.icon className={cn("transition-transform duration-200", isInsideMenu ? "h-7 w-7" : "h-6 w-6", isActive ? "text-primary stroke-[2.5px]" : "text-gray-500")} />
+        {!isInsideMenu && isActive && (
+          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />
+        )}
+        <div className={cn("relative flex items-center justify-center rounded-lg", isInsideMenu ? "h-8 w-8 mb-1" : "h-7 w-7")}>
+          <link.icon strokeWidth={1.5} className={cn("", isInsideMenu ? "h-7 w-7" : "h-[22px] w-[22px]", !isInsideMenu && isActive ? "text-primary stroke-[2px]" : "text-muted-foreground")} />
           {badge > 0 && (
-            <span className="absolute -top-1 -right-2 min-w-[16px] h-[16px] px-0.5 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center leading-none shadow-lg">
+            <span className={cn("absolute px-0.5 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center leading-none shadow-sm", isInsideMenu ? "-top-2 -right-2 min-w-[20px] h-[20px] text-[10px]" : "-top-1 -right-2 min-w-[16px] h-[16px] text-[9px]")}>
               {badge > 99 ? "99+" : badge}
             </span>
           )}
         </div>
-        <span className={cn("font-semibold leading-none transition-all duration-200 truncate max-w-full z-10", isInsideMenu ? "text-[12px]" : "text-[11px]", isActive ? "text-white" : action ? "text-destructive/70" : "text-gray-500")}>
+        <span className={cn("font-medium leading-none truncate max-w-full z-10", isInsideMenu ? "text-[12px] text-foreground" : "text-[11px]", !isInsideMenu && isActive ? "text-primary font-semibold" : action ? "text-destructive/70" : "text-muted-foreground")}>
           {link.name}
         </span>
-        {!isInsideMenu && isActive && (
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-[3px] bg-primary rounded-t-full shadow-[0_0_8px_rgba(132,169,80,0.8)]" />
-        )}
       </div>
     );
 
@@ -242,17 +242,17 @@ export function BottomNav({ user }: BottomNavProps) {
   return (
     <>
       <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden will-change-transform">
-        <div className="bg-[#111214] border-t border-white/5 px-1 pb-safe pl-safe pr-safe relative">
+        <div className="bg-background border-t border-border px-1 pb-safe pl-safe pr-safe relative">
           <div className="flex items-stretch justify-around">
             {visibleLinks.map((link) => renderLink(link, false))}
             
             {needsMenu && (
               <button onClick={() => setIsMenuOpen(true)} className="flex-1 relative">
-                <div className="relative flex flex-col items-center justify-center gap-1 transition-all duration-200 rounded-xl mt-1 overflow-hidden py-2.5 mx-0.5 text-gray-500 hover:text-white">
-                  <div className="relative flex items-center justify-center rounded-lg transition-all duration-200 h-7 w-7">
-                    <Menu className="transition-transform duration-200 h-6 w-6" />
+                <div className="relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 rounded-xl mt-1 overflow-hidden py-2.5 mx-0.5 text-muted-foreground active:bg-secondary/50">
+                  <div className="relative flex items-center justify-center rounded-lg h-7 w-7">
+                    <Menu className="h-[22px] w-[22px]" />
                   </div>
-                  <span className="font-semibold leading-none transition-all duration-200 truncate max-w-full z-10 text-[11px]">
+                  <span className="font-medium leading-none truncate max-w-full z-10 text-[11px]">
                     Menu
                   </span>
                 </div>
@@ -264,7 +264,7 @@ export function BottomNav({ user }: BottomNavProps) {
 
       {needsMenu && (
         <Modal isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} title="Menu Principal">
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 pb-4">
+          <div className="grid grid-cols-2 min-[360px]:grid-cols-3 sm:grid-cols-4 gap-3 pb-4">
             {links.map((link) => renderLink(link, true))}
           </div>
         </Modal>

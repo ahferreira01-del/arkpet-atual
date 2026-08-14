@@ -51,7 +51,7 @@ export function FeedList({
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {[1, 2, 3].map((i) => (
           <SkeletonCard key={i} />
         ))}
@@ -61,13 +61,15 @@ export function FeedList({
 
   if (isError) {
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center">
-          <RefreshCw className="h-5 w-5 text-red-400" />
+      <div className="flex flex-col items-center justify-center gap-4 py-20 px-6 text-center bg-card border border-border rounded-2xl shadow-sm">
+        <div className="h-14 w-14 rounded-full bg-destructive/10 flex items-center justify-center">
+          <RefreshCw className="h-6 w-6 text-destructive" />
         </div>
-        <p className="text-sm font-medium text-white">Não foi possível carregar o feed</p>
-        <p className="text-xs text-muted-foreground">Verifique sua conexão e tente novamente.</p>
-        <Button size="sm" variant="ghost" onClick={onRetry} className="mt-1">
+        <div>
+          <p className="text-base font-semibold text-foreground">Não foi possível carregar o feed</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">Verifique sua conexão e tente novamente para visualizar as atualizações.</p>
+        </div>
+        <Button size="lg" variant="outline" onClick={onRetry} className="mt-2 min-h-11 rounded-full">
           Tentar novamente
         </Button>
       </div>
@@ -76,20 +78,22 @@ export function FeedList({
 
   if (posts.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <div className="h-12 w-12 rounded-full bg-white/5 flex items-center justify-center">
-          <Camera className="h-5 w-5 text-muted-foreground" />
+      <div className="flex flex-col items-center justify-center gap-4 py-24 px-6 text-center bg-card border border-border rounded-2xl shadow-sm">
+        <div className="h-14 w-14 rounded-full bg-secondary flex items-center justify-center">
+          <Camera className="h-6 w-6 text-muted-foreground" />
         </div>
-        <p className="text-sm font-medium text-white">Nenhuma publicação ainda</p>
-        <p className="text-xs text-muted-foreground">
-          As novidades da creche aparecerão aqui.
-        </p>
+        <div>
+          <p className="text-base font-semibold text-foreground">Nenhuma publicação ainda</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+            As novidades, fotos e vídeos dos pets da creche aparecerão aqui.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {posts.map((post) => (
         <FeedCard
           key={post.id}
@@ -105,8 +109,8 @@ export function FeedList({
 
       {/* Visible spinner while loading next page */}
       {isFetchingNextPage && (
-        <div className="flex justify-center py-4">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <div className="flex justify-center py-6">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       )}
     </div>
@@ -115,21 +119,21 @@ export function FeedList({
 
 function SkeletonCard() {
   return (
-    <div className="bg-card border border-white/5 rounded-2xl overflow-hidden animate-pulse">
-      <div className="p-4 flex items-center gap-3 border-b border-white/5">
-        <div className="h-10 w-10 rounded-full bg-white/10 shrink-0" />
-        <div className="flex-1 space-y-2">
-          <div className="h-3 bg-white/10 rounded w-1/3" />
-          <div className="h-3 bg-white/10 rounded w-1/4" />
+    <div className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse shadow-sm">
+      <div className="p-4 flex items-center gap-4 border-b border-border">
+        <div className="h-12 w-12 rounded-full bg-secondary shrink-0" />
+        <div className="flex-1 space-y-3">
+          <div className="h-4 bg-secondary rounded-full w-1/3" />
+          <div className="h-3 bg-secondary rounded-full w-1/4" />
         </div>
       </div>
-      <div className="p-4 space-y-2">
-        <div className="h-3 bg-white/10 rounded w-full" />
-        <div className="h-3 bg-white/10 rounded w-3/4" />
-        <div className="h-40 bg-white/5 rounded-xl mt-3" />
+      <div className="p-5 space-y-3">
+        <div className="h-4 bg-secondary rounded-full w-full" />
+        <div className="h-4 bg-secondary rounded-full w-3/4" />
+        <div className="h-48 bg-secondary rounded-xl mt-4" />
       </div>
-      <div className="px-4 py-3 border-t border-white/5">
-        <div className="h-3 bg-white/10 rounded w-1/4" />
+      <div className="px-5 py-4 border-t border-border">
+        <div className="h-4 bg-secondary rounded-full w-1/4" />
       </div>
     </div>
   );

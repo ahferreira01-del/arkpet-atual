@@ -136,10 +136,12 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
     }
 
     // Default fallback
-    res.status(404).json({ error: "Report type not found" });
+    return res.status(404).json({ error: "Report type not found" });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
 export default router;
+
+

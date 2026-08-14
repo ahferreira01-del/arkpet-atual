@@ -70,7 +70,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
               exit={{ opacity: 0, y: 40, scale: 0.98 }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
               className={cn(
-                "glass-panel pointer-events-auto flex flex-col",
+                "bg-card text-card-foreground border border-border shadow-lg pointer-events-auto flex flex-col",
                 // Mobile: full-width bottom sheet
                 "w-full rounded-t-3xl modal-max-h",
                 // Desktop: centered card
@@ -80,7 +80,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
             >
               {/* Drag handle (mobile only) */}
               <div className="pt-3 pb-1 flex justify-center flex-shrink-0 md:hidden">
-                <div className="w-10 h-1 bg-white/20 rounded-full" />
+                <div className="w-10 h-1.5 bg-primary rounded-full" />
               </div>
 
               {/* Header */}

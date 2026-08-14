@@ -91,6 +91,14 @@ export const CrecheStatus = {
   inactive: "inactive",
 } as const;
 
+export type CrecheDeliveryType =
+  (typeof CrecheDeliveryType)[keyof typeof CrecheDeliveryType];
+
+export const CrecheDeliveryType = {
+  fixed: "fixed",
+  on_demand: "on_demand",
+} as const;
+
 export interface Creche {
   id: number;
   name: string;
@@ -102,6 +110,10 @@ export interface Creche {
   logoUrl?: string | null;
   status: CrecheStatus;
   adminId?: number | null;
+  deliveryType: CrecheDeliveryType;
+  deliveryFee: string;
+  pixKey?: string | null;
+  pixName?: string | null;
   createdAt: string;
 }
 
@@ -122,6 +134,15 @@ export const UpdateCrecheRequestStatus = {
   inactive: "inactive",
 } as const;
 
+export type UpdateCrecheRequestDeliveryType =
+  | (typeof UpdateCrecheRequestDeliveryType)[keyof typeof UpdateCrecheRequestDeliveryType]
+  | null;
+
+export const UpdateCrecheRequestDeliveryType = {
+  fixed: "fixed",
+  on_demand: "on_demand",
+} as const;
+
 export interface UpdateCrecheRequest {
   name?: string;
   address?: string;
@@ -130,6 +151,10 @@ export interface UpdateCrecheRequest {
   maxCapacity?: number;
   status?: UpdateCrecheRequestStatus;
   logoUrl?: string | null;
+  deliveryType?: UpdateCrecheRequestDeliveryType;
+  deliveryFee?: string | null;
+  pixKey?: string | null;
+  pixName?: string | null;
 }
 
 export interface CrecheStats {
@@ -207,6 +232,12 @@ export interface FeedingSchedule {
   notes?: string | null;
 }
 
+export interface PetWalkScheduleItem {
+  time: string;
+  durationMinutes?: number | null;
+  notes?: string | null;
+}
+
 export interface Pet {
   id: number;
   crecheId: number;
@@ -225,6 +256,7 @@ export interface Pet {
   photoUrl?: string | null;
   isCheckedIn: boolean;
   feedingSchedule?: FeedingSchedule | null;
+  walkSchedule?: PetWalkScheduleItem[] | null;
   status: PetStatus;
   createdAt: string;
 }
@@ -275,6 +307,7 @@ export interface CreatePetRequest {
   specialNeeds?: string | null;
   photoUrl?: string | null;
   feedingSchedule?: FeedingSchedule | null;
+  walkSchedule?: PetWalkScheduleItem[] | null;
 }
 
 export type UpdatePetRequestTemperament =
@@ -309,6 +342,7 @@ export interface UpdatePetRequest {
   specialNeeds?: string | null;
   photoUrl?: string | null;
   feedingSchedule?: FeedingSchedule | null;
+  walkSchedule?: PetWalkScheduleItem[] | null;
   status?: UpdatePetRequestStatus;
 }
 
@@ -421,20 +455,8 @@ export interface CreateBookingRequest {
   isRecurring: boolean;
   recurringDays?: number[] | null;
   price?: number | null;
-  /** For package-credit bookings: the maxPetsPerDay limit of the package used. */
   packageMaxPets?: number | null;
-  /**
-   * Catalogue item ID of the primary service being booked.
-   * Must be positive, active, service-type, and belong to the current creche.
-   * Required when additionalServiceIds are provided; null/absent for package bookings.
-   */
   primaryCatalogueItemId?: number | null;
-  /**
-   * Catalogue item IDs of add-on services to attach to the booking.
-   * Each ID must be a positive integer, active, service-type, belong to this creche,
-   * and must not duplicate primaryCatalogueItemId.
-   * Not allowed when packageMaxPets is set (package bookings).
-   */
   additionalServiceIds?: number[] | null;
 }
 
@@ -755,6 +777,11 @@ export const ListPetsStatus = {
   checked_in: "checked_in",
   all: "all",
 } as const;
+
+export type ListPets200 = {
+  items: Pet[];
+  total: number;
+};
 
 export type ListBookingsParams = {
   status?: ListBookingsStatus;

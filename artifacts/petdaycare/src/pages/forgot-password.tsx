@@ -1,64 +1,67 @@
 import React from "react";
 import { Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { KeyRound, Building2, ShieldCheck } from "lucide-react";
+import { KeyRound, Building2, ShieldCheck, ArrowLeft } from "lucide-react";
 
 export default function ForgotPassword() {
   return (
-    <div className="min-h-screen w-full flex bg-background">
-      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-20%] right-[-10%] w-[40%] h-[50%] rounded-full bg-accent/10 blur-[120px] pointer-events-none" />
-
-      <div className="w-full max-w-sm mx-auto flex flex-col justify-center px-6 py-12 z-10">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-20 w-20 mb-4 opacity-90" />
-          <span className="font-display font-bold text-2xl tracking-tight text-foreground">ArkPet</span>
+    <div className="min-h-svh w-full flex flex-col bg-background font-sans">
+      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-6 py-12">
+        
+        {/* Header */}
+        <div className="mb-8 w-full flex flex-col items-center text-center">
+          <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+            <KeyRound className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mb-2">Esqueceu sua senha?</h1>
+          <p className="text-sm text-muted-foreground px-4">
+            A redefinição de acesso é gerenciada pelos administradores por motivos de segurança.
+          </p>
         </div>
 
-        <Card className="border-border shadow-md bg-card">
-          <CardHeader className="pb-4">
-            <div className="flex items-center gap-3 mb-1">
-              <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <KeyRound className="h-5 w-5 text-primary" />
+        {/* Info Cards */}
+        <div className="w-full space-y-4 mb-8">
+          
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Building2 className="h-5 w-5 text-primary" />
               </div>
-              <CardTitle className="text-xl">Esqueceu sua senha?</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              A redefinição de senha é feita pelo administrador da sua creche. Sem necessidade de e-mail.
-            </p>
-
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <Building2 className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">Tutores e funcionários</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Entre em contato com o administrador da sua creche. Ele pode gerar uma nova senha temporária diretamente pelo sistema.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <ShieldCheck className="h-4 w-4 text-violet-400 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-white">Administradores de creche</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Entre em contato com o suporte ArkPet para redefinir o acesso.
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-1">Tutores e Funcionários</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Entre em contato com o <strong>administrador da sua creche</strong>. Ele possui acesso para gerar e revogar senhas temporárias imediatamente pelo sistema.
+                </p>
               </div>
             </div>
+          </div>
 
-            <Link href="/login">
-              <Button variant="outline" className="w-full mt-2" size="lg">
-                Voltar ao login
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="h-10 w-10 rounded-full bg-violet-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <ShieldCheck className="h-5 w-5 text-violet-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-1">Administradores de Creche</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Caso você seja o administrador e tenha perdido o acesso, contate o <strong>Suporte ArkPet</strong> para redefinição segura da sua conta matriz.
+                </p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Actions */}
+        <div className="w-full">
+          <Link href="/login" className="block">
+            <Button variant="outline" className="w-full h-12 text-base font-medium bg-card hover:bg-accent/50">
+              <ArrowLeft className="h-5 w-5 mr-2 text-muted-foreground" />
+              Voltar ao login
+            </Button>
+          </Link>
+        </div>
+
       </div>
     </div>
   );

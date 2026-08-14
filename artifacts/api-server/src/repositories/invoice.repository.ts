@@ -5,8 +5,9 @@ import {
   usersTable,
   petsTable,
 } from "@workspace/db/schema";
-import { eq, and, or, desc, asc, count, sql } from "drizzle-orm";
+import { eq, and, or, desc, asc, count, sql, lte, inArray } from "drizzle-orm";
 import { c } from "./shared.js";
+import { getBusinessDate } from "../lib/date.js";
 
 export class InvoiceRepository {
   // ── Invoice reads ────────────────────────────────────────────────────────
@@ -66,14 +67,15 @@ export class InvoiceRepository {
   }
 
   /** Returns true if tutor has any pending-past-due or overdue invoice. */
-  static async hasOverdue(tutorId: number, tx?: any): Promise<boolean> {
-    const todayStr = new Date().toISOString().split("T")[0];
+  static async hasOverdue(tutorId: number, crecheId: number, tx?: any): Promise<boolean> {
+    const todayStr = getBusinessDate();
     const [r] = await c(tx)
       .select({ id: invoicesTable.id })
       .from(invoicesTable)
       .where(
         and(
           eq(invoicesTable.tutorId, tutorId),
+          eq(invoicesTable.crecheId, crecheId),
           or(
             eq(invoicesTable.status, "overdue"),
             and(
@@ -85,6 +87,48 @@ export class InvoiceRepository {
       )
       .limit(1);
     return !!r;
+  }
+
+  /**
+   * Returns upcoming or overdue invoices for a tutor, independent of createdAt.
+   * Orders by dueDate ASC to ensure closest due dates are visible first.
+   */
+  static async listUpcomingByCreche(
+    crecheId: number,
+    tutorId: number | null,
+    limit: number = 50,
+    tx?: any
+  ) {
+    const cond = tutorId
+      ? and(
+          eq(invoicesTable.crecheId, crecheId),
+          eq(invoicesTable.tutorId, tutorId),
+          inArray(invoicesTable.status, ["pending", "overdue"])
+        )
+      : and(
+          eq(invoicesTable.crecheId, crecheId),
+          inArray(invoicesTable.status, ["pending", "overdue"])
+        );
+
+    const data = await c(tx)
+      .select({
+        id: invoicesTable.id,
+        amount: invoicesTable.amount,
+        status: invoicesTable.status,
+        dueDate: invoicesTable.dueDate,
+        tutorId: invoicesTable.tutorId,
+        tutorName: usersTable.name,
+        createdAt: invoicesTable.createdAt,
+        paymentMethod: invoicesTable.paymentMethod,
+        receiptPhotoPath: invoicesTable.receiptPhotoPath,
+      })
+      .from(invoicesTable)
+      .leftJoin(usersTable, eq(invoicesTable.tutorId, usersTable.id))
+      .where(cond)
+      .orderBy(asc(invoicesTable.dueDate))
+      .limit(limit);
+
+    return data;
   }
 
   /** Paginated list, optionally filtered by tutorId. */

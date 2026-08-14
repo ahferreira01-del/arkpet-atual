@@ -1,10 +1,10 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { useResetPassword } from "@workspace/api-client-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { KeyRound, CheckCircle2, AlertCircle } from "lucide-react";
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
@@ -37,59 +37,101 @@ export default function ResetPassword() {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-background">
-      <div className="w-full max-w-sm mx-auto flex flex-col justify-center px-6 py-12">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-20 w-20 mb-4 opacity-90" />
-          <span className="font-display font-bold text-2xl tracking-tight text-foreground">ArkPet</span>
+    <div className="min-h-svh w-full flex flex-col bg-background font-sans">
+      <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto px-6 py-12">
+        
+        {/* Header */}
+        <div className="mb-8 w-full flex flex-col items-center text-center">
+          <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-6">
+            <KeyRound className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mb-2">Redefinir senha</h1>
+          <p className="text-sm text-muted-foreground px-4">
+            {done ? "Sua nova senha foi salva." : "Escolha uma nova senha para sua conta."}
+          </p>
         </div>
 
-        <Card className="border-border shadow-md bg-card">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl">Redefinir senha</CardTitle>
-            <CardDescription>
-              {done ? "Tudo certo!" : "Escolha uma nova senha para sua conta."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!token ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                  Link inválido. Solicite uma nova redefinição de senha.
-                </div>
-                <Link href="/recuperar-senha">
-                  <Button variant="outline" className="w-full" size="lg">Solicitar novo link</Button>
-                </Link>
+        {/* Card do Formulário */}
+        <div className="w-full bg-card rounded-2xl border border-border p-6 shadow-sm">
+          {!token ? (
+            <div className="space-y-6">
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/20 bg-destructive/5 text-destructive">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <p className="text-sm leading-relaxed">
+                  Link inválido ou expirado. Solicite uma nova redefinição de senha ao administrador.
+                </p>
               </div>
-            ) : done ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-3 text-sm text-muted-foreground">
-                  Senha redefinida com sucesso. Você já pode entrar com a nova senha.
-                </div>
-                <Button className="w-full" size="lg" onClick={() => setLocation("/login")}>Ir para o login</Button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                {error && (
-                  <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {error}
-                  </div>
-                )}
-                <div className="space-y-1.5">
-                  <Label htmlFor="password">Nova senha</Label>
-                  <Input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" required />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
-                  <Input id="confirmPassword" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required />
-                </div>
-                <Button type="submit" className="w-full mt-2" size="lg" isLoading={mutation.isPending}>
-                  Redefinir senha
+              <Link href="/recuperar-senha" className="block w-full">
+                <Button variant="outline" className="w-full h-12 text-base font-medium">
+                  Solicitar novo link
                 </Button>
-              </form>
-            )}
-          </CardContent>
-        </Card>
+              </Link>
+            </div>
+          ) : done ? (
+            <div className="space-y-6">
+              <div className="flex items-start gap-3 p-4 rounded-xl border border-success/20 bg-success/5 text-success">
+                <CheckCircle2 className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                <p className="text-sm leading-relaxed">
+                  Senha redefinida com sucesso. Você já pode acessar sua conta com a nova senha.
+                </p>
+              </div>
+              <Button 
+                className="w-full h-12 text-base font-medium" 
+                onClick={() => setLocation("/login")}
+              >
+                Ir para o login
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="flex items-start gap-3 p-3 rounded-xl border border-destructive/20 bg-destructive/5 text-destructive">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm">{error}</p>
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                <Label htmlFor="password" className="pl-1 text-sm font-medium text-foreground">
+                  Nova senha
+                </Label>
+                <Input 
+                  id="password" 
+                  type="password" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                  placeholder="Mínimo 6 caracteres" 
+                  required 
+                  className="h-12 text-base md:text-sm"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="pl-1 text-sm font-medium text-foreground">
+                  Confirmar nova senha
+                </Label>
+                <Input 
+                  id="confirmPassword" 
+                  type="password" 
+                  value={confirmPassword} 
+                  onChange={e => setConfirmPassword(e.target.value)} 
+                  placeholder="Repita a nova senha"
+                  required 
+                  className="h-12 text-base md:text-sm"
+                />
+              </div>
+              
+              <Button 
+                type="submit" 
+                className="w-full h-12 text-base font-medium mt-2" 
+                isLoading={mutation.isPending}
+              >
+                Salvar nova senha
+              </Button>
+            </form>
+          )}
+        </div>
+        
       </div>
     </div>
   );

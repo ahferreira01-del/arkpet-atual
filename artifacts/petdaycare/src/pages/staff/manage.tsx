@@ -13,9 +13,9 @@ import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const roleColors: Record<string, string> = {
-  creche_admin: "bg-violet-500/20 text-violet-300 border-violet-500/30",
-  staff: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  tutor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  creche_admin: "bg-primary/20 text-primary border-primary/30",
+  staff: "bg-secondary text-muted-foreground border-border",
+  tutor: "bg-secondary text-muted-foreground border-border",
 };
 
 const roleLabel: Record<string, string> = {
@@ -34,10 +34,10 @@ type StaffMember = {
 
 function MemberAvatar({ name, active }: { name: string; active: boolean }) {
   return (
-    <div className={`h-11 w-11 rounded-full flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${
+    <div className={`h-11 w-11 rounded-full flex items-center justify-center font-bold text-lg flex-shrink-0 ${
       active
-        ? "bg-gradient-to-br from-primary/60 to-accent/60 shadow-lg shadow-primary/20"
-        : "bg-white/8"
+        ? "bg-primary/20 text-primary"
+        : "bg-secondary text-muted-foreground opacity-60"
     }`}>
       {name.charAt(0).toUpperCase()}
     </div>
@@ -107,7 +107,7 @@ function EditMemberModal({
           <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 border border-destructive/30">
             <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
             <div>
-              <p className="font-semibold text-white">Desativar {member.name}?</p>
+              <p className="font-semibold text-foreground">Desativar {member.name}?</p>
               <p className="text-sm text-muted-foreground mt-1">
                 Esse membro não conseguirá mais acessar o sistema. Você pode reativá-lo a qualquer momento.
               </p>
@@ -127,32 +127,28 @@ function EditMemberModal({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-5 mt-4">
-          <div className="flex items-center gap-4 p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="flex items-center gap-4 p-4 rounded-xl bg-secondary border border-border">
             <MemberAvatar name={member.name} active={member.isActive !== false} />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white truncate">{member.name}</p>
+              <p className="font-semibold text-foreground truncate">{member.name}</p>
               <p className="text-xs text-muted-foreground truncate">{member.email}</p>
             </div>
-            <span className={`text-xs px-2 py-1 rounded-full border ${
-              member.isActive !== false
-                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                : "bg-red-500/15 text-red-400 border-red-500/30"
-            }`}>
+            <Badge variant={member.isActive !== false ? "success" : "destructive"}>
               {member.isActive !== false ? "Ativo" : "Inativo"}
-            </span>
+            </Badge>
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Nome</label>
+            <label className="text-sm font-medium text-foreground">Nome</label>
             <Input name="name" defaultValue={member.name} required />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-white/80">Função</label>
+            <label className="text-sm font-medium text-foreground">Função</label>
             <select
               name="role"
               defaultValue={member.role}
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+              className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="staff">Funcionário</option>
               <option value="creche_admin">Admin de Creche</option>
@@ -161,17 +157,17 @@ function EditMemberModal({
 
           <div className="modal-sticky-footer flex flex-col gap-3">
             <div className="flex gap-3">
-              <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancelar</Button>
-              <Button type="submit" isLoading={updateMutation.isPending} className="flex-1">Salvar</Button>
+              <Button type="button" variant="ghost" onClick={onClose} className="flex-1 min-h-[44px]">Cancelar</Button>
+              <Button type="submit" isLoading={updateMutation.isPending} className="flex-1 min-h-[44px]">Salvar</Button>
             </div>
             <button
               type="button"
               onClick={handleToggleActive}
               disabled={updateMutation.isPending}
-              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+              className={`w-full flex items-center justify-center gap-2 py-2.5 min-h-[44px] rounded-xl text-sm font-medium border transition-all ${
                 member.isActive !== false
-                  ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
-                  : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                  ? "border-destructive/30 text-destructive hover:bg-destructive/10"
+                  : "border-success/30 text-success hover:bg-success/10"
               }`}
             >
               {member.isActive !== false ? (
@@ -242,40 +238,37 @@ export default function ManageStaff() {
         }
       />
 
-      {/* Stats — glassmorphism horizontal */}
+      {/* Stats — cards sem glassmorphism */}
       <div className="grid grid-cols-3 gap-3">
         {/* Total */}
-        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-primary/20 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent pointer-events-none" />
-          <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
+        <div className="bg-card rounded-2xl p-4 flex flex-col gap-2 border border-border">
+          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
             <Users className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-display font-bold text-white leading-none">{activeStaff.length}</p>
+            <p className="text-2xl font-display font-bold text-foreground leading-none">{activeStaff.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Total Ativo</p>
           </div>
         </div>
 
         {/* Funcionários */}
-        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-blue-500/20 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/8 to-transparent pointer-events-none" />
-          <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
-            <Shield className="h-4 w-4 text-blue-400" />
+        <div className="bg-card rounded-2xl p-4 flex flex-col gap-2 border border-border">
+          <div className="h-9 w-9 rounded-xl bg-secondary flex items-center justify-center">
+            <Shield className="h-4 w-4 text-muted-foreground" />
           </div>
           <div>
-            <p className="text-2xl font-display font-bold text-white leading-none">{funcionarios.length}</p>
+            <p className="text-2xl font-display font-bold text-foreground leading-none">{funcionarios.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Funcionários</p>
           </div>
         </div>
 
         {/* Admins */}
-        <div className="glass-panel rounded-2xl p-4 flex flex-col gap-2 border border-violet-500/20 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/8 to-transparent pointer-events-none" />
-          <div className="h-9 w-9 rounded-xl bg-violet-500/20 flex items-center justify-center">
-            <Crown className="h-4 w-4 text-violet-400" />
+        <div className="bg-card rounded-2xl p-4 flex flex-col gap-2 border border-border">
+          <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
+            <Crown className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-display font-bold text-white leading-none">{admins.length}</p>
+            <p className="text-2xl font-display font-bold text-foreground leading-none">{admins.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Admins</p>
           </div>
         </div>
@@ -290,7 +283,7 @@ export default function ManageStaff() {
         {isLoading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 rounded-2xl bg-white/5 animate-pulse" />
+              <div key={i} className="h-20 rounded-2xl bg-muted animate-pulse" />
             ))}
           </div>
         ) : activeStaff.length ? (
@@ -299,13 +292,13 @@ export default function ManageStaff() {
               <button
                 key={member.id}
                 onClick={() => setEditingMember(member as StaffMember)}
-                className="w-full glass-panel rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-white/8 active:scale-[0.99] transition-all text-left border border-white/8 hover:border-white/15"
+                className="w-full bg-card rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border hover:border-primary/30"
               >
                 <MemberAvatar name={member.name} active={true} />
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-white text-sm">{member.name}</span>
+                    <span className="font-semibold text-foreground text-sm">{member.name}</span>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${roleColors[member.role] || ""}`}>
                       {roleLabel[member.role] || member.role}
                     </span>
@@ -339,29 +332,27 @@ export default function ManageStaff() {
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider px-1">
             Inativos · {inactiveStaff.length}
           </h2>
-          <div className="space-y-2 opacity-60">
+          <div className="space-y-2">
             {inactiveStaff.map((member) => (
               <button
                 key={member.id}
                 onClick={() => setEditingMember(member as StaffMember)}
-                className="w-full glass-panel rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-white/5 active:scale-[0.99] transition-all text-left border border-white/5"
+                className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border"
               >
                 <MemberAvatar name={member.name} active={false} />
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 opacity-60">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-white/50 text-sm line-through">{member.name}</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full border bg-white/5 text-white/30 border-white/10">
-                      Inativo
-                    </span>
+                    <span className="font-semibold text-muted-foreground text-sm line-through">{member.name}</span>
+                    <Badge variant="secondary">Inativo</Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground/50 flex items-center gap-1 mt-0.5 truncate">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 truncate">
                     <Mail className="h-3 w-3 flex-shrink-0" />
                     <span className="truncate">{member.email}</span>
                   </p>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0 text-emerald-400/70">
+                <div className="flex items-center gap-1 flex-shrink-0 text-success">
                   <UserCheck className="h-4 w-4" />
-                  <span className="text-xs hidden sm:block">Reativar</span>
+                  <span className="text-xs font-medium hidden sm:block">Reativar</span>
                 </div>
               </button>
             ))}
@@ -388,15 +379,15 @@ export default function ManageStaff() {
             <label className="text-sm font-medium">Função</label>
             <select
               name="role"
-              className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md"
+              className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="staff">Funcionário</option>
               <option value="creche_admin">Admin de Creche</option>
             </select>
           </div>
-          <div className="modal-sticky-footer flex gap-3">
-            <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)} className="flex-1">Cancelar</Button>
-            <Button type="submit" isLoading={addStaffMutation.isPending} className="flex-1">Adicionar</Button>
+          <div className="modal-sticky-footer flex gap-3 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setIsAddModalOpen(false)} className="flex-1 min-h-[44px]">Cancelar</Button>
+            <Button type="submit" isLoading={addStaffMutation.isPending} className="flex-1 min-h-[44px]">Adicionar</Button>
           </div>
         </form>
       </Modal>

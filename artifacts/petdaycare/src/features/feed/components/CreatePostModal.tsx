@@ -84,37 +84,38 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/80" onClick={onClose} />
 
       {/* Modal */}
       <form
         onSubmit={handleSubmit}
-        className="relative w-full sm:max-w-lg bg-card border border-white/10 rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[calc(100dvh-72px-env(safe-area-inset-bottom,0px))] sm:max-h-[85vh] mb-[calc(72px+env(safe-area-inset-bottom,0px))] sm:mb-0 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        className="relative w-full sm:max-w-lg bg-card sm:border sm:border-border rounded-t-3xl sm:rounded-2xl shadow-xl flex flex-col max-h-[88svh] sm:max-h-[85vh] mb-[calc(72px+env(safe-area-inset-bottom,0px))] sm:mb-0 animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
-          <h2 className="font-semibold text-white">Nova publicação</h2>
+        <div className="flex items-center justify-between pl-6 pr-4 py-3 border-b border-border shrink-0">
+          <h2 className="font-semibold text-foreground">Nova publicação</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={isPending}
-            className="h-7 w-7 rounded-full flex items-center justify-center hover:bg-white/10 text-muted-foreground hover:text-white transition-colors disabled:opacity-40"
+            className="h-11 w-11 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
+            title="Fechar"
+            aria-label="Fechar modal"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 min-h-0">
           {/* Caption */}
           <div>
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="O que está acontecendo agora?"
-              rows={3}
               disabled={isPending}
-              className="w-full bg-transparent border-none resize-none focus-visible:ring-0 px-0 text-base placeholder:text-muted-foreground/60"
+              className="w-full min-h-[100px] bg-transparent border-none resize-none focus-visible:ring-0 px-0 text-base placeholder:text-muted-foreground/60 text-foreground"
               maxLength={1000}
             />
           </div>
@@ -136,20 +137,20 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
         </div>
 
         {/* Footer */}
-        <div className="px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-white/5 shrink-0 space-y-3">
+        <div className="px-6 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-border shrink-0 space-y-4 bg-card rounded-b-2xl">
           {/* Upload progress bar */}
           {isPending && uploadPercent !== undefined && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Upload className="h-3 w-3" />
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-sm font-medium text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <Upload className="h-4 w-4" />
                   {stageLabel ?? "Enviando…"}
                 </span>
                 <span>{uploadPercent}%</span>
               </div>
-              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+              <div className="h-2 rounded-full bg-secondary overflow-hidden">
                 <div
-                  className="h-full bg-primary rounded-full transition-all duration-300"
+                  className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
                   style={{ width: `${uploadPercent}%` }}
                 />
               </div>
@@ -157,33 +158,33 @@ export function CreatePostModal({ crecheId, checkedInPets, onClose }: CreatePost
           )}
 
           {isPending && uploadPercent === undefined && (
-            <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
               {stageLabel ?? "Processando…"}
             </p>
           )}
 
-          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2">
-            <p className="text-xs text-muted-foreground text-center sm:text-left">
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-sm font-medium text-muted-foreground text-center sm:text-left">
               {selectedPets.length === 0
                 ? "Selecione pelo menos um pet"
                 : !content.trim() && !mediaFile
-                ? "Adicione uma legenda ou mídia"
+                ? "Adicione legenda ou mídia"
                 : null}
             </p>
             <Button
               type="submit"
               disabled={!isValid || isPending}
-              className="w-full sm:w-auto rounded-full px-6 shadow-lg shadow-primary/20 shrink-0"
+              className="w-full sm:w-auto h-12 rounded-full px-8 shadow-sm shrink-0 text-base font-medium"
             >
               {isPending ? (
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   {stageLabel ?? "Publicando…"}
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle2 className="h-5 w-5" />
                   Publicar
                 </span>
               )}

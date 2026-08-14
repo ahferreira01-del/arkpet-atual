@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import { expensesTable } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { c } from "./shared.js";
+import { getBusinessDate } from "../lib/date.js";
 
 export class ExpenseRepository {
   static async list(crecheId: number, tx?: any) {
@@ -48,7 +49,6 @@ export class ExpenseRepository {
       .where(and(eq(expensesTable.id, id), eq(expensesTable.crecheId, crecheId)));
   }
 
-  /** Atomically marks expense as paid (only if not already paid). */
   static async markPaid(
     id: number,
     crecheId: number,
@@ -56,7 +56,7 @@ export class ExpenseRepository {
   ): Promise<typeof expensesTable.$inferSelect | null> {
     const [r] = await tx
       .update(expensesTable)
-      .set({ isPaid: true, paidDate: new Date().toISOString().split("T")[0] })
+      .set({ isPaid: true, paidDate: getBusinessDate() })
       .where(
         and(
           eq(expensesTable.id, id),

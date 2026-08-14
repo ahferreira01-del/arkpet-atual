@@ -6,6 +6,7 @@ import { db } from "@workspace/db";
 import { ExpenseRepository } from "../repositories/expense.repository.js";
 import { TransactionRepository } from "../repositories/transaction.repository.js";
 import { logFinancialAudit } from "./audit.js";
+import { getBusinessDate } from "../lib/date.js";
 
 export class ExpenseService {
   /**
@@ -30,7 +31,7 @@ export class ExpenseService {
           description: `Pagamento Despesa: ${expense.description}`,
           expenseId: expense.id,
           paymentMethod: paymentMethod as any,
-          transactionDate: new Date().toISOString().split("T")[0],
+          transactionDate: getBusinessDate(),
         },
         tx
       );

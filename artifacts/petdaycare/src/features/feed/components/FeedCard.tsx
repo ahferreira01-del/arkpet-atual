@@ -52,8 +52,8 @@ function LegacyMediaFallback({
 
   if (loading) {
     return (
-      <div className="w-full flex items-center justify-center gap-2 py-8 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
-        <Camera className="h-4 w-4" />
+      <div className="w-full flex items-center justify-center gap-2 py-12 rounded-xl bg-secondary border border-border text-sm text-muted-foreground animate-pulse">
+        <Camera className="h-5 w-5" />
         Carregando mídia…
       </div>
     );
@@ -62,7 +62,7 @@ function LegacyMediaFallback({
 
   if (mediaType === "video") {
     return (
-      <div className="w-full rounded-xl overflow-hidden bg-black">
+      <div className="w-full rounded-xl overflow-hidden bg-black border border-border">
         <video
           src={src}
           controls
@@ -78,7 +78,7 @@ function LegacyMediaFallback({
       src={src}
       alt="Foto do pet"
       loading="lazy"
-      className="w-full rounded-xl object-cover max-h-80"
+      className="w-full rounded-xl object-cover max-h-80 border border-border"
     />
   );
 }
@@ -104,23 +104,22 @@ export function FeedCard({ post, crecheId, userRole, userId }: FeedCardProps) {
 
   return (
     <>
-      <article className="bg-card border border-white/5 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-300 relative">
+      <article className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-3 duration-300 relative">
         {/* Header row: event meta + optional menu */}
         <div className="flex items-start">
           <div className="flex-1 min-w-0">
             <FeedCardHeader post={post} />
           </div>
           {canDelete && (
-            <div className="pt-3 pr-3 shrink-0">
+            <div className="pt-4 pr-4 shrink-0">
               <FeedCardMenu postId={post.id} crecheId={crecheId} />
             </div>
           )}
         </div>
 
         {/* Body: caption + media */}
-        {/* Body: caption + media */}
         {(post.content || post.mediaItems.length > 0 || post.type === "photo" || post.type === "video") && (
-          <div className="px-4 pb-4 space-y-3">
+          <div className="px-5 pb-5 space-y-4">
             {post.content && (
               <FeedCardCaption
                 postId={post.id}

@@ -414,12 +414,44 @@ async function sendInvoiceReminders() {
       const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
       let notifyType: "5_days" | "3_days" | "today" | "overdue" | null = null;
-      if (diffDays === 5) notifyType = "5_days";
-      else if (diffDays === 3) notifyType = "3_days";
-      else if (diffDays === 0) notifyType = "today";
-      else if (diffDays === -1) notifyType = "overdue";
+      if (invoice.status === "pending") {
+        if (diffDays <= 5 && diffDays > 3) notifyType = "5_days";
+        else if (diffDays <= 3 && diffDays > 0) notifyType = "3_days";
+        else if (diffDays === 0) notifyType = "today";
+      } else if (invoice.status === "overdue") {
+        if (diffDays < 0) notifyType = "overdue";
+      }
 
       if (!notifyType) continue;
+
+      await db.transaction(async (tx) => {
+        // Lock consultivo para serializar concorrência (invoiceId)
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${invoice.invoiceId})`);
+
+        // Re-verificar status da fatura (pode ter sido paga no meio tempo)
+        const [currentInvoice] = await tx.select({ status: invoicesTable.status })
+          .from(invoicesTable)
+          .where(eq(invoicesTable.id, invoice.invoiceId));
+        
+        if (!currentInvoice || !["pending", "overdue"].includes(currentInvoice.status)) {
+          return;
+        }
+
+        // Idempotência protegida por lock
+        const [alreadySent] = await tx.select({ id: financialOutboxTable.id })
+          .from(financialOutboxTable)
+          .where(
+            sql`event_type = 'invoice_reminder' AND payload->>'invoiceId' = ${invoice.invoiceId.toString()} AND payload->>'type' = ${notifyType}`
+          );
+
+        if (alreadySent) return;
+
+        // Marca como intenção de envio
+        await tx.insert(financialOutboxTable).values({
+          eventType: 'invoice_reminder',
+          payload: { invoiceId: invoice.invoiceId, type: notifyType },
+          status: 'processed'
+        });
 
       const [y, m, d] = invoice.dueDate.split("-");
       const dueDateStr = `${d}/${m}/${y}`;
@@ -458,12 +490,13 @@ async function sendInvoiceReminders() {
         adminBody = `A fatura de ${invoice.tutorName} (${fmtAmt}) está atrasada e o tutor foi bloqueado para novos agendamentos.`;
       }
 
-      await sendPushToRole(invoice.crecheId, "creche_admin", {
+      await sendPushToRole(invoice.crecheId!, "creche_admin", {
         title: adminTitle,
         body: adminBody,
         tag: `invoice-creche-${invoice.invoiceId}-${notifyType}`,
         data: { type: "invoice", tutorId: invoice.tutorId },
       }).catch(() => {});
+      });
     }
   } catch (err) {
     financialLog({ operation: "invoice_reminder", level: "error", error: err instanceof Error ? err.message : String(err) });
@@ -803,3 +836,4 @@ export function startOutboxWorker(): void {
   cron.schedule("* * * * *", processOutbox);
   console.log("[scheduler] Outbox worker started.");
 }
+

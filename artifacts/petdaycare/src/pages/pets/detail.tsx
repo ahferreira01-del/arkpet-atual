@@ -134,19 +134,19 @@ export default function PetDetail({ id }: { id: number }) {
   return (
     <div className="space-y-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-white/10">
+        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-secondary">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
         </Button>
         <span className="text-sm text-muted-foreground font-medium">Voltar</span>
       </div>
 
       {/* Header */}
-      <div className="glass-panel rounded-3xl p-6 md:p-8 flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-1/3 h-full bg-gradient-to-l from-primary/20 to-transparent pointer-events-none" />
+      <div className="bg-card border border-border rounded-3xl p-6 md:p-8 flex flex-col md:flex-row gap-8 items-center md:items-start relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-1/3 h-full bg-gradient-to-l from-primary/5 to-transparent pointer-events-none" />
 
         {/* Clickable pet avatar for photo upload */}
         <div
-          className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-background bg-secondary relative z-10 shadow-[0_0_30px_rgba(139,92,246,0.3)] overflow-hidden flex-shrink-0 cursor-pointer group/avatar"
+          className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-background bg-secondary relative z-10 shadow-md overflow-hidden flex-shrink-0 cursor-pointer group/avatar"
           onClick={() => photoInputRef.current?.click()}
           title="Clique para trocar a foto"
         >
@@ -156,14 +156,13 @@ export default function PetDetail({ id }: { id: number }) {
             </div>
           ) : (
             <PetAvatar
-              photoUrl={pet.photoUrl}
-              name={pet.name}
-              species={pet.species}
-              className="h-full w-full object-cover"
-              iconClassName="h-16 w-16 text-white/30"
-            />
+                photoUrl={pet.photoUrl}
+                name={pet.name}
+                species={pet.species}
+                className="h-full w-full object-cover"
+                iconClassName="h-16 w-16 text-muted-foreground/30"
+              />
           )}
-          {/* Hover overlay */}
           {!uploadingPhoto && (
             <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
               <Camera className="h-8 w-8 text-white mb-1" />
@@ -181,7 +180,7 @@ export default function PetDetail({ id }: { id: number }) {
 
         <div className="flex-1 text-center md:text-left z-10">
           <div className="flex flex-col md:flex-row md:items-center gap-3 mb-2 justify-center md:justify-start">
-            <h1 className="text-4xl font-display font-bold text-white tracking-tight">{pet.name}</h1>
+            <h1 className="text-4xl font-display font-bold text-foreground tracking-tight">{pet.name}</h1>
             {pet.isCheckedIn ? (
               <Badge variant="success" className="w-max mx-auto md:mx-0">Presente</Badge>
             ) : (
@@ -191,7 +190,7 @@ export default function PetDetail({ id }: { id: number }) {
               <Badge variant="destructive" className="w-max mx-auto md:mx-0">Inadimplente</Badge>
             )}
             {user?.role !== "tutor" && tutorInvoices && !tutorInvoices.some((inv: any) => inv.status === "overdue") && (
-              <Badge variant="success" className="w-max mx-auto md:mx-0 bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Adimplente</Badge>
+              <Badge variant="success" className="w-max mx-auto md:mx-0">Adimplente</Badge>
             )}
           </div>
           <p className="text-lg text-muted-foreground capitalize mb-4">
@@ -199,50 +198,50 @@ export default function PetDetail({ id }: { id: number }) {
           </p>
           <div className="flex flex-wrap gap-2 justify-center md:justify-start mb-2">
             {pet.weight && (
-              <Badge className="bg-white/10 text-white hover:bg-white/20">
+              <Badge variant="secondary">
                 Porte {pet.weight < 10 ? "Pequeno" : pet.weight < 25 ? "Médio" : "Grande"}
               </Badge>
             )}
           </div>
           <div className="flex flex-wrap gap-2 justify-center md:justify-start">
             {pet.temperament && (
-              <Badge variant="outline" className="capitalize bg-white/5">
+              <Badge variant="outline" className="capitalize">
                 <Activity className="w-3 h-3 mr-1" /> {temperamentMap[pet.temperament] || pet.temperament}
               </Badge>
             )}
             {pet.allergies && (
-              <Badge variant="destructive" className="bg-destructive/20">
+              <Badge variant="destructive">
                 <AlertCircle className="w-3 h-3 mr-1" /> Alergias
               </Badge>
             )}
             {pet.specialNeeds && (
-              <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30">
+              <Badge variant="warning">
                 <AlertCircle className="w-3 h-3 mr-1" /> Necessidades especiais
               </Badge>
             )}
-            <Badge variant="outline" className={(pet as any).isCastrated ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" : "bg-white/5 text-muted-foreground"}>
+            <Badge variant="outline" className={(pet as any).isCastrated ? "bg-success/10 text-success border-success/30" : "bg-muted text-muted-foreground"}>
               {(pet as any).isCastrated ? "✓ Castrado" : "Não castrado"}
             </Badge>
           </div>
         </div>
 
         <div className="hidden md:flex gap-2 z-10 w-auto flex-wrap justify-end ml-auto">
-          <Button variant="glass" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2 min-h-10">
             <QrCode className="h-4 w-4" />
             <span>QR Code</span>
           </Button>
           {confirmedBooking && (
             <Button
-              variant="glass"
+              variant="outline"
               size="sm"
-              className="gap-2 border-blue-500/30 text-blue-300 hover:bg-blue-500/10"
+              className="gap-2 min-h-10 text-primary border-primary/30 hover:bg-primary/10"
               onClick={() => setOnTheWayOpen(true)}
             >
               <Navigation className="h-4 w-4" />
               <span>A Caminho</span>
             </Button>
           )}
-          <Button variant="glass" size="sm" onClick={() => setEditOpen(true)} className="gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setEditOpen(true)} className="gap-2 min-h-10">
             <span>Editar Perfil</span>
           </Button>
           {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
@@ -272,7 +271,7 @@ export default function PetDetail({ id }: { id: number }) {
             <Button
               onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "drop_off", etaMinutes: Number(eta) })}
               isLoading={onTheWayMutation.isPending}
-              className="bg-blue-600/80 hover:bg-blue-600 border-blue-500/30 w-full"
+              className="w-full min-h-10"
             >
               <Car className="mr-2 h-4 w-4" /> {user?.role === "tutor" ? "Levar o pet" : "Entregar o pet"}
             </Button>
@@ -280,7 +279,7 @@ export default function PetDetail({ id }: { id: number }) {
               onClick={() => confirmedBooking && onTheWayMutation.mutate({ bookingId: confirmedBooking.id, type: "pickup", etaMinutes: Number(eta) })}
               isLoading={onTheWayMutation.isPending}
               variant="outline"
-              className="border-blue-500/30 text-blue-400 hover:bg-blue-500/10 w-full"
+              className="w-full min-h-10"
             >
               <Navigation className="mr-2 h-4 w-4" /> Buscar o pet
             </Button>
@@ -310,7 +309,7 @@ export default function PetDetail({ id }: { id: number }) {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Nascimento</label>
-              <Input name="birthDate" type="date" defaultValue={pet.birthDate ? pet.birthDate.split('T')[0] : ""} className="h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2" />
+              <Input name="birthDate" type="date" defaultValue={pet.birthDate ? pet.birthDate.split('T')[0] : ""} className="h-12 w-full rounded-xl border border-border bg-background px-3 py-2" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -325,7 +324,7 @@ export default function PetDetail({ id }: { id: number }) {
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Temperamento</label>
-            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-12 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
+            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
               <option value="">Selecione...</option>
               <option value="calm">Calmo</option>
               <option value="playful">Brincalhão</option>
@@ -342,14 +341,14 @@ export default function PetDetail({ id }: { id: number }) {
             <label className="text-sm font-medium">Necessidades Especiais</label>
             <Input name="specialNeeds" defaultValue={pet.specialNeeds || ""} placeholder="Ex: ração medicamentosa..." />
           </div>
-          <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10 cursor-pointer hover:bg-white/8 transition-colors">
+          <label className="flex items-center gap-3 p-3 rounded-xl bg-secondary border border-border cursor-pointer hover:bg-secondary/80 transition-colors">
             <input type="checkbox" name="isCastrated" defaultChecked={!!(pet as any).isCastrated} className="h-4 w-4 rounded accent-primary" />
             <div>
-              <p className="text-sm font-medium text-white">Castrado(a)</p>
+              <p className="text-sm font-medium text-foreground">Castrado(a)</p>
               <p className="text-xs text-muted-foreground">Marque se o pet já foi castrado</p>
             </div>
           </label>
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="pt-4 flex justify-end gap-3 mt-4 border-t border-border">
             <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>Cancelar</Button>
             <Button type="submit" isLoading={updatePetMutation.isPending}>Salvar Alterações</Button>
           </div>
@@ -380,9 +379,9 @@ export default function PetDetail({ id }: { id: number }) {
 
             { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
           ].map((tab) => (
-            <AccordionItem key={tab.id} value={tab.id} className="border border-white/10 bg-black/20 rounded-2xl overflow-hidden shadow-sm">
-              <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-white/5 transition-colors">
-                <div className="flex items-center gap-3 text-white text-base">
+            <AccordionItem key={tab.id} value={tab.id} className="border border-border bg-card rounded-2xl overflow-hidden shadow-sm">
+              <AccordionTrigger className="px-5 py-4 hover:no-underline hover:bg-secondary/50 transition-colors min-h-[44px]">
+                <div className="flex items-center gap-3 text-foreground text-base">
                   {tab.icon && <div className="text-muted-foreground">{tab.icon}</div>}
                   <span className="font-semibold">{tab.label}</span>
                 </div>
@@ -396,22 +395,22 @@ export default function PetDetail({ id }: { id: number }) {
       </div>
 
       {/* Mobile Sticky Action Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-background/90 backdrop-blur-xl border-t border-white/10 z-50 flex gap-2 overflow-x-auto scrollbar-hide shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
-        <Button variant="secondary" onClick={() => setQrModalOpen(true)} className="gap-2 flex-1 whitespace-nowrap bg-white/5 border border-white/10 text-white">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 pb-nav-safe bg-background/90 backdrop-blur-xl border-t border-border z-50 flex gap-2 overflow-x-auto scrollbar-hide shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <Button variant="secondary" onClick={() => setQrModalOpen(true)} className="gap-2 flex-1 whitespace-nowrap min-h-[44px]">
           <QrCode className="h-4 w-4" />
           <span>QR Code</span>
         </Button>
         {confirmedBooking && (
           <Button
             variant="outline"
-            className="gap-2 flex-1 whitespace-nowrap border-blue-500/30 text-blue-400 bg-blue-500/10"
+            className="gap-2 flex-1 whitespace-nowrap text-primary border-primary/30 min-h-[44px]"
             onClick={() => setOnTheWayOpen(true)}
           >
             <Navigation className="h-4 w-4" />
             <span>A Caminho</span>
           </Button>
         )}
-        <Button variant="secondary" onClick={() => setEditOpen(true)} className="gap-2 flex-1 whitespace-nowrap bg-white/5 border border-white/10 text-white">
+        <Button variant="secondary" onClick={() => setEditOpen(true)} className="gap-2 flex-1 whitespace-nowrap min-h-[44px]">
           <span>Editar Perfil</span>
         </Button>
         {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
@@ -441,7 +440,7 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
         )
       }
       isLoading={checkInMutation.isPending}
-      className="shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+      className="shadow-sm min-h-10"
     >
       <LogIn className="mr-2 h-4 w-4" /> Check-in
     </Button>

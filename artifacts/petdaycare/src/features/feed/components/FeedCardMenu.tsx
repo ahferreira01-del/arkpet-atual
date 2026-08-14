@@ -32,18 +32,18 @@ export function FeedCardMenu({ postId, crecheId }: FeedCardMenuProps) {
     <div ref={menuRef} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="h-8 w-8 rounded-full flex items-center justify-center text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
+        className="h-11 w-11 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         title="Opções"
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <MoreHorizontal className="h-5 w-5" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-44 bg-card border border-white/10 rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 top-12 z-50 w-48 bg-popover border border-border rounded-xl shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           <button
             onClick={handleDelete}
             disabled={deleteMutation.isPending}
-            className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+            className="w-full flex items-center gap-3 px-4 min-h-[44px] text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" />
             {deleteMutation.isPending ? "Excluindo…" : "Excluir publicação"}

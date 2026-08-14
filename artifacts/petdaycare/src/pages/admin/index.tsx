@@ -36,7 +36,7 @@ export default function AdminDashboard() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">Creches Ativas</p>
-              <h3 className="text-2xl sm:text-3xl font-display font-bold text-white">{activeCreches.length}</h3>
+              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{activeCreches.length}</h3>
               <p className="text-xs text-muted-foreground mt-1">{inactiveCreches.length} inativas</p>
             </div>
             <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-primary/20 text-primary flex items-center justify-center">
@@ -48,10 +48,10 @@ export default function AdminDashboard() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">Pets Presentes</p>
-              <h3 className="text-2xl sm:text-3xl font-display font-bold text-white">{totalOccupied}</h3>
+              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{totalOccupied}</h3>
               <p className="text-xs text-muted-foreground mt-1">cap. total: {totalCapacity}</p>
             </div>
-            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-emerald-400/20 text-emerald-400 flex items-center justify-center">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-success/20 text-success flex items-center justify-center">
               <Activity className="h-5 w-5" />
             </div>
           </CardContent>
@@ -60,7 +60,7 @@ export default function AdminDashboard() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">Total Usuários</p>
-              <h3 className="text-2xl sm:text-3xl font-display font-bold text-white">{totalUsers}</h3>
+              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{totalUsers}</h3>
               <p className="text-xs text-muted-foreground mt-1">na plataforma</p>
             </div>
             <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-violet-400/20 text-violet-400 flex items-center justify-center">
@@ -72,7 +72,7 @@ export default function AdminDashboard() {
           <CardContent className="p-5 flex items-center justify-between">
             <div className="min-w-0">
               <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">Ocupação Média</p>
-              <h3 className="text-2xl sm:text-3xl font-display font-bold text-white">
+              <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
                 {totalCapacity > 0 ? Math.round((totalOccupied / totalCapacity) * 100) : 0}%
               </h3>
               <p className="text-xs text-muted-foreground mt-1">da rede</p>
@@ -86,16 +86,16 @@ export default function AdminDashboard() {
 
       <Card>
         <CardContent className="p-5 sm:p-6">
-          <h2 className="text-lg font-display font-semibold text-white mb-4">Creches Cadastradas</h2>
+          <h2 className="text-lg font-display font-semibold text-foreground mb-4">Creches Cadastradas</h2>
           {isLoading ? (
             <div className="text-center py-6 text-muted-foreground text-sm">Carregando...</div>
           ) : creches?.length ? (
             <div className="space-y-3">
               {creches.map(creche => (
                 <Link key={creche.id} href="/admin/creches">
-                  <div className="p-4 rounded-xl bg-white/5 border border-white/10 hover:border-white/20 hover:bg-white/[0.07] transition-colors flex items-center justify-between gap-3 cursor-pointer">
+                  <div className="p-4 rounded-xl bg-card border border-border hover:border-primary/30 hover:bg-secondary/40 transition-colors flex items-center justify-between gap-3 cursor-pointer">
                     <div className="min-w-0">
-                      <p className="font-semibold text-white truncate">{creche.name}</p>
+                      <p className="font-semibold text-foreground truncate">{creche.name}</p>
                       <p className="text-xs sm:text-sm text-muted-foreground truncate">{creche.address || "Endereço não informado"}</p>
                     </div>
                     <Badge variant={creche.status === 'active' ? 'success' : 'secondary'} className="shrink-0">

@@ -34,9 +34,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh bg-background overflow-hidden relative">
-      {/* Ambient background glow */}
-      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-20%] right-[-10%] w-[40%] h-[50%] rounded-full bg-accent/10 blur-[120px] pointer-events-none" />
+      {/* Background limpo e sólido. Removidos painéis difusos por restrição de ruído visual. */}
 
       {/* Desktop sidebar */}
       <Sidebar user={user} />

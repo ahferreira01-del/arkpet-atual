@@ -21,14 +21,14 @@ export function MediaPicker({ file, error, onSelect, onRemove }: MediaPickerProp
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Preview */}
       {file && (
-        <div className="relative inline-block">
+        <div className="relative inline-block w-full sm:w-auto">
           {file.type.startsWith("video/") ? (
             <video
               src={URL.createObjectURL(file)}
-              className="h-36 rounded-xl border border-white/10 bg-black"
+              className="h-48 sm:h-36 w-full sm:w-auto rounded-2xl border border-border bg-black object-cover"
               muted
               playsInline
               preload="metadata"
@@ -37,18 +37,19 @@ export function MediaPicker({ file, error, onSelect, onRemove }: MediaPickerProp
             <img
               src={URL.createObjectURL(file)}
               alt="Preview"
-              className="h-36 rounded-xl object-cover border border-white/10"
+              className="h-48 sm:h-36 w-full sm:w-auto rounded-2xl object-cover border border-border"
             />
           )}
           <button
             type="button"
             onClick={onRemove}
-            className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transition-colors"
+            className="absolute -top-3 -right-3 h-11 w-11 bg-destructive hover:bg-destructive/90 rounded-full flex items-center justify-center text-destructive-foreground shadow-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
             title="Remover mídia"
+            aria-label="Remover mídia selecionada"
           >
-            <X className="h-3 w-3" />
+            <X className="h-5 w-5" />
           </button>
-          <div className="mt-1 text-xs text-muted-foreground truncate max-w-[14rem]">
+          <div className="mt-2 text-sm font-medium text-muted-foreground truncate w-full sm:max-w-[14rem] text-center sm:text-left px-2 sm:px-0">
             {file.name}
           </div>
         </div>
@@ -56,15 +57,15 @@ export function MediaPicker({ file, error, onSelect, onRemove }: MediaPickerProp
 
       {/* Validation error */}
       {error && (
-        <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-          <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          {error}
+        <div className="flex items-start gap-2 text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-xl px-4 py-3">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <p className="font-medium">{error}</p>
         </div>
       )}
 
       {/* Buttons (hidden when file selected) */}
       {!file && (
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           <input
             ref={photoRef}
             type="file"
@@ -82,21 +83,19 @@ export function MediaPicker({ file, error, onSelect, onRemove }: MediaPickerProp
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={() => photoRef.current?.click()}
-            className="gap-1.5 rounded-full border-white/10 hover:bg-white/5"
+            className="h-11 px-6 rounded-full font-medium bg-secondary hover:bg-secondary/80 border-transparent text-foreground shadow-sm flex-1 sm:flex-none"
           >
-            <ImageIcon className="h-3.5 w-3.5" />
+            <ImageIcon className="h-4 w-4 mr-2" />
             Foto
           </Button>
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={() => videoRef.current?.click()}
-            className="gap-1.5 rounded-full border-white/10 hover:bg-white/5"
+            className="h-11 px-6 rounded-full font-medium bg-secondary hover:bg-secondary/80 border-transparent text-foreground shadow-sm flex-1 sm:flex-none"
           >
-            <Video className="h-3.5 w-3.5" />
+            <Video className="h-4 w-4 mr-2" />
             Vídeo
           </Button>
         </div>

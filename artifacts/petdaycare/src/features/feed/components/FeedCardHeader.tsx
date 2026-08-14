@@ -40,8 +40,8 @@ export function FeedCardHeader({ post }: FeedCardHeaderProps) {
     : null;
 
   return (
-    <div className="p-4 flex items-center gap-3 border-b border-white/5">
-      <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0 text-xl overflow-hidden">
+    <div className="p-5 flex items-center gap-4 border-b border-border">
+      <div className="h-12 w-12 rounded-full bg-secondary flex items-center justify-center shrink-0 text-2xl overflow-hidden border border-border">
         {avatarSrc ? (
           <img
             src={avatarSrc}
@@ -54,10 +54,10 @@ export function FeedCardHeader({ post }: FeedCardHeaderProps) {
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-white truncate text-sm">
+        <p className="font-semibold text-foreground truncate text-base leading-tight">
           {petNames || "Sem pet marcado"}
         </p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1 font-medium">
           <span>{meta.label}</span>
           <span>·</span>
           <span>{relTime}</span>

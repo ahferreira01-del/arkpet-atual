@@ -66,7 +66,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
               <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
                 <UtensilsCrossed className="h-4 w-4 text-orange-400" />
               </div>
-              <h3 className="text-lg font-display font-semibold text-white">Alimentação</h3>
+              <h3 className="text-lg font-display font-semibold text-foreground">Alimentação</h3>
             </div>
             {canEdit && (
               <Button
@@ -81,7 +81,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
 
           <div className="space-y-3">
             {editFeeding.map((item, i) => (
-              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
+              <div key={i} className="flex gap-3 p-4 rounded-xl bg-secondary border border-border items-start">
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Horário</label>
@@ -144,7 +144,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
                   <button
                     type="button"
                     onClick={() => setEditFeeding(editFeeding.filter((_, j) => j !== i))}
-                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
+                    className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center hover:bg-destructive/20 text-destructive transition-colors mt-6"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -163,10 +163,10 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-green-500/20 flex items-center justify-center">
-                <Footprints className="h-4 w-4 text-green-400" />
+              <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
+                <Footprints className="h-4 w-4 text-primary" />
               </div>
-              <h3 className="text-lg font-display font-semibold text-white">Passeios</h3>
+              <h3 className="text-lg font-display font-semibold text-foreground">Passeios</h3>
             </div>
             {canEdit && (
               <Button
@@ -181,7 +181,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
 
           <div className="space-y-3">
             {editWalk.map((item, i) => (
-              <div key={i} className="flex gap-3 p-4 rounded-xl bg-white/5 border border-white/10 items-start">
+              <div key={i} className="flex gap-3 p-4 rounded-xl bg-secondary border border-border items-start">
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Horário</label>
@@ -232,7 +232,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
                   <button
                     type="button"
                     onClick={() => setEditWalk(editWalk.filter((_, j) => j !== i))}
-                    className="h-7 w-7 rounded-full bg-red-500/10 flex items-center justify-center hover:bg-red-500/20 text-red-400 transition-colors mt-6"
+                    className="h-7 w-7 rounded-full bg-destructive/10 flex items-center justify-center hover:bg-destructive/20 text-destructive transition-colors mt-6"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -252,7 +252,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
             Salvar Plano
           </Button>
           {saved && (
-            <p className="text-sm text-emerald-400">✓ Plano salvo com sucesso</p>
+            <p className="text-sm text-success">✓ Plano salvo com sucesso</p>
           )}
         </div>
       )}

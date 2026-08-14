@@ -2,11 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { QrCode } from 'lucide-react';
-
-function formatBRL(value: number) {
-  return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
+import { QrCode, X } from 'lucide-react';
+import { formatCentsToBRL } from "@/lib/money";
 
 export default function ThermalReceipt() {
   const [, params] = useRoute('/receipt/:invoiceId');
@@ -60,14 +57,14 @@ export default function ThermalReceipt() {
     }
   }, [data, loading, error]);
 
-  if (loading) return <div className="p-8 font-mono text-sm">Carregando...</div>;
-  if (error) return <div className="p-8 font-mono text-sm text-red-500">Erro: {error}</div>;
+  if (loading) return <div className="p-8 font-mono text-sm bg-background min-h-screen text-foreground">Carregando...</div>;
+  if (error) return <div className="p-8 font-mono text-sm text-destructive bg-background min-h-screen">Erro: {error}</div>;
   if (!data) return null;
 
   const { invoice, items, creche, tutor } = data;
 
   return (
-    <div className="bg-white min-h-screen flex justify-center p-0 m-0 print:bg-transparent">
+    <div className="bg-background min-h-screen flex justify-center p-0 m-0 print:bg-transparent sm:py-8 sm:px-4">
       {/* Container simulating 80mm thermal paper */}
       <div className="w-[300px] max-w-full bg-white text-black font-mono text-xs p-4 shadow-sm print:shadow-none print:p-0 print:w-full">
         
@@ -94,8 +91,8 @@ export default function ThermalReceipt() {
           {items?.map((item: any, idx: number) => (
             <div key={idx} className="flex justify-between py-1 border-b border-dotted border-gray-400 last:border-0">
               <span className="w-8 text-left">{item.quantity}x</span>
-              <span className="flex-1 text-left px-1 truncate">{item.description}</span>
-              <span className="w-16 text-right">{formatBRL(Number(item.amount))}</span>
+              <span className="flex-1 text-left px-1 break-words whitespace-normal leading-tight">{item.description}</span>
+              <span className="w-16 text-right">{formatCentsToBRL(Number(item.amount))}</span>
             </div>
           ))}
         </div>
@@ -106,7 +103,7 @@ export default function ThermalReceipt() {
         <div className="space-y-1 mb-4">
           <div className="flex justify-between font-bold">
             <span>Valor Total</span>
-            <span>{formatBRL(Number(invoice.amount))}</span>
+            <span>{formatCentsToBRL(Number(invoice.amount))}</span>
           </div>
           <div className="flex justify-between">
             <span>Forma de Pagamento</span>
@@ -140,12 +137,12 @@ export default function ThermalReceipt() {
       </div>
       
       {/* Hide close button when printing */}
-      <div className="fixed top-4 right-4 print:hidden">
+      <div className="fixed top-4 right-4 sm:top-6 sm:right-6 print:hidden">
          <button 
            onClick={() => window.close()} 
-           className="bg-gray-800 text-white px-4 py-2 rounded-md font-sans text-sm hover:bg-gray-700"
+           className="bg-secondary text-foreground border border-border px-5 h-11 flex items-center gap-2 rounded-full font-sans text-[15px] font-semibold hover:bg-secondary/80 transition-colors shadow-sm"
          >
-           Fechar
+           <X className="h-5 w-5" /> Fechar
          </button>
       </div>
     </div>

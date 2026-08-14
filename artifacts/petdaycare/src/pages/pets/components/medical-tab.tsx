@@ -134,8 +134,8 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
       <div className="lg:col-span-2">
         <Card>
           <CardContent className="p-6">
-            <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
-              <h3 className="text-lg font-display font-semibold text-red-400">Incidentes</h3>
+            <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
+              <h3 className="text-lg font-display font-semibold text-destructive">Incidentes</h3>
               <Button variant="outline" size="sm" onClick={() => setIncidentOpen(true)}>
                 <Plus className="w-4 h-4 mr-1" /> Registrar Incidente
               </Button>
@@ -145,19 +145,19 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
             ) : incidents?.length ? (
               <div className="space-y-3">
                 {incidents.map((i: any) => (
-                  <div key={i.id} className={`p-4 rounded-xl bg-white/5 border ${i.severity === 'high' ? 'border-red-500/50 bg-red-500/5' : 'border-white/10'}`}>
+                  <div key={i.id} className={`p-4 rounded-xl border ${i.severity === 'high' ? 'border-destructive/30 bg-destructive/10' : 'bg-secondary border-border'}`}>
                     <div className="flex justify-between items-start mb-2">
-                      <p className="font-medium text-white">{i.description}</p>
-                      <Badge variant={i.severity === 'high' ? 'destructive' : i.severity === 'medium' ? 'outline' : 'secondary'} className={i.severity === 'medium' ? 'text-amber-400 border-amber-500/30' : ''}>
+                      <p className="font-medium text-foreground">{i.description}</p>
+                      <Badge variant={i.severity === 'high' ? 'destructive' : i.severity === 'medium' ? 'warning' : 'secondary'}>
                         {i.severity === 'high' ? 'Grave' : i.severity === 'medium' ? 'Médio' : 'Leve'}
                       </Badge>
                     </div>
                     <div className="text-sm text-muted-foreground flex gap-4 mt-2 flex-wrap">
                       <span>Data: {format(new Date(i.incidentDate), "dd/MM/yyyy 'às' HH:mm")}</span>
-                      {i.vetCalled && <span className="text-amber-400">Vet. Chamado: Dr(a) {i.vetName || 'Não especificado'}</span>}
+                      {i.vetCalled && <span className="text-warning">Vet. Chamado: Dr(a) {i.vetName || 'Não especificado'}</span>}
                     </div>
                     {i.actionTaken && (
-                      <p className="text-sm text-muted-foreground mt-2 border-t border-white/5 pt-2">
+                      <p className="text-sm text-muted-foreground mt-2 border-t border-border pt-2">
                         <strong>Ação:</strong> {i.actionTaken}
                       </p>
                     )}
@@ -174,7 +174,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
       {/* Vaccines */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+          <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
             <h3 className="text-lg font-display font-semibold">Vacinas</h3>
             <Button variant="outline" size="sm" onClick={() => setVaccineOpen(true)}>
               <Plus className="w-4 h-4 mr-1" /> Adicionar
@@ -185,7 +185,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           ) : vaccines?.length ? (
             <div className="space-y-3">
               {vaccines.map((v) => (
-                <div key={v.id} className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
+                <div key={v.id} className="rounded-xl bg-secondary border border-border overflow-hidden">
                   {v.receiptUrl && (
                     <button
                       type="button"
@@ -195,14 +195,14 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
                       <img
                         src={v.receiptUrl}
                         alt="Carteirinha"
-                        className="w-full h-28 object-cover border-b border-white/10 hover:opacity-90 transition-opacity"
+                        className="w-full h-28 object-cover border-b border-border hover:opacity-90 transition-opacity"
                       />
                     </button>
                   )}
                   <div className="p-3 flex justify-between items-center gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-white">{v.name}</p>
+                        <p className="font-medium text-foreground">{v.name}</p>
                         {v.receiptUrl && (
                           <span className="text-xs text-primary flex items-center gap-0.5">
                             <Camera className="h-3 w-3" /> foto
@@ -217,7 +217,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
                     {v.nextDueDate && (
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs text-muted-foreground">Próxima</p>
-                        <p className="text-sm font-medium text-amber-400">
+                        <p className="text-sm font-medium text-warning">
                           {format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}
                         </p>
                       </div>
@@ -252,7 +252,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
       {/* Medications */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+          <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
             <h3 className="text-lg font-display font-semibold">Medicamentos</h3>
             <Button variant="outline" size="sm" onClick={() => setMedOpen(true)}>
               <Plus className="w-4 h-4 mr-1" /> Adicionar
@@ -263,9 +263,9 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           ) : medications?.length ? (
             <div className="space-y-3">
               {medications.map((m) => (
-                <div key={m.id} className="p-4 rounded-xl bg-white/5 border border-white/10">
+                <div key={m.id} className="p-4 rounded-xl bg-secondary border border-border">
                   <div className="flex justify-between items-start mb-1">
-                    <p className="font-medium text-white">{m.name}</p>
+                    <p className="font-medium text-foreground">{m.name}</p>
                     <Badge variant={m.isActive ? "success" : "secondary"}>
                       {m.isActive ? "Ativo" : "Inativo"}
                     </Badge>
@@ -273,7 +273,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
                   <p className="text-sm text-muted-foreground">{m.dosage} • {m.frequency}</p>
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {m.times?.map((t: string) => (
-                      <Badge key={t} variant="outline" className="bg-black/40 text-xs">
+                      <Badge key={t} variant="outline" className="text-xs">
                         {t}
                       </Badge>
                     ))}
@@ -324,16 +324,16 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
               className="hidden"
             />
             {vaccinePhoto ? (
-              <div className="relative rounded-xl overflow-hidden border border-white/10">
+              <div className="relative rounded-xl overflow-hidden border border-border">
                 <img src={vaccinePhoto} alt="Carteirinha" className="w-full h-32 object-cover" />
                 <button
                   type="button"
                   onClick={() => setVaccinePhoto(null)}
-                  className="absolute top-2 right-2 h-6 w-6 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                  className="absolute top-2 right-2 h-6 w-6 rounded-full bg-background/80 text-foreground flex items-center justify-center hover:bg-background transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
-                <div className="absolute bottom-2 left-2 text-xs text-white/70 bg-black/50 px-2 py-0.5 rounded-full">
+                <div className="absolute bottom-2 left-2 text-xs text-foreground/90 bg-background/80 px-2 py-0.5 rounded-full">
                   foto selecionada
                 </div>
               </div>
@@ -421,15 +421,15 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Gravidade</label>
-            <select name="severity" className="w-full bg-white/5 border border-white/10 rounded-md h-10 px-3 text-sm">
-              <option value="low" className="bg-zinc-900">Leve</option>
-              <option value="medium" className="bg-zinc-900">Média</option>
-              <option value="high" className="bg-zinc-900">Grave</option>
+            <select name="severity" className="w-full bg-background border border-border rounded-lg h-11 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary text-foreground">
+              <option value="low">Leve</option>
+              <option value="medium">Média</option>
+              <option value="high">Grave</option>
             </select>
           </div>
-          <div className="space-y-2 pt-2 border-t border-white/10">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <input type="checkbox" name="vetCalled" value="true" className="rounded border-white/10 bg-white/5" />
+          <div className="space-y-2 pt-2 border-t border-border mt-4">
+            <label className="text-sm font-medium flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-secondary/50">
+              <input type="checkbox" name="vetCalled" value="true" className="h-4 w-4 rounded border-border accent-primary" />
               Veterinário foi chamado?
             </label>
           </div>
@@ -441,11 +441,11 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
             <label className="text-sm font-medium">Ação Tomada</label>
             <Input name="actionTaken" placeholder="Medicou, limpou ferimento, etc..." />
           </div>
-          <div className="pt-4 flex justify-end gap-3">
+          <div className="pt-4 mt-4 border-t border-border flex justify-end gap-3">
             <Button type="button" variant="ghost" onClick={() => setIncidentOpen(false)}>
               Cancelar
             </Button>
-            <Button type="submit" isLoading={addIncidentMutation.isPending} className="bg-red-500 hover:bg-red-600 text-white">
+            <Button type="submit" variant="destructive" isLoading={addIncidentMutation.isPending}>
               Salvar Incidente
             </Button>
           </div>

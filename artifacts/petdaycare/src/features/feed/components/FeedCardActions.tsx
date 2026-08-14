@@ -16,23 +16,23 @@ export function FeedCardActions({ post, crecheId, onOpenComments }: FeedCardActi
   };
 
   return (
-    <div className="px-4 py-3 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+    <div className="px-5 py-3 border-t border-border bg-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       {/* Left: like + comments */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {/* Like button */}
         <button
           onClick={handleLike}
           disabled={likeMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/5 transition-colors text-sm font-medium select-none"
+          className="flex items-center justify-center gap-2 h-11 px-4 rounded-full hover:bg-secondary transition-colors text-sm font-medium select-none disabled:opacity-50"
         >
           <Heart
-            className={`h-4 w-4 transition-transform duration-200 ${
+            className={`h-5 w-5 transition-transform duration-200 ${
               post.isLiked
-                ? "fill-rose-400 text-rose-400 scale-110"
+                ? "fill-primary text-primary scale-110"
                 : "text-muted-foreground"
             }`}
           />
-          <span className={post.isLiked ? "text-rose-400" : "text-muted-foreground"}>
+          <span className={post.isLiked ? "text-primary" : "text-muted-foreground"}>
             {post.likeCount > 0 ? post.likeCount : "Curtir"}
           </span>
         </button>
@@ -40,9 +40,9 @@ export function FeedCardActions({ post, crecheId, onOpenComments }: FeedCardActi
         {/* Comments button */}
         <button
           onClick={onOpenComments}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-white/5 transition-colors text-sm font-medium"
+          className="flex items-center justify-center gap-2 h-11 px-4 rounded-full hover:bg-secondary transition-colors text-sm font-medium"
         >
-          <MessageCircle className="h-4 w-4 text-muted-foreground" />
+          <MessageCircle className="h-5 w-5 text-muted-foreground" />
           <span className="text-muted-foreground">
             {post.commentCount > 0 ? post.commentCount : "Comentar"}
           </span>
@@ -50,14 +50,14 @@ export function FeedCardActions({ post, crecheId, onOpenComments }: FeedCardActi
       </div>
 
       {/* Right: views + author */}
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between sm:justify-end gap-3 px-4 sm:px-0 text-xs text-muted-foreground">
         {post.viewCount > 0 && (
-          <span className="flex items-center gap-1">
-            <Eye className="h-3.5 w-3.5" />
+          <span className="flex items-center gap-1.5 font-medium">
+            <Eye className="h-4 w-4" />
             {post.viewCount}
           </span>
         )}
-        <span>{post.author.name}</span>
+        <span className="font-medium truncate max-w-[120px]">{post.author.name}</span>
       </div>
     </div>
   );

@@ -188,7 +188,8 @@ router.get("/", async (req: AuthRequest, res) => {
     createdAt:  timelineEventsTable.createdAt,
   };
 
-  let events: typeof eventCols extends infer T ? Awaited<ReturnType<typeof db.select>>: never[];
+  let events: any[] = [];
+  let tutorPetIds: number[] = [];
 
   if (isTutor) {
     // Resolve which pets belong to this tutor in this creche
@@ -202,7 +203,7 @@ router.get("/", async (req: AuthRequest, res) => {
       return;
     }
 
-    const tutorPetIds = tutorPets.map((p) => p.id);
+    tutorPetIds = tutorPets.map((p) => p.id);
 
     // Fetch events that include at least one of the tutor's pets (DISTINCT to
     // avoid duplicates when multiple tutor pets are in the same post)
@@ -627,3 +628,4 @@ router.post("/:id/comments", async (req: AuthRequest, res) => {
 });
 
 export default router;
+

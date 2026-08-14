@@ -41,6 +41,7 @@ import type {
   HealthStatus,
   ListBookingsParams,
   ListMessagesParams,
+  ListPets200,
   ListPetsParams,
   ListTasksParams,
   ListWalksParams,
@@ -1340,8 +1341,8 @@ export const listPets = async (
   crecheId: number,
   params?: ListPetsParams,
   options?: RequestInit,
-): Promise<Pet[]> => {
-  return customFetch<Pet[]>(getListPetsUrl(crecheId, params), {
+): Promise<ListPets200> => {
+  return customFetch<ListPets200>(getListPetsUrl(crecheId, params), {
     ...options,
     method: "GET",
   });

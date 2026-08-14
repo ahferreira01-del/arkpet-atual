@@ -13,7 +13,31 @@
     <meta name="description" content="Plataforma de gestão para pet daycare. Reservas, pets e equipe em um só lugar." />
 
     <!-- Theme & splash -->
-    <meta name="theme-color" content="#b91c1c" />
+    <meta name="theme-color" content="#151619" />
+    
+    <!-- Anti-FOUC Script (Executa imediatamente) -->
+    <script>
+      (function() {
+        try {
+          var stored = localStorage.getItem('arkpet-theme');
+          var theme = stored === 'light' ? 'light' : 'dark'; // Fallback seguro
+          
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {
+          // Fallback final em caso de erro/restrição do navegador
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
 
     <!-- Mobile Web App (Android + iOS) -->
     <meta name="mobile-web-app-capable" content="yes" />

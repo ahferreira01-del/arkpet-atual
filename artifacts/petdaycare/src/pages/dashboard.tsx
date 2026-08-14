@@ -62,7 +62,7 @@ import { useToast } from "@/hooks/use-toast";
 import { parseUTC, todayBrazil, parseLocalDate } from "@/lib/date-utils";
 import { resolvePhotoUrl } from "@/lib/utils";
 import { usePush } from "@/hooks/use-push";
-import { useTutorInvoices } from "@/hooks/use-financial";
+import { useUpcomingInvoices } from "@/hooks/use-financial";
 
 // ─── Componente de Prompt de Notificação ──────────────────────────────────────
 function NotificationPrompt() {
@@ -135,26 +135,26 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const staffCount = (staff || []).filter((s: any) => s.isActive !== false).length;
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground mb-1">
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {firstName}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{greeting}, {firstName}!</h1>
           <p className="text-muted-foreground mt-1">Veja o que está acontecendo na sua creche hoje.</p>
         </div>
         <Link href="/staff/qr-scanner">
-          <Button variant="glass" className="gap-2 self-start sm:self-auto">
+          <Button variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
             <QrCode className="h-4 w-4" /> Check-in QR
           </Button>
         </Link>
       </div>
 
 
-      <div className="mt-6">
+      <div className="mt-4 sm:mt-6">
         <Tabs 
           defaultTab="timeline"
           tabs={[
@@ -167,12 +167,12 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
               id: "dashboard",
               label: "Visão Geral",
               content: (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-2">
                   <Link href="/pets?filter=present">
                     <StatCard
                       title="Pets Presentes"
                       value={checkedIn.length.toString()}
-                      subValue={`de ${pets?.length || 0} cadastrados`}
+                      subValue={`de ${pets?.total || 0} cadastrados`}
                       icon={<Dog className="h-5 w-5" />}
                       iconBg="bg-primary/20"
                       iconColor="text-primary"
@@ -186,7 +186,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                       subValue="aguardando confirmação"
                       icon={<Calendar className="h-5 w-5" />}
                       iconBg={pendingBookings.length > 0 ? "bg-amber-400/20" : "bg-blue-500/20"}
-                      iconColor={pendingBookings.length > 0 ? "text-amber-400" : "text-blue-400"}
+                      iconColor={pendingBookings.length > 0 ? "text-amber-500 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}
                       alert={pendingBookings.length > 0}
                       clickable
                     />
@@ -198,7 +198,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                       subValue="para hoje"
                       icon={<CheckSquare className="h-5 w-5" />}
                       iconBg={activeTasks.length > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
-                      iconColor={activeTasks.length > 0 ? "text-red-400" : "text-emerald-400"}
+                      iconColor={activeTasks.length > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}
                       clickable
                     />
                   </Link>
@@ -209,7 +209,7 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
                       subValue="membros"
                       icon={<Users className="h-5 w-5" />}
                       iconBg="bg-violet-500/20"
-                      iconColor="text-violet-400"
+                      iconColor="text-violet-600 dark:text-violet-400"
                       clickable
                     />
                   </Link>
@@ -245,41 +245,41 @@ function StaffDashboard({ user }: { user: any }) {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, {user.name.split(" ")[0]}!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{greeting}, {user.name.split(" ")[0]}!</h1>
           <p className="text-muted-foreground mt-1">{format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs text-emerald-400 font-medium">{checkedIn.length} presente{checkedIn.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{checkedIn.length} presente{checkedIn.length !== 1 ? "s" : ""}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Link href="/staff">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-amber-400/20 flex items-center justify-center">
-              <CheckSquare className="h-5 w-5 text-amber-400" />
+          <div className="bg-card border border-border p-3 sm:p-4 rounded-2xl sm:rounded-3xl hover:bg-secondary transition-all cursor-pointer flex flex-col items-center gap-2 text-center min-h-[44px] shadow-sm">
+            <div className="h-10 w-10 rounded-2xl bg-amber-400/20 flex items-center justify-center shrink-0">
+              <CheckSquare className="h-5 w-5 text-amber-500 dark:text-amber-400" />
             </div>
-            <p className="text-sm font-semibold text-white">Tarefas</p>
+            <p className="text-xs sm:text-sm font-semibold text-foreground">Tarefas</p>
             {activeTasks.length > 0 && (
-              <Badge variant="warning" className="text-xs">{activeTasks.length}</Badge>
+              <Badge variant="warning" className="text-[10px] sm:text-xs px-1.5 py-0">{activeTasks.length}</Badge>
             )}
           </div>
         </Link>
         <Link href="/walks">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <Footprints className="h-5 w-5 text-emerald-400" />
+          <div className="bg-card border border-border p-3 sm:p-4 rounded-2xl sm:rounded-3xl hover:bg-secondary transition-all cursor-pointer flex flex-col items-center gap-2 text-center min-h-[44px] shadow-sm">
+            <div className="h-10 w-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+              <Footprints className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
             </div>
-            <p className="text-sm font-semibold text-white">Passeios</p>
+            <p className="text-xs sm:text-sm font-semibold text-foreground">Passeios</p>
           </div>
         </Link>
         <Link href="/pets">
-          <div className="glass-panel p-4 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-2 text-center">
-            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center">
+          <div className="bg-card border border-border p-3 sm:p-4 rounded-2xl sm:rounded-3xl hover:bg-secondary transition-all cursor-pointer flex flex-col items-center gap-2 text-center min-h-[44px] shadow-sm">
+            <div className="h-10 w-10 rounded-2xl bg-primary/20 flex items-center justify-center shrink-0">
               <Dog className="h-5 w-5 text-primary" />
             </div>
-            <p className="text-sm font-semibold text-white">Pets</p>
+            <p className="text-xs sm:text-sm font-semibold text-foreground">Pets</p>
           </div>
         </Link>
       </div>
@@ -296,14 +296,14 @@ function StaffDashboard({ user }: { user: any }) {
             id: "tasks",
             label: "Tarefas",
             content: (
-              <Card>
-                <CardContent className="p-6">
+              <Card className="border-border bg-card shadow-sm">
+                <CardContent className="p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-5">
-                    <h2 className="text-lg font-display font-semibold flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-amber-400" /> Próximas Tarefas
+                    <h2 className="text-base sm:text-lg font-display font-semibold flex items-center gap-2 text-foreground">
+                      <Clock className="h-5 w-5 text-amber-500 dark:text-amber-400" /> Próximas Tarefas
                     </h2>
                     <Link href="/staff">
-                      <button className="text-xs text-primary hover:text-primary/80 transition-colors">Ver todas →</button>
+                      <button className="text-sm font-medium text-primary hover:text-primary/80 transition-colors min-h-[44px] px-2 -mr-2">Ver todas →</button>
                     </Link>
                   </div>
                   {isLoading ? (
@@ -312,11 +312,11 @@ function StaffDashboard({ user }: { user: any }) {
                     <div className="space-y-2.5">
                       {activeTasks.slice(0, 6).map((task) => (
                         <Link key={task.id} href="/staff">
-                          <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 hover:border-primary/30 transition-all cursor-pointer group">
-                            <div className="min-w-0">
-                              <p className="font-medium text-white text-sm">{task.title}</p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {task.petName && <span className="text-primary mr-2">{task.petName}</span>}
+                          <div className="flex items-center justify-between p-3.5 rounded-xl bg-secondary/30 border border-border hover:bg-secondary hover:border-border transition-all cursor-pointer group min-h-[44px]">
+                            <div className="min-w-0 pr-3">
+                              <p className="font-medium text-foreground text-sm min-w-0 break-words">{task.title}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 min-w-0 break-words">
+                                {task.petName && <span className="text-primary mr-2 font-medium">{task.petName}</span>}
                                 {format(new Date(task.scheduledFor), "HH:mm")}
                               </p>
                             </div>
@@ -324,7 +324,7 @@ function StaffDashboard({ user }: { user: any }) {
                               <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs">
                                 {task.priority === "high" ? "Alta" : task.priority === "medium" ? "Média" : "Baixa"}
                               </Badge>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
                             </div>
                           </div>
                         </Link>
@@ -405,7 +405,7 @@ function TimelineEventCard({
   const cfg = eventConfig[ev.type] ?? {
     icon: <Sparkles className="h-3.5 w-3.5" />,
     label: ev.type,
-    color: "text-muted-foreground bg-white/5 border-white/10",
+    color: "text-muted-foreground bg-secondary border-border",
   };
 
   const [loadedMedia, setLoadedMedia] = React.useState<string | null>(null);
@@ -463,10 +463,10 @@ function TimelineEventCard({
   }, []);
 
   return (
-    <div className="glass-panel rounded-2xl overflow-hidden">
+    <div className="bg-card border rounded-2xl overflow-hidden shadow-sm">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 pt-4 pb-2">
-        <div className="h-9 w-9 rounded-full overflow-hidden bg-gradient-to-tr from-primary/40 to-accent/40 flex-shrink-0">
+      <div className="flex items-start sm:items-center gap-3 px-4 pt-4 pb-3">
+        <div className="h-10 w-10 rounded-full overflow-hidden bg-secondary flex-shrink-0 relative">
           {ev.petPhotoUrl ? (
             <img
               src={
@@ -483,20 +483,20 @@ function TimelineEventCard({
             />
           ) : null}
           <div
-            className="h-full w-full items-center justify-center"
+            className="h-full w-full items-center justify-center absolute inset-0"
             style={{ display: ev.petPhotoUrl ? "none" : "flex" }}
           >
-            <Dog className="h-4 w-4 text-white/60" />
+            <Dog className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-sm font-semibold text-white leading-tight">{ev.petName}</p>
+          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+            <p className="text-sm font-semibold text-foreground leading-tight">{ev.petName}</p>
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium flex-shrink-0 ${cfg.color}`}>
               {cfg.icon} {cfg.label}
             </span>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-[11px] sm:text-xs text-muted-foreground">
             {ev.authorName ? `${ev.authorName} · ` : ""}
             {format(parseUTC(ev.createdAt), "dd/MM · HH:mm", { locale: ptBR })}
           </p>
@@ -505,12 +505,12 @@ function TimelineEventCard({
 
       {/* Text */}
       {ev.content && (
-        <p className="text-sm text-white/80 px-4 pb-3 leading-relaxed">{ev.content}</p>
+        <p className="text-sm text-foreground px-4 pb-4 leading-relaxed">{ev.content}</p>
       )}
 
       {/* Loading placeholder while media fetches automatically */}
       {hasMedia && !displayMedia && (
-        <div className="mx-4 mb-3 flex items-center justify-center gap-2 py-6 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
+        <div className="mx-4 mb-4 flex items-center justify-center gap-2 py-6 rounded-xl bg-secondary border border-border text-sm text-muted-foreground animate-pulse">
           <Camera className="h-4 w-4" />
           Carregando foto...
         </div>
@@ -525,14 +525,14 @@ function TimelineEventCard({
       )}
 
       {/* Like */}
-      <div className="px-4 py-2.5">
+      <div className="px-2 py-1.5 border-t border-border">
         <button
           onClick={onLike}
-          className={`flex items-center gap-1.5 text-xs transition-colors ${
-            ev.isLikedByUser ? "text-rose-400" : "text-muted-foreground hover:text-rose-400"
+          className={`flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto text-sm transition-colors py-2.5 px-3 min-h-[44px] rounded-lg hover:bg-secondary ${
+            ev.isLikedByUser ? "text-primary font-medium" : "text-muted-foreground hover:text-primary"
           }`}
         >
-          <Heart className={`h-3.5 w-3.5 ${ev.isLikedByUser ? "fill-rose-400" : ""}`} />
+          <Heart className={`h-4 w-4 ${ev.isLikedByUser ? "fill-primary text-primary" : ""}`} />
           {ev.likeCount > 0 && <span>{ev.likeCount}</span>}
           <span>{ev.isLikedByUser ? "Curtido" : "Curtir"}</span>
         </button>
@@ -546,7 +546,7 @@ function TutorDashboard({ user }: { user: any }) {
   const queryClient = useQueryClient();
   const { data: pets } = useListPets(crecheId);
   const { data: timeline, isLoading: timelineLoading, isError: timelineError, refetch } = useTutorTimeline(crecheId, user.id);
-  const { data: invoices, isLoading: invoicesLoading } = useTutorInvoices(crecheId, user.id);
+  const { data: invoices, isLoading: invoicesLoading } = useUpcomingInvoices(crecheId, user.id);
 
   const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
   const checkedInPets = myPets.filter((p: any) => p.isCheckedIn);
@@ -593,42 +593,42 @@ function TutorDashboard({ user }: { user: any }) {
   const dueBadge = minDaysUntilDue === 0 ? "vence hoje" : minDaysUntilDue === 1 ? "vence em 1 dia" : `vence em ${minDaysUntilDue} dias`;
 
   return (
-    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
       <NotificationPrompt />
 
       {/* ── Avisos Financeiros ── */}
       {invoicesLoading && (
-        <div className="mb-4 p-4 rounded-2xl bg-white/5 border border-white/10 animate-pulse h-16" />
+        <div className="mb-4 p-4 rounded-2xl bg-secondary border border-border animate-pulse h-16" />
       )}
       {!invoicesLoading && overdueInvoices.length > 0 && (
-        <div className="mb-4 p-4 rounded-2xl bg-destructive/20 border border-destructive/30 flex items-start sm:items-center justify-between gap-4">
+        <div className="mb-4 p-4 rounded-2xl bg-destructive/10 border border-destructive/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-destructive/30 flex items-center justify-center shrink-0">
-              <AlertCircle className="h-5 w-5 text-destructive-foreground" />
+            <div className="h-10 w-10 rounded-xl bg-destructive/20 flex items-center justify-center shrink-0">
+              <AlertCircle className="h-5 w-5 text-destructive" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-white">Faturas Atrasadas</h3>
-              <p className="text-xs text-destructive-foreground mt-0.5 leading-relaxed">Você possui faturas em atraso. Regularize para continuar agendando.</p>
+              <h3 className="text-sm font-semibold text-destructive">Faturas Atrasadas</h3>
+              <p className="text-xs text-foreground mt-0.5 leading-relaxed">Você possui faturas em atraso. Regularize para continuar agendando.</p>
             </div>
           </div>
-          <Link href="/tutor/financial">
-            <Button size="sm" variant="destructive" className="shrink-0">Regularizar</Button>
+          <Link href="/tutor/financial" className="w-full sm:w-auto">
+            <Button size="sm" variant="destructive" className="w-full sm:w-auto min-h-[44px]">Regularizar</Button>
           </Link>
         </div>
       )}
       {!invoicesLoading && overdueInvoices.length === 0 && upcomingInvoices.length > 0 && (
-        <div className="mb-4 p-4 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-start sm:items-center justify-between gap-4">
+        <div className="mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-amber-500/30 flex items-center justify-center shrink-0">
-              <AlertCircle className="h-5 w-5 text-amber-400" />
+            <div className="h-10 w-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-white">Fatura Próxima do Vencimento</h3>
-              <p className="text-xs text-amber-400 mt-0.5 leading-relaxed">Você possui uma fatura que {dueBadge}.</p>
+              <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-500">Fatura Próxima do Vencimento</h3>
+              <p className="text-xs text-foreground mt-0.5 leading-relaxed">Você possui uma fatura que {dueBadge}.</p>
             </div>
           </div>
-          <Link href="/tutor/financial">
-            <Button size="sm" variant="glass" className="shrink-0 text-amber-400 hover:text-amber-300">Pagar agora</Button>
+          <Link href="/tutor/financial" className="w-full sm:w-auto">
+            <Button size="sm" variant="outline" className="w-full sm:w-auto border-amber-500/30 text-amber-600 dark:text-amber-500 hover:bg-amber-500/10 min-h-[44px]">Pagar agora</Button>
           </Link>
         </div>
       )}
@@ -636,7 +636,7 @@ function TutorDashboard({ user }: { user: any }) {
       {/* ── Greeting ── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">
             {greeting}, {user.name.split(" ")[0]}!
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
@@ -647,8 +647,8 @@ function TutorDashboard({ user }: { user: any }) {
         </div>
         {checkedInPets.length > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex-shrink-0">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-emerald-400 font-medium">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
               {checkedInPets.length} na creche
             </span>
           </div>
@@ -656,60 +656,66 @@ function TutorDashboard({ user }: { user: any }) {
       </div>
 
       {/* ── Quick actions ── */}
-      <div className="grid grid-cols-3 gap-2">
-        <Link href="/pets">
-          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
-            <div className="h-9 w-9 rounded-xl bg-primary/20 flex items-center justify-center">
-              <Dog className="h-4 w-4 text-primary" />
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <Link href="/pets" className="block">
+          <div className="bg-card border rounded-2xl px-2 sm:px-4 py-4 hover:bg-secondary/80 transition-all cursor-pointer flex flex-col items-center gap-2 text-center h-full shadow-sm">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Dog className="h-5 w-5 text-primary" />
             </div>
-            <p className="text-xs font-semibold text-white">Meus Pets</p>
-            <p className="text-[10px] text-muted-foreground leading-tight">
-              {myPets.length} cadastrado{myPets.length !== 1 ? "s" : ""}
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-xs sm:text-sm font-semibold text-foreground">Meus Pets</p>
+              <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">
+                {myPets.length} cadastrado{myPets.length !== 1 ? "s" : ""}
+              </p>
+            </div>
           </div>
         </Link>
-        <Link href="/bookings">
-          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
-            <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
-              <Calendar className="h-4 w-4 text-blue-400" />
+        <Link href="/bookings" className="block">
+          <div className="bg-card border rounded-2xl px-2 sm:px-4 py-4 hover:bg-secondary/80 transition-all cursor-pointer flex flex-col items-center gap-2 text-center h-full shadow-sm">
+            <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+              <Calendar className="h-5 w-5 text-blue-500" />
             </div>
-            <p className="text-xs font-semibold text-white">Reservas</p>
+            <div className="space-y-0.5">
+              <p className="text-xs sm:text-sm font-semibold text-foreground">Reservas</p>
+            </div>
           </div>
         </Link>
-        <Link href="/chat">
-          <div className="glass-panel px-3 py-3 rounded-2xl hover:bg-white/10 transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center">
-            <div className="h-9 w-9 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <MessageSquare className="h-4 w-4 text-emerald-400" />
+        <Link href="/chat" className="block">
+          <div className="bg-card border rounded-2xl px-2 sm:px-4 py-4 hover:bg-secondary/80 transition-all cursor-pointer flex flex-col items-center gap-2 text-center h-full shadow-sm">
+            <div className="h-10 w-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
+              <MessageSquare className="h-5 w-5 text-emerald-500" />
             </div>
-            <p className="text-xs font-semibold text-white">Mensagens</p>
+            <div className="space-y-0.5">
+              <p className="text-xs sm:text-sm font-semibold text-foreground">Mensagens</p>
+            </div>
           </div>
         </Link>
       </div>
 
       {/* ── Timeline ── */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-display font-semibold text-white">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg sm:text-xl font-display font-semibold text-foreground">
             Atividades dos seus pets
           </h2>
           <button
             onClick={() => refetch()}
-            className="text-xs text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+            className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5 min-h-[44px] px-2"
           >
-            <RefreshCw className="h-3 w-3" />
+            <RefreshCw className="h-4 w-4" />
             Atualizar
           </button>
         </div>
 
         {/* Loading skeleton */}
         {timelineLoading && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="glass-panel rounded-2xl p-4 flex gap-3 animate-pulse">
-                <div className="h-8 w-8 rounded-full bg-white/10 flex-shrink-0" />
-                <div className="flex-1 space-y-2 pt-1">
-                  <div className="h-3 bg-white/10 rounded w-1/3" />
-                  <div className="h-3 bg-white/10 rounded w-2/3" />
+              <div key={i} className="bg-card border rounded-2xl p-4 flex gap-3 animate-pulse shadow-sm">
+                <div className="h-10 w-10 rounded-full bg-secondary flex-shrink-0" />
+                <div className="flex-1 space-y-2 pt-2">
+                  <div className="h-3 bg-secondary rounded w-1/3" />
+                  <div className="h-3 bg-secondary rounded w-2/3" />
                 </div>
               </div>
             ))}
@@ -718,15 +724,17 @@ function TutorDashboard({ user }: { user: any }) {
 
         {/* Error state */}
         {!timelineLoading && timelineError && (
-          <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <div className="h-11 w-11 rounded-full bg-red-500/10 flex items-center justify-center">
-              <RefreshCw className="h-5 w-5 text-red-400" />
+          <div className="flex flex-col items-center gap-3 py-10 px-4 text-center bg-card border rounded-2xl border-dashed">
+            <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <RefreshCw className="h-6 w-6 text-destructive" />
             </div>
-            <p className="text-sm font-medium text-white">Não foi possível carregar as atividades</p>
-            <p className="text-xs text-muted-foreground">Verifique sua conexão e tente novamente.</p>
-            <button onClick={() => refetch()} className="text-xs text-primary hover:text-primary/80 transition-colors">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Não foi possível carregar as atividades</p>
+              <p className="text-sm text-muted-foreground mt-1">Verifique sua conexão e tente novamente.</p>
+            </div>
+            <Button onClick={() => refetch()} variant="outline" className="mt-2 min-h-[44px]">
               Tentar novamente
-            </button>
+            </Button>
           </div>
         )}
 
@@ -736,13 +744,13 @@ function TutorDashboard({ user }: { user: any }) {
             icon={Sparkles}
             title="Nenhuma atividade ainda"
             description="Quando a creche registrar algo sobre seus pets, aparecerá aqui."
-            className="py-12"
+            className="py-12 bg-card border rounded-2xl border-dashed"
           />
         )}
 
         {/* Events */}
         {!timelineLoading && !timelineError && events.length > 0 && (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4">
             {events.map((ev) => (
               <TimelineEventCard
                 key={`${ev.id}-${ev.petId}`}
@@ -792,7 +800,7 @@ function MasterAdminDashboard() {
   });
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -800,17 +808,17 @@ function MasterAdminDashboard() {
           <p className="text-sm text-muted-foreground mb-1">
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-white">{greeting}, Master!</h1>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{greeting}, Master!</h1>
           <p className="text-muted-foreground mt-1">Visão global de toda a rede ArkPet.</p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 self-start sm:self-auto">
           <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-sm text-emerald-400 font-medium">Rede Operacional</span>
+          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Rede Operacional</span>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <Link href="/admin?status=active">
           <StatCard
             title="Creches Ativas"
@@ -827,7 +835,7 @@ function MasterAdminDashboard() {
           value={`${avgOccupancy}%`}
           subValue={`${totalOccupied} pets presentes`}
           icon={<BarChart2 className="h-5 w-5" />}
-          iconColor={avgOccupancy > 80 ? "text-amber-400" : "text-emerald-400"}
+          iconColor={avgOccupancy > 80 ? "text-amber-500 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}
           iconBg={avgOccupancy > 80 ? "bg-amber-400/20" : "bg-emerald-400/20"}
         />
         <Link href="/admin/users?role=tutor">
@@ -836,7 +844,7 @@ function MasterAdminDashboard() {
             value={totalUsers.toString()}
             subValue={`${totalTutors} tutores · ${totalStaff} equipe`}
             icon={<Users className="h-5 w-5" />}
-            iconColor="text-violet-400"
+            iconColor="text-violet-500 dark:text-violet-400"
             iconBg="bg-violet-400/20"
             clickable
           />
@@ -846,7 +854,7 @@ function MasterAdminDashboard() {
           value={totalOccupied.toString()}
           subValue={`cap. total: ${totalCapacity}`}
           icon={<Dog className="h-5 w-5" />}
-          iconColor="text-blue-400"
+          iconColor="text-blue-500 dark:text-blue-400"
           iconBg="bg-blue-400/20"
         />
       </div>
@@ -857,19 +865,19 @@ function MasterAdminDashboard() {
         {/* Creches list */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-display font-semibold text-white">Creches da Rede</h2>
+            <h2 className="text-xl font-display font-semibold text-foreground">Creches da Rede</h2>
             <Link href="/admin">
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <Button variant="outline" size="sm" className="gap-1.5 min-h-[44px] sm:min-h-0">
                 <Sparkles className="h-3.5 w-3.5" /> Painel Completo
               </Button>
             </Link>
           </div>
-          <Card>
+          <Card className="shadow-sm">
             <CardContent className="p-0">
               {isLoading ? (
                 <div className="p-8 text-center text-muted-foreground">Carregando...</div>
               ) : sortedCreches.length ? (
-                <div className="divide-y divide-white/5">
+                <div className="divide-y divide-border">
                   {sortedCreches.map((creche) => {
                     const occ = (creche as any).currentOccupancy ?? 0;
                     const cap = (creche as any).maxCapacity ?? 0;
@@ -878,38 +886,38 @@ function MasterAdminDashboard() {
                     const barColor = pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-400" : "bg-emerald-400";
                     return (
                       <Link key={creche.id} href="/admin">
-                        <div className="p-5 hover:bg-white/5 transition-colors cursor-pointer group">
+                        <div className="p-4 sm:p-5 hover:bg-secondary transition-colors cursor-pointer group min-h-[44px]">
                           <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-4">
-                              <div className="h-11 w-11 rounded-xl bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/30 transition-colors">
-                                <Building2 className="h-5 w-5 text-primary" />
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 dark:group-hover:bg-primary/30 transition-colors">
+                                <Building2 className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
                               </div>
-                              <div>
-                                <p className="font-semibold text-white group-hover:text-primary transition-colors">{creche.name}</p>
-                                <p className="text-sm text-muted-foreground line-clamp-1">
+                              <div className="min-w-0 pr-2">
+                                <p className="font-semibold text-foreground group-hover:text-primary transition-colors min-w-0 break-words">{creche.name}</p>
+                                <p className="text-xs sm:text-sm text-muted-foreground truncate">
                                   {creche.address || "Endereço não informado"}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant={isActive ? "success" : "secondary"}>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Badge variant={isActive ? "success" : "secondary"} className="text-[10px] sm:text-xs">
                                 {isActive ? "Ativa" : "Inativa"}
                               </Badge>
-                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <ChevronRight className="h-4 w-4 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity hidden sm:block" />
                             </div>
                           </div>
                           {cap > 0 ? (
-                            <div className="pl-[60px]">
+                            <div className="pl-[52px] sm:pl-[60px]">
                               <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
                                 <span>Ocupação atual</span>
-                                <span className="font-medium">{occ}/{cap} pets · {pct}%</span>
+                                <span className="font-medium text-foreground">{occ}/{cap} pets · {pct}%</span>
                               </div>
-                              <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
                                 <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
                               </div>
                             </div>
                           ) : (
-                            <div className="pl-[60px]">
+                            <div className="pl-[52px] sm:pl-[60px]">
                               <p className="text-xs text-muted-foreground">Capacidade não configurada</p>
                             </div>
                           )}
@@ -930,9 +938,9 @@ function MasterAdminDashboard() {
 
           {/* System health */}
           <div>
-            <h2 className="text-lg font-display font-semibold text-white mb-3">Saúde do Sistema</h2>
-            <Card>
-              <CardContent className="p-5 space-y-4">
+            <h2 className="text-lg font-display font-semibold text-foreground mb-3">Saúde do Sistema</h2>
+            <Card className="shadow-sm">
+              <CardContent className="p-4 sm:p-5 space-y-4">
                 {systemServices.map(({ label, icon, status }) => (
                   <div key={label} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -941,7 +949,7 @@ function MasterAdminDashboard() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`h-2 w-2 rounded-full ${status === "online" ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`} />
-                      <span className={`text-xs font-semibold ${status === "online" ? "text-emerald-400" : "text-red-400"}`}>
+                      <span className={`text-xs font-semibold ${status === "online" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                         {status === "online" ? "Online" : "Offline"}
                       </span>
                     </div>
@@ -953,22 +961,22 @@ function MasterAdminDashboard() {
 
           {/* Quick actions */}
           <div>
-            <h2 className="text-lg font-display font-semibold text-white mb-3">Ações Rápidas</h2>
+            <h2 className="text-lg font-display font-semibold text-foreground mb-3">Ações Rápidas</h2>
             <div className="space-y-2">
               {[
-                { href: "/admin", icon: <Building2 className="h-4 w-4" />, bg: "bg-primary/20", color: "text-primary", label: "Gerenciar Creches", desc: "Editar, adicionar ou desativar" },
-                { href: "/admin/users", icon: <Users className="h-4 w-4" />, bg: "bg-blue-500/20", color: "text-blue-400", label: "Todos os Usuários", desc: "Gerir contas e permissões" },
+                { href: "/admin", icon: <Building2 className="h-4 w-4" />, bg: "bg-primary/10 dark:bg-primary/20", color: "text-primary", label: "Gerenciar Creches", desc: "Editar, adicionar ou desativar" },
+                { href: "/admin/users", icon: <Users className="h-4 w-4" />, bg: "bg-blue-500/10 dark:bg-blue-500/20", color: "text-blue-600 dark:text-blue-400", label: "Todos os Usuários", desc: "Gerir contas e permissões" },
               ].map(({ href, icon, bg, color, label, desc }) => (
                 <Link key={href} href={href}>
-                  <div className="flex items-center gap-3 p-3.5 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10 transition-all cursor-pointer group">
+                  <div className="flex items-center gap-3 p-3.5 rounded-xl bg-card hover:bg-secondary border border-border hover:border-border transition-all cursor-pointer group min-h-[44px] shadow-sm">
                     <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${bg} ${color}`}>
                       {icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-white">{label}</p>
-                      <p className="text-xs text-muted-foreground">{desc}</p>
+                      <p className="text-sm font-semibold text-foreground min-w-0 break-words">{label}</p>
+                      <p className="text-xs text-muted-foreground truncate">{desc}</p>
                     </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-50 group-hover:opacity-100 transition-opacity" />
                   </div>
                 </Link>
               ))}
@@ -976,8 +984,8 @@ function MasterAdminDashboard() {
           </div>
 
           {/* Network summary */}
-          <Card className="bg-gradient-to-br from-primary/10 to-violet-500/5 border-primary/20">
-            <CardContent className="p-5">
+          <Card className="bg-primary/5 dark:bg-primary/10 border-primary/20 shadow-sm">
+            <CardContent className="p-4 sm:p-5">
               <p className="text-xs text-muted-foreground uppercase tracking-widest mb-4">Resumo da Rede</p>
               <div className="grid grid-cols-2 gap-4">
                 {[
@@ -988,9 +996,9 @@ function MasterAdminDashboard() {
                   { label: "Total Usuários", value: totalUsers },
                   { label: "Tutores", value: totalTutors },
                 ].map(({ label, value }) => (
-                  <div key={label}>
-                    <p className="text-xl font-display font-bold text-white">{value}</p>
-                    <p className="text-xs text-muted-foreground">{label}</p>
+                  <div key={label} className="min-w-0">
+                    <p className="text-xl font-display font-bold text-foreground min-w-0 break-words">{value}</p>
+                    <p className="text-xs text-muted-foreground truncate">{label}</p>
                   </div>
                 ))}
               </div>
@@ -1025,30 +1033,30 @@ function StatCard({
   clickable?: boolean;
 }) {
   return (
-    <Card className={`relative overflow-hidden transition-all duration-200 ${
-      alert ? "border-amber-400/40 shadow-[0_0_20px_rgba(251,191,36,0.1)]" : ""
-    } ${clickable ? "hover:-translate-y-0.5 hover:shadow-lg hover:border-primary/30 cursor-pointer" : ""}`}>
-      <CardContent className="p-5">
+    <Card className={`relative overflow-hidden transition-all duration-200 shadow-sm bg-card border-border ${
+      alert ? "border-amber-400/40 dark:shadow-[0_0_20px_rgba(251,191,36,0.1)] bg-amber-50/50 dark:bg-amber-950/10" : ""
+    } ${clickable ? "hover:bg-secondary cursor-pointer min-h-[44px]" : ""}`}>
+      <CardContent className="p-4 sm:p-5">
         <div className="flex justify-between items-start gap-3">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-muted-foreground mb-1 truncate">{title}</p>
-            <h3 className="text-2xl lg:text-3xl font-display font-bold text-white leading-none">{value}</h3>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1 min-w-0 break-words">{title}</p>
+            <h3 className="text-2xl lg:text-3xl font-display font-bold text-foreground leading-none min-w-0 break-words">{value}</h3>
             {trend && (
-              <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1 truncate">
                 <TrendingUp className="h-3 w-3 shrink-0" /> {trend}
               </p>
             )}
             {subValue && !trend && (
-              <p className="text-xs text-muted-foreground mt-2">{subValue}</p>
+              <p className="text-xs text-muted-foreground mt-2 truncate">{subValue}</p>
             )}
           </div>
-          <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
+          <div className={`h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
             {icon}
           </div>
         </div>
         {clickable && (
-          <div className="mt-3 flex items-center gap-1 text-xs text-muted-foreground/60">
-            <ArrowRight className="h-3 w-3" /> Ver detalhes
+          <div className="mt-3 flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground/60">
+            <ArrowRight className="h-3 w-3 shrink-0" /> <span className="truncate">Ver detalhes</span>
           </div>
         )}
       </CardContent>

@@ -70,35 +70,35 @@ export function AddConsumableModal({ isOpen, onClose, bookingId, crecheId, petNa
         
         {/* Lançamentos Atuais */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Receipt className="h-4 w-4 text-emerald-400" />
+          <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Receipt className="h-4 w-4 text-success" />
             Consumos Registrados
           </h4>
           
           {isLaunchedLoading ? (
-            <div className="p-4 text-center text-sm text-muted-foreground bg-white/5 rounded-xl border border-white/5">Carregando consumos...</div>
+            <div className="p-4 text-center text-sm text-muted-foreground bg-secondary rounded-xl border border-border">Carregando consumos...</div>
           ) : !launchedItems || launchedItems.length === 0 ? (
-            <div className="p-4 text-center text-sm text-muted-foreground bg-white/5 rounded-xl border border-white/5">
+            <div className="p-4 text-center text-sm text-muted-foreground bg-secondary rounded-xl border border-border">
               Nenhum consumo registrado ainda.
             </div>
           ) : (
             <div className="max-h-48 overflow-y-auto custom-scrollbar pr-2 space-y-2">
               {launchedItems.map((consumable: any) => (
-                <div key={consumable.id} className="flex items-center justify-between p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+                <div key={consumable.id} className="flex items-center justify-between p-3 rounded-lg border border-success/20 bg-success/10">
                   <div className="flex items-center gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-white">{consumable.item.name}</p>
+                      <p className="text-sm font-semibold text-foreground">{consumable.item.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(consumable.chargedPrice) / 100)}
                       </p>
                     </div>
                   </div>
                   <Button 
-                    size="sm" 
+                    size="default" 
                     variant="ghost"
                     onClick={() => handleDelete(consumable.id)}
                     disabled={deleteMutation.isPending}
-                    className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    className="h-10 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -108,12 +108,12 @@ export function AddConsumableModal({ isOpen, onClose, bookingId, crecheId, petNa
           )}
         </div>
 
-        <div className="h-px bg-white/10 w-full" />
+        <div className="h-px bg-border w-full" />
 
         {/* Adicionar Novo */}
         <div className="space-y-4">
-          <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Plus className="h-4 w-4 text-blue-400" />
+          <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Plus className="h-4 w-4 text-primary" />
             Adicionar Novo Consumo
           </h4>
           <Input
@@ -121,7 +121,7 @@ export function AddConsumableModal({ isOpen, onClose, bookingId, crecheId, petNa
             placeholder="Buscar serviço ou produto..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-white/5 border-white/10 text-white"
+            className="bg-secondary border-border text-foreground"
           />
           
           <div className="max-h-60 overflow-y-auto custom-scrollbar pr-2 space-y-2">
@@ -131,24 +131,24 @@ export function AddConsumableModal({ isOpen, onClose, bookingId, crecheId, petNa
               <div className="p-4 text-center text-sm text-muted-foreground">Nenhum item encontrado.</div>
             ) : (
               filtered.map((item: any) => (
-                <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors">
+                <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary hover:bg-secondary/80 transition-colors">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
                       <Package className="h-4 w-4 text-primary" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-white">{item.name}</p>
+                      <p className="text-sm font-semibold text-foreground">{item.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(item.price) / 100)}
                       </p>
                     </div>
                   </div>
                   <Button 
-                    size="sm" 
+                    size="default" 
                     variant="outline"
                     onClick={() => handleAdd(item)}
                     disabled={addMutation.isPending}
-                    className="h-8"
+                    className="h-10"
                   >
                     <Plus className="h-4 w-4 sm:mr-1" />
                     <span className="hidden sm:inline">Lançar</span>
@@ -159,7 +159,7 @@ export function AddConsumableModal({ isOpen, onClose, bookingId, crecheId, petNa
           </div>
         </div>
         
-        <div className="pt-4 border-t border-white/10 flex justify-end">
+        <div className="pt-4 border-t border-border flex justify-end">
           <Button onClick={onClose} className="w-full sm:w-auto">
             Concluir Lançamentos
           </Button>

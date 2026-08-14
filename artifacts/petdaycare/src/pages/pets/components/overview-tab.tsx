@@ -115,7 +115,10 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
                     </div>
                     {user?.role !== "tutor" && (
                       <button
-                        onClick={() => deleteConsumable.mutate({ consumableId: c.id })}
+                        onClick={() => {
+                          if (!confirmedBooking?.id) return;
+                          deleteConsumable.mutate({ bookingId: confirmedBooking.id, consumableId: c.id });
+                        }}
                         className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                         title="Remover lançamento"
                         disabled={deleteConsumable.isPending}

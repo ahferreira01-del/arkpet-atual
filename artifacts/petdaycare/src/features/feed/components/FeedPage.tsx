@@ -61,7 +61,7 @@ export function FeedPage({ crecheId, userRole, userId }: FeedPageProps) {
   );
 
   return (
-    <div className="max-w-2xl mx-auto space-y-5">
+    <div className="w-full max-w-2xl mx-auto space-y-6 px-2 sm:px-0">
       {/* Header */}
       <FeedHeader canPost={canPost} onNewPost={() => setShowCreate(true)} />
 

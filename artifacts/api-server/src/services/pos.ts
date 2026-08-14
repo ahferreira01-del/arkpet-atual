@@ -1,3 +1,4 @@
+import { getBusinessDate } from "../lib/date.js";
 /**
  * PosService (Fase 15A) — processa vendas no balcão (POS).
  * Centraliza a lógica que antes estava dispersa na rota POST /pos-sale.
@@ -89,10 +90,10 @@ export class PosService {
       // Phase 2 — Check overdue when deferring to invoice
       const isPending = !paymentMethod || paymentMethod === "pending";
       if (isPending && tutorId) {
-        if (await hasOverdueInvoices(tutorId)) {
+        if (await hasOverdueInvoices(tutorId, crecheId)) {
           throw Object.assign(
             new Error(
-              "Este tutor possui faturas em atraso. A compra deve ser paga à vista (jogar para a fatura está bloqueado)."
+              "Tutor com faturas em atraso. Regularize a situação para realizar compras a prazo (adicionar na fatura)."
             ),
             { status: 422 }
           );
@@ -148,7 +149,7 @@ export class PosService {
             invoiceId,
             type: "income",
             amount: subtotal.toString(),
-            transactionDate: new Date().toISOString().split("T")[0],
+            transactionDate: getBusinessDate(),
             paymentMethod: paymentMethod as any,
             description: "Venda Balcão",
           },
@@ -161,3 +162,4 @@ export class PosService {
     });
   }
 }
+

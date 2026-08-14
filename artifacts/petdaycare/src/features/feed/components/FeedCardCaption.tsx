@@ -55,22 +55,22 @@ export function FeedCardCaption({ postId, crecheId, content, canEdit }: FeedCard
   return (
     <div className="relative group/caption">
       {editing ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={3}
-            className="w-full text-sm"
+            className="w-full text-base bg-secondary border-none resize-none px-4 py-3 rounded-xl focus-visible:ring-1 focus-visible:ring-primary"
             autoFocus
           />
           <div className="flex gap-2">
-            <Button size="sm" onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving} className="h-11 rounded-full px-5 font-medium shadow-sm">
               {saving ? "Salvando…" : "Salvar"}
             </Button>
             <Button
-              size="sm"
-              variant="ghost"
+              variant="outline"
               onClick={() => { setEditing(false); setDraft(content ?? ""); }}
+              className="h-11 rounded-full px-5 font-medium"
             >
               Cancelar
             </Button>
@@ -78,16 +78,16 @@ export function FeedCardCaption({ postId, crecheId, content, canEdit }: FeedCard
         </div>
       ) : (
         <>
-          <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed pr-7">
+          <p className="text-base text-foreground whitespace-pre-wrap leading-relaxed pr-10">
             {content}
           </p>
           {canEdit && (
             <button
               onClick={() => setEditing(true)}
-              className="absolute top-0 right-0 h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors opacity-0 group-hover/caption:opacity-100"
+              className="absolute -top-1.5 -right-1.5 h-11 w-11 rounded-full bg-secondary text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors sm:opacity-0 sm:group-hover/caption:opacity-100"
               title="Editar legenda"
             >
-              <Pencil className="h-3 w-3 text-white/60" />
+              <Pencil className="h-4 w-4" />
             </button>
           )}
         </>

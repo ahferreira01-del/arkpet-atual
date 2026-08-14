@@ -195,24 +195,24 @@ function TaskCompleteModal({
         <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
           <span className="text-2xl">{eventTypes.find(e => e.value === defaultType)?.emoji || "📋"}</span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{task.title}</p>
+            <p className="text-sm font-semibold text-foreground truncate">{task.title}</p>
             <p className="text-xs text-muted-foreground">{taskTypeLabel[task.type]} · {task.petName}</p>
           </div>
         </div>
 
         {/* Event type selector */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Tipo de Publicação</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo de Publicação</label>
           <div className="flex flex-wrap gap-2">
             {eventTypes.map((t) => (
               <button
                 key={t.value}
                 type="button"
                 onClick={() => setSelectedType(t.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                className={`px-4 py-2 min-h-[44px] rounded-full text-sm font-medium border transition-all ${
                   selectedType === t.value
-                    ? "bg-primary text-white border-primary shadow-[0_0_10px_rgba(139,92,246,0.4)]"
-                    : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"
+                    ? "bg-primary/10 text-primary border-primary ring-2 ring-primary/20"
+                    : "bg-secondary text-muted-foreground border-border hover:bg-secondary/80"
                 }`}
               >
                 {t.emoji} {t.label}
@@ -223,12 +223,12 @@ function TaskCompleteModal({
 
         {/* Photo / Video upload */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Foto / Vídeo (opcional)</label>
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
           <input id="task-camera-input" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
 
           {preview ? (
-            <div className="relative rounded-xl overflow-hidden border border-white/10">
+            <div className="relative rounded-xl overflow-hidden border border-border">
               {mediaTypeRef.current === "video" ? (
                 <video src={preview} className="w-full max-h-52 bg-black" muted playsInline preload="metadata" />
               ) : (
@@ -237,13 +237,13 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
-                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
+                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
               >
-                <X className="h-4 w-4 text-white" />
+                <X className="h-5 w-5 text-white" />
               </button>
             </div>
           ) : compressing ? (
-            <div className="w-full h-24 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
+            <div className="w-full h-24 min-h-[44px] rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
               <span className="text-xs text-muted-foreground">Enviando...</span>
             </div>
@@ -252,7 +252,7 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
               >
                 <ImageIcon className="h-5 w-5" />
                 <span className="text-xs">Galeria</span>
@@ -260,7 +260,7 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => document.getElementById("task-camera-input")?.click()}
-                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
               >
                 <Camera className="h-5 w-5" />
                 <span className="text-xs">Câmera</span>
@@ -268,7 +268,7 @@ function TaskCompleteModal({
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}
-                className="h-16 sm:h-20 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1.5 text-white/40 hover:border-primary/50 hover:text-primary/70 hover:bg-primary/5 transition-all"
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all"
               >
                 <Video className="h-5 w-5" />
                 <span className="text-xs">Vídeo</span>
@@ -279,18 +279,18 @@ function TaskCompleteModal({
 
         {/* Caption */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Mensagem para o tutor</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Mensagem para o tutor</label>
           <textarea
             name="content"
             placeholder={`Ex: ${task.petName} ${task.type === "feeding" ? "comeu tudo, tá ótimo!" : task.type === "walk" ? "adorou o passeio, muito animado!" : task.type === "medication" ? "tomou o medicamento sem problemas." : "ficou ótimo!"}`}
             rows={3}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary/50 transition-colors"
+            className="w-full bg-background border border-border rounded-xl px-3 py-3 text-base text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary/50 transition-colors"
           />
         </div>
 
         {/* Actions */}
-        <div className="flex flex-col gap-2 pt-1">
-          <Button type="submit" disabled={isPending} className="w-full gap-2">
+        <div className="flex flex-col gap-2 pt-2">
+          <Button type="submit" disabled={isPending} className="w-full min-h-[44px] gap-2">
             <Sparkles className="h-4 w-4" />
             {isPending ? "Publicando..." : "Publicar e Concluir"}
           </Button>
@@ -298,7 +298,7 @@ function TaskCompleteModal({
             type="button"
             onClick={completeOnly}
             disabled={isPending}
-            className="w-full py-2 text-sm text-muted-foreground hover:text-white transition-colors"
+            className="w-full min-h-[44px] py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             Concluir sem publicar
           </button>
@@ -407,21 +407,21 @@ function StandalonePublishModal({
       <form onSubmit={handleSubmit} className="space-y-4 mt-4">
         {/* Pet selector */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Pet</label>
-          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pet</label>
+          <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
             {allPetsToShow.map((pet: any) => (
               <button
                 key={pet.id}
                 type="button"
                 onClick={() => setSelectedPetId(pet.id)}
-                className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all text-left ${
+                className={`px-3 py-2 min-h-[44px] rounded-xl text-sm font-medium border transition-all text-left flex items-center justify-between ${
                   selectedPetId === pet.id
-                    ? "bg-primary/20 text-primary border-primary/50"
-                    : "bg-white/5 text-white/70 border-white/10 hover:bg-white/10"
+                    ? "bg-primary/10 text-primary border-primary ring-1 ring-primary/30"
+                    : "bg-secondary text-muted-foreground border-border hover:bg-secondary/80"
                 }`}
               >
-                {pet.name}
-                {pet.isCheckedIn && <span className="ml-1 text-emerald-400 text-xs">✓</span>}
+                <span className="truncate">{pet.name}</span>
+                {pet.isCheckedIn && <span className="text-success text-xs flex-shrink-0 ml-1">✓</span>}
               </button>
             ))}
           </div>
@@ -429,14 +429,14 @@ function StandalonePublishModal({
 
         {/* Event type */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Tipo</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo</label>
           <div className="flex flex-wrap gap-2">
             {eventTypes.map((t) => (
               <button key={t.value} type="button" onClick={() => setSelectedType(t.value)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                className={`px-4 py-2 min-h-[44px] rounded-full text-sm font-medium border transition-all ${
                   selectedType === t.value
-                    ? "bg-primary text-white border-primary shadow-[0_0_10px_rgba(139,92,246,0.4)]"
-                    : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10"
+                    ? "bg-primary/10 text-primary border-primary ring-2 ring-primary/20"
+                    : "bg-secondary text-muted-foreground border-border hover:bg-secondary/80"
                 }`}>
                 {t.emoji} {t.label}
               </button>
@@ -446,39 +446,39 @@ function StandalonePublishModal({
 
         {/* Photo / Video */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Foto / Vídeo (opcional)</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Foto / Vídeo (opcional)</label>
           <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
           <input id="standalone-camera" type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={handleFileChange} />
           {preview ? (
-            <div className="relative rounded-xl overflow-hidden border border-white/10">
+            <div className="relative rounded-xl overflow-hidden border border-border">
               {mediaTypeRef.current === "video" ? (
                 <video src={preview} className="w-full max-h-36 bg-black" muted playsInline preload="metadata" />
               ) : (
                 <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
               )}
               <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
-                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
-                <X className="h-4 w-4 text-white" />
+                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
+                <X className="h-5 w-5 text-white" />
               </button>
             </div>
           ) : compressing ? (
-            <div className="w-full h-20 rounded-xl border-2 border-dashed border-white/15 flex items-center justify-center gap-2">
+            <div className="w-full h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex items-center justify-center gap-2">
               <div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" />
               <span className="text-xs text-muted-foreground">Enviando...</span>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
               <button type="button" onClick={() => fileRef.current?.click()}
-                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
-                <ImageIcon className="h-4 w-4" /><span className="text-xs">Galeria</span>
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all">
+                <ImageIcon className="h-5 w-5" /><span className="text-xs">Galeria</span>
               </button>
               <button type="button" onClick={() => document.getElementById("standalone-camera")?.click()}
-                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
-                <Camera className="h-4 w-4" /><span className="text-xs">Câmera</span>
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all">
+                <Camera className="h-5 w-5" /><span className="text-xs">Câmera</span>
               </button>
               <button type="button" onClick={() => fileRef.current?.click()}
-                className="h-14 rounded-xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-1 text-white/40 hover:border-primary/50 hover:text-primary/70 transition-all">
-                <Video className="h-4 w-4" /><span className="text-xs">Vídeo</span>
+                className="h-20 min-h-[44px] rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary/50 hover:text-primary transition-all">
+                <Video className="h-5 w-5" /><span className="text-xs">Vídeo</span>
               </button>
             </div>
           )}
@@ -486,15 +486,17 @@ function StandalonePublishModal({
 
         {/* Caption */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-white/60 uppercase tracking-wide">Mensagem</label>
-          <textarea name="content" placeholder="Ex: Está adorando o dia aqui!" rows={2}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary/50 transition-colors" />
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Mensagem</label>
+          <textarea name="content" placeholder="Ex: Está adorando o dia aqui!" rows={3}
+            className="w-full bg-background border border-border rounded-xl px-3 py-3 text-base text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-primary/50 transition-colors" />
         </div>
 
-        <Button type="submit" disabled={addEventMutation.isPending || !selectedPetId} className="w-full gap-2">
-          <Sparkles className="h-4 w-4" />
-          {addEventMutation.isPending ? "Publicando..." : "Publicar na Timeline"}
-        </Button>
+        <div className="pt-2">
+          <Button type="submit" disabled={addEventMutation.isPending || !selectedPetId} className="w-full min-h-[44px] gap-2">
+            <Sparkles className="h-4 w-4" />
+            {addEventMutation.isPending ? "Publicando..." : "Publicar na Timeline"}
+          </Button>
+        </div>
       </form>
     </Modal>
   );
@@ -502,7 +504,7 @@ function StandalonePublishModal({
 
 export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.crecheId as number;
   const queryClient = useQueryClient();
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -596,7 +598,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
           description={format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           icon={ClipboardList}
           action={
-            <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground px-3 py-1.5 rounded-full bg-secondary border border-border">
               <Users className="h-4 w-4" />
               {presentCount} pet{presentCount !== 1 ? "s" : ""} presente{presentCount !== 1 ? "s" : ""}
             </div>
@@ -606,33 +608,34 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
 
       {/* Filter toggle + publish button */}
       <div className="flex flex-wrap gap-2">
-        <button
+        <Button
           onClick={() => setShowPublishModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+          variant="outline"
+          className="min-h-[44px] flex items-center gap-1.5 rounded-xl border-primary/30 text-primary hover:bg-primary/10"
         >
-          <Sparkles className="h-3.5 w-3.5" />
+          <Sparkles className="h-4 w-4" />
           Publicar
-        </button>
+        </Button>
         <button
           onClick={() => setOnlyPresent(true)}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all ${
             onlyPresent
-              ? "bg-primary/20 text-primary border border-primary/30"
-              : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
+              ? "bg-primary/10 text-primary border border-primary/30 ring-1 ring-primary/20"
+              : "text-muted-foreground bg-secondary/50 hover:bg-secondary border border-transparent"
           }`}
         >
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
           Pets Presentes
         </button>
         <button
           onClick={() => setOnlyPresent(false)}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium transition-all ${
             !onlyPresent
-              ? "bg-primary/20 text-primary border border-primary/30"
-              : "text-muted-foreground hover:bg-white/5 hover:text-white border border-transparent"
+              ? "bg-primary/10 text-primary border border-primary/30 ring-1 ring-primary/20"
+              : "text-muted-foreground bg-secondary/50 hover:bg-secondary border border-transparent"
           }`}
         >
-          <Filter className="h-3.5 w-3.5" />
+          <Filter className="h-4 w-4" />
           Todas as Tarefas
         </button>
       </div>
@@ -640,22 +643,22 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
       <Card>
         <CardContent className="p-4 sm:p-6">
           <h2 className="text-xl font-display font-semibold mb-6 flex items-center gap-2">
-            <CircleDashed className="text-amber-400" /> Pendentes ({pendingTasks.length})
+            <CircleDashed className="text-warning" /> Pendentes ({pendingTasks.length})
           </h2>
 
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">Carregando tarefas...</div>
           ) : pendingTasks.length ? (
-            <Accordion type="multiple" defaultValue={groupedPendingTasks.map(g => `tutor-${g.tutorId}`)} className="w-full space-y-3">
+            <Accordion type="multiple" defaultValue={groupedPendingTasks.map(g => `tutor-${g.tutorId}`)} className="w-full space-y-4">
               {groupedPendingTasks.map(group => (
-                <AccordionItem key={`tutor-${group.tutorId}`} value={`tutor-${group.tutorId}`} className="border-white/10 bg-white/5 rounded-xl px-4 data-[state=open]:bg-white/10 transition-colors">
+                <AccordionItem key={`tutor-${group.tutorId}`} value={`tutor-${group.tutorId}`} className="border-border bg-card rounded-2xl px-2 sm:px-4 data-[state=open]:bg-card transition-colors">
                   <AccordionTrigger className="hover:no-underline py-4">
                     <div className="flex items-center gap-3 text-left">
-                      <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                        <Users className="h-5 w-5 text-primary" />
+                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Users className="h-6 w-6 text-primary" />
                       </div>
                       <div>
-                        <p className="font-semibold text-white text-base">{group.tutorName}</p>
+                        <p className="font-semibold text-foreground text-base">{group.tutorName}</p>
                         <p className="text-sm text-muted-foreground">{group.tasks.length} tarefa{group.tasks.length !== 1 && 's'} pendente{group.tasks.length !== 1 && 's'}</p>
                       </div>
                     </div>
@@ -665,41 +668,53 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                       <div
                         key={task.id}
                         id={`task-${task.id}`}
-                        className={`p-4 rounded-xl bg-black/20 border flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-black/40 transition-all group ${
+                        className={`p-4 rounded-xl bg-card border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all group ${
                           task.petId && checkedInPetIds.has(task.petId)
-                            ? "border-emerald-500/20"
-                            : "border-white/10"
-                        } ${highlightTaskId === task.id ? "ring-2 ring-violet-400/50 bg-violet-500/5" : ""}`}
+                            ? "border-primary/40 shadow-sm"
+                            : "border-border shadow-sm hover:border-primary/30"
+                        } ${highlightTaskId === task.id ? "ring-2 ring-primary/50 bg-primary/5" : ""}`}
                       >
-                        <div className="flex flex-col min-w-0">
-                          <p className="font-semibold text-white text-base">{task.title}</p>
-                          <p className="text-sm text-muted-foreground mt-0.5">
+                        <div className="flex flex-col min-w-0 w-full">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {format(new Date(task.scheduledFor), "HH:mm")}
+                            </span>
+                            <Badge variant="outline" className="text-xs bg-secondary/30">
+                              {taskTypeLabel[task.type] || task.type}
+                            </Badge>
+                            {task.priority && (
+                              <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs">
+                                {priorityLabel[task.priority] || task.priority}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          <p className="font-semibold text-foreground text-base break-words">
                             {task.petName && (
                               <span className={`font-medium mr-2 ${
                                 task.petId && checkedInPetIds.has(task.petId)
-                                  ? "text-emerald-400"
+                                  ? "text-success"
                                   : "text-primary"
                               }`}>
                                 {task.petName}
                                 {task.petId && checkedInPetIds.has(task.petId) && " ✓"}
                               </span>
                             )}
-                            {format(new Date(task.scheduledFor), "HH:mm")} · {taskTypeLabel[task.type] || task.type}
+                            {task.title}
                           </p>
+                          
                           {task.description && (
-                            <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{task.description}</p>
+                            <p className="text-sm text-muted-foreground mt-1.5 break-words">
+                              {task.description}
+                            </p>
                           )}
                         </div>
-                        <div className="flex items-center justify-between sm:justify-end gap-3 flex-shrink-0">
-                          <Badge variant={task.priority === "high" ? "destructive" : "secondary"}>
-                            {priorityLabel[task.priority] || task.priority}
-                          </Badge>
+                        <div className="flex-shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
                           <Button
-                            onClick={() => handleConcluir(task)}
-                            variant="glass"
-                            size="sm"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleConcluir(task); }}
+                            size="default"
                             isLoading={completeTaskMutation.isPending && !taskToComplete}
-                            className="group-hover:bg-primary group-hover:text-white group-hover:border-primary border-white/20 transition-all w-full sm:w-auto"
+                            className="min-h-[44px] w-full sm:w-auto text-base sm:text-sm shadow-sm"
                           >
                             Concluir
                           </Button>
@@ -721,18 +736,20 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
       </Card>
 
       {completedTasks.length > 0 && (
-        <div className="opacity-60 hover:opacity-100 transition-opacity">
-          <h2 className="text-xl font-display font-semibold mb-4 flex items-center gap-2 px-2">
-            <CheckCircle2 className="text-emerald-400" /> Concluídas ({completedTasks.length})
+        <div className="mt-8 transition-opacity">
+          <h2 className="text-xl font-display font-semibold mb-4 flex items-center gap-2 px-2 text-muted-foreground/80">
+            <CheckCircle2 className="text-success opacity-80" /> Concluídas ({completedTasks.length})
           </h2>
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {completedTasks.map(task => (
-              <div key={task.id} id={`task-${task.id}`} className="p-4 rounded-xl bg-transparent border border-white/5 flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-white line-through">{task.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {task.petName && <span className="text-primary mr-1">{task.petName} ·</span>}
-                    Concluída às {task.completedAt ? format(new Date(task.completedAt), "HH:mm") : "horário desconhecido"}
+              <div key={task.id} id={`task-${task.id}`} className="p-4 rounded-xl bg-muted/20 border border-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-muted-foreground line-through break-words">
+                    {task.petName && <span className="mr-1">{task.petName} ·</span>}
+                    {task.title}
+                  </p>
+                  <p className="text-xs text-muted-foreground/70 mt-1">
+                    Concluída às {task.completedAt ? format(new Date(task.completedAt), "HH:mm") : "horário desconhecido"} · {taskTypeLabel[task.type] || task.type}
                   </p>
                 </div>
               </div>

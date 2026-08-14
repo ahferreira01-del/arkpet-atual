@@ -62,12 +62,12 @@ function PhotoMedia({
         src={src}
         alt="Foto do pet"
         loading="lazy"
-        className="w-full object-cover transition-transform duration-300 hover:scale-[1.02]"
+        className="w-full object-cover transition-transform duration-300 hover:scale-[1.01]"
         style={{ maxHeight: expanded ? "none" : "320px" }}
       />
       {!expanded && (
-        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-full text-xs font-medium text-white flex items-center gap-1.5 shadow-lg pointer-events-none">
-          <Expand className="h-3 w-3" />
+        <div className="absolute bottom-3 right-3 bg-secondary/90 px-3 py-1.5 rounded-full text-xs font-semibold text-secondary-foreground flex items-center gap-1.5 shadow-sm pointer-events-none">
+          <Expand className="h-3.5 w-3.5" />
           Ampliar
         </div>
       )}
