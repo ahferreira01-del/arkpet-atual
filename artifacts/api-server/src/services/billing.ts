@@ -467,10 +467,13 @@ export class BillingService {
               closedStatus: existing.status,
               result: "overflow_avulso_created",
             });
+            // F6B: overflow invoice for a named tutor must use the same next-cycle
+            // dueDate as a regular avulso — never dueDate = today (itemDateStr).
+            // `cycle` was already computed for this tutorId × itemDateStr above.
             const newInv = await InvoiceRepository.create({
               crecheId: params.crecheId,
               tutorId: params.tutorId,
-              dueDate: itemDateStr,
+              dueDate: cycle.dueDate,
               amount: totalItemAmount.toFixed(2),
               status: "pending",
             }, txClient);

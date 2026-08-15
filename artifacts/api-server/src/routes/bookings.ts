@@ -1122,11 +1122,20 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
     return;
   }
 
-  // F3: service bookings (banho) may start while a presence booking is already
+  // F3/F6C: service bookings (banho) may start while a presence booking is already
   // active — the pet is physically present; only the booking status changes.
   // All other conflicts (two presence bookings, two service bookings, etc.)
   // continue to be blocked.
+  //
+  // SERVICE_BOOKING_TYPES: types that represent a service *executable during physical
+  // presence* (e.g. grooming). Starting one of these does NOT change isCheckedIn or
+  // occupancy — the pet is already counted.
+  //
+  // PRESENCE_BOOKING_TYPES: types that represent the pet being physically at the
+  // daycare facility. Explicitly listed (whitelist) so that transport/taxi types
+  // (visita_taxi, creche_taxi) are never mistakenly treated as presence.
   const SERVICE_BOOKING_TYPES: readonly string[] = ["banho"];
+  const PRESENCE_BOOKING_TYPES: readonly string[] = ["day_use", "hospedagem_banho", "visita"];
 
   // Block if pet already has an active check-in
   const [alreadyActive] = await db
@@ -1144,7 +1153,9 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
   let skipPhysicalCheckin = false;
   if (alreadyActive) {
     const incomingIsService = SERVICE_BOOKING_TYPES.includes(existingBooking.type);
-    const existingIsPresence = !SERVICE_BOOKING_TYPES.includes(alreadyActive.type);
+    // Use explicit whitelist instead of NOT pattern — visita_taxi / creche_taxi are
+    // transport services, not physical presence; they must not allow a banho bypass.
+    const existingIsPresence = PRESENCE_BOOKING_TYPES.includes(alreadyActive.type);
     if (incomingIsService && existingIsPresence) {
       // Pet is already physically present; only transition the service booking to active.
       skipPhysicalCheckin = true;
