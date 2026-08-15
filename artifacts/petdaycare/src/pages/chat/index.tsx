@@ -136,6 +136,11 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrolledRef = useRef(false);
+  // B (F6.1): tracks USER INTENT to remain at the bottom — updated by the real
+  // scroll event, NOT recalculated after a resize. This separates intent from the
+  // post-resize distance, so a large image loading (+500px) doesn't flip intent
+  // to false and leave the viewport stranded mid-history.
+  const shouldStickToBottomRef = useRef(true);
   const petPickerRef = useRef<HTMLDivElement>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -185,39 +190,59 @@ export default function Chat() {
     }
   }, [urlTutorId, isTutor, user?.id]);
 
-  // F5: scroll to the latest message.
-  // - First load for this conversation: instant jump (no animation while layout is settling).
-  // - New message: smooth only if the user is already near the bottom.
+  // F5/B: scroll to the latest message.
+  // - First load: instant snap to bottom; intent = sticky.
+  // - New message: smooth scroll only when user intent (shouldStickToBottomRef) is true.
   useEffect(() => {
     if (!allMessages.length) return;
     const container = scrollContainerRef.current;
     if (!initialScrolledRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
-      initialScrolledRef.current = true;
-    } else if (container) {
-      const isNearBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-      if (isNearBottom) {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      // B6: initial load — snap instantly and mark intent as sticky.
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
       }
+      initialScrolledRef.current = true;
+      shouldStickToBottomRef.current = true;
+    } else if (shouldStickToBottomRef.current) {
+      // B10: new message — auto-scroll only when user intends to stay at bottom.
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [allMessages.length]);
 
-  // F5: keep anchored to the bottom while initial images/media finish loading
-  // (layout shifts as images render can move the viewport off the last message).
+  // F5/B: keep anchored to the bottom during layout shifts (images loading, etc.)
+  // Uses shouldStickToBottomRef (user intent) — NOT post-resize distance.
+  // This prevents a large image (+500 px) from flipping the near-bottom check
+  // to false and stranding the viewport mid-history (B1–B8).
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (!container) return;
+
+    // B5/B9: track user intent via the real scroll event.
+    // Programmatic scrolls (scrollTop = scrollHeight) also fire this handler,
+    // but they land exactly at the bottom so dist ≈ 0 < 120 → intent stays true.
+    const onScroll = () => {
+      if (!initialScrolledRef.current) return;
+      const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+      shouldStickToBottomRef.current = dist < 120;
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+
+    // B7: ResizeObserver reads intent ref (set before resize) — not post-resize distance.
     const observer = new ResizeObserver(() => {
       if (!initialScrolledRef.current) return;
-      const isNearBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight < 120;
-      if (isNearBottom) {
+      if (shouldStickToBottomRef.current) {
         container.scrollTop = container.scrollHeight;
       }
+      // B9: intent = false → user is reading history → do nothing.
     });
     observer.observe(container);
-    return () => observer.disconnect();
+
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+    };
   }, [selectedTutorId]);
 
   useEffect(() => {
@@ -225,7 +250,8 @@ export default function Chat() {
     setAllOlderLoaded(false);
     setTaggedPetId(undefined);
     setOptimisticMessages([]);
-    initialScrolledRef.current = false; // F5: reset so new conversation opens at bottom
+    initialScrolledRef.current = false;       // F5/B: reset so new conversation opens at bottom
+    shouldStickToBottomRef.current = true;    // B12: new conversation → intent starts sticky
   }, [selectedTutorId]);
 
   useEffect(() => {

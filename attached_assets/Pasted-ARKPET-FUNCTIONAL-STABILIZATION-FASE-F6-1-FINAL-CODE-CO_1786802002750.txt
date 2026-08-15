@@ -1,0 +1,673 @@
+ARKPET — FUNCTIONAL STABILIZATION
+
+FASE F6.1
+
+FINAL CODE CORRECTIONS BEFORE DEVICE QA
+
+ESCOPO CIRÚRGICO
+
+ZERO PRODUCT REFINEMENT
+
+ZERO NEW FEATURES
+
+============================================================
+0. OBJETIVO
+
+Corrigir somente duas pendências
+identificadas na revisão da F6:
+
+1. classificação incompleta
+   de Presence Booking Types;
+
+2. comportamento de sticky-bottom
+   do Chat durante layout shift.
+
+Além disso:
+
+corrigir somente a documentação
+sobre subscriptions Push
+sem alterar o sistema de Push.
+
+============================================================
+
+1. BASELINE
+   ============================================================
+
+Baseline atual:
+
+TypeScript API:
+EXIT 0
+
+TypeScript Frontend:
+EXIT 0
+
+npx tsc -b:
+EXIT 0
+
+Build:
+EXIT 0.
+
+Preservar.
+
+============================================================
+2. NÃO TOCAR
+
+NÃO alterar:
+
+Invoice Due Date
+
+Billing F2/F6B
+
+Push keys
+
+Push code
+
+Media pipeline
+
+HEIC
+
+Video MIME
+
+Booking complete-service
+
+Product Refinement R*.
+
+################################################################
+
+A — BOOKING TYPE CLASSIFICATION
+
+################################################################
+
+============================================================
+A1. PROBLEMA
+
+F6 inventariou como Presence:
+
+day_use
+
+hospedagem_banho
+
+visita
+
+lodging
+
+pacote_4dias
+
+pacote_8dias
+
+pacote_20dias.
+
+Mas a whitelist implementada contém apenas:
+
+day_use
+
+hospedagem_banho
+
+visita.
+
+Existe inconsistência.
+
+============================================================
+A2. NÃO CORRIGIR POR ADIVINHAÇÃO
+
+Antes de editar,
+determinar para cada:
+
+lodging
+
+pacote_4dias
+
+pacote_8dias
+
+pacote_20dias
+
+se o valor:
+
+A. pode realmente ser persistido
+em bookings.type;
+
+B. é criado pelo frontend atual;
+
+C. é aceito pelo backend;
+
+D. representa presença física;
+
+E. pode chegar a status active.
+
+============================================================
+A3. EVIDÊNCIA
+
+Consultar:
+
+frontend booking creation
+
+backend create/update booking
+
+schema
+
+OpenAPI se aplicável
+
+constants
+
+queries reais
+
+e, se seguro,
+SELECT DISTINCT type
+FROM bookings
+na base de teste.
+
+============================================================
+A4. MATRIX
+
+Produzir:
+
+TYPE
+
+REACHABLE?
+
+PERSISTED?
+
+CAN BE ACTIVE?
+
+PHYSICAL PRESENCE?
+
+SOURCE.
+
+============================================================
+A5. TARGET
+
+PRESENCE_BOOKING_TYPES
+deve conter TODOS e SOMENTE
+os tipos comprovadamente
+de presença física
+que podem coexistir com banho.
+
+============================================================
+A6. IMPORTANTE
+
+Não adicionar um tipo
+apenas porque aparece
+em um TypeScript union antigo.
+
+============================================================
+A7. TRANSPORT
+
+Preservar fora
+da whitelist de presença:
+
+visita_taxi
+
+creche_taxi
+
+a menos que evidência contradiga
+a auditoria F6.
+
+============================================================
+A8. SERVICE
+
+Preservar:
+
+banho
+
+como service-during-presence
+comprovado.
+
+============================================================
+A9. NO NEGATIVE CLASSIFICATION
+
+Nunca voltar para:
+
+!SERVICE_BOOKING_TYPES.includes(...)
+
+como definição de presença.
+
+============================================================
+A10. TESTS
+
+Para cada Presence type
+REACHABLE:
+
+Presence active
++
+Bath confirmed
+→ Bath start ALLOWED.
+
+Para transport:
+
+Transport active
++
+Bath confirmed
+→ BLOCKED.
+
+Para Bath:
+
+Bath active
++
+Bath confirmed
+→ BLOCKED.
+
+Para duplicate presence:
+
+Presence active
++
+Presence confirmed
+→ BLOCKED.
+
+============================================================
+A11. PHYSICAL CHECK-IN
+
+Nos casos permitidos:
+
+não incrementar occupancy;
+
+não recriar check-in;
+
+não alterar isCheckedIn
+se já true.
+
+################################################################
+
+B — CHAT STICKY BOTTOM
+
+################################################################
+
+============================================================
+B1. PROBLEMA
+
+O ResizeObserver atual
+verifica near-bottom
+DEPOIS do resize.
+
+Isso pode falhar
+quando uma imagem grande
+aumenta scrollHeight.
+
+============================================================
+B2. EXAMPLE
+
+Antes:
+
+distanceToBottom = 0.
+
+Imagem carrega
++500px.
+
+Depois:
+
+distanceToBottom = 500.
+
+Observer testa:
+
+500 < 120
+→ false.
+
+Resultado:
+
+viewport pode deixar
+de permanecer no bottom.
+
+============================================================
+B3. TARGET
+
+Separar:
+
+USER INTENT
+
+de
+
+CURRENT DISTANCE AFTER RESIZE.
+
+============================================================
+B4. LOCAL REF
+
+Usar uma ref local equivalente a:
+
+shouldStickToBottomRef
+
+ou nome coerente
+com o arquivo.
+
+Não criar hook global.
+
+============================================================
+B5. USER SCROLL
+
+No scroll real do container,
+atualizar:
+
+shouldStickToBottomRef.current =
+distanceToBottom < threshold.
+
+============================================================
+B6. INITIAL LOAD
+
+Ao abrir uma conversa:
+
+shouldStickToBottomRef.current = true
+
+e realizar initial scroll
+imediato ao bottom.
+
+============================================================
+B7. RESIZE
+
+Quando ResizeObserver detectar
+mudança de altura:
+
+SE:
+
+shouldStickToBottomRef.current === true
+
+ENTÃO:
+
+scrollTop = scrollHeight.
+
+============================================================
+B8. IMPORTANT
+
+Não recalcular a intenção
+somente depois do resize.
+
+============================================================
+B9. USER HISTORY
+
+Quando usuário subir
+para ler histórico:
+
+scroll event
+
+→ shouldStickToBottom = false.
+
+ResizeObserver
+não deve puxá-lo de volta.
+
+============================================================
+B10. NEW MESSAGE
+
+Antes/ao processar nova mensagem,
+preservar comportamento:
+
+se usuário está acompanhando bottom
+→ auto-scroll.
+
+se está lendo histórico
+→ não sequestrar.
+
+============================================================
+B11. PROGRAMMATIC SCROLL
+
+Evitar que scroll programático
+crie comportamento oscilante.
+
+Não criar:
+
+setInterval
+
+loop
+
+polling
+
+global scroll manager.
+
+============================================================
+B12. CONVERSATION CHANGE
+
+Ao mudar conversation/thread:
+
+resetar:
+
+initialScrolled
+
+e:
+
+shouldStickToBottom = true.
+
+============================================================
+B13. MESSAGE ORDER
+
+Preservar:
+
+ASC.
+
+============================================================
+B14. QUERIES
+
+NÃO alterar:
+
+React Query
+
+message API
+
+pagination
+
+polling
+
+send mutation
+
+attachments.
+
+============================================================
+B15. STATIC TEST MATRIX
+
+Validar por código:
+
+initial conversation
+→ stick true.
+
+user scrolls up
+→ stick false.
+
+large media resize while stick=true
+→ bottom restored.
+
+large media resize while stick=false
+→ no movement.
+
+conversation changes
+→ stick true novamente.
+
+################################################################
+
+C — PUSH DOCUMENTATION CORRECTION
+
+################################################################
+
+============================================================
+C1. PROD SUBSCRIPTIONS
+
+IDs existentes no prod
+NÃO devem ser classificados
+automaticamente como stale.
+
+============================================================
+C2. DO NOT DELETE
+
+Não apagar preventivamente:
+
+24
+
+34
+
+36
+
+37
+
+ou qualquer subscription prod.
+
+============================================================
+C3. PROVIDER DECIDES
+
+Após redeployment:
+
+tentar envio normalmente.
+
+============================================================
+C4. 410
+
+Somente se provider retornar:
+
+410 Gone
+
+o handler existente
+pode remover a subscription.
+
+============================================================
+C5. OTHER ERRORS
+
+401
+
+403
+
+ou outros códigos
+
+não devem ser documentados
+como 410.
+
+Registrar resposta real.
+
+============================================================
+C6. NO PUSH CODE CHANGE
+
+Expected:
+
+0 arquivos Push alterados.
+
+################################################################
+
+D — VALIDATION
+
+################################################################
+
+============================================================
+D1. DIFF
+
+Expected files:
+
+bookings.ts
+
+chat/index.tsx
+
+e nada mais,
+salvo necessidade comprovada.
+
+============================================================
+D2. TYPECHECK API
+
+Executar:
+
+pnpm --filter @workspace/api-server typecheck
+
+TARGET:
+
+EXIT 0.
+
+============================================================
+D3. TYPECHECK FRONTEND
+
+Executar:
+
+pnpm --filter @workspace/petdaycare typecheck
+
+TARGET:
+
+EXIT 0.
+
+============================================================
+D4. TSC-B
+
+npx tsc -b
+
+TARGET:
+
+EXIT 0.
+
+============================================================
+D5. BUILD
+
+pnpm --filter @workspace/petdaycare build
+
+TARGET:
+
+EXIT 0.
+
+============================================================
+D6. NO DEVICE CLAIM
+
+Ainda não declarar:
+
+Chat device validated
+
+Push received
+
+HEIC confirmed
+
+Video confirmed
+
+sem aparelho real.
+
+################################################################
+
+E — FINAL REPORT
+
+################################################################
+
+Entregar:
+
+A. BOOKING TYPE REACHABILITY MATRIX
+
+B. FINAL PRESENCE_BOOKING_TYPES
+
+C. FINAL SERVICE_BOOKING_TYPES
+
+D. TRANSPORT TYPES
+
+E. SERVICE GUARD TEST MATRIX
+
+F. CHAT STICKY-BOTTOM BEFORE
+
+G. CHAT STICKY-BOTTOM AFTER
+
+H. USER-SCROLL BEHAVIOR
+
+I. RESIZE BEHAVIOR
+
+J. PUSH SUBSCRIPTION DOCUMENTATION
+
+K. FILES CHANGED
+
+L. TYPECHECK API
+
+M. TYPECHECK FRONTEND
+
+N. TSC-B
+
+O. BUILD
+
+P. FINAL VERDICT.
+
+============================================================
+F. VERDICT
+
+Se tudo passar:
+
+FUNCTIONAL STABILIZATION
+CODE COMPLETE /
+DEVICE QA PENDING.
+
+Ainda NÃO utilizar:
+
+FULLY VALIDATED
+
+ou:
+
+END-TO-END COMPLETE
+
+até os testes reais
+em dispositivo.
+
+============================================================
+G. STOP
+
+Não iniciar Product Refinement.
+
+Aguardar Device QA.
