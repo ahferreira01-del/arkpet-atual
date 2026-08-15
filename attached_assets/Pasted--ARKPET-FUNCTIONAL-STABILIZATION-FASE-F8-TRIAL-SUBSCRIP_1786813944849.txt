@@ -1,0 +1,1381 @@
+# ARKPET — FUNCTIONAL STABILIZATION
+
+# FASE F8
+
+# TRIAL & SUBSCRIPTION ENFORCEMENT HARDENING
+
+# PRIORIDADE P1
+
+# ZERO PRODUCT REFINEMENT
+
+# ZERO NOVA FEATURE
+
+# CORREÇÃO DE ENFORCEMENT EXISTENTE
+
+============================================================
+0. CONTEXTO
+===========
+
+O ArkPet possui trial de:
+
+10 dias.
+
+No cadastro de uma nova creche:
+
+POST /api/auth/register-creche
+
+é criada uma subscription:
+
+status = "trial"
+
+trial_ends_at = agora + 10 dias.
+
+Existe job que:
+
+* executa no startup;
+* depois a cada hora;
+
+e transforma trial expirado em:
+
+status = "suspended".
+
+Além disso,
+requireActiveSubscription
+já verifica trial_ends_at
+em tempo real.
+
+O problema NÃO é
+o cálculo da expiração.
+
+O problema é
+a ABRANGÊNCIA DO BLOQUEIO.
+
+============================================================
+
+1. PROBLEMA ATUAL
+   ============================================================
+
+requireActiveSubscription
+está aplicado apenas em
+poucos endpoints.
+
+Atualmente protege,
+segundo auditoria:
+
+POST criar Pet
+
+POST criar Booking
+
+POST adicionar Service ao Booking.
+
+O restante da aplicação/API
+pode continuar sendo utilizado
+mesmo com:
+
+trial expirado
+
+subscription suspended
+
+subscription cancelled.
+
+============================================================
+2. OUTRAS BRECHAS
+=================
+
+Hoje também existem:
+
+A.
+
+Creches SEM linha
+em subscriptions
+
+→ acesso permitido.
+
+B.
+
+Frontend subscription check
+em caso de erro:
+
+→ fail-open.
+
+C.
+
+Frontend redirect
+para /assinatura
+
+→ não representa
+segurança backend.
+
+D.
+
+Existe exceção hardcoded
+para creche ID 17.
+
+============================================================
+3. OBJETIVO
+===========
+
+Transformar a subscription
+em enforcement real
+para usuários operacionais
+da creche.
+
+============================================================
+4. TARGET ROLES
+===============
+
+Aplicar enforcement a:
+
+creche_admin
+
+staff.
+
+============================================================
+5. MASTER ADMIN
+===============
+
+Preservar bypass para:
+
+master_admin.
+
+============================================================
+6. TUTOR
+========
+
+NÃO alterar
+o comportamento de tutor
+nesta fase.
+
+Não criar enforcement novo
+para Tutor.
+
+Essa decisão fica fora
+do escopo atual.
+
+============================================================
+7. BUSINESS RULE — ACTIVE TRIAL
+===============================
+
+Se:
+
+status = trial
+
+E
+
+trial_ends_at >= agora
+conforme regra temporal atual,
+
+acesso normal.
+
+============================================================
+8. BUSINESS RULE — EXPIRED TRIAL
+================================
+
+Se:
+
+status = trial
+
+E
+
+trial_ends_at expirou:
+
+usuário pode autenticar,
+
+MAS:
+
+aplicação operacional
+deve ficar bloqueada.
+
+============================================================
+9. SUSPENDED
+============
+
+status = suspended
+
+→ bloquear aplicação operacional.
+
+============================================================
+10. CANCELLED
+=============
+
+status = cancelled
+
+→ bloquear aplicação operacional.
+
+============================================================
+11. PAST_DUE
+============
+
+Preservar regra atual:
+
+past_due
+
+NÃO bloqueia.
+
+Continua apenas
+com aviso visual existente.
+
+============================================================
+12. NÃO ALTERAR PAST_DUE
+========================
+
+Não transformar past_due
+em bloqueio nesta fase.
+
+============================================================
+13. LOGIN
+=========
+
+IMPORTANTE:
+
+NÃO bloquear autenticação.
+
+Usuário precisa conseguir:
+
+login
+
+→ /assinatura
+
+→ regularizar situação.
+
+============================================================
+14. NÃO RETORNAR 401 POR TRIAL
+==============================
+
+Trial expirado
+NÃO é problema de autenticação.
+
+Não responder 401
+por subscription.
+
+============================================================
+15. BACKEND RESPONSE
+====================
+
+Preservar:
+
+HTTP 402
+
+para bloqueio por subscription,
+se esse já é
+o contrato existente.
+
+============================================================
+16. CENTRAL AUTHORITY
+=====================
+
+O BACKEND
+deve ser a autoridade.
+
+Frontend redirect
+é UX.
+
+Não é enforcement de segurança.
+
+============================================================
+17. ARCHITECTURE AUDIT
+======================
+
+ANTES de implementar,
+mapear todos os routers
+do backend autenticado.
+
+Entregar matriz:
+
+ROUTER
+
+BASE PATH
+
+AUTH REQUIRED?
+
+CRECHE TENANT?
+
+CURRENT SUBSCRIPTION GUARD?
+
+SHOULD BE BLOCKED?
+
+RECOVERY EXCEPTION?
+
+============================================================
+18. NÃO ADICIONAR MANUALMENTE
+EM 100 ROTAS
+============
+
+Evitar copiar:
+
+requireActiveSubscription
+
+em dezenas de endpoints
+individualmente.
+
+============================================================
+19. TARGET ARCHITECTURE
+=======================
+
+Preferir enforcement
+em nível central
+de router/tenant
+onde seja seguro.
+
+============================================================
+20. IMPORTANT
+=============
+
+NÃO aplicar middleware
+cego no app inteiro.
+
+Isso pode bloquear
+as próprias rotas necessárias
+para recuperar assinatura.
+
+============================================================
+21. RECOVERY ROUTES
+===================
+
+Mesmo quando subscription
+estiver bloqueada,
+devem permanecer disponíveis
+as rotas estritamente necessárias
+para:
+
+autenticação
+
+identidade do usuário
+
+consulta da assinatura
+
+consulta dos planos
+
+processo de assinatura/pagamento
+
+Stripe checkout
+quando aplicável
+
+logout
+
+health/public infrastructure.
+
+============================================================
+22. AUDIT RECOVERY ROUTES
+=========================
+
+Descobrir nomes reais
+das rotas existentes.
+
+NÃO inventar endpoints.
+
+============================================================
+23. ALLOWLIST
+=============
+
+Criar uma allowlist pequena
+somente se necessária
+à arquitetura atual.
+
+============================================================
+24. NÃO USAR BLACKLIST GIGANTE
+==============================
+
+Preferir:
+
+tenant protected by default
+
+*
+
+small recovery allowlist
+
+em vez de:
+
+centenas de endpoints
+protegidos manualmente.
+
+============================================================
+25. SUBSCRIPTION MISSING
+========================
+
+Comportamento atual:
+
+nenhuma subscription
+→ acesso liberado.
+
+Isso NÃO deve continuar
+para creche_admin/staff.
+
+============================================================
+26. NEW RULE — MISSING SUBSCRIPTION
+===================================
+
+Para usuário com:
+
+role = creche_admin ou staff
+
+E
+
+crecheId existente
+
+E
+
+nenhuma subscription encontrada:
+
+BLOQUEAR.
+
+============================================================
+27. HTTP
+========
+
+Usar o mesmo contrato
+de subscription blocked:
+
+HTTP 402
+
+ou resposta atual equivalente.
+
+============================================================
+28. WHY
+=======
+
+Ausência de subscription
+não pode significar:
+
+"assinatura vitalícia gratuita".
+
+============================================================
+29. REGISTRATION SAFETY
+=======================
+
+Depois de:
+
+register-creche
+
+confirmar atomicidade lógica
+entre:
+
+creche creation
+
+subscription/trial creation.
+
+============================================================
+30. AUDIT ONLY
+==============
+
+Se cadastro puder criar creche
+sem subscription
+por erro intermediário:
+
+REPORTAR.
+
+============================================================
+31. NÃO REFACTOR REGISTRATION
+=============================
+
+Não refatorar
+todo cadastro
+se não houver problema comprovado.
+
+============================================================
+32. HARDCODED CRECHE 17
+=======================
+
+Existe exceção conhecida
+para:
+
+creche ID 17.
+
+============================================================
+33. AUDIT EXCEPTION
+===================
+
+Localizar exatamente:
+
+file
+
+condition
+
+reason/comment
+
+effect.
+
+============================================================
+34. NÃO REMOVER AUTOMATICAMENTE
+===============================
+
+Não remover
+a exceção ID 17
+sem determinar
+se ela ainda é necessária.
+
+============================================================
+35. MAS NÃO EXPANDIR
+====================
+
+Não criar
+novas exceções hardcoded.
+
+============================================================
+36. REPORT
+==========
+
+Classificar a exceção como:
+
+LEGACY EXCEPTION
+
+e registrar
+recomendação futura.
+
+============================================================
+37. FRONTEND
+============
+
+Auditar:
+
+App.tsx
+
+subscription provider/hook
+
+subscription-banner.tsx
+
+/assinatura.
+
+============================================================
+38. FRONTEND TARGET
+===================
+
+Para:
+
+expired trial
+
+suspended
+
+cancelled
+
+creche_admin/staff:
+
+redirecionar para:
+
+/assinatura.
+
+============================================================
+39. ALLOWED FRONTEND ROUTES
+===========================
+
+Preservar acesso a:
+
+/assinatura
+
+/login
+
+/cadastro
+
+e outras realmente necessárias
+para recuperação.
+
+============================================================
+40. FAIL-OPEN PROBLEM
+=====================
+
+Atualmente,
+se subscription API falha:
+
+frontend libera acesso.
+
+============================================================
+41. NEW FRONTEND ERROR STATE
+============================
+
+Não tratar erro técnico como:
+
+subscription ativa.
+
+============================================================
+42. TARGET
+==========
+
+Enquanto subscription state
+não puder ser determinado:
+
+NÃO renderizar
+o app operacional
+como se estivesse ativo.
+
+============================================================
+43. IMPORTANT
+=============
+
+Não inventar uma tela complexa.
+
+Usar mecanismo existente
+de loading/error
+ou tratamento mínimo.
+
+============================================================
+44. NETWORK ERROR
+=================
+
+Erro de rede não deve
+conceder acesso operacional
+por decisão frontend.
+
+============================================================
+45. BACKEND STILL AUTHORITY
+===========================
+
+Mesmo assim,
+backend permanece
+responsável pelo bloqueio real.
+
+============================================================
+46. FRONTEND DIRECT URL
+=======================
+
+Testar acesso direto
+a:
+
+/pets
+
+/bookings
+
+/financial
+
+/settings
+
+/staff/board
+
+/chat
+
+etc.
+
+com trial expirado.
+
+============================================================
+47. EXPECTED
+============
+
+creche_admin/staff:
+
+→ /assinatura.
+
+============================================================
+48. BACKEND DIRECT API TEST
+===========================
+
+Não testar apenas UI.
+
+Usar token real
+de usuário de creche
+com trial expirado.
+
+============================================================
+49. OPERATIONAL API EXPECTED
+============================
+
+Chamadas tenant-operational:
+
+GET
+
+POST
+
+PATCH
+
+PUT
+
+DELETE
+
+devem ser bloqueadas
+conforme arquitetura final.
+
+============================================================
+50. IMPORTANT READ ROUTES
+=========================
+
+Sim:
+
+READ operations operacionais
+também devem ser bloqueadas
+para creche_admin/staff
+se a política é hard trial lock.
+
+============================================================
+51. WHY
+=======
+
+Se apenas writes bloqueiam,
+a aplicação continua
+praticamente utilizável
+após trial.
+
+============================================================
+52. RECOVERY DATA
+=================
+
+Não bloquear
+GETs necessários
+para:
+
+subscription page
+
+plans
+
+current subscription
+
+payment flow.
+
+============================================================
+53. STATUS JOB
+==============
+
+Preservar job atual
+de expiração.
+
+============================================================
+54. REALTIME CHECK
+==================
+
+Preservar também
+verificação temporal
+no middleware.
+
+============================================================
+55. WHY BOTH
+============
+
+O bloqueio não deve depender
+exclusivamente
+do job horário.
+
+============================================================
+56. TIMEZONE
+============
+
+Auditar como:
+
+trial_ends_at
+
+é armazenado/comparado.
+
+============================================================
+57. NÃO ALTERAR SEM NECESSIDADE
+===============================
+
+Se timestamp atual
+estiver correto:
+
+não modificar timezone.
+
+============================================================
+58. BOUNDARY TEST
+=================
+
+Testar:
+
+trial ainda válido
+
+trial exatamente
+no limite temporal
+
+trial expirado
+1 segundo/minuto depois.
+
+============================================================
+59. DO NOT EXTEND TRIAL
+=======================
+
+Não alterar:
+
+TRIAL_DAYS = 10.
+
+============================================================
+60. NO COUNTDOWN FEATURE
+========================
+
+Não criar:
+
+contador
+
+novo banner
+
+toast diário
+
+modal
+
+etc.
+
+============================================================
+61. EXISTING BANNER
+===================
+
+Preservar comportamento atual
+do banner.
+
+============================================================
+62. ASSINATURA PAGE
+===================
+
+Preservar página existente.
+
+Não redesenhar.
+
+============================================================
+63. TEST DATA
+=============
+
+Banco de desenvolvimento
+é de teste.
+
+Pode ajustar
+uma subscription de teste
+para simular:
+
+trial ativo
+
+trial expirado
+
+suspended
+
+cancelled
+
+past_due
+
+missing subscription.
+
+============================================================
+64. DON'T TOUCH PROD
+====================
+
+Não modificar
+subscriptions reais
+de produção.
+
+============================================================
+65. TEST MATRIX — BACKEND
+=========================
+
+Obrigatório:
+
+A.
+creche_admin
+trial ativo
+→ operational endpoint PASS.
+
+B.
+staff
+trial ativo
+→ PASS.
+
+C.
+creche_admin
+trial expirado
+→ 402.
+
+D.
+staff
+trial expirado
+→ 402.
+
+E.
+suspended
+→ 402.
+
+F.
+cancelled
+→ 402.
+
+G.
+past_due
+→ PASS.
+
+H.
+missing subscription
+→ 402.
+
+I.
+master_admin
+→ PASS.
+
+J.
+tutor
+→ comportamento anterior,
+inalterado.
+
+============================================================
+66. TEST HTTP METHODS
+=====================
+
+Testar pelo menos
+um endpoint operacional:
+
+GET
+
+POST
+
+PATCH/PUT
+
+DELETE
+
+se disponíveis de forma segura
+na base de teste.
+
+============================================================
+67. TEST RECOVERY ENDPOINTS
+===========================
+
+Com trial expirado:
+
+subscription status
+→ PASS.
+
+plans
+→ PASS.
+
+subscription/payment flow
+→ PASS.
+
+logout/auth identity
+→ PASS
+conforme arquitetura atual.
+
+============================================================
+68. DEADLOCK PREVENTION
+=======================
+
+Usuário bloqueado
+NUNCA pode ficar
+sem acesso ao caminho
+de regularização.
+
+============================================================
+69. TEST MATRIX — FRONTEND
+==========================
+
+creche_admin trial ativo
+→ app normal.
+
+staff trial ativo
+→ app normal.
+
+creche_admin trial expirado
+→ /assinatura.
+
+staff trial expirado
+→ /assinatura.
+
+suspended
+→ /assinatura.
+
+cancelled
+→ /assinatura.
+
+past_due
+→ app + warning atual.
+
+============================================================
+70. DIRECT NAVIGATION
+=====================
+
+Com expired trial,
+tentar navegar diretamente
+para:
+
+/pets
+
+/bookings
+
+/tutors
+
+/staff/board
+
+/financial
+
+/store
+
+/settings
+
+/chat
+
+dashboard.
+
+Expected:
+
+redirect /assinatura.
+
+============================================================
+71. API FAILURE TEST
+====================
+
+Simular falha
+da consulta frontend
+de subscription.
+
+Expected:
+
+NÃO liberar silenciosamente
+app operacional.
+
+============================================================
+72. LOGIN TEST
+==============
+
+Com expired trial:
+
+login deve continuar funcionando.
+
+Após login:
+
+→ /assinatura.
+
+============================================================
+73. NO 401
+==========
+
+Subscription expired
+não deve produzir
+credenciais inválidas.
+
+============================================================
+74. STATUS TRANSITION TEST
+==========================
+
+Na base de teste:
+
+trial ativo
+
+→ mudar trial_ends_at
+para passado
+
+→ próxima request operacional
+deve bloquear imediatamente
+
+SEM esperar job horário.
+
+============================================================
+75. JOB TEST
+============
+
+Depois,
+confirmar que job
+também converte status
+para suspended
+quando executado.
+
+============================================================
+76. REACT QUERY
+===============
+
+Se subscription é cacheada,
+verificar invalidation/refetch
+após alteração/contratação.
+
+============================================================
+77. PAYMENT SUCCESS
+===================
+
+Se existe fluxo seguro
+de ativação de plano
+na base de teste:
+
+confirmar que,
+após status voltar
+a estado permitido,
+
+usuário recupera acesso
+sem precisar limpar
+dados manualmente.
+
+============================================================
+78. NÃO CRIAR ESTADO NOVO
+=========================
+
+Usar apenas status
+já existentes.
+
+============================================================
+79. NO DB SCHEMA CHANGE
+=======================
+
+Expected:
+
+0 migration.
+
+0 nova coluna.
+
+0 novo enum.
+
+============================================================
+80. NO OPENAPI CHANGE
+=====================
+
+Expected:
+nenhuma alteração OpenAPI,
+
+salvo se contrato real
+já estiver divergente
+e isso for comprovado.
+
+Se ocorrer:
+
+STOP e reportar
+antes de alterar.
+
+============================================================
+81. TYPECHECK
+=============
+
+Depois do patch:
+
+pnpm --filter @workspace/api-server typecheck
+
+TARGET:
+EXIT 0.
+
+============================================================
+82. FRONTEND TYPECHECK
+======================
+
+pnpm --filter @workspace/petdaycare typecheck
+
+TARGET:
+EXIT 0.
+
+============================================================
+83. TSC-B
+=========
+
+npx tsc -b
+
+TARGET:
+EXIT 0.
+
+============================================================
+84. BUILD
+=========
+
+pnpm --filter @workspace/petdaycare build
+
+TARGET:
+EXIT 0.
+
+============================================================
+85. TESTS
+=========
+
+Se infraestrutura de testes
+já existir,
+adicionar testes focados
+ao enforcement.
+
+Não criar framework novo
+de testes.
+
+============================================================
+86. REQUIRED REGRESSION CHECK
+=============================
+
+Confirmar que não mudou:
+
+booking logic
+
+finance logic
+
+push
+
+media
+
+chat
+
+trial duration
+
+plan prices
+
+Stripe logic
+
+roles.
+
+============================================================
+87. FILE DIFF
+=============
+
+Para cada arquivo:
+
+FILE
+
+WHY
+
+SUBSCRIPTION ENFORCEMENT?
+
+BUSINESS CHANGE?
+
+NEW FEATURE?
+
+============================================================
+88. EXPECTED BUSINESS CHANGE
+============================
+
+Existe UMA mudança deliberada:
+
+subscription/trial expirado
+passa a bloquear
+corretamente o uso operacional
+de creche_admin/staff.
+
+============================================================
+89. THIS IS NOT NEW FEATURE
+===========================
+
+É enforcement
+de uma regra já existente
+de trial/assinatura.
+
+============================================================
+90. REPORT — CURRENT ROUTE COVERAGE
+===================================
+
+Antes e depois,
+informar:
+
+authenticated tenant routes
+
+routes protected by subscription
+
+recovery routes exempted.
+
+============================================================
+91. FINAL QUESTIONNAIRE
+=======================
+
+1. TRIAL_DAYS remains 10?
+
+2. register-creche still creates trial?
+
+3. active trial can access app?
+
+4. expired trial creche_admin blocked?
+
+5. expired trial staff blocked?
+
+6. suspended blocked?
+
+7. cancelled blocked?
+
+8. past_due still allowed?
+
+9. missing subscription blocked?
+
+10. master_admin bypass preserved?
+
+11. tutor behavior unchanged?
+
+12. login still succeeds when expired?
+
+13. expired user redirected to /assinatura?
+
+14. direct operational route blocked?
+
+15. direct operational API blocked?
+
+16. GET operational APIs protected?
+
+17. POST operational APIs protected?
+
+18. PATCH/PUT operational APIs protected?
+
+19. DELETE operational APIs protected?
+
+20. subscription page accessible?
+
+21. plans accessible?
+
+22. payment flow accessible?
+
+23. auth/logout accessible?
+
+24. frontend API error still fail-open?
+    Expected NO.
+
+25. backend remains authority?
+
+26. hourly expiration job preserved?
+
+27. realtime trial timestamp check preserved?
+
+28. creche ID 17 exception found?
+
+29. Was ID 17 behavior changed?
+    Expected NO unless separately approved.
+
+30. New hardcoded exceptions?
+    Expected NO.
+
+31. DB schema changed?
+    Expected NO.
+
+32. New subscription status?
+    Expected NO.
+
+33. OpenAPI changed?
+    Expected NO.
+
+34. Product Refinement applied?
+    Expected NO.
+
+35. Typecheck API?
+
+36. Typecheck frontend?
+
+37. tsc-b?
+
+38. Build?
+
+39. Test matrix passes?
+
+40. Remaining blockers?
+
+============================================================
+92. SUCCESS CRITERIA
+====================
+
+F8 somente pode ser
+considerada completa quando:
+
+* active trial works;
+* expired trial blocks;
+* suspended blocks;
+* cancelled blocks;
+* past_due remains allowed;
+* missing subscription blocks;
+* master_admin bypass works;
+* tutor unchanged;
+* login works;
+* /assinatura works;
+* payment recovery path works;
+* operational backend APIs
+  cannot bypass subscription;
+* frontend does not fail-open;
+* TypeScript = 0;
+* build = EXIT 0.
+
+============================================================
+93. FINAL VERDICT
+=================
+
+Escolher:
+
+TRIAL ENFORCEMENT
+COMPLETE / READY
+
+TRIAL ENFORCEMENT
+PARTIAL
+
+TRIAL ENFORCEMENT
+BLOCKED.
+
+============================================================
+94. STOP
+========
+
+NÃO iniciar
+Product Refinement.
+
+NÃO corrigir
+outros bugs adjacentes.
+
+Entregar relatório
+e aguardar aprovação.

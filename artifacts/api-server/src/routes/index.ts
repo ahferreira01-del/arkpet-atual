@@ -20,12 +20,26 @@ import financialReportsRouter from "./financial-reports.js";
 import medicalRouter from "./medical.js";
 import ordersRouter from "./orders.js";
 import logsRouter from "./logs.js";
+import { authenticate } from "../middlewares/authenticate.js";
+import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 
 const router = Router();
 
 router.use(healthRouter);
 router.use(storageRouter);
 router.use("/auth", authRouter);
+
+// ── Central subscription gate ─────────────────────────────────────────────────
+// Applies to every /creches/:crecheId/* route (all tenant operational endpoints).
+// Recovery routes (/auth, /billing, /push, /users, /healthz) are mounted outside
+// this path and remain accessible regardless of subscription status — ensuring
+// the user can always authenticate, view plans, and complete payment recovery.
+//
+// authenticate runs first so req.user is populated before the subscription check.
+// Individual sub-routers also call authenticate (defence-in-depth); the second
+// call is idempotent and adds one extra DB round-trip per request — acceptable.
+router.use("/creches/:crecheId", authenticate, requireActiveSubscription);
+
 router.use("/creches", crechesRouter);
 router.use("/creches/:crecheId/pets", petsRouter);
 router.use("/creches/:crecheId/bookings", bookingsRouter);

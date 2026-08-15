@@ -22,3 +22,4 @@
 - [Financial outbox & structured logging](financial-outbox-logging.md) — financial_outbox table, OutboxRepository, domain events in services/events.ts, financialLog in lib/logger.ts; outbox inserts are ALWAYS inside the same tx as the main write.
 - [Phase 15C integration test patterns](phase15c-integration-tests.md) — avulso unique-index collision fix, null-tutorId addCharge routing, global error handler 4xx forwarding, outbox bookmark pattern.
 - [TypeScript dist resolution](ts-dist-resolution.md) — frontend uses project references → reads lib dist/.d.ts; stale dist = false TS errors; always run tsc --build (typecheck:libs) before diagnosing frontend typecheck failures.
+- [F8 Subscription Enforcement](f8-subscription-enforcement.md) — central gate at `/creches/:crecheId`; MUST chain `authenticate` before `requireActiveSubscription` or req.user is undefined and gate falls through.

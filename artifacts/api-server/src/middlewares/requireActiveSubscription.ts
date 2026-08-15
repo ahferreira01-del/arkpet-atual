@@ -4,20 +4,50 @@ import { subscriptionsTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import type { AuthRequest } from "./authenticate.js";
 
-// Statuses that hard-block write actions. "past_due" is intentionally allowed
-// through as a grace period (the UI shows a warning banner instead).
+// Statuses that hard-block the operational app.
+// "past_due" is intentionally allowed through — UI shows a warning banner only.
 const BLOCKED_STATUSES = new Set(["suspended", "cancelled"]);
 
-// Gate for creating new billable resources (pets, bookings). master_admin and
-// creches without a subscription row pass through untouched.
-export async function requireActiveSubscription(req: AuthRequest, res: Response, next: NextFunction) {
-  if (req.user?.role === "master_admin") {
+/**
+ * Central subscription enforcement gate.
+ *
+ * Applies to: creche_admin, staff (any user with a crecheId that isn't master_admin or tutor).
+ * Bypasses: master_admin (platform ops), tutor (separate product scope), no crecheId.
+ *
+ * Blocks with HTTP 402:
+ *   - expired trial (real-time check — doesn't wait for the hourly job)
+ *   - suspended / cancelled
+ *   - missing subscription row (no subscription = no free access)
+ *
+ * Allows:
+ *   - active trial (trialEndsAt in the future)
+ *   - past_due (grace period — banner shown in UI)
+ *   - active subscription
+ *
+ * The authoritative source is the authenticated user's OWN crecheId, never the
+ * (spoofable) :crecheId path param — the gate cannot be bypassed by targeting
+ * another tenant's path.
+ */
+export async function requireActiveSubscription(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  const role = req.user?.role;
+
+  // master_admin: platform-wide bypass.
+  if (role === "master_admin") {
     next();
     return;
   }
 
-  // Authoritative on the authenticated user's own creche — never the (spoofable)
-  // path param — so the gate cannot be bypassed by targeting another tenant path.
+  // Tutor: scope excluded from this enforcement phase — behavior unchanged.
+  if (role === "tutor") {
+    next();
+    return;
+  }
+
+  // No authenticated user or no creche association — let auth middleware handle it.
   const crecheId = req.user?.crecheId ?? undefined;
   if (!crecheId) {
     next();
@@ -30,12 +60,17 @@ export async function requireActiveSubscription(req: AuthRequest, res: Response,
     .where(eq(subscriptionsTable.crecheId, crecheId))
     .limit(1);
 
+  // Missing subscription row → block. Absence ≠ free lifetime access.
   if (!sub) {
-    next();
+    res.status(402).json({
+      error: "subscription_missing",
+      message: "Nenhuma assinatura encontrada. Assine um plano para continuar.",
+      status: "missing",
+    });
     return;
   }
 
-  // Trial expired: treat the same as suspended.
+  // Real-time trial expiry check — does not wait for the hourly job.
   if (sub.status === "trial" && sub.trialEndsAt && new Date(sub.trialEndsAt) < new Date()) {
     res.status(402).json({
       error: "trial_expired",
@@ -45,6 +80,7 @@ export async function requireActiveSubscription(req: AuthRequest, res: Response,
     return;
   }
 
+  // Hard-blocked statuses.
   if (BLOCKED_STATUSES.has(sub.status)) {
     res.status(402).json({
       error: "subscription_inactive",
