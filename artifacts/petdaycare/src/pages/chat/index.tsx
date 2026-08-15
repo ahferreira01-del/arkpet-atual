@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import {
   useListConversations,
@@ -190,23 +190,43 @@ export default function Chat() {
     }
   }, [urlTutorId, isTutor, user?.id]);
 
-  // F5/B: scroll to the latest message.
-  // - First load: instant snap to bottom; intent = sticky.
+  // F9: scroll to the latest message.
+  // - First load: useLayoutEffect fires synchronously BEFORE the browser paints,
+  //   so the first visible frame already shows the newest messages (no flash to top).
+  //   Only marks initialScrolledRef=true once the scroll actually landed at the
+  //   bottom (distanceToBottom < 10). If the layout hasn't settled yet (scrollHeight
+  //   still 0 or images not loaded), a single requestAnimationFrame retries and then
+  //   marks initialized unconditionally — the ResizeObserver in the next effect
+  //   handles any remaining content shifts after that.
   // - New message: smooth scroll only when user intent (shouldStickToBottomRef) is true.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!allMessages.length) return;
     const container = scrollContainerRef.current;
     if (!initialScrolledRef.current) {
-      // B6: initial load — snap instantly and mark intent as sticky.
       if (container) {
         container.scrollTop = container.scrollHeight;
+        const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (dist < 10) {
+          // Scroll landed at bottom — initialization complete.
+          initialScrolledRef.current = true;
+          shouldStickToBottomRef.current = true;
+        } else {
+          // Layout not yet settled (e.g. container height not computed). Retry
+          // on the next frame, then mark initialized so the ResizeObserver takes over.
+          requestAnimationFrame(() => {
+            container.scrollTop = container.scrollHeight;
+            initialScrolledRef.current = true;
+            shouldStickToBottomRef.current = true;
+          });
+        }
       } else {
+        // No scroll container yet — fall back to sentinel element.
         messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+        initialScrolledRef.current = true;
+        shouldStickToBottomRef.current = true;
       }
-      initialScrolledRef.current = true;
-      shouldStickToBottomRef.current = true;
     } else if (shouldStickToBottomRef.current) {
-      // B10: new message — auto-scroll only when user intends to stay at bottom.
+      // New message — auto-scroll only when user intends to stay at bottom.
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [allMessages.length]);

@@ -1,0 +1,1507 @@
+# ARKPET — FUNCTIONAL / RESPONSIVE CORRECTION
+
+# FASE F9
+# CHAT INITIAL POSITION + CARD TEXT OVERFLOW
+
+# PRIORIDADE:
+# CHAT = P1
+# CARD OVERFLOW = P2
+
+# NÃO É PRODUCT REFINEMENT
+# NÃO É REDESIGN
+# CORREÇÃO DE BUG REAL
+
+============================================================
+0. OBJETIVO
+============================================================
+
+Corrigir dois problemas comprovados
+em uso real:
+
+1. CHAT:
+   Ao abrir uma conversa,
+   o ArkPet continua posicionando
+   na mensagem MAIS ANTIGA,
+   quando deveria abrir
+   na mensagem MAIS RECENTE.
+
+2. CARDS:
+   Alguns textos ultrapassam,
+   quebram ou "estouram"
+   os limites dos cards.
+
+============================================================
+1. IMPORTANTE — CHAT
+============================================================
+
+As correções anteriores
+de sticky-bottom NÃO resolveram
+o problema inicial no aparelho real.
+
+Portanto:
+
+NÃO assumir novamente
+que o problema é apenas:
+
+ResizeObserver
+
+behavior smooth
+
+imagem carregando
+
+ou near-bottom.
+
+A causa raiz anterior
+está INCOMPLETA.
+
+============================================================
+2. REGRA
+============================================================
+
+Antes de alterar Chat:
+
+REPRODUZIR O BUG.
+
+Não fazer novo patch
+baseado somente em inspeção estática.
+
+============================================================
+3. BASELINE
+============================================================
+
+Antes:
+
+git status
+
+pnpm --filter @workspace/api-server typecheck
+
+pnpm --filter @workspace/petdaycare typecheck
+
+npx tsc -b
+
+pnpm --filter @workspace/petdaycare build
+
+Registrar resultados reais.
+
+Esperado:
+
+0 TypeScript errors.
+
+============================================================
+4. PRODUCT FREEZE
+============================================================
+
+NÃO iniciar:
+
+Product Refinement
+
+R4B
+
+redesign
+
+novos filtros
+
+novas features
+
+novos status
+
+refactor geral.
+
+################################################################
+# PARTE A
+# CHAT — ROOT CAUSE REOPEN
+################################################################
+
+============================================================
+A1. REPRODUÇÃO REAL
+============================================================
+
+Usar:
+
+sessão autenticada
+
+conversa real/de teste
+com histórico suficiente.
+
+A conversa deve possuir
+mensagens antigas e recentes.
+
+============================================================
+A2. OBSERVAR PRIMEIRO
+============================================================
+
+Ao abrir a conversa,
+registrar:
+
+mensagem exibida inicialmente
+
+primeira mensagem no DOM
+
+última mensagem no DOM
+
+scrollTop
+
+scrollHeight
+
+clientHeight
+
+container responsável pelo scroll.
+
+============================================================
+A3. CRITICAL
+============================================================
+
+Descobrir se realmente existe:
+
+scrollTop = 0
+
+quando a conversa abre
+
+OU
+
+se o browser está posicionando
+outro container.
+
+============================================================
+A4. IDENTIFICAR SCROLL CONTAINER REAL
+============================================================
+
+Não assumir que:
+
+scrollContainerRef
+
+é o elemento que efetivamente rola.
+
+Inspecionar a árvore DOM.
+
+Registrar:
+
+ELEMENT
+
+CSS overflow-y
+
+height/max-height
+
+scrollHeight
+
+clientHeight
+
+scrollTop.
+
+============================================================
+A5. POSSIBLE NESTED SCROLL
+============================================================
+
+Verificar se existe:
+
+AppLayout scroll
+
+Page scroll
+
+Chat panel scroll
+
+Message list scroll
+
+ou múltiplos containers
+com overflow.
+
+============================================================
+A6. CRITICAL QUESTION
+============================================================
+
+Qual elemento realmente muda
+quando o usuário rola
+a lista de mensagens?
+
+Esse é o scroll owner.
+
+============================================================
+A7. MESSAGE ORDER
+============================================================
+
+Inspecionar os dados recebidos.
+
+Para pelo menos uma conversa:
+
+listar de forma resumida:
+
+message id
+
+createdAt
+
+array index.
+
+============================================================
+A8. VERIFY SORT
+============================================================
+
+Confirmar:
+
+primeiro item =
+mais antigo?
+
+último item =
+mais recente?
+
+============================================================
+A9. DOM ORDER
+============================================================
+
+Confirmar que a ordem do DOM
+corresponde à ordem do array.
+
+============================================================
+A10. CSS REVERSE
+============================================================
+
+Procurar especificamente:
+
+flex-col-reverse
+
+column-reverse
+
+direction
+
+CSS order
+
+transform
+
+ou qualquer técnica
+de lista invertida.
+
+============================================================
+A11. IMPORTANT
+============================================================
+
+Se existir:
+
+flex-direction: column-reverse
+
+a matemática de scroll muda.
+
+Não aplicar lógica
+de lista normal
+a container invertido.
+
+============================================================
+A12. QUERY / PAGINATION
+============================================================
+
+Verificar:
+
+useQuery
+
+infinite query
+
+pagination
+
+initial page
+
+cursor
+
+limit.
+
+============================================================
+A13. IMPORTANT
+============================================================
+
+Determinar se o backend
+envia:
+
+mensagens MAIS ANTIGAS primeiro
+
+ou
+
+últimas N mensagens.
+
+============================================================
+A14. POSSIBLE REAL ROOT CAUSE
+============================================================
+
+Verificar se a tela
+está carregando primeiro
+uma página histórica
+em vez da página mais recente.
+
+============================================================
+A15. NETWORK
+============================================================
+
+Inspecionar request real.
+
+Registrar:
+
+endpoint
+
+params
+
+limit
+
+cursor/page
+
+sort/order.
+
+============================================================
+A16. DO NOT CHANGE API BLINDLY
+============================================================
+
+Não modificar query
+antes de provar
+que ela é a causa.
+
+============================================================
+A17. SELECTED CONVERSATION
+============================================================
+
+Inspecionar mudança de:
+
+selectedConversation
+
+conversationId
+
+threadId
+
+ou equivalente.
+
+============================================================
+A18. EFFECT ORDER
+============================================================
+
+Registrar cronologicamente:
+
+conversation selected
+
+query starts
+
+loading true
+
+messages arrive
+
+DOM rendered
+
+scroll effect runs
+
+ResizeObserver runs.
+
+============================================================
+A19. INSTRUMENTATION
+============================================================
+
+É permitido adicionar
+logs TEMPORÁRIOS locais
+durante diagnóstico.
+
+Exemplo conceitual:
+
+[chat-debug] conversation changed
+
+[chat-debug] messages loaded
+
+[chat-debug] scroll container metrics
+
+[chat-debug] initial scroll executed.
+
+============================================================
+A20. REMOVE DEBUG
+============================================================
+
+Todos os logs temporários
+devem ser removidos
+antes do patch final.
+
+============================================================
+A21. BROWSER RESTORATION
+============================================================
+
+Verificar se browser/Wouter
+ou container está preservando:
+
+scroll restoration
+
+posição anterior
+
+entre navegações.
+
+============================================================
+A22. ROUTE CHANGE
+============================================================
+
+Testar:
+
+abrir Chat do zero
+
+sair do Chat e voltar
+
+trocar conversa dentro do Chat
+
+reload direto no Chat.
+
+============================================================
+A23. EACH CASE
+============================================================
+
+Registrar posição inicial
+em cada cenário.
+
+============================================================
+A24. INITIAL TARGET
+============================================================
+
+Com lista normal:
+
+após mensagens mais recentes
+estarem no DOM,
+
+o scroll owner real
+deve terminar em:
+
+scrollTop ≈
+scrollHeight - clientHeight.
+
+============================================================
+A25. NÃO DEPENDER APENAS DE
+scrollIntoView
+============================================================
+
+Se scrollIntoView
+estiver atuando
+no ancestral errado
+ou sendo ignorado,
+
+usar diretamente
+o container real.
+
+============================================================
+A26. PREFERRED SIMPLE FIX
+============================================================
+
+Se comprovado que:
+
+lista está correta
+
+DOM está correto
+
+container está correto
+
+mas o posicionamento inicial
+não acontece,
+
+preferir:
+
+container.scrollTop =
+container.scrollHeight
+
+no momento correto.
+
+============================================================
+A27. TIMING
+============================================================
+
+Somente escolher entre:
+
+useLayoutEffect
+
+requestAnimationFrame
+
+duplo requestAnimationFrame
+
+ResizeObserver inicial
+
+quando a instrumentação
+mostrar o momento necessário.
+
+============================================================
+A28. NO TIMEOUT MAGIC
+============================================================
+
+NÃO usar:
+
+setTimeout(500)
+
+setTimeout(1000)
+
+etc.
+
+como solução principal.
+
+============================================================
+A29. WHY
+============================================================
+
+Delay fixo mascara
+problema de lifecycle
+e varia conforme aparelho/rede.
+
+============================================================
+A30. FIRST OPEN
+============================================================
+
+Separar:
+
+INITIAL CONVERSATION POSITION
+
+de:
+
+STICKY BOTTOM
+AFTER INITIALIZATION.
+
+============================================================
+A31. INITIALIZATION STATE
+============================================================
+
+Só marcar:
+
+initialScrolledRef.current = true
+
+DEPOIS de confirmar
+que o scroll realmente chegou
+ao bottom.
+
+============================================================
+A32. CRITICAL
+============================================================
+
+Não marcar inicialização
+como concluída
+apenas porque a função
+de scroll foi chamada.
+
+============================================================
+A33. CHECK POSITION
+============================================================
+
+Depois do initial scroll:
+
+calcular:
+
+distanceToBottom =
+scrollHeight
+- scrollTop
+- clientHeight.
+
+============================================================
+A34. EXPECTED
+============================================================
+
+distanceToBottom
+deve estar próximo de zero.
+
+============================================================
+A35. IF NOT
+============================================================
+
+A inicialização NÃO terminou.
+
+Investigar o motivo.
+
+============================================================
+A36. MEDIA
+============================================================
+
+Depois que initial bottom
+estiver comprovado,
+
+preservar:
+
+shouldStickToBottomRef.
+
+============================================================
+A37. USER HISTORY
+============================================================
+
+Usuário lendo mensagens antigas:
+
+não puxar para baixo.
+
+============================================================
+A38. DO NOT REGRESS
+============================================================
+
+A correção nova
+não pode destruir
+o comportamento implementado
+para leitura do histórico.
+
+============================================================
+A39. REQUIRED RUNTIME TESTS
+============================================================
+
+CASO 1:
+
+Abrir conversa com 30+
+mensagens somente texto.
+
+Expected:
+abre na última.
+
+============================================================
+A40.
+============================================================
+
+CASO 2:
+
+Abrir conversa com imagens.
+
+Expected:
+abre na última
+e permanece no bottom
+durante carregamento inicial.
+
+============================================================
+A41.
+============================================================
+
+CASO 3:
+
+Trocar conversa.
+
+Expected:
+nova conversa
+abre na última.
+
+============================================================
+A42.
+============================================================
+
+CASO 4:
+
+Reload no Chat.
+
+Expected:
+abre na última.
+
+============================================================
+A43.
+============================================================
+
+CASO 5:
+
+Usuário sobe no histórico
+e recebe mensagem.
+
+Expected:
+não sequestra scroll.
+
+============================================================
+A44.
+============================================================
+
+CASO 6:
+
+Usuário volta ao bottom.
+
+Nova mensagem chega.
+
+Expected:
+acompanha.
+
+============================================================
+A45. SUCCESS
+============================================================
+
+CHAT só pode ser considerado corrigido
+se o teste REAL mostrar:
+
+primeira visualização =
+mensagens recentes.
+
+Não aceitar:
+
+"implemented by code"
+
+como suficiente desta vez.
+
+################################################################
+# PARTE B
+# CARD TEXT OVERFLOW
+################################################################
+
+============================================================
+B1. PROBLEMA
+============================================================
+
+Existem textos no ArkPet
+que ultrapassam os limites
+dos cards.
+
+Sintomas possíveis:
+
+texto sai pela lateral
+
+card aumenta de forma incorreta
+
+linha empurra botão/ícone
+
+conteúdo invade outro elemento
+
+horizontal overflow
+
+texto não quebra
+
+string longa força width.
+
+============================================================
+B2. OBJETIVO
+============================================================
+
+Corrigir o overflow textual
+SEM redesenhar cards.
+
+============================================================
+B3. NÃO FAZER
+============================================================
+
+Não:
+
+aumentar todos os cards
+
+reduzir globalmente font-size
+
+esconder informações importantes
+
+usar overflow-hidden indiscriminadamente
+
+adicionar scroll horizontal
+dentro de cards
+
+reescrever textos de negócio.
+
+============================================================
+B4. ACTIVE SCREENS
+============================================================
+
+Auditar cards
+nas rotas ativas.
+
+Priorizar mobile:
+
+320px
+
+360px
+
+390px
+
+430px.
+
+============================================================
+B5. SEARCH STATIC
+============================================================
+
+Procurar elementos
+dentro de:
+
+Card
+
+cards customizados
+
+rows flex
+
+grid items
+
+list items
+
+summary boxes.
+
+============================================================
+B6. RISK CLASSES
+============================================================
+
+Localizar:
+
+whitespace-nowrap
+
+truncate
+
+overflow-hidden
+
+w-fixed
+
+min-w-*
+
+flex-nowrap
+
+shrink-0
+
+absolute
+
+grid columns rígidas.
+
+============================================================
+B7. FLEXBOX CLASSIC ISSUE
+============================================================
+
+Verificar children flex
+que precisam de:
+
+min-w-0
+
+para permitir quebra/truncation
+dentro do espaço disponível.
+
+============================================================
+B8. LONG CONTENT
+============================================================
+
+Testar visualmente
+com conteúdo longo,
+sem alterar dados reais importantes.
+
+Exemplos:
+
+nome longo de pet
+
+nome longo de tutor
+
+email longo
+
+nome de produto
+
+nome de serviço
+
+status/label longo
+
+valor + descrição
+
+identificador longo
+
+texto de observação.
+
+============================================================
+B9. WORD BREAK
+============================================================
+
+Para texto normal
+que deve permanecer visível:
+
+usar padrão existente equivalente a:
+
+break-words
+
+whitespace-normal
+
+overflow-wrap:anywhere
+
+quando apropriado.
+
+============================================================
+B10. IMPORTANT
+============================================================
+
+Não aplicar:
+
+break-all
+
+globalmente.
+
+Isso piora leitura
+de palavras normais.
+
+============================================================
+B11. SINGLE-LINE CONTENT
+============================================================
+
+Para conteúdo secundário
+que realmente precisa
+ficar em uma linha:
+
+usar truncation
+somente se já for aceitável
+perder parte visual
+do conteúdo.
+
+============================================================
+B12. CRITICAL INFO
+============================================================
+
+Informações críticas
+não devem ser escondidas
+sem forma de visualização.
+
+Exemplos:
+
+alerta
+
+valor financeiro
+
+status
+
+medicação
+
+horário
+
+ação.
+
+============================================================
+B13. CARD HEADER
+============================================================
+
+Inspecionar especialmente:
+
+avatar + name + badge
+
+title + action button
+
+title + status
+
+title + menu.
+
+============================================================
+B14. EXPECTED FLEX PATTERN
+============================================================
+
+Quando aplicável:
+
+container:
+flex
+
+content:
+min-w-0 flex-1
+
+actions:
+shrink-0.
+
+============================================================
+B15. BADGES
+============================================================
+
+Badge não deve
+empurrar texto
+para fora do card.
+
+============================================================
+B16. POSSIBLE SOLUTIONS
+============================================================
+
+Dependendo do contexto:
+
+flex-wrap
+
+min-w-0
+
+max-w-full
+
+break-words
+
+whitespace-normal
+
+truncate
+
+line-clamp
+
+grid minmax(0,1fr)
+
+podem ser usados.
+
+============================================================
+B17. DO NOT MASS APPLY
+============================================================
+
+Escolher solução
+card a card.
+
+Não fazer replace global.
+
+============================================================
+B18. FIXED HEIGHT
+============================================================
+
+Procurar cards
+com:
+
+h-[...]
+
+height fixa
+
+que não comportam
+conteúdo variável.
+
+============================================================
+B19. DEFAULT
+============================================================
+
+Preferir:
+
+min-height
+
+ou altura natural
+
+quando card contém
+texto variável.
+
+============================================================
+B20. DO NOT CHANGE INTENTIONAL
+============================================================
+
+Cards que precisam
+ter altura fixa por design
+não devem ser alterados
+sem comprovação do overflow.
+
+============================================================
+B21. PAGE OVERFLOW
+============================================================
+
+Depois das correções,
+verificar:
+
+document.scrollWidth
+<=
+document.clientWidth
+
+nas telas testadas,
+salvo componentes
+legitimamente scrolláveis
+como tabelas.
+
+============================================================
+B22. TABLES
+============================================================
+
+Não confundir
+overflow textual de Card
+com scroll horizontal
+intencional de tabela.
+
+============================================================
+B23. FINANCIAL
+============================================================
+
+Extremo cuidado
+com valores monetários.
+
+Não truncar:
+
+R$ values
+
+totals
+
+due dates
+
+financial status
+
+se isso esconder significado.
+
+============================================================
+B24. PETS
+============================================================
+
+Testar nomes longos
+e raça/tutor longos.
+
+============================================================
+B25. BOOKINGS
+============================================================
+
+Testar:
+
+pet
+
+tutor
+
+serviço
+
+observações
+
+status.
+
+============================================================
+B26. STAFF
+============================================================
+
+Testar:
+
+employee names
+
+task names
+
+task observations.
+
+============================================================
+B27. FEED
+============================================================
+
+Testar:
+
+author
+
+pet
+
+post labels
+
+post text.
+
+============================================================
+B28. CHAT
+============================================================
+
+Não misturar
+correção da mensagem Chat
+com overflow dos cards.
+
+Chat message bubbles
+podem ser auditadas,
+mas não alterar o scroll
+por causa disso.
+
+============================================================
+B29. URLs / EMAIL
+============================================================
+
+Strings sem espaços,
+como emails/URLs,
+precisam conseguir quebrar
+sem aumentar viewport.
+
+============================================================
+B30. SCREENSHOT
+============================================================
+
+Se browser estiver disponível,
+tirar screenshots
+ANTES e DEPOIS
+dos cards realmente afetados.
+
+============================================================
+B31. IMPORTANT
+============================================================
+
+Não declarar
+"todos os cards corrigidos"
+apenas por busca estática.
+
+============================================================
+B32. FINDING MATRIX
+============================================================
+
+Para cada overflow real:
+
+SCREEN
+
+CARD
+
+TEXT
+
+ROOT CSS CAUSE
+
+BEFORE
+
+PATCH
+
+AFTER
+
+MOBILE WIDTH TESTED.
+
+============================================================
+B33. PATCH SCOPE
+============================================================
+
+Modificar apenas
+cards com problema comprovado
+ou componentes compartilhados
+onde a mesma falha
+for comprovadamente global.
+
+============================================================
+B34. SHARED COMPONENT
+============================================================
+
+Antes de alterar Card primitive:
+
+provar que o problema
+pertence ao primitive.
+
+============================================================
+B35. EXPECTED
+============================================================
+
+Na maioria dos casos,
+o problema deve estar
+na estrutura interna:
+
+flex child
+
+text wrapper
+
+badge/action layout.
+
+Não alterar primitive global
+sem necessidade.
+
+################################################################
+# VALIDATION
+################################################################
+
+============================================================
+C1. CHAT RUNTIME REQUIRED
+============================================================
+
+Desta vez,
+Chat precisa de runtime real.
+
+Não congelar
+com validação estática.
+
+============================================================
+C2. CARD RUNTIME
+============================================================
+
+Testar cards afetados
+em pelo menos:
+
+320
+
+390
+
+430
+
+e desktop relevante.
+
+============================================================
+C3. DARK / LIGHT
+============================================================
+
+Mudanças de wrapping/layout
+devem funcionar em:
+
+Dark
+
+Light.
+
+Não mudar cores.
+
+============================================================
+C4. TYPECHECK API
+============================================================
+
+Executar:
+
+pnpm --filter @workspace/api-server typecheck
+
+TARGET:
+EXIT 0.
+
+============================================================
+C5. TYPECHECK FRONTEND
+============================================================
+
+Executar:
+
+pnpm --filter @workspace/petdaycare typecheck
+
+TARGET:
+EXIT 0.
+
+============================================================
+C6. TSC-B
+============================================================
+
+npx tsc -b
+
+TARGET:
+EXIT 0.
+
+============================================================
+C7. BUILD
+============================================================
+
+pnpm --filter @workspace/petdaycare build
+
+TARGET:
+EXIT 0.
+
+============================================================
+C8. NO OTHER BUGFIX
+============================================================
+
+Não aproveitar
+para corrigir:
+
+Trial
+
+Push
+
+Invoice
+
+Media
+
+Bookings
+
+outros bugs.
+
+============================================================
+C9. FILE MATRIX
+============================================================
+
+Para cada arquivo alterado:
+
+FILE
+
+CHAT OR CARD?
+
+BUG ROOT CAUSE
+
+PATCH
+
+BUSINESS LOGIC CHANGE?
+
+NEW FEATURE?
+
+============================================================
+C10. EXPECTED
+============================================================
+
+Business Logic:
+NO
+(exceto comportamento de scroll
+do Chat já esperado).
+
+New Features:
+NO.
+
+Product Refinement:
+NO.
+
+################################################################
+# FINAL REPORT
+################################################################
+
+============================================================
+D1. CHAT ROOT CAUSE
+============================================================
+
+Entregar causa raiz REAL
+do motivo pelo qual
+a conversa abria
+na mensagem mais antiga.
+
+Não repetir
+a hipótese anterior
+se ela não for confirmada.
+
+============================================================
+D2. CHAT METRICS
+============================================================
+
+ANTES:
+
+scroll owner
+
+scrollTop
+
+scrollHeight
+
+clientHeight
+
+distanceToBottom.
+
+DEPOIS:
+
+mesmas métricas.
+
+============================================================
+D3. CHAT RUNTIME MATRIX
+============================================================
+
+Initial open
+
+conversation switch
+
+reload
+
+media conversation
+
+new incoming message
+
+reading history.
+
+PASS/FAIL.
+
+============================================================
+D4. CARD INVENTORY
+============================================================
+
+Quantos cards
+com overflow real encontrados?
+
+============================================================
+D5. CARD FILES
+============================================================
+
+Listar telas/componentes.
+
+============================================================
+D6. CARD CAUSES
+============================================================
+
+Separar:
+
+missing min-w-0
+
+nowrap
+
+fixed height
+
+fixed width
+
+unbreakable string
+
+badge/action collision
+
+other.
+
+============================================================
+D7. CARD PATCHES
+============================================================
+
+Listar correção
+por componente.
+
+============================================================
+D8. RESPONSIVE MATRIX
+============================================================
+
+320
+
+360
+
+390
+
+430
+
+desktop.
+
+============================================================
+D9. FINAL VALIDATION
+============================================================
+
+Typecheck API
+
+Typecheck Frontend
+
+tsc-b
+
+Build.
+
+============================================================
+D10. VERDICT
+============================================================
+
+Escolher:
+
+CHAT FIXED /
+CARD OVERFLOW FIXED
+
+PARTIAL —
+ISSUES REMAIN
+
+BLOCKED.
+
+============================================================
+D11. STOP
+============================================================
+
+Não iniciar
+Product Refinement.
+
+Entregar relatório
+e aguardar aprovação.
