@@ -199,6 +199,9 @@ export default function Chat() {
   //   marks initialized unconditionally — the ResizeObserver in the next effect
   //   handles any remaining content shifts after that.
   // - New message: smooth scroll only when user intent (shouldStickToBottomRef) is true.
+  // Deps include `showConversation` so the effect re-fires when the mobile
+  // overlay mounts (showConversation: false → true), giving the scroll container
+  // a chance to be in the DOM after the initial render where it was absent.
   useLayoutEffect(() => {
     if (!allMessages.length) return;
     const container = scrollContainerRef.current;
@@ -207,29 +210,30 @@ export default function Chat() {
         container.scrollTop = container.scrollHeight;
         const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
         if (dist < 10) {
-          // Scroll landed at bottom — initialization complete.
           initialScrolledRef.current = true;
           shouldStickToBottomRef.current = true;
         } else {
-          // Layout not yet settled (e.g. container height not computed). Retry
-          // on the next frame, then mark initialized so the ResizeObserver takes over.
+          // Layout not yet settled — retry after next frame.
           requestAnimationFrame(() => {
             container.scrollTop = container.scrollHeight;
             initialScrolledRef.current = true;
             shouldStickToBottomRef.current = true;
           });
         }
-      } else {
-        // No scroll container yet — fall back to sentinel element.
-        messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      } else if (messagesEndRef.current) {
+        // Container absent but sentinel present — use it.
+        messagesEndRef.current.scrollIntoView({ behavior: "instant" as ScrollBehavior });
         initialScrolledRef.current = true;
         shouldStickToBottomRef.current = true;
       }
+      // If BOTH are null (mobile overlay not yet mounted), leave
+      // initialScrolledRef.current = false so the effect re-fires when
+      // `showConversation` transitions to true and the overlay mounts.
     } else if (shouldStickToBottomRef.current) {
-      // New message — auto-scroll only when user intends to stay at bottom.
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [allMessages.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMessages.length, showConversation]);
 
   // F5/B: keep anchored to the bottom during layout shifts (images loading, etc.)
   // Uses shouldStickToBottomRef (user intent) — NOT post-resize distance.
@@ -265,13 +269,21 @@ export default function Chat() {
     };
   }, [selectedTutorId]);
 
+  // Reset scroll sentinels SYNCHRONOUSLY (layout effect) when the conversation
+  // changes, so the scroll effect that fires in the same commit already sees
+  // initialScrolledRef = false, even on mobile where the overlay may mount in
+  // the same render as selectedTutorId changing.
+  useLayoutEffect(() => {
+    if (!selectedTutorId) return;
+    initialScrolledRef.current = false;
+    shouldStickToBottomRef.current = true;
+  }, [selectedTutorId]);
+
   useEffect(() => {
     setOlderMessages([]);
     setAllOlderLoaded(false);
     setTaggedPetId(undefined);
     setOptimisticMessages([]);
-    initialScrolledRef.current = false;       // F5/B: reset so new conversation opens at bottom
-    shouldStickToBottomRef.current = true;    // B12: new conversation → intent starts sticky
   }, [selectedTutorId]);
 
   useEffect(() => {

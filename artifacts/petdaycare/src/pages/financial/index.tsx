@@ -1363,6 +1363,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium">Nome <span className="text-destructive">*</span></label>
                 <Input
+                  autoFocus
                   value={form.name}
                   onChange={e => { setForm({...form, name: e.target.value}); setModalError(null); }}
                   placeholder="Ex: Ração Premium 10kg"
