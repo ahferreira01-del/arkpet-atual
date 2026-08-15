@@ -11,8 +11,8 @@ const BLOCKED_STATUSES = new Set(["suspended", "cancelled"]);
 /**
  * Central subscription enforcement gate.
  *
- * Applies to: creche_admin, staff (any user with a crecheId that isn't master_admin or tutor).
- * Bypasses: master_admin (platform ops), tutor (separate product scope), no crecheId.
+ * Applies to: creche_admin, staff, tutor — any user with a crecheId that isn't master_admin.
+ * Bypasses: master_admin (platform ops), users with no crecheId.
  *
  * Blocks with HTTP 402:
  *   - expired trial (real-time check — doesn't wait for the hourly job)
@@ -37,12 +37,6 @@ export async function requireActiveSubscription(
 
   // master_admin: platform-wide bypass.
   if (role === "master_admin") {
-    next();
-    return;
-  }
-
-  // Tutor: scope excluded from this enforcement phase — behavior unchanged.
-  if (role === "tutor") {
     next();
     return;
   }

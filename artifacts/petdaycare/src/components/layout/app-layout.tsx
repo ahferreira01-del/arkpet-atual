@@ -1,12 +1,12 @@
 import React, { ReactNode } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useGetBillingSubscription } from "@workspace/api-client-react";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { BottomNav } from "./bottom-nav";
 import { SubscriptionBanner } from "./subscription-banner";
-import { Loader2 } from "lucide-react";
+import { Loader2, PhoneCall, Settings } from "lucide-react";
 
 // Routes accessible even when subscription is blocked — needed to authenticate,
 // view plans, complete payment, and log out. Keep this list minimal.
@@ -24,16 +24,18 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
 
   const isOperationalRole = user?.role === "creche_admin" || user?.role === "staff";
+  const isTutor = user?.role === "tutor";
+  const needsSubscriptionCheck = isOperationalRole || isTutor;
   const isOnRecoveryRoute = RECOVERY_PATHS.some((p) => location.startsWith(p));
 
-  // Subscription state — only queried for operational roles to avoid noise.
+  // Subscription state — queried for operational roles and tutors.
   const {
     data: subscription,
     isLoading: subLoading,
     isError: subError,
     refetch: refetchSub,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } = useGetBillingSubscription({ query: { enabled: isOperationalRole } as any });
+  } = useGetBillingSubscription({ query: { enabled: needsSubscriptionCheck } as any });
 
   const isExpiredTrial =
     subscription?.status === "trial" &&
@@ -45,7 +47,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
     subscription?.status === "suspended" ||
     subscription?.status === "cancelled";
 
-  // UX redirect: backend remains the authority; this is convenience navigation.
+  // UX redirect: only for operational roles — tutors see an in-place message instead.
   React.useEffect(() => {
     if (!isOperationalRole || isOnRecoveryRoute || subLoading) return;
     if (isSubscriptionBlocked) setLocation("/assinatura");
@@ -69,8 +71,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   if (!user) return null;
 
-  // ── Subscription gate — operational roles only, non-recovery routes ────────
-  if (isOperationalRole && !isOnRecoveryRoute) {
+  // ── Subscription gate — operational roles + tutors, non-recovery routes ─────
+  if (needsSubscriptionCheck && !isOnRecoveryRoute) {
     // Initial load: fail-closed — do not render the app before knowing subscription status.
     if (subLoading && !subscription) {
       return (
@@ -90,7 +92,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <div className="min-h-screen bg-background flex items-center justify-center">
           <div className="text-center flex flex-col items-center gap-3">
             <p className="text-muted-foreground text-sm">
-              Não foi possível verificar a assinatura.
+              Não foi possível verificar o acesso.
             </p>
             <button
               className="text-primary text-sm underline"
@@ -103,8 +105,36 @@ export function AppLayout({ children }: { children: ReactNode }) {
       );
     }
 
-    // Blocked: render nothing while the useEffect redirect fires.
-    if (isSubscriptionBlocked) return null;
+    if (isSubscriptionBlocked) {
+      if (isTutor) {
+        // Tutors see a neutral "contact the daycare" screen — no mention of payment.
+        return (
+          <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+            <div className="flex flex-col items-center gap-6 max-w-sm text-center">
+              <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <PhoneCall className="h-8 w-8 text-primary" />
+              </div>
+              <div className="flex flex-col gap-2">
+                <h2 className="text-xl font-display font-semibold text-foreground">
+                  Acesso temporariamente indisponível
+                </h2>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Entre em contato com a creche para verificar o seu acesso.
+                </p>
+              </div>
+              <Link href="/settings">
+                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <Settings className="h-4 w-4" />
+                  Configurações
+                </button>
+              </Link>
+            </div>
+          </div>
+        );
+      }
+      // Operational roles: render nothing while the useEffect redirect fires.
+      return null;
+    }
   }
 
   const hideBottomNav = location.startsWith("/bookings/new") || location.startsWith("/staff/qr-scanner");
