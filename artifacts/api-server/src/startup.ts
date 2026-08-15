@@ -17,53 +17,97 @@ import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
 
 
-const DEFAULT_PLANS = [
-  { name: "Trial", petLimit: 10, priceBrl: 0, description: "Teste grátis por 10 dias" },
-  { name: "Starter", petLimit: 15, priceBrl: 7900, description: "Para creches começando" },
-  { name: "Básico", petLimit: 35, priceBrl: 14900, description: "Para creches em crescimento" },
-  { name: "Profissional", petLimit: 75, priceBrl: 26900, description: "Para creches consolidadas" },
-  { name: "Premium", petLimit: 150, priceBrl: 42900, description: "Para grandes creches" },
-  { name: "Enterprise", petLimit: 999999, priceBrl: 64900, description: "Capacidade ilimitada" },
-];
+// Canonical plan definitions. Explicit IDs match the sequential serial assigned
+// on first boot. On subsequent boots each row is updated by id (idempotent).
+const PLAN_DEFINITIONS = [
+  { id: 1, name: "Trial",      petLimit: 10,     priceBrl: 0,     description: "Teste grátis por 10 dias" },
+  { id: 2, name: "Starter",    petLimit: 15,     priceBrl: 9990,  description: "Para creches começando" },
+  { id: 3, name: "Essencial",  petLimit: 35,     priceBrl: 17990, description: "Para creches em crescimento" },
+  { id: 4, name: "Pro",        petLimit: 75,     priceBrl: 31990, description: "Para creches consolidadas" },
+  { id: 5, name: "Premium",    petLimit: 150,    priceBrl: 49990, description: "Para grandes creches" },
+  { id: 6, name: "Enterprise", petLimit: 999999, priceBrl: 0,     description: "Capacidade ilimitada — sob consulta" },
+] as const;
 
 export async function seedPlans() {
   const [{ total }] = await db.select({ total: count() }).from(plansTable);
+
   if (Number(total) === 0) {
-    await db.insert(plansTable).values(DEFAULT_PLANS);
-    console.log(`[startup] ${DEFAULT_PLANS.length} planos criados.`);
+    // First boot: insert all plans (id assigned by serial).
+    const insertValues = PLAN_DEFINITIONS.map(({ name, petLimit, priceBrl, description }) => ({
+      name, petLimit, priceBrl, description,
+    }));
+    await db.insert(plansTable).values(insertValues);
+    console.log(`[startup] ${PLAN_DEFINITIONS.length} planos criados.`);
+  } else {
+    // Subsequent boots: apply corrections by id (renames, repricing). Idempotent.
+    let changed = 0;
+    for (const def of PLAN_DEFINITIONS) {
+      const result = await db
+        .update(plansTable)
+        .set({ name: def.name, petLimit: def.petLimit, priceBrl: def.priceBrl, description: def.description })
+        .where(eq(plansTable.id, def.id));
+      if ((result as any).rowCount > 0) changed++;
+    }
+    console.log(`[startup] Planos verificados — ${changed} plano(s) sincronizados.`);
   }
+
   await seedPlanPrices();
 }
 
-// Ensures every paid plan has a plan_prices row per interval (idempotent). The
-// stripePriceId is filled later by the seed-stripe script. priceBrl is derived
-// from the plan's monthly base via the shared discount preset.
+// Ensures every paid plan has a plan_prices row per interval and that the stored
+// price_brl / discount_pct match the current billing constants. Idempotent:
+// inserts missing rows, updates stale ones, deactivates Enterprise prices.
 async function seedPlanPrices() {
   const plans = await db.select().from(plansTable);
-  const paidPlans = plans.filter((p) => p.priceBrl > 0);
   let created = 0;
+  let updated = 0;
 
-  for (const plan of paidPlans) {
-    const existing = await db
-      .select({ interval: planPricesTable.interval })
-      .from(planPricesTable)
-      .where(eq(planPricesTable.planId, plan.id));
-    const present = new Set(existing.map((r) => r.interval));
+  for (const plan of plans) {
+    if (plan.priceBrl === 0) {
+      // Free/sob-consulta plans (Trial, Enterprise): deactivate all interval prices.
+      await db
+        .update(planPricesTable)
+        .set({ isActive: false })
+        .where(eq(planPricesTable.planId, plan.id));
+      continue;
+    }
 
-    const rows = BILLING_INTERVALS.filter((interval) => !present.has(interval)).map((interval) => ({
-      planId: plan.id,
-      interval,
-      priceBrl: computeIntervalPrice(plan.priceBrl, interval),
-      discountPct: INTERVAL_DISCOUNT_PCT[interval],
-    }));
+    for (const interval of BILLING_INTERVALS) {
+      const expectedPrice   = computeIntervalPrice(plan.priceBrl, interval);
+      const expectedDiscount = INTERVAL_DISCOUNT_PCT[interval];
 
-    if (rows.length > 0) {
-      await db.insert(planPricesTable).values(rows);
-      created += rows.length;
+      const [existing] = await db
+        .select()
+        .from(planPricesTable)
+        .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
+
+      if (!existing) {
+        await db.insert(planPricesTable).values({
+          planId: plan.id, interval,
+          priceBrl: expectedPrice,
+          discountPct: expectedDiscount,
+          isActive: true,
+        });
+        created++;
+      } else if (
+        Number(existing.priceBrl) !== expectedPrice ||
+        existing.discountPct      !== expectedDiscount ||
+        !existing.isActive
+      ) {
+        // Price or discount changed: clear the stale Stripe price ID so
+        // seedStripePrices() creates a fresh one for the new amount.
+        await db
+          .update(planPricesTable)
+          .set({ priceBrl: expectedPrice, discountPct: expectedDiscount, isActive: true, stripePriceId: null })
+          .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
+        updated++;
+      }
     }
   }
 
-  if (created > 0) console.log(`[startup] ${created} preços de plano (intervalos) criados.`);
+  if (created > 0) console.log(`[startup] ${created} preço(s) de plano criados.`);
+  if (updated > 0) console.log(`[startup] ${updated} preço(s) de plano atualizados.`);
+  if (created === 0 && updated === 0) console.log(`[startup] Preços de plano verificados — sem alterações.`);
 }
 
 // Syncs Stripe products + prices for every paid plan interval.
