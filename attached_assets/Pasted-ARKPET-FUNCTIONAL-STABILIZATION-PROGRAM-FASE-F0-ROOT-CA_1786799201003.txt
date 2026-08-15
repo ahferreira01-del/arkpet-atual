@@ -1,0 +1,835 @@
+ARKPET — FUNCTIONAL STABILIZATION PROGRAM
+
+FASE F0 — ROOT CAUSE AUDIT
+READ-ONLY
+ZERO PATCH
+
+OBJETIVO
+
+Investigar profundamente os seis bugs reais abaixo antes
+de qualquer alteração.
+
+1. Invoice due date incorreto
+2. Chat não inicia na última mensagem
+3. Pet já checked-in impede iniciar serviço de banho
+4. Push notifications não funcionam
+5. Alguns vídeos falham ao publicar
+6. Fotos de tarefas não aparecem no Feed no iOS
+
+REGRA PRINCIPAL
+
+ZERO CODE PATCH.
+
+NÃO corrigir durante a auditoria.
+
+NÃO alterar DB.
+
+NÃO alterar OpenAPI.
+
+NÃO executar migration.
+
+NÃO alterar UI.
+
+NÃO implementar Product Refinement R*.
+
+O objetivo é provar a causa raiz de cada problema.
+
+============================================================
+A — BASELINE
+============================================================
+
+Baseline atual esperada:
+
+npm run typecheck
+EXIT 0
+0 errors
+
+npx tsc -b
+EXIT 0
+
+npm run build
+EXIT 0
+
+Replit:
+frontend running
+backend running
+PostgreSQL connected
+Object Storage configured
+VAPID configured
+Stripe configured.
+
+Registrar git status antes da auditoria.
+
+============================================================
+B — BUG 1
+INVOICE DUE DATE
+============================================================
+
+SINTOMA:
+
+Ao realizar um pedido,
+a fatura é criada assumindo vencimento
+no mesmo dia do pedido.
+
+Isso faz com que ela seja interpretada
+como vencida imediatamente ou muito cedo.
+
+NÃO implementar:
+
++7 dias
++15 dias
++30 dias
+
+ou qualquer regra arbitrária.
+
+AUDITAR:
+
+1. Localizar todas as criações de Invoice.
+
+2. Identificar todos os fluxos que geram invoice:
+   - Orders
+   - Store
+   - POS
+   - Booking/service
+   - Monthly billing
+   - Packages
+   - Manual invoice
+   - outros reais.
+
+3. Para cada fluxo registrar:
+
+   SOURCE
+   createInvoice call
+   invoiceDate
+   dueDate
+   status
+   source order/booking
+   current default.
+
+4. Localizar schema de Invoice:
+
+   createdAt
+   issueDate
+   dueDate
+   competence
+   status
+
+   conforme nomes reais.
+
+5. Localizar qualquer configuração existente de:
+   - dia de vencimento;
+   - billing cycle;
+   - vencimento mensal;
+   - due day;
+   - payment terms.
+
+6. Determinar se já existe
+   uma regra oficial de vencimento
+   em algum service/repository.
+
+7. Verificar se Order → Invoice
+   está ignorando essa regra.
+
+8. Verificar timezone/business date.
+
+9. Reproduzir com dados de teste:
+
+   criar pedido
+
+   observar:
+   order.createdAt
+   invoice.createdAt
+   invoice.dueDate
+   invoice.status.
+
+10. Determinar exatamente por que
+    dueDate recebe aquela data.
+
+ENTREGAR:
+
+CURRENT BEHAVIOR
+
+EXPECTED RULE FOUND IN CODE
+
+ROOT CAUSE
+
+FILES
+
+FUNCTIONS
+
+PROPOSED MINIMAL FIX.
+
+Se não existir nenhuma regra de vencimento
+definida no sistema:
+
+NÃO inventar.
+
+Reportar:
+BUSINESS RULE DECISION REQUIRED.
+
+============================================================
+C — BUG 2
+CHAT INITIAL SCROLL
+============================================================
+
+SINTOMA:
+
+Ao abrir uma conversa,
+o Chat não posiciona a viewport
+nas mensagens mais recentes.
+
+O usuário precisa rolar manualmente.
+
+AUDITAR:
+
+message query
+
+sorting
+
+message container
+
+scrollRef
+
+bottomRef
+
+useEffect
+
+layout timing
+
+media loading
+
+pagination/history.
+
+Confirmar:
+
+1. API retorna ASC ou DESC?
+
+2. Frontend reordena?
+
+3. Última mensagem no DOM
+   realmente é a mais recente?
+
+4. Existe scrollIntoView?
+
+5. Quando ele executa?
+
+6. Executa antes
+   das mensagens carregarem?
+
+7. Images/media alteram altura
+   depois do scroll?
+
+8. Existe pagination/load previous?
+
+9. Existe auto-scroll
+   em mensagem nova?
+
+10. O comportamento de abertura
+    está misturado ao comportamento
+    de novas mensagens?
+
+TARGET FUTURO:
+
+Ao abrir uma conversa,
+depois do primeiro conjunto
+de mensagens estar renderizado,
+posicionar no final.
+
+MAS:
+
+não criar comportamento
+que arraste o usuário para baixo
+quando ele estiver lendo histórico antigo.
+
+Entregar proposta mínima.
+
+============================================================
+D — BUG 3
+CHECK-IN + BATH SERVICE
+============================================================
+
+SINTOMA:
+
+Pet possui check-in ativo.
+
+Também possui reserva de banho.
+
+Ao clicar:
+
+"Iniciar serviço"
+
+ocorre erro informando
+que o pet já realizou check-in
+e que seria necessário checkout
+antes de iniciar o serviço.
+
+Esse comportamento é incorreto
+para o cenário relatado.
+
+AUDITAR O FLUXO COMPLETO:
+
+Booking
+Service Booking
+Check-in
+Start Service
+Complete Service
+Pet presence
+Packages/Credits.
+
+Localizar:
+
+handler do botão Iniciar serviço
+
+mutation chamada
+
+endpoint
+
+service
+
+repository
+
+check-in guard
+
+duplicated check-in validation.
+
+Responder:
+
+1. Iniciar serviço chama check-in?
+
+2. Se sim, direta ou indiretamente?
+
+3. Por que um serviço exige check-in?
+
+4. Essa lógica é compartilhada com:
+   - Day Use
+   - Hospedagem
+   - Banho/Tosa
+   - outros serviços?
+
+5. Qual é o significado de
+   pet.isCheckedIn / active check-in?
+
+6. Um pet pode ter:
+   presença ativa
+   +
+   serviço ativo?
+
+7. Backend possui constraint
+   de um check-in ativo por pet?
+
+8. O erro vem de qual guard?
+
+9. É possível reutilizar
+   o check-in ativo existente
+   sem criar outro?
+
+10. Start Service possui
+    status próprio independente?
+
+11. Completing service
+    faz checkout automaticamente?
+
+12. Isso deve continuar?
+
+NÃO alterar lifecycle ainda.
+
+PROPOSTA ESPERADA:
+
+se comprovado pelo código,
+"start service" deve reconhecer
+um check-in já ativo
+e não tentar criar outro.
+
+Mas somente recomendar isso
+se a arquitetura atual confirmar.
+
+NÃO permitir:
+
+checkout automático
+
+check-in duplicado
+
+novo status
+
+nova regra.
+
+============================================================
+E — BUG 4
+PUSH NOTIFICATIONS
+============================================================
+
+SINTOMA:
+
+Nenhuma notificação está chegando.
+
+IMPORTANTE:
+
+O startup log:
+
+[push] VAPID configured
+
+NÃO prova entrega.
+
+AUDITAR END-TO-END:
+
+Browser/PWA
+↓
+permission
+↓
+Service Worker
+↓
+PushManager.subscribe
+↓
+subscription
+↓
+API
+↓
+DB
+↓
+event trigger
+↓
+backend sender
+↓
+web-push
+↓
+push service
+↓
+Service Worker push event
+↓
+notification displayed.
+
+1. Identificar origem real
+   de VAPID_PUBLIC_KEY.
+
+2. Identificar VAPID_PRIVATE_KEY.
+
+3. VERIFICAR que pertencem
+   ao MESMO keypair.
+
+Não mostrar valores.
+
+Resultado:
+
+MATCH
+ou
+MISMATCH.
+
+4. Verificar se subscriptions existentes
+   foram criadas usando essa public key.
+
+5. Localizar tabela/schema
+   de push subscriptions.
+
+6. Verificar se existem subscriptions
+   no banco de teste.
+
+7. Verificar criação/update/delete.
+
+8. Verificar endpoint de subscribe.
+
+9. Verificar chamada frontend.
+
+10. Verificar permission state.
+
+11. Verificar Service Worker registration.
+
+12. Verificar scope.
+
+13. Verificar event listener:
+
+self.addEventListener("push", ...)
+
+14. Verificar notificationclick.
+
+15. Localizar TODOS os eventos
+    existentes que deveriam enviar push.
+
+Exemplos apenas se realmente existirem:
+booking
+chat
+feed
+task
+payment
+etc.
+
+16. Seguir UM evento de ponta a ponta.
+
+17. Executar teste controlado
+    em ambiente de teste,
+    se houver subscription válida.
+
+18. Registrar resposta do web-push:
+
+201/accepted
+401
+403
+404
+410
+etc.
+
+19. Se houver 410 Gone,
+    verificar limpeza de subscription stale.
+
+20. Verificar foreground behavior.
+
+21. Verificar iOS separadamente,
+    sem assumir que comportamento
+    desktop = iOS.
+
+22. Não criar novo notification system.
+
+Objetivo:
+reparar o existente.
+
+============================================================
+F — BUG 5
+VIDEO UPLOAD / POST
+============================================================
+
+SINTOMA:
+
+Alguns vídeos publicam normalmente.
+
+Outros vídeos falham ao postar.
+
+Precisamos descobrir
+qual propriedade diferencia os arquivos.
+
+AUDITAR PIPELINE:
+
+File input
+↓
+browser File
+↓
+validation
+↓
+optional processing
+↓
+upload request
+↓
+Content-Type
+↓
+Object Storage
+↓
+post creation
+↓
+media URL
+↓
+playback.
+
+Para um vídeo que funciona
+e um que falha,
+quando amostras estiverem disponíveis,
+comparar:
+
+filename
+
+extension
+
+reported MIME
+
+actual container
+
+codec
+
+resolution
+
+duration
+
+size
+
+orientation.
+
+Especial atenção a:
+
+.mp4
+
+.mov
+
+video/mp4
+
+video/quicktime
+
+HEVC/H.265
+
+H.264
+
+iOS-generated MOV.
+
+Não instalar transcoder
+ou criar processamento novo
+durante auditoria.
+
+Verificar:
+
+1. accepted MIME list
+
+2. accepted extensions
+
+3. max file size
+
+4. frontend validation
+
+5. backend validation
+
+6. storage metadata
+
+7. Content-Type header
+
+8. generated object filename
+
+9. upload timeout
+
+10. post payload
+
+11. media type saved in DB
+
+12. browser playback support
+
+13. diferença entre:
+    upload failure
+    e
+    playback failure.
+
+Registrar estágio EXATO da falha.
+
+Não classificar tudo como
+"upload problem".
+
+============================================================
+G — BUG 6
+TASK PHOTO → FEED ON IOS
+============================================================
+
+SINTOMA:
+
+Foto é adicionada
+durante conclusão de tarefa.
+
+No iOS,
+a foto não aparece no Feed.
+
+AUDITAR DUAS COISAS SEPARADAMENTE:
+
+A. upload da foto
+
+B. criação/vinculação
+   da publicação/feed event.
+
+Seguir:
+
+Task completion
+↓
+File
+↓
+processing
+↓
+upload
+↓
+stored media
+↓
+task record
+↓
+feed/timeline creation
+↓
+feed query
+↓
+render.
+
+Responder:
+
+1. A foto chega ao Object Storage?
+
+2. Qual MIME é salvo?
+
+3. Qual extensão é salva?
+
+4. iOS fornece:
+   HEIC?
+   JPEG?
+   PNG?
+   converted Blob?
+
+5. Existe Canvas conversion?
+
+6. Existe fallback iOS?
+
+7. Content-Type representa
+   o binário real?
+
+8. A URL da mídia é persistida
+   na tarefa?
+
+9. A tarefa gera publicação
+   automaticamente?
+
+10. Em que função?
+
+11. Essa função recebe media URL?
+
+12. Feed query encontra o item?
+
+13. Item existe mas imagem não renderiza?
+
+14. Ou publicação nunca é criada?
+
+15. O problema ocorre apenas iOS
+    por formato/MIME?
+
+16. Há diferenças entre:
+    task upload
+    e
+    regular Feed post upload?
+
+============================================================
+H — MEDIA CROSS-CHECK
+============================================================
+
+Comparar Bug 5 e Bug 6.
+
+Determinar se compartilham:
+
+uploadFileDirect
+
+MIME validation
+
+object naming
+
+Content-Type
+
+image/video processing
+
+storage route
+
+media URL generation.
+
+Se compartilharem causa:
+
+reportar.
+
+NÃO aplicar patch conjunto ainda.
+
+============================================================
+I — SEVERITY / DEPENDENCIES
+============================================================
+
+Depois da auditoria,
+classificar:
+
+F0-001 Invoice
+F0-002 Chat
+F0-003 Service/Check-in
+F0-004 Push
+F0-005 Video
+F0-006 iOS Task Photo.
+
+Para cada:
+
+SEVERITY
+
+ROOT CAUSE CONFIDENCE
+
+FILES
+
+BACKEND?
+
+FRONTEND?
+
+DB?
+
+OPENAPI?
+
+INFRA?
+
+SHARED DEPENDENCY?
+
+REGRESSION RISK.
+
+============================================================
+J — PATCH PLAN
+============================================================
+
+Propor fases SEPARADAS.
+
+Preferência:
+
+F1 — Invoice Due Date
+
+F2 — Service Start / Existing Check-in
+
+F3 — Chat Initial Scroll
+
+F4 — Push Notifications
+
+F5 — Media Pipeline
+     Video + iOS Task Photo,
+     somente se causa compartilhada.
+
+Se causas forem diferentes:
+
+F5A Video
+F5B Task Photo Feed.
+
+============================================================
+K — NÃO IMPLEMENTAR
+============================================================
+
+ZERO PATCH nesta fase.
+
+Não corrigir
+"porque parece óbvio".
+
+============================================================
+L — STATIC VALIDATION
+============================================================
+
+Não é obrigatório alterar nada.
+
+Se nenhum arquivo mudar:
+
+não chamar resultado histórico
+de nova execução.
+
+Pode executar typecheck
+somente se necessário.
+
+============================================================
+M — FINAL REPORT
+============================================================
+
+Entregar:
+
+A. BASELINE
+
+B. INVOICE ROOT CAUSE
+
+C. CHAT ROOT CAUSE
+
+D. CHECK-IN/SERVICE ROOT CAUSE
+
+E. PUSH ROOT CAUSE
+
+F. VIDEO ROOT CAUSE
+
+G. IOS TASK PHOTO ROOT CAUSE
+
+H. SHARED MEDIA FINDINGS
+
+I. DATA/LOG EVIDENCE
+
+J. FILE/FUNCTION MAP
+
+K. RISK MATRIX
+
+L. PATCH SEQUENCE
+
+M. QUESTIONS REQUIRING
+   BUSINESS DECISION
+
+N. F0 VERDICT.
+
+STOP.
+
+Não iniciar nenhum patch.
+
+Aguardar aprovação.
