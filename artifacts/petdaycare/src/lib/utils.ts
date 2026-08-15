@@ -68,26 +68,32 @@ export function resolvePhotoUrl(photoUrl: string | null | undefined): string | n
  */
 async function compressImageToBlob(file: File, maxWidth = 1080, quality = 0.82): Promise<Blob> {
   if (typeof createImageBitmap === "function") {
-    const bitmap = await createImageBitmap(file, {
-      imageOrientation: "from-image",
-    } as ImageBitmapOptions);
-    const ratio = Math.min(1, maxWidth / bitmap.width);
-    const canvas = document.createElement("canvas");
-    canvas.width  = Math.round(bitmap.width  * ratio);
-    canvas.height = Math.round(bitmap.height * ratio);
-    const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
-        "image/webp",
-        quality,
-      );
-    });
+    try {
+      const bitmap = await createImageBitmap(file, {
+        imageOrientation: "from-image",
+      } as ImageBitmapOptions);
+      const ratio = Math.min(1, maxWidth / bitmap.width);
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(bitmap.width  * ratio);
+      canvas.height = Math.round(bitmap.height * ratio);
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      return new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao comprimir imagem"))),
+          "image/webp",
+          quality,
+        );
+      });
+    } catch {
+      // F4: createImageBitmap failed for this format (e.g. HEIC on some browsers).
+      // Fall through to the FileReader path below, which handles HEIC on iOS Safari.
+    }
   }
 
-  // Legacy fallback (older browsers without createImageBitmap)
+  // Legacy fallback: FileReader + <img> handles formats that createImageBitmap
+  // cannot decode (e.g. HEIC on iOS Safari, older browsers).
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -131,7 +137,21 @@ export async function uploadFileDirect(file: File, token: string): Promise<strin
     contentType = "image/webp";
   } else {
     body = file;
-    contentType = file.type || "application/octet-stream";
+    // F4: infer MIME from file extension when file.type is empty (some browsers/
+    // platforms omit it for video files). Unknown extensions keep the fallback so
+    // the server can reject them explicitly (415) rather than silently accepting
+    // an unreadable stream.
+    let rawType = file.type;
+    if (!rawType) {
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const mimeByExt: Record<string, string> = {
+        mp4: "video/mp4",
+        mov: "video/quicktime",
+        webm: "video/webm",
+      };
+      rawType = mimeByExt[ext] ?? "application/octet-stream";
+    }
+    contentType = rawType;
   }
 
   const uploadRes = await fetch("/api/storage/uploads/direct", {

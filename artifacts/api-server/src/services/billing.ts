@@ -420,12 +420,21 @@ export class BillingService {
         // belong to a billing cycle. Keeping them NULL also ensures the
         // tutor_cycle_unique_idx (which fires only when all three cols are NOT NULL)
         // never blocks a second purchase from the same tutor on the same day.
+        //
+        // F2: dueDate = next billing-cycle due date for the tutor (reuses the
+        // existing mensalidadeDia + getCycleDates logic). Anonymous charges
+        // (tutorId == null) keep dueDate = today since there is no billing cycle.
+        let avulsoDueDate = itemDateStr;
+        if (params.tutorId != null) {
+          const mensalidadeDia = await getTutorMensalidadeDia(params.tutorId, txClient);
+          avulsoDueDate = this.getCycleDates(mensalidadeDia, itemDateStr).dueDate;
+        }
         const newInv = await InvoiceRepository.create({
           crecheId: params.crecheId,
           tutorId: params.tutorId ?? null,
           cycleStart: undefined,
           cycleEnd: undefined,
-          dueDate: itemDateStr,
+          dueDate: avulsoDueDate,
           amount: totalItemAmount.toFixed(2),
           status: "pending",
         }, txClient);

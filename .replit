@@ -54,7 +54,7 @@ channel = "stable-25_05"
 [userenv.shared]
 JWT_SECRET = "afb141e259d941598bafdc8ddbd2ba11828669a13db857016f941f958af07b49"
 RESEND_FROM_EMAIL = "noreply@arkpet.com.br"
-VAPID_PUBLIC_KEY = "BPwSNbCuQURfvQMp9SWfUmj4DeknZ2wKNtoaOQvYpSyWlWJx-XeH8h4K6F42FbE-cJIYn4SXd0j7aEOnGq8XHqg"
+VAPID_PUBLIC_KEY = "BAyxb3Dc3FBdvz6FRiRw16NtyrZAPamXx4Tnas63eM9YOzziFC6dejGjDrm1dMYKLaWYD5F7q1LDjaoExu-RqdE"
 VAPID_PRIVATE_KEY = "O8to4L2vmMCOM_eVUSoePaBOSRQX6fcBJUaGzbZ-Vic"
 VAPID_EMAIL = "mailto:admin@arkpet.com.br"
 APP_URL = "https://ark-pet-qas.replit.app"

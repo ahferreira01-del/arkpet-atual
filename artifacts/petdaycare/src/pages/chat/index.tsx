@@ -134,6 +134,8 @@ export default function Chat() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [allOlderLoaded, setAllOlderLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const initialScrolledRef = useRef(false);
   const petPickerRef = useRef<HTMLDivElement>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -183,15 +185,47 @@ export default function Chat() {
     }
   }, [urlTutorId, isTutor, user?.id]);
 
+  // F5: scroll to the latest message.
+  // - First load for this conversation: instant jump (no animation while layout is settling).
+  // - New message: smooth only if the user is already near the bottom.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!allMessages.length) return;
+    const container = scrollContainerRef.current;
+    if (!initialScrolledRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      initialScrolledRef.current = true;
+    } else if (container) {
+      const isNearBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+      if (isNearBottom) {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }
   }, [allMessages.length]);
+
+  // F5: keep anchored to the bottom while initial images/media finish loading
+  // (layout shifts as images render can move the viewport off the last message).
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      if (!initialScrolledRef.current) return;
+      const isNearBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+      if (isNearBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [selectedTutorId]);
 
   useEffect(() => {
     setOlderMessages([]);
     setAllOlderLoaded(false);
     setTaggedPetId(undefined);
     setOptimisticMessages([]);
+    initialScrolledRef.current = false; // F5: reset so new conversation opens at bottom
   }, [selectedTutorId]);
 
   useEffect(() => {
@@ -348,7 +382,7 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-background">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-background">
         {!allOlderLoaded && (serverMessages?.length ?? 0) >= 50 && (
           <div className="flex justify-center mb-4">
             <button

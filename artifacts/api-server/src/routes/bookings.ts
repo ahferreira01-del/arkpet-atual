@@ -1122,9 +1122,15 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
     return;
   }
 
+  // F3: service bookings (banho) may start while a presence booking is already
+  // active — the pet is physically present; only the booking status changes.
+  // All other conflicts (two presence bookings, two service bookings, etc.)
+  // continue to be blocked.
+  const SERVICE_BOOKING_TYPES: readonly string[] = ["banho"];
+
   // Block if pet already has an active check-in
   const [alreadyActive] = await db
-    .select({ id: bookingsTable.id })
+    .select({ id: bookingsTable.id, type: bookingsTable.type })
     .from(bookingsTable)
     .where(
       and(
@@ -1134,14 +1140,23 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
       ),
     )
     .limit(1);
+
+  let skipPhysicalCheckin = false;
   if (alreadyActive) {
-    res
-      .status(409)
-      .json({
-        error:
-          "Este pet já possui um check-in ativo. Realize o check-out antes de fazer um novo.",
-      });
-    return;
+    const incomingIsService = SERVICE_BOOKING_TYPES.includes(existingBooking.type);
+    const existingIsPresence = !SERVICE_BOOKING_TYPES.includes(alreadyActive.type);
+    if (incomingIsService && existingIsPresence) {
+      // Pet is already physically present; only transition the service booking to active.
+      skipPhysicalCheckin = true;
+    } else {
+      res
+        .status(409)
+        .json({
+          error:
+            "Este pet já possui um check-in ativo. Realize o check-out antes de fazer um novo.",
+        });
+      return;
+    }
   }
 
   // Proceed: check-in + clear on-the-way state
@@ -1162,19 +1177,21 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
     )
     .returning();
 
-  await db
-    .update(petsTable)
-    .set({ isCheckedIn: true })
-    .where(eq(petsTable.id, booking.petId));
-  await db
-    .update(crechesTable)
-    .set({
-      currentOccupancy: db.$count(
-        petsTable,
-        and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
-      ) as any,
-    })
-    .where(eq(crechesTable.id, crecheId));
+  if (!skipPhysicalCheckin) {
+    await db
+      .update(petsTable)
+      .set({ isCheckedIn: true })
+      .where(eq(petsTable.id, booking.petId));
+    await db
+      .update(crechesTable)
+      .set({
+        currentOccupancy: db.$count(
+          petsTable,
+          and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
+        ) as any,
+      })
+      .where(eq(crechesTable.id, crecheId));
+  }
 
   const enriched = await getBookingWithNames(booking);
 
