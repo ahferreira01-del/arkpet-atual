@@ -78,7 +78,11 @@ export default function PetsDirectory() {
   const petLimit = subscription?.plan?.petLimit;
   const isLimitReached = typeof petLimit === "number" && activePetCount >= petLimit;
   const subStatus = subscription?.status;
-  const isSubBlocked = subStatus === "suspended" || subStatus === "cancelled";
+  const isTrialExpired =
+    subStatus === "trial" &&
+    !!subscription?.trialEndsAt &&
+    new Date(subscription.trialEndsAt) < new Date();
+  const isSubBlocked = isTrialExpired || subStatus === "suspended" || subStatus === "cancelled";
   const isBlocked = isLimitReached || isSubBlocked;
 
   const searchStr = useSearch();
@@ -404,11 +408,15 @@ export default function PetsDirectory() {
                 <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-destructive">
-                    {isSubBlocked ? "Assinatura inativa" : "Limite de pets atingido"}
+                    {isSubBlocked
+                      ? isTrialExpired ? "Período de teste encerrado" : "Assinatura inativa"
+                      : "Limite de pets atingido"}
                   </p>
                   <p className="text-sm text-destructive/90">
                     {isSubBlocked
-                      ? "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
+                      ? isTrialExpired
+                        ? "O período de teste encerrou. Assine um plano para cadastrar novos pets."
+                        : "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
                       : `Você atingiu o limite de ${petLimit} ${petLimit === 1 ? "pet" : "pets"} do plano ${subscription?.plan?.name ?? ""}. Faça upgrade para cadastrar mais.`}
                   </p>
                 </div>
