@@ -12,6 +12,7 @@ import { Loader2 } from "lucide-react";
 // view plans, complete payment, and log out. Keep this list minimal.
 const RECOVERY_PATHS = [
   "/assinatura",
+  "/settings",
   "/login",
   "/cadastro",
   "/recuperar-senha",
