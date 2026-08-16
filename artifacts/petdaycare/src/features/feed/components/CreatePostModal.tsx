@@ -16,9 +16,9 @@ interface CreatePostModalProps {
 }
 
 const STAGE_LABEL: Record<CreatePostProgress["stage"], string> = {
-  validating: "Validando…",
-  uploading:  "Enviando mídia…",
-  saving:     "Publicando…",
+  validating: "Validando...",
+  uploading:  "Enviando midia...",
+  saving:     "Publicando...",
   done:       "Publicado!",
 };
 
