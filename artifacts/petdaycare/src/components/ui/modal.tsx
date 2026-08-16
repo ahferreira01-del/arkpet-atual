@@ -17,11 +17,24 @@ interface ModalProps {
 export function Modal({ isOpen, onClose, title, description, children, className }: ModalProps) {
   const bodyRef = React.useRef<HTMLDivElement>(null);
 
-  // Always open with the body scrolled to the TOP — before first paint.
+  // Always open with the body scrolled to the TOP — before first paint, and
+  // again on the next frames: on real mobile devices an autofocused input or
+  // the opening animation can scroll the body AFTER the first reset.
   React.useLayoutEffect(() => {
-    if (isOpen && bodyRef.current) {
-      bodyRef.current.scrollTop = 0;
-    }
+    if (!isOpen) return;
+    const reset = () => {
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    };
+    reset();
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      reset();
+      raf2 = requestAnimationFrame(reset);
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [isOpen]);
 
   // iOS-safe scroll lock.

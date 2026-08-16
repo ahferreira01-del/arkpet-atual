@@ -1,4 +1,4 @@
-const CACHE_NAME = "arkpet-v30";
+const CACHE_NAME = "arkpet-v31";
 const STATIC_ASSETS = [
   "./",
   "./index.html",

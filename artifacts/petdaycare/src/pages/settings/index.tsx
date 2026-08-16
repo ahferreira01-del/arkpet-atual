@@ -509,6 +509,8 @@ export default function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      <p className="text-center text-xs text-muted-foreground pb-4">Versão v31</p>
     </div>
   );
 }

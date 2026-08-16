@@ -1488,7 +1488,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Código de Barras</label>
-                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." autoFocus={modalOpen && form.type === 'product'} className="mt-1.5" />
+                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." className="mt-1.5" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">SKU (opcional)</label>
