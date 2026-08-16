@@ -15,6 +15,15 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, description, children, className }: ModalProps) {
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+
+  // Always open with the body scrolled to the TOP — before first paint.
+  React.useLayoutEffect(() => {
+    if (isOpen && bodyRef.current) {
+      bodyRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
+
   // iOS-safe scroll lock.
   React.useEffect(() => {
     if (!isOpen) return;
@@ -95,7 +104,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
               </div>
 
               {/* Scrollable body */}
-              <div className="overflow-y-auto flex-1 custom-scrollbar px-6 pb-6 md:pr-4">
+              <div ref={bodyRef} className="overflow-y-auto flex-1 custom-scrollbar px-6 pb-6 md:pr-4">
                 {children}
               </div>
             </motion.div>

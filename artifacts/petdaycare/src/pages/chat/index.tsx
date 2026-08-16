@@ -135,6 +135,7 @@ export default function Chat() {
   const [allOlderLoaded, setAllOlderLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const initialScrolledRef = useRef(false);
   // B (F6.1): tracks USER INTENT to remain at the bottom — updated by the real
   // scroll event, NOT recalculated after a resize. This separates intent from the
@@ -190,6 +191,18 @@ export default function Chat() {
     }
   }, [urlTutorId, isTutor, user?.id]);
 
+  // Reset scroll sentinels SYNCHRONOUSLY when the conversation changes.
+  // MUST be declared BEFORE the landing effect below: effects run in
+  // declaration order within the same commit, so the landing effect must
+  // already see initialScrolledRef = false when selectedTutorId changes —
+  // otherwise it takes the smooth-scroll branch with the stale sentinel and
+  // a cached conversation with the same message count never re-lands.
+  useLayoutEffect(() => {
+    if (!selectedTutorId) return;
+    initialScrolledRef.current = false;
+    shouldStickToBottomRef.current = true;
+  }, [selectedTutorId]);
+
   // F9: scroll to the latest message.
   // - First load: useLayoutEffect fires synchronously BEFORE the browser paints,
   //   so the first visible frame already shows the newest messages (no flash to top).
@@ -206,34 +219,42 @@ export default function Chat() {
     if (!allMessages.length) return;
     const container = scrollContainerRef.current;
     if (!initialScrolledRef.current) {
-      if (container) {
+      // Container absent (mobile overlay not yet mounted) — leave the sentinel
+      // false so the effect re-fires when `showConversation` mounts it.
+      if (!container) return;
+
+      // Persistent landing loop: force scrollTop to the bottom every frame
+      // until the scroll actually LANDS (dist < 10) — or ~0.5 s passes.
+      // A single-frame retry is not enough on slow mobile devices where
+      // fonts/layout settle across several frames after first paint.
+      let attempts = 0;
+      let cancelled = false;
+      const land = () => {
+        if (cancelled) return;
         container.scrollTop = container.scrollHeight;
         const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
         if (dist < 10) {
           initialScrolledRef.current = true;
           shouldStickToBottomRef.current = true;
+        } else if (attempts++ < 30) {
+          requestAnimationFrame(land);
         } else {
-          // Layout not yet settled — retry after next frame.
-          requestAnimationFrame(() => {
-            container.scrollTop = container.scrollHeight;
-            initialScrolledRef.current = true;
-            shouldStickToBottomRef.current = true;
-          });
+          // Give up trying to verify — mark initialized so the stick-to-bottom
+          // ResizeObserver takes over from here.
+          initialScrolledRef.current = true;
+          shouldStickToBottomRef.current = true;
         }
-      } else if (messagesEndRef.current) {
-        // Container absent but sentinel present — use it.
-        messagesEndRef.current.scrollIntoView({ behavior: "instant" as ScrollBehavior });
-        initialScrolledRef.current = true;
-        shouldStickToBottomRef.current = true;
-      }
-      // If BOTH are null (mobile overlay not yet mounted), leave
-      // initialScrolledRef.current = false so the effect re-fires when
-      // `showConversation` transitions to true and the overlay mounts.
+      };
+      land();
+      return () => {
+        cancelled = true;
+      };
     } else if (shouldStickToBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
+    return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allMessages.length, showConversation]);
+  }, [allMessages.length, showConversation, selectedTutorId]);
 
   // F5/B: keep anchored to the bottom during layout shifts (images loading, etc.)
   // Uses shouldStickToBottomRef (user intent) — NOT post-resize distance.
@@ -262,21 +283,17 @@ export default function Chat() {
       // B9: intent = false → user is reading history → do nothing.
     });
     observer.observe(container);
+    // Also observe the CONTENT wrapper: the container itself is flex-1 (fixed
+    // size), so content growth (fonts loading, new bubbles reflowing) never
+    // resizes it — only the inner wrapper grows. Without this, the viewport
+    // gets stranded mid-history when content height settles after the initial
+    // scroll on slow mobile devices.
+    if (contentRef.current) observer.observe(contentRef.current);
 
     return () => {
       container.removeEventListener("scroll", onScroll);
       observer.disconnect();
     };
-  }, [selectedTutorId]);
-
-  // Reset scroll sentinels SYNCHRONOUSLY (layout effect) when the conversation
-  // changes, so the scroll effect that fires in the same commit already sees
-  // initialScrolledRef = false, even on mobile where the overlay may mount in
-  // the same render as selectedTutorId changing.
-  useLayoutEffect(() => {
-    if (!selectedTutorId) return;
-    initialScrolledRef.current = false;
-    shouldStickToBottomRef.current = true;
   }, [selectedTutorId]);
 
   useEffect(() => {
@@ -440,7 +457,10 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-background">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0 bg-background">
+        {/* Content wrapper — observed by the ResizeObserver so content growth
+            (not just container resize) keeps the viewport pinned to bottom. */}
+        <div ref={contentRef} className="flex flex-col space-y-4 min-h-full">
         {!allOlderLoaded && (serverMessages?.length ?? 0) >= 50 && (
           <div className="flex justify-center mb-4">
             <button
@@ -506,7 +526,7 @@ export default function Chat() {
             <div ref={messagesEndRef} className="h-2" />
           </>
         ) : (
-          <div className="h-full flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center">
             <EmptyState
               icon={MessageSquare}
               title="Nenhuma mensagem ainda"
@@ -514,6 +534,7 @@ export default function Chat() {
             />
           </div>
         )}
+        </div>
       </div>
 
       {/* Input */}

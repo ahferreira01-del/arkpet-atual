@@ -321,7 +321,12 @@ export default function TutorFinancial() {
               <Button
                 variant="outline"
                 className="w-full mt-2 h-12 text-muted-foreground hover:text-foreground bg-card border-border hover:bg-secondary"
-                onClick={() => setActiveTab("invoices")}
+                onClick={() => {
+                  setActiveTab("invoices");
+                  // Bring the tab content into view — on mobile the button sits
+                  // far down the page and the tab switch alone isn't noticeable.
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
               >
                 Ver todas as {openInvoices.length} faturas pendentes
               </Button>
