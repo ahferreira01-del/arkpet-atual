@@ -125,6 +125,21 @@ export default function Chat() {
     isTutor ? user?.id : urlTutorId
   );
   const [showConversation, setShowConversation] = useState(isTutor || !!urlTutorId);
+  // ROOT CAUSE FIX: conversationView used to be rendered TWICE (mobile overlay
+  // + desktop card, one hidden by CSS). scrollContainerRef/messagesEndRef can
+  // only point at ONE element and ended up bound to the HIDDEN desktop copy
+  // (height 0), so the landing scroll "succeeded" against a zero-height div
+  // while the visible mobile container was never scrolled. Render exactly one
+  // copy per breakpoint via matchMedia so the refs always target the visible DOM.
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [taggedPetId, setTaggedPetId] = useState<number | undefined>();
@@ -201,7 +216,9 @@ export default function Chat() {
     if (!selectedTutorId) return;
     initialScrolledRef.current = false;
     shouldStickToBottomRef.current = true;
-  }, [selectedTutorId]);
+    // isDesktop dep: on breakpoint switch the container REMOUNTS (only one
+    // copy is rendered per breakpoint), so the landing must run again.
+  }, [selectedTutorId, isDesktop]);
 
   // F9: scroll to the latest message.
   // - First load: useLayoutEffect fires synchronously BEFORE the browser paints,
@@ -254,7 +271,7 @@ export default function Chat() {
     }
     return undefined;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allMessages.length, showConversation, selectedTutorId]);
+  }, [allMessages.length, showConversation, selectedTutorId, isDesktop]);
 
   // F5/B: keep anchored to the bottom during layout shifts (images loading, etc.)
   // Uses shouldStickToBottomRef (user intent) — NOT post-resize distance.
@@ -294,7 +311,8 @@ export default function Chat() {
       container.removeEventListener("scroll", onScroll);
       observer.disconnect();
     };
-  }, [selectedTutorId]);
+    // isDesktop: the container remounts on breakpoint switch — re-attach.
+  }, [selectedTutorId, isDesktop]);
 
   useEffect(() => {
     setOlderMessages([]);
@@ -689,7 +707,7 @@ export default function Chat() {
           Sits between the app header (h-16 = 4rem) and the bottom nav
           (72px + safe-area). This bypasses the overflow-y:auto main container
           so the input is never clipped by the bottom nav spacer.            */}
-      {(isTutor || showConversation) && (
+      {!isDesktop && (isTutor || showConversation) && (
         <div
           className="md:hidden fixed inset-x-0 z-30 flex flex-col shadow-2xl"
           style={{
@@ -714,6 +732,7 @@ export default function Chat() {
       )}
 
       {/* ── DESKTOP: side-by-side layout ──────────────────────────────────── */}
+      {isDesktop && (
       <div className="hidden md:flex gap-6 h-[calc(100dvh-14rem)] min-h-0 px-4 md:px-0">
         {!isTutor && (
           <div className="w-80 flex-shrink-0 flex flex-col min-h-0">
@@ -736,6 +755,7 @@ export default function Chat() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
