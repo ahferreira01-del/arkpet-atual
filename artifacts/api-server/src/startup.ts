@@ -278,33 +278,6 @@ async function migrateQuintalPetTrial() {
   console.log(`[startup] Quintal Pet: trial inserido — expira em ${trialEndsAt.toISOString()}`);
 }
 
-// ── Migração pontual: import da creche "Pet sitter (Kim)" (id 16) ───────────
-// Dados exportados de uma instalação anterior do ArkPet, transformados por
-// scripts/transform-kim-import.mjs (colunas edited_* removidas, bookings +100,
-// vacina 3→5, tutor antigo id 1 → placeholder 69, push_subscriptions excluídas).
-// Roda uma única vez: se a creche 16 já existe, não faz nada. O SQL inteiro é
-// um único BEGIN…COMMIT — ou importa tudo, ou nada.
-async function importKimPetSitter() {
-  const existing = await db
-    .select({ id: crechesTable.id, name: crechesTable.name })
-    .from(crechesTable)
-    .where(eq(crechesTable.id, 16));
-
-  if (existing.length > 0) {
-    if (!existing[0].name.includes("Kim")) {
-      console.warn(`[startup] Import Kim: creche 16 já existe mas com nome inesperado ("${existing[0].name}") — import pulado, verificar manualmente.`);
-    } else {
-      console.log("[startup] Import Kim: creche 16 já existe, nada a fazer.");
-    }
-    return;
-  }
-
-  console.log("[startup] Import Kim: creche 16 ausente — importando dados...");
-  const { KIM_IMPORT_SQL } = await import("./import/kimImportSql.js");
-  // SQL inteiro é um único BEGIN…COMMIT com advisory lock: ou importa tudo, ou nada.
-  await (db as any).execute(KIM_IMPORT_SQL);
-  console.log("[startup] Import Kim: concluído (creche, usuários, pets, reservas, timeline, chat).");
-}
 
 /**
  * Phase 15B: ensures the financial_outbox table and its enum exist.
@@ -570,13 +543,6 @@ export async function initializeDatabase() {
 
   // Migrações pontuais
   await migrateQuintalPetTrial();
-  // Import Kim é não-fatal: a transação é atômica (nada parcial fica no banco);
-  // se falhar, o app continua servindo os tenants existentes e o erro fica no log.
-  try {
-    await importKimPetSitter();
-  } catch (err) {
-    console.error("[startup] Import Kim FALHOU (transação revertida, app segue no ar):", err);
-  }
 
   const [{ total }] = await db.select({ total: count() }).from(usersTable);
 
