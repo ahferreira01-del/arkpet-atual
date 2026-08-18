@@ -23,9 +23,4 @@ BASE_PATH = "/"
 
 [services.production]
 build = ["pnpm", "--filter", "@workspace/petdaycare", "run", "build"]
-publicDir = "artifacts/petdaycare/dist/public"
-serve = "static"
-
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+run = ["pnpm", "--filter", "@workspace/petdaycare", "run", "start"]
