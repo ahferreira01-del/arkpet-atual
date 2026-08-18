@@ -140,9 +140,7 @@ router.get("/subscription", async (req: AuthRequest, res) => {
     .limit(1);
 
   if (!row) {
-    // Creches sem linha em subscriptions são intencionalmente "ungated" (sem plano/limite).
-    // Retornar 404 quebrava o customFetch em toda página com AppLayout.
-    res.status(200).json(null);
+    res.status(404).json({ error: "Assinatura não encontrada." });
     return;
   }
 

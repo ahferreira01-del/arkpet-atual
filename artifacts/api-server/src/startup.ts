@@ -239,6 +239,43 @@ export async function initStripe() {
   }
 }
 
+// ── Migração pontual: assinatura para Kim Pet Sitter (creche_id=16) ─────────
+// Creche importada via SQL — não tinha subscription row → app bloqueava ao logar.
+// Insere assinatura "active" no plano Essencial (limite 35 pets). Idempotente.
+async function insertKimSubscription() {
+  const existing = await db
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.crecheId, 16));
+
+  if (existing.length > 0) {
+    console.log("[startup] Kim Pet Sitter: assinatura já existe, nada a fazer.");
+    return;
+  }
+
+  const [essencialPlan] = await db
+    .select({ id: plansTable.id })
+    .from(plansTable)
+    .where(eq(plansTable.name, "Essencial"));
+
+  if (!essencialPlan) {
+    console.warn("[startup] Kim Pet Sitter: plano Essencial não encontrado, migração pulada.");
+    return;
+  }
+
+  // Assinatura ativa por 1 ano a partir da migração
+  const currentPeriodEnd = new Date("2027-08-18T00:00:00.000Z");
+
+  await db.insert(subscriptionsTable).values({
+    crecheId: 16,
+    planId: essencialPlan.id,
+    status: "active",
+    currentPeriodEnd,
+  });
+
+  console.log(`[startup] Kim Pet Sitter: assinatura Essencial ativa — expira em ${currentPeriodEnd.toISOString()}`);
+}
+
 // ── Migração pontual: trial para Quintal Pet (creche_id=17) ─────────────────
 // Criada via master_admin → sem subscription row → sem trial nem acesso a planos.
 // Esta função insere o trial retroativo uma única vez. Idempotente.
@@ -542,6 +579,7 @@ export async function initializeDatabase() {
   console.log("[startup] Verificando banco de dados de produção...");
 
   // Migrações pontuais
+  await insertKimSubscription();
   await migrateQuintalPetTrial();
 
   const [{ total }] = await db.select({ total: count() }).from(usersTable);
