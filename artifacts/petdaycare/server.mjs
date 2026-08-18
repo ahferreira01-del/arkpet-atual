@@ -8,18 +8,28 @@ const port = Number(process.env.PORT) || 21324;
 
 const app = express();
 
-// Serve static files — Express resolves files before the SPA catch-all,
-// so /.well-known/assetlinks.json is served with the correct content-type.
-app.use(
-  express.static(distDir, {
-    index: false, // disable auto-index so the SPA catch-all controls it
-    setHeaders(res, filePath) {
-      if (filePath.endsWith(".json")) {
-        res.setHeader("Content-Type", "application/json");
-      }
+// Digital Asset Links — hardcoded so it is always served correctly,
+// regardless of static file resolution in the container.
+const ASSET_LINKS = [
+  {
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: {
+      namespace: "android_app",
+      package_name: "br.com.arkpett.twa",
+      sha256_cert_fingerprints: [
+        "9A:9A:BA:77:3D:49:DB:96:08:DD:A0:84:93:DD:9D:4B:02:DA:E0:B3:18:EF:71:0D:70:11:45:50:4D:F9:E3:F1",
+      ],
     },
-  })
-);
+  },
+];
+
+app.get("/.well-known/assetlinks.json", (_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.json(ASSET_LINKS);
+});
+
+// Serve static files (JS, CSS, images, etc.)
+app.use(express.static(distDir, { index: false }));
 
 // SPA fallback — must come after static middleware
 app.use((_req, res) => {
