@@ -12,7 +12,7 @@ import {
   stripeRecurringFor,
   type BillingInterval,
 } from "@workspace/db";
-import { eq, and, count, isNull, sql } from "drizzle-orm";
+import { eq, and, count, isNull } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
 
@@ -237,78 +237,6 @@ export async function initStripe() {
       err instanceof Error ? err.message : err,
     );
   }
-}
-
-// ── Reset único de produção ────────────────────────────────────────────────
-// Apaga TODOS os dados exceto plans e plan_prices. Idempotente:
-//   - Se o master_admin já existe → reset já foi feito, pula.
-//   - Se banco está vazio       → nada a apagar, pula.
-//   - Caso contrário            → dados de teste presentes, executa TRUNCATE.
-// Após o TRUNCATE o bloco de inicialização a seguir recria o master_admin.
-// O email do master_admin funciona como sentinela: uma vez recriado, esta
-// função nunca mais trunca.
-async function resetProductionDatabase() {
-  const masterEmail = process.env.MASTER_ADMIN_EMAIL ?? "master@arkpet.com.br";
-
-  const [masterExists] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, masterEmail))
-    .limit(1);
-
-  if (masterExists) {
-    // Master admin já recriado após o reset → não truncar novamente.
-    return;
-  }
-
-  const [{ total }] = await db.select({ total: count() }).from(usersTable);
-  if (Number(total) === 0) {
-    // Banco já vazio, nada a fazer.
-    return;
-  }
-
-  console.log(`[startup] Reset: apagando ${total} usuário(s) e todos os dados de produção (exceto planos)...`);
-
-  await db.execute(sql`
-    TRUNCATE TABLE
-      booking_consumables,
-      booking_credits,
-      booking_service_credits,
-      booking_services,
-      bookings,
-      catalogue_items,
-      catalogue_stock_transactions,
-      chat_messages,
-      creches,
-      expenses,
-      financial_audit_logs,
-      financial_outbox,
-      invoice_items,
-      invoices,
-      medical_incidents,
-      medications,
-      order_items,
-      orders,
-      password_reset_tokens,
-      pets,
-      push_subscriptions,
-      subscriptions,
-      tasks,
-      timeline_comments,
-      timeline_event_pets,
-      timeline_events,
-      timeline_likes,
-      timeline_views,
-      transactions,
-      tutor_credits,
-      tutor_service_credits,
-      users,
-      vaccines,
-      walks
-    RESTART IDENTITY CASCADE
-  `);
-
-  console.log("[startup] Reset: banco de produção zerado com sucesso.");
 }
 
 
@@ -573,9 +501,6 @@ export async function initializeDatabase() {
   if (process.env.NODE_ENV !== "production") return;
 
   console.log("[startup] Verificando banco de dados de produção...");
-
-  // Reset único de produção (apaga dados de teste, mantém planos)
-  await resetProductionDatabase();
 
   const [{ total }] = await db.select({ total: count() }).from(usersTable);
 
