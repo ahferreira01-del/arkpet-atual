@@ -18,7 +18,6 @@ paths = ["/"]
 run = "pnpm --filter @workspace/petdaycare run dev"
 
 [services.env]
-PORT = "21324"
 BASE_PATH = "/"
 
 [services.production]
