@@ -12,7 +12,7 @@ import {
   stripeRecurringFor,
   type BillingInterval,
 } from "@workspace/db";
-import { eq, and, count, isNull } from "drizzle-orm";
+import { eq, and, count, isNull, sql } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
 
@@ -239,80 +239,76 @@ export async function initStripe() {
   }
 }
 
-// ── Migração pontual: assinatura para Kim Pet Sitter (creche_id=16) ─────────
-// Creche importada via SQL — não tinha subscription row → app bloqueava ao logar.
-// Insere assinatura "active" no plano Essencial (limite 35 pets). Idempotente.
-async function insertKimSubscription() {
-  const existing = await db
-    .select({ id: subscriptionsTable.id })
-    .from(subscriptionsTable)
-    .where(eq(subscriptionsTable.crecheId, 16));
+// ── Reset único de produção ────────────────────────────────────────────────
+// Apaga TODOS os dados exceto plans e plan_prices. Idempotente:
+//   - Se o master_admin já existe → reset já foi feito, pula.
+//   - Se banco está vazio       → nada a apagar, pula.
+//   - Caso contrário            → dados de teste presentes, executa TRUNCATE.
+// Após o TRUNCATE o bloco de inicialização a seguir recria o master_admin.
+// O email do master_admin funciona como sentinela: uma vez recriado, esta
+// função nunca mais trunca.
+async function resetProductionDatabase() {
+  const masterEmail = process.env.MASTER_ADMIN_EMAIL ?? "master@arkpet.com.br";
 
-  if (existing.length > 0) {
-    console.log("[startup] Kim Pet Sitter: assinatura já existe, nada a fazer.");
+  const [masterExists] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, masterEmail))
+    .limit(1);
+
+  if (masterExists) {
+    // Master admin já recriado após o reset → não truncar novamente.
     return;
   }
 
-  const [essencialPlan] = await db
-    .select({ id: plansTable.id })
-    .from(plansTable)
-    .where(eq(plansTable.name, "Essencial"));
-
-  if (!essencialPlan) {
-    console.warn("[startup] Kim Pet Sitter: plano Essencial não encontrado, migração pulada.");
+  const [{ total }] = await db.select({ total: count() }).from(usersTable);
+  if (Number(total) === 0) {
+    // Banco já vazio, nada a fazer.
     return;
   }
 
-  // Assinatura ativa por 1 ano a partir da migração
-  const currentPeriodEnd = new Date("2027-08-18T00:00:00.000Z");
+  console.log(`[startup] Reset: apagando ${total} usuário(s) e todos os dados de produção (exceto planos)...`);
 
-  await db.insert(subscriptionsTable).values({
-    crecheId: 16,
-    planId: essencialPlan.id,
-    status: "active",
-    currentPeriodEnd,
-  });
+  await db.execute(sql`
+    TRUNCATE TABLE
+      booking_consumables,
+      booking_credits,
+      booking_service_credits,
+      booking_services,
+      bookings,
+      catalogue_items,
+      catalogue_stock_transactions,
+      chat_messages,
+      creches,
+      expenses,
+      financial_audit_logs,
+      financial_outbox,
+      invoice_items,
+      invoices,
+      medical_incidents,
+      medications,
+      order_items,
+      orders,
+      password_reset_tokens,
+      pets,
+      push_subscriptions,
+      subscriptions,
+      tasks,
+      timeline_comments,
+      timeline_event_pets,
+      timeline_events,
+      timeline_likes,
+      timeline_views,
+      transactions,
+      tutor_credits,
+      tutor_service_credits,
+      users,
+      vaccines,
+      walks
+    RESTART IDENTITY CASCADE
+  `);
 
-  console.log(`[startup] Kim Pet Sitter: assinatura Essencial ativa — expira em ${currentPeriodEnd.toISOString()}`);
-}
-
-// ── Migração pontual: trial para Quintal Pet (creche_id=17) ─────────────────
-// Criada via master_admin → sem subscription row → sem trial nem acesso a planos.
-// Esta função insere o trial retroativo uma única vez. Idempotente.
-async function migrateQuintalPetTrial() {
-  const existing = await db
-    .select({ id: subscriptionsTable.id })
-    .from(subscriptionsTable)
-    .where(eq(subscriptionsTable.crecheId, 17));
-
-  if (existing.length > 0) {
-    console.log("[startup] Quintal Pet: trial já existe, nada a fazer.");
-    return;
-  }
-
-  // Busca o plano Trial (id=1)
-  const [trialPlan] = await db
-    .select({ id: plansTable.id })
-    .from(plansTable)
-    .where(eq(plansTable.name, "Trial"));
-
-  if (!trialPlan) {
-    console.warn("[startup] Quintal Pet: plano Trial não encontrado, migração pulada.");
-    return;
-  }
-
-  // Trial de 10 dias a partir da data de criação da creche (2026-06-18)
-  const crecheCreatedAt = new Date("2026-06-18T14:26:57.944Z");
-  const trialEndsAt = new Date(crecheCreatedAt.getTime() + 10 * 24 * 60 * 60 * 1000);
-
-  await db.insert(subscriptionsTable).values({
-    crecheId: 17,
-    planId: trialPlan.id,
-    status: "trial",
-    trialEndsAt,
-  });
-
-  console.log(`[startup] Quintal Pet: trial inserido — expira em ${trialEndsAt.toISOString()}`);
+  console.log("[startup] Reset: banco de produção zerado com sucesso.");
 }
 
 
@@ -578,9 +574,8 @@ export async function initializeDatabase() {
 
   console.log("[startup] Verificando banco de dados de produção...");
 
-  // Migrações pontuais
-  await insertKimSubscription();
-  await migrateQuintalPetTrial();
+  // Reset único de produção (apaga dados de teste, mantém planos)
+  await resetProductionDatabase();
 
   const [{ total }] = await db.select({ total: count() }).from(usersTable);
 
