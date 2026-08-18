@@ -22,7 +22,7 @@ app.use(
 );
 
 // SPA fallback — must come after static middleware
-app.get("*", (_req, res) => {
+app.use((_req, res) => {
   res.sendFile(join(distDir, "index.html"));
 });
 
