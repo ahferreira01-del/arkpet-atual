@@ -29,6 +29,7 @@ import type { FinancialDomainEvent } from "./events.js";
 import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { sendLowStockAlertEmail } from "./email.js";
+import { getBusinessDate } from "../lib/date.js";
 
 export interface CreateOrderItem {
   catalogueItemId: number;
@@ -256,12 +257,19 @@ export async function cancelOrder(params: {
 
   // Buscar itens e dados de catálogo fora da transação (leitura segura)
   const items = await db.select().from(orderItemsTable).where(eq(orderItemsTable.orderId, order.id));
+  const sortedItems = [...items].sort(
+    (a, b) => a.catalogueItemId - b.catalogueItemId
+  );
   const catIds = [...new Set(items.map(i => i.catalogueItemId))];
   const catItems = catIds.length
     ? await db.select().from(catalogueItemsTable).where(inArray(catalogueItemsTable.id, catIds))
     : [];
 
   await db.transaction(async (tx) => {
+    // Payment uses tutor advisory → invoice → order. Cancellation must acquire
+    // the same tutor lock before its order row to avoid invoice/order AB/BA.
+    await BillingService.acquireTutorFinancialLock(crecheId, order.tutorId, tx);
+
     // Re-read the order with a row-level lock inside the transaction.
     // This prevents concurrent cancellations (scheduler + API race) from
     // double-restoring stock and emitting duplicate OrderCancelled events.
@@ -277,7 +285,7 @@ export async function cancelOrder(params: {
       return;
     }
 
-    for (const item of items) {
+    for (const item of sortedItems) {
       const catItem = catItems.find(c => c.id === item.catalogueItemId);
 
       if (catItem && catItem.type !== "service") {
@@ -339,7 +347,11 @@ export async function cancelOrder(params: {
       // Cancelar a fatura (apenas se pendente — faturas pagas são tratadas por refundInvoice)
       const [voidedInvoice] = await tx.update(invoicesTable)
         .set({ status: "voided" })
-        .where(and(eq(invoicesTable.id, order.invoiceId), eq(invoicesTable.status, "pending")))
+        .where(and(
+          eq(invoicesTable.id, order.invoiceId),
+          eq(invoicesTable.status, "pending"),
+          sql`${invoicesTable.dueDate} >= ${getBusinessDate()}`,
+        ))
         .returning({ id: invoicesTable.id });
 
       if (voidedInvoice) {

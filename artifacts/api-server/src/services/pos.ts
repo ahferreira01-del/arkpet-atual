@@ -43,6 +43,10 @@ export class PosService {
     );
 
     return db.transaction(async (tx) => {
+      // Financial lock must precede catalogue row locks. Refunds use the same
+      // order (tutor advisory → invoice → catalogue), preventing AB/BA deadlocks.
+      await BillingService.acquireTutorFinancialLock(crecheId, tutorId, tx);
+
       let subtotal = 0;
       const lockedItems: Array<{
         item: any;

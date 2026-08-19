@@ -547,12 +547,20 @@ export async function restoreAdditionalServices(
   // Step 3: per-invoice batch reversal — one void-or-adjust decision per invoice
   for (const [invoiceId, invoiceAddons] of byInvoice) {
     const [invoice] = await tx
-      .select({ id: invoicesTable.id, amount: invoicesTable.amount, status: invoicesTable.status })
+      .select({
+        id: invoicesTable.id,
+        amount: invoicesTable.amount,
+        status: invoicesTable.status,
+        dueDate: invoicesTable.dueDate,
+      })
       .from(invoicesTable)
       .where(eq(invoicesTable.id, invoiceId))
       .limit(1);
 
-    const isMutable = invoice && !["voided", "refunded", "paid"].includes(invoice.status);
+    const isMutable =
+      invoice &&
+      invoice.status === "pending" &&
+      invoice.dueDate >= getBusinessDate();
     if (!isMutable) {
       // Paid/refunded/voided invoices: preserve items as financial history
       continue;
