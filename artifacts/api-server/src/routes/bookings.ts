@@ -55,6 +55,14 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 router.use(requireCrecheMembership);
 
+function isServiceBookingBackend(bookingType: string, catalogueItemType: string | null): boolean {
+  if (catalogueItemType !== null && catalogueItemType !== undefined) {
+    return catalogueItemType === "service";
+  }
+  const LEGACY_SERVICE_TYPES = new Set(["banho", "visita_taxi", "creche_taxi", "tosa_higienica", "tosa_completa", "tosa_padrao", "avaliacao", "taxi"]);
+  return LEGACY_SERVICE_TYPES.has(bookingType);
+}
+
 async function getBookingWithNames(booking: typeof bookingsTable.$inferSelect) {
   const [pet] = await db
     .select({ name: petsTable.name })
@@ -66,10 +74,24 @@ async function getBookingWithNames(booking: typeof bookingsTable.$inferSelect) {
     .from(usersTable)
     .where(eq(usersTable.id, booking.tutorId))
     .limit(1);
+
+  let catalogueItemType: string | null = null;
+  if (booking.primaryCatalogueItemId) {
+    const [catItem] = await db
+      .select({ type: catalogueItemsTable.type })
+      .from(catalogueItemsTable)
+      .where(eq(catalogueItemsTable.id, booking.primaryCatalogueItemId))
+      .limit(1);
+    if (catItem) {
+      catalogueItemType = catItem.type;
+    }
+  }
+
   return {
     ...booking,
     petName: pet?.name ?? null,
     tutorName: tutor?.name ?? null,
+    catalogueItemType,
   };
 }
 
@@ -159,11 +181,14 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
           onTheWayAt: bookingsTable.onTheWayAt,
           hasPersonalItems: bookingsTable.hasPersonalItems,
           personalItemsPhotoUrl: bookingsTable.personalItemsPhotoUrl,
+          primaryCatalogueItemId: bookingsTable.primaryCatalogueItemId,
+          catalogueItemType: catalogueItemsTable.type,
           createdAt: bookingsTable.createdAt,
         })
         .from(bookingsTable)
         .leftJoin(petsTable, eq(bookingsTable.petId, petsTable.id))
         .leftJoin(usersTable, eq(bookingsTable.tutorId, usersTable.id))
+        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
         .where(and(...conditions))
         .orderBy(
           // Pending first, then confirmed, then cancel_requested, then active, then the rest
@@ -1073,10 +1098,13 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
 
-  // Fetch booking first to get petId and validate status
-  const [existingBooking] = await db
-    .select()
+  const [row] = await db
+    .select({
+      booking: bookingsTable,
+      catalogueItemType: catalogueItemsTable.type,
+    })
     .from(bookingsTable)
+    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
     .where(
       and(
         eq(bookingsTable.crecheId, crecheId),
@@ -1084,10 +1112,12 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
       ),
     )
     .limit(1);
-  if (!existingBooking) {
+  if (!row) {
     res.status(404).json({ error: "Reserva não encontrada" });
     return;
   }
+  const existingBooking = row.booking;
+  const isCurrentService = isServiceBookingBackend(existingBooking.type, row.catalogueItemType);
   if (existingBooking.status !== "confirmed") {
     res
       .status(400)
@@ -1122,24 +1152,33 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
     return;
   }
 
-  // Block if pet already has an active check-in
-  const [alreadyActive] = await db
-    .select({ id: bookingsTable.id })
+  // Block if pet already has an active check-in of the SAME SEMANTIC CLASS
+  const activeBookings = await db
+    .select({
+      id: bookingsTable.id,
+      type: bookingsTable.type,
+      catalogueItemType: catalogueItemsTable.type,
+    })
     .from(bookingsTable)
+    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
     .where(
       and(
         eq(bookingsTable.crecheId, crecheId),
         eq(bookingsTable.petId, existingBooking.petId),
         eq(bookingsTable.status, "active"),
       ),
-    )
-    .limit(1);
-  if (alreadyActive) {
+    );
+
+  const hasSameSemanticTypeActive = activeBookings.some((ab) =>
+    isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
+  );
+
+  if (hasSameSemanticTypeActive) {
     res
       .status(409)
       .json({
         error:
-          "Este pet já possui um check-in ativo. Realize o check-out antes de fazer um novo.",
+          "Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.",
       });
     return;
   }
@@ -1203,9 +1242,13 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
   const bookingId = parseInt(String(req.params.bookingId));
 
   try {
-    const [existing] = await db
-      .select()
+    const [row] = await db
+      .select({
+        booking: bookingsTable,
+        catalogueItemType: catalogueItemsTable.type,
+      })
       .from(bookingsTable)
+      .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
       .where(
         and(
           eq(bookingsTable.crecheId, crecheId),
@@ -1213,8 +1256,16 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
         ),
       )
       .limit(1);
-    if (!existing) {
+
+    if (!row) {
       res.status(404).json({ error: "Reserva não encontrada" });
+      return;
+    }
+
+    const existing = row.booking;
+
+    if (isServiceBookingBackend(existing.type, row.catalogueItemType)) {
+      res.status(400).json({ error: "Apenas estadias e day use podem realizar check-out." });
       return;
     }
 
@@ -1335,6 +1386,31 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
 
+  const [row] = await db
+    .select({
+      booking: bookingsTable,
+      catalogueItemType: catalogueItemsTable.type,
+    })
+    .from(bookingsTable)
+    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
+    .where(
+      and(
+        eq(bookingsTable.crecheId, crecheId),
+        eq(bookingsTable.id, bookingId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Reserva não encontrada" });
+    return;
+  }
+
+  if (!isServiceBookingBackend(row.booking.type, row.catalogueItemType)) {
+    res.status(400).json({ error: "Apenas serviços podem ser finalizados via complete-service." });
+    return;
+  }
+
   const [booking] = await db
     .update(bookingsTable)
     .set({
@@ -1348,11 +1424,6 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
       ),
     )
     .returning();
-
-  if (!booking) {
-    res.status(404).json({ error: "Reserva não encontrada" });
-    return;
-  }
 
   // If no other active booking exists for this pet, release it from the creche
   const [otherActive] = await db

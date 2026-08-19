@@ -638,10 +638,10 @@ export default function Bookings() {
                           <PawPrint className="h-5 w-5 text-muted-foreground opacity-50" />
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0 flex flex-col gap-1">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2">
                           <h3 className="text-base font-semibold text-foreground truncate leading-tight">{booking.petName}</h3>
-                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="h-5 px-1.5 text-[10px]">
                               {statusLabel[booking.status] || booking.status}
                             </Badge>
@@ -651,7 +651,7 @@ export default function Bookings() {
                           </div>
                         </div>
                         {!isTutor && (
-                          <p className="text-sm text-muted-foreground truncate leading-tight mt-0.5">{booking.tutorName || "—"}</p>
+                          <p className="text-sm text-muted-foreground truncate leading-tight">{booking.tutorName || "—"}</p>
                         )}
                       </div>
                     </div>
@@ -707,13 +707,13 @@ export default function Bookings() {
                       )}
                     </div>
 
-                    {/* Row 4: Horizontal Action Buttons */}
-                    <div className="flex items-center gap-2 flex-wrap pt-3 border-t border-border mt-1">
+                    {/* Row 4: Action Buttons */}
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 pt-3 border-t border-border mt-1">
                       {(booking.status === "confirmed" || booking.status === "active") && (
                         <Button
                           size="sm"
                           variant="secondary"
-                          className="h-10 text-sm px-4"
+                          className="w-full sm:w-auto h-10 text-sm px-4"
                           onClick={() => setOnTheWayBooking(booking)}
                         >
                           <Navigation className="mr-1.5 h-3.5 w-3.5" /> A caminho
@@ -723,7 +723,7 @@ export default function Bookings() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                          className="w-full sm:w-auto h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
                           onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
                           isLoading={updateMutation.isPending}
                         >
@@ -737,7 +737,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
+                                className="w-full sm:w-auto h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
                                 onClick={() => handleStatusUpdate(booking.id, "cancelled")}
                                 isLoading={updateMutation.isPending}
                               >
@@ -746,7 +746,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                className="h-10 text-sm px-4"
+                                className="w-full sm:w-auto h-10 text-sm px-4"
                                 onClick={() => handleStatusUpdate(booking.id, "confirmed")}
                                 isLoading={updateMutation.isPending}
                               >
@@ -758,7 +758,7 @@ export default function Bookings() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              className="h-10 text-sm px-4"
+                              className="w-full sm:w-auto h-10 text-sm px-4"
                               onClick={() => handleCheckIn(booking)}
                               isLoading={checkInMutation.isPending}
                             >
@@ -770,7 +770,7 @@ export default function Bookings() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              className="h-10 text-sm px-4"
+                              className="w-full sm:w-auto h-10 text-sm px-4"
                               onClick={() => handleCompleteService(booking)}
                               isLoading={completeServiceMutation.isPending}
                             >
@@ -781,7 +781,7 @@ export default function Bookings() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              className="h-10 text-sm px-4"
+                              className="w-full sm:w-auto h-10 text-sm px-4"
                               onClick={() => handleCompleteService(booking)}
                               isLoading={completeServiceMutation.isPending}
                             >
@@ -793,7 +793,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                className="h-10 text-sm px-4"
+                                className="w-full sm:w-auto h-10 text-sm px-4"
                                 onClick={() => handleCheckOut(booking)}
                                 isLoading={checkOutMutation.isPending}
                               >
@@ -802,7 +802,7 @@ export default function Bookings() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="h-10 text-sm px-4 bg-secondary/50"
+                                className="w-full sm:w-auto h-10 text-sm px-4 bg-secondary/50"
                                 onClick={() => setConsumableBooking(booking)}
                               >
                                 <Package className="mr-1.5 h-3.5 w-3.5" /> Consumo
@@ -813,7 +813,7 @@ export default function Bookings() {
                             <Button
                               size="sm"
                               variant="secondary"
-                              className="h-10 text-sm px-4"
+                              className="w-full sm:w-auto h-10 text-sm px-4"
                               onClick={() => handleStatusUpdate(booking.id, "confirmed")}
                               isLoading={updateMutation.isPending}
                             >
@@ -824,7 +824,7 @@ export default function Bookings() {
                           <Button 
                             size="sm" 
                             variant="ghost" 
-                            className="h-10 text-sm px-4 ml-auto text-muted-foreground hover:text-foreground" 
+                            className="w-full sm:w-auto sm:ml-auto h-10 text-sm px-4 text-muted-foreground hover:text-foreground" 
                             onClick={() => setEditBooking(booking)}
                           >
                             Editar
