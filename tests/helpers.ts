@@ -14,6 +14,27 @@ export async function createTestCreche(params: { name: string }) {
     phone: '11999999999',
     email: `creche-${Date.now()}@test.com`,
   }).returning();
+
+  const { subscriptionsTable, plansTable } = await import("@workspace/db/schema");
+  
+  let [plan] = await db.select().from(plansTable).limit(1);
+  if (!plan) {
+    [plan] = await db.insert(plansTable).values({
+      name: `Test Plan ${Date.now()}`,
+      petLimit: 100,
+      priceBrl: 10000,
+      stripePriceId: "price_test",
+      description: "Plan for testing"
+    }).returning();
+  }
+
+  await db.insert(subscriptionsTable).values({
+    crecheId: creche.id,
+    stripeCustomerId: `cus_test_${Date.now()}`,
+    status: "active",
+    planId: plan.id,
+  });
+
   return creche;
 }
 

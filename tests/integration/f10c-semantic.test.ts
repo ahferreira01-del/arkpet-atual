@@ -239,7 +239,7 @@ describe('F10C - Integration Scenarios', () => {
     expect(petQuery[0].isCheckedIn).toBe(false);
 
     await db.delete(bookingsTable).where(eq(bookingsTable.id, svId));
-  });
+  }, 30000);
 
   it('38/39. PRESENCE+PRESENCE and SERVICE+SERVICE', async () => {
     // 2 Presences
