@@ -10,6 +10,8 @@ import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { type FinancialDomainEvent } from "./events.js";
 import { financialLog } from "../lib/logger.js";
 import { getBusinessDate } from "../lib/date.js";
+import { ordersTable } from "@workspace/db/schema";
+import { eq, sql } from "drizzle-orm";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Máquina de Estados da Invoice (Fase 14)
@@ -47,8 +49,46 @@ export class InvoiceStateMachine {
 
   /** Verifica se o status é "fechado" para novos lançamentos no mesmo ciclo. */
   static isClosed(status: string): boolean {
+    return [
+      "awaiting_confirmation",
+      "paid",
+      "overdue",
+      "voided",
+      "refunded",
+    ].includes(status);
+  }
+
+  /** Status nos quais um webhook de pagamento já não deve registrar novo pagamento. */
+  static isAlreadyProcessedForPayment(status: string): boolean {
     return status === "paid" || status === "refunded" || status === "voided";
   }
+}
+
+/**
+ * Reads an invoice only to discover its tutor, acquires the tutor-scoped
+ * transaction lock, then re-reads the authoritative row with FOR UPDATE.
+ * The initial read never authorizes a write.
+ */
+async function lockInvoiceForMutation(
+  invoiceId: number,
+  crecheId: number,
+  tx: any
+) {
+  const snapshot = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId, tx);
+  if (!snapshot) return null;
+
+  await BillingService.acquireTutorFinancialLock(crecheId, snapshot.tutorId, tx);
+
+  // Order status transitions already lock order → invoice. Financial mutations
+  // must use the same row-lock order after the tutor advisory lock.
+  await tx
+    .select({ id: ordersTable.id })
+    .from(ordersTable)
+    .where(eq(ordersTable.invoiceId, invoiceId))
+    .orderBy(ordersTable.id)
+    .for("update");
+
+  return InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,7 +142,7 @@ export async function processManualPayment(
   paymentMethod: "stripe" | "pix" | "cash" | "credit_card" | "bank_slip"
 ) {
   return await db.transaction(async (tx) => {
-    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
+    const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
@@ -159,7 +199,7 @@ export async function processManualPayment(
 
 export async function approveReceipt(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
+    const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "paid");
 
@@ -216,7 +256,7 @@ export async function approveReceipt(invoiceId: number, crecheId: number, userId
 
 export async function voidInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
+    const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "voided");
 
@@ -250,7 +290,7 @@ export async function voidInvoice(invoiceId: number, crecheId: number, userId: n
 
 export async function refundInvoice(invoiceId: number, crecheId: number, userId: number) {
   return await db.transaction(async (tx) => {
-    const invoice = await InvoiceRepository.findByIdAndCrecheForUpdate(invoiceId, crecheId, tx);
+    const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "refunded");
 
@@ -296,6 +336,19 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
 
 export class BillingService {
   /**
+   * Serializa mutações financeiras do mesmo tutor dentro da transação atual.
+   * IDs são serial/inteiros, portanto formam uma chave advisory de dois int4.
+   */
+  static async acquireTutorFinancialLock(
+    crecheId: number,
+    tutorId: number | null | undefined,
+    tx: any
+  ): Promise<void> {
+    if (tutorId == null) return;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${crecheId}, ${tutorId})`);
+  }
+
+  /**
    * Calcula os limites exatos de um ciclo de faturamento baseado no dia de
    * mensalidade do tutor.
    */
@@ -338,16 +391,87 @@ export class BillingService {
     };
   }
 
+  private static isEditableCollector(
+    invoice: { status: string; dueDate: string },
+    businessDate: string
+  ): boolean {
+    return invoice.status === "pending" && invoice.dueDate >= businessDate;
+  }
+
+  private static nextCycleReference(cycleEnd: string): string {
+    const nextDay = new Date(`${cycleEnd}T12:00:00Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    return nextDay.toISOString().split("T")[0];
+  }
+
+  /**
+   * Resolves the one editable collector for creche + tutor + effective period.
+   * Frozen or expired cycles are skipped until the next applicable period.
+   */
+  private static async resolveCollector(params: {
+    crecheId: number;
+    tutorId: number;
+    mensalidadeDia: number | null | undefined;
+    itemDateStr: string;
+    businessDate: string;
+    amount?: string;
+    createIfMissing: boolean;
+    tx: any;
+  }) {
+    let referenceDate = params.itemDateStr;
+
+    for (let attempt = 0; attempt < 120; attempt++) {
+      const cycle = this.getCycleDates(params.mensalidadeDia, referenceDate);
+      const existing = await InvoiceRepository.findByCycleForUpdate(
+        params.tutorId,
+        cycle.cycleStart,
+        cycle.cycleEnd,
+        params.tx
+      );
+
+      if (existing && existing.crecheId !== params.crecheId) {
+        throw Object.assign(
+          new Error("Coletor do tutor pertence a outra creche."),
+          { status: 422 }
+        );
+      }
+
+      if (existing && this.isEditableCollector(existing, params.businessDate)) {
+        return { invoice: existing, created: false };
+      }
+
+      if (!existing && cycle.dueDate >= params.businessDate) {
+        if (!params.createIfMissing) return null;
+        const invoice = await InvoiceRepository.create({
+          crecheId: params.crecheId,
+          tutorId: params.tutorId,
+          cycleStart: cycle.cycleStart,
+          cycleEnd: cycle.cycleEnd,
+          dueDate: cycle.dueDate,
+          amount: params.amount ?? "0.00",
+          status: "pending",
+        }, params.tx);
+        return { invoice, created: true };
+      }
+
+      referenceDate = this.nextCycleReference(cycle.cycleEnd);
+    }
+
+    throw Object.assign(
+      new Error("Não foi possível resolver um período editável para a cobrança."),
+      { status: 422 }
+    );
+  }
+
   /**
    * Adiciona uma cobrança ao tutor.
    *
    * Regras:
    * - Cobranças avulsas (`isAvulso: true`) criam invoice própria, nunca reabrem a mensal.
-   * - Cobranças mensais fazem merge no ciclo atual SE o ciclo estiver em status aberto
-   *   (pending/overdue). Se o ciclo já estiver fechado (paid/refunded/voided), cria
-   *   invoice avulsa — NUNCA reabre invoice já liquidada.
-   * - Se `existingInvoiceId` for fornecido, adiciona ao invoice existente (multi-item orders).
-   *   Se o invoice não for encontrado, lança erro (não cria item órfão).
+   * - Cobranças mensais fazem merge somente em invoice `pending` cujo vencimento
+   *   ainda não passou. Períodos congelados avançam para um ciclo sucessor normal.
+   * - `existingInvoiceId` é apenas uma sugestão validada: tenant, tutor, período,
+   *   status e vencimento precisam continuar válidos sob lock.
    * - Salva snapshot histórico no `invoiceItemsTable` para permitir reconstituição sem
    *   consultar o Catalogue.
    *
@@ -394,18 +518,87 @@ export class BillingService {
     const itemDateStr = params.itemDate 
       ? params.itemDate.toISOString().split("T")[0]
       : getBusinessDate();
+    const businessDate = getBusinessDate();
 
     const executeLogic = async (txClient: any) => {
       let invoiceId: number;
+      let hintedInvoice:
+        | Awaited<ReturnType<typeof InvoiceRepository.findById>>
+        | null = null;
+
+      // Preflight is identity-only and deliberately non-locking. It prevents an
+      // invalid cross-tutor hint from making us lock rows under the wrong tutor key.
+      if (params.existingInvoiceId) {
+        hintedInvoice = await InvoiceRepository.findById(params.existingInvoiceId, txClient);
+        if (
+          !hintedInvoice ||
+          hintedInvoice.crecheId !== params.crecheId ||
+          hintedInvoice.tutorId !== (params.tutorId ?? null)
+        ) {
+          throw Object.assign(
+            new Error("Fatura informada não pertence à creche e ao tutor da cobrança."),
+            { status: 422 }
+          );
+        }
+      }
+
+      const hintedStandalone =
+        hintedInvoice?.cycleStart == null && hintedInvoice?.cycleEnd == null;
+      const needsTutorLock =
+        params.tutorId != null &&
+        (params.existingInvoiceId ? !hintedStandalone : !params.isAvulso);
+      if (needsTutorLock) {
+        await this.acquireTutorFinancialLock(params.crecheId, params.tutorId, txClient);
+      }
 
       if (params.existingInvoiceId) {
-        // ── Append to an already-created invoice (multi-item orders) ──────
-        const existing = await InvoiceRepository.findById(params.existingInvoiceId, txClient);
+        // ── Append to an already-created invoice after full validation ───
+        const existing = await InvoiceRepository.findByIdForUpdate(
+          params.existingInvoiceId,
+          txClient
+        );
 
-        if (!existing) {
-          throw new Error(
-            `[BillingService.addCharge] Invoice #${params.existingInvoiceId} não encontrada. ` +
-            `Item não foi criado para evitar registro órfão.`
+        if (
+          !existing ||
+          existing.crecheId !== params.crecheId ||
+          existing.tutorId !== (params.tutorId ?? null)
+        ) {
+          throw Object.assign(
+            new Error("Fatura informada deixou de ser válida para esta cobrança."),
+            { status: 422 }
+          );
+        }
+
+        if (!this.isEditableCollector(existing, businessDate)) {
+          throw Object.assign(
+            new Error("Fatura informada está congelada ou com vencimento expirado."),
+            { status: 422 }
+          );
+        }
+
+        const isStandalone = existing.cycleStart == null && existing.cycleEnd == null;
+        if (!isStandalone && params.tutorId != null) {
+          const mensalidadeDia = await getTutorMensalidadeDia(params.tutorId, txClient);
+          const authoritative = await this.resolveCollector({
+            crecheId: params.crecheId,
+            tutorId: params.tutorId,
+            mensalidadeDia,
+            itemDateStr,
+            businessDate,
+            createIfMissing: false,
+            tx: txClient,
+          });
+
+          if (!authoritative || authoritative.invoice.id !== existing.id) {
+            throw Object.assign(
+              new Error("Fatura informada não é o coletor editável do período da cobrança."),
+              { status: 422 }
+            );
+          }
+        } else if (!isStandalone) {
+          throw Object.assign(
+            new Error("Fatura avulsa informada possui período incompatível."),
+            { status: 422 }
           );
         }
 
@@ -420,70 +613,57 @@ export class BillingService {
         // belong to a billing cycle. Keeping them NULL also ensures the
         // tutor_cycle_unique_idx (which fires only when all three cols are NOT NULL)
         // never blocks a second purchase from the same tutor on the same day.
+        //
+        // F2: dueDate = next billing-cycle due date for the tutor (reuses the
+        // existing mensalidadeDia + getCycleDates logic). Anonymous charges
+        // (tutorId == null) keep dueDate = today since there is no billing cycle.
+        let avulsoDueDate = itemDateStr;
+        if (params.tutorId != null) {
+          const mensalidadeDia = await getTutorMensalidadeDia(params.tutorId, txClient);
+          avulsoDueDate = this.getCycleDates(mensalidadeDia, itemDateStr).dueDate;
+        }
         const newInv = await InvoiceRepository.create({
           crecheId: params.crecheId,
           tutorId: params.tutorId ?? null,
           cycleStart: undefined,
           cycleEnd: undefined,
-          dueDate: itemDateStr,
+          dueDate: avulsoDueDate,
           amount: totalItemAmount.toFixed(2),
           status: "pending",
         }, txClient);
         invoiceId = newInv.id;
 
       } else {
-        // ── Ciclo mensal: merge ou nova invoice ───────────────────────────
+        // ── Ciclo mensal: coletor editável ou sucessora normal ────────────
         const tutorId = params.tutorId; // narrowed: not null here
         const mensalidadeDia = await getTutorMensalidadeDia(tutorId, txClient);
-        const cycle = this.getCycleDates(mensalidadeDia, itemDateStr);
+        const resolved = await this.resolveCollector({
+          crecheId: params.crecheId,
+          tutorId,
+          mensalidadeDia,
+          itemDateStr,
+          businessDate,
+          amount: totalItemAmount.toFixed(2),
+          createIfMissing: true,
+          tx: txClient,
+        });
 
-        const existing = await InvoiceRepository.findByCycleForUpdate(
-          params.tutorId,
-          cycle.cycleStart,
-          cycle.cycleEnd,
-          txClient
-        );
+        if (!resolved) {
+          throw Object.assign(
+            new Error("Não foi possível criar o coletor editável da cobrança."),
+            { status: 422 }
+          );
+        }
 
-        if (existing) {
-          if (InvoiceStateMachine.isClosed(existing.status)) {
-            // F-03: Ciclo já encerrado — criar avulsa overflow em vez de reabrir
-            financialLog({
-              operation: "billing_overflow_avulso",
-              level: "warn",
-              tenantId: params.crecheId,
-              userId: params.userId,
-              tutorId: params.tutorId,
-              cycleStart: cycle.cycleStart,
-              cycleEnd: cycle.cycleEnd,
-              closedStatus: existing.status,
-              result: "overflow_avulso_created",
-            });
-            const newInv = await InvoiceRepository.create({
-              crecheId: params.crecheId,
-              tutorId: params.tutorId,
-              dueDate: itemDateStr,
-              amount: totalItemAmount.toFixed(2),
-              status: "pending",
-            }, txClient);
-            invoiceId = newInv.id;
-          } else {
-            // Ciclo aberto (pending/overdue) — merge normal
-            const newTotal = (parseFloat(existing.amount) + totalItemAmount).toFixed(2);
-            await InvoiceRepository.setAmount(existing.id, newTotal, txClient);
-            invoiceId = existing.id;
-          }
+        if (resolved.created) {
+          // A newly-created collector already contains this item's total.
+          invoiceId = resolved.invoice.id;
         } else {
-          // Primeiro lançamento do ciclo — criar invoice mensal
-          const newInv = await InvoiceRepository.create({
-            crecheId: params.crecheId,
-            tutorId: params.tutorId,
-            cycleStart: cycle.cycleStart,
-            cycleEnd: cycle.cycleEnd,
-            dueDate: cycle.dueDate,
-            amount: totalItemAmount.toFixed(2),
-            status: "pending",
-          }, txClient);
-          invoiceId = newInv.id;
+          const newTotal = (
+            parseFloat(resolved.invoice.amount) + totalItemAmount
+          ).toFixed(2);
+          await InvoiceRepository.setAmount(resolved.invoice.id, newTotal, txClient);
+          invoiceId = resolved.invoice.id;
         }
       }
 
@@ -549,13 +729,24 @@ export class BillingService {
     const { invoiceId, crecheId, invoiceItemId, quantity, userId } = params;
 
     await db.transaction(async (tx) => {
-      const invoice = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId, tx);
+      const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
       if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { status: 404 });
 
       const invoiceItem = await InvoiceRepository.findItemById(invoiceItemId, invoiceId, tx);
       if (!invoiceItem) throw Object.assign(new Error("Item da fatura não encontrado."), { status: 404 });
       if ((invoiceItem.quantity ?? 1) < quantity) {
         throw Object.assign(new Error("Quantidade de devolução maior que a comprada."), { status: 400 });
+      }
+
+      const canAdjustPending =
+        invoice.status === "pending" &&
+        invoice.dueDate >= getBusinessDate();
+      const canRefundPaid = invoice.status === "paid";
+      if (!canAdjustPending && !canRefundPaid) {
+        throw Object.assign(
+          new Error("Fatura congelada não permite estorno parcial de itens."),
+          { status: 422 }
+        );
       }
 
       // Restore stock if this is a product (Phase 14: prefer catalogueItemId snapshot)
@@ -577,7 +768,7 @@ export class BillingService {
 
       const itemTotalValue = Number(invoiceItem.amount) * quantity;
 
-      if (invoice.status === "pending") {
+      if (canAdjustPending) {
         const newAmount = (Number(invoice.amount) - itemTotalValue).toString();
         await InvoiceRepository.setAmount(invoiceId, newAmount, tx);
 
@@ -590,7 +781,7 @@ export class BillingService {
             tx
           );
         }
-      } else if (invoice.status === "paid") {
+      } else if (canRefundPaid) {
         // Paid invoices keep history intact — create a negative transaction
         await TransactionRepository.create({
           crecheId,
@@ -632,11 +823,11 @@ export class BillingService {
   }): Promise<void> {
     const { invoiceId, crecheId, stripeSessionId, isPackagePurchase, tx } = params;
 
-    const invoice = await InvoiceRepository.findByIdForUpdate(invoiceId, tx);
+    const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
     if (!invoice) return;
 
     // Idempotência: se já processado por um worker anterior, sair silenciosamente
-    if (InvoiceStateMachine.isClosed(invoice.status)) {
+    if (InvoiceStateMachine.isAlreadyProcessedForPayment(invoice.status)) {
       financialLog({
         operation: "stripe_payment_idempotent",
         invoiceId,

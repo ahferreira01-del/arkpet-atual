@@ -33,6 +33,9 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { api, get, post, put } from "./helpers/api.js";
 import { getSharedCtx, type TestContext } from "./helpers/setup.js";
+import { db } from "@workspace/db";
+import { invoiceItemsTable } from "@workspace/db/schema";
+import { and, eq } from "drizzle-orm";
 
 let ctx: TestContext;
 
@@ -264,17 +267,67 @@ describe("Check-in – expired vaccine block", () => {
 describe("Checkout and payment flow", () => {
   let invoiceId: number;
 
-  it("POST /:bookingId/checkout completes the booking and generates an invoice", async () => {
+  it("two concurrent checkouts complete once and bill consumables exactly once", async () => {
     // bookingId is set in the happy-path describe; it was checked in there
     expect(bookingId).toBeDefined();
 
-    const res = await post<{ status: string; id: number }>(
+    const results = await Promise.all([
+      post<{ status?: string; id?: number; error?: string }>(
+        `/creches/${ctx.crecheId}/bookings/${bookingId}/checkout`,
+        {},
+        ctx.token,
+      ),
+      post<{ status?: string; id?: number; error?: string }>(
+        `/creches/${ctx.crecheId}/bookings/${bookingId}/checkout`,
+        {},
+        ctx.token,
+      ),
+    ]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([200, 409]);
+    const success = results.find((result) => result.status === 200)!;
+    expect(success.body.status).toBe("completed");
+
+    const consumableItems = await db
+      .select({ id: invoiceItemsTable.id })
+      .from(invoiceItemsTable)
+      .where(
+        and(
+          eq(invoiceItemsTable.bookingId, bookingId),
+          eq(invoiceItemsTable.itemType, "consumable"),
+        ),
+      );
+    expect(consumableItems).toHaveLength(1);
+  });
+
+  it("a repeated checkout returns 409 and creates no financial side effect", async () => {
+    const before = await db
+      .select({ id: invoiceItemsTable.id })
+      .from(invoiceItemsTable)
+      .where(
+        and(
+          eq(invoiceItemsTable.bookingId, bookingId),
+          eq(invoiceItemsTable.itemType, "consumable"),
+        ),
+      );
+
+    const res = await post<{ error: string }>(
       `/creches/${ctx.crecheId}/bookings/${bookingId}/checkout`,
       {},
       ctx.token,
     );
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe("completed");
+    expect(res.status).toBe(409);
+
+    const after = await db
+      .select({ id: invoiceItemsTable.id })
+      .from(invoiceItemsTable)
+      .where(
+        and(
+          eq(invoiceItemsTable.bookingId, bookingId),
+          eq(invoiceItemsTable.itemType, "consumable"),
+        ),
+      );
+    expect(after).toHaveLength(before.length);
   });
 
   it("GET /financial/invoices lists at least one pending invoice after checkout", async () => {

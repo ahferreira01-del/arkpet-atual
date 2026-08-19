@@ -5,16 +5,19 @@ import { motion } from "framer-motion";
 interface TabsProps {
   tabs: { id: string; label: string; icon?: React.ReactNode; content: React.ReactNode }[];
   defaultTab?: string;
+  /** Controlled mode: when provided, overrides internal state. Pass onValueChange to update it. */
+  value?: string;
   className?: string;
   onValueChange?: (id: string) => void;
 }
 
-export function Tabs({ tabs, defaultTab, className, onValueChange }: TabsProps) {
-  const [activeTab, setActiveTab] = React.useState(defaultTab || tabs[0]?.id);
+export function Tabs({ tabs, defaultTab, value, className, onValueChange }: TabsProps) {
+  const [internalTab, setInternalTab] = React.useState(defaultTab || tabs[0]?.id);
+  // Controlled when `value` is provided, uncontrolled otherwise.
+  const activeTab = value !== undefined ? value : internalTab;
 
-  // Allow controlled or side-effect when tab changes
   const handleTabClick = (id: string) => {
-    setActiveTab(id);
+    setInternalTab(id);
     if (onValueChange) {
       onValueChange(id);
     }

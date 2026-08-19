@@ -614,6 +614,48 @@ export function startPastDueSuspender() {
   console.log(`[scheduler] Past-due suspender iniciado (graça: ${PAST_DUE_GRACE_DAYS} dias).`);
 }
 
+// ─── Auto-suspend expired trials ─────────────────────────────────────────────
+// Complements the real-time check in requireActiveSubscription: ensures the DB
+// status stays accurate so reports, dashboards and Stripe sync reflect reality.
+
+async function suspendExpiredTrials(): Promise<void> {
+  try {
+    const now = new Date();
+    const expired = await db
+      .select({ id: subscriptionsTable.id, crecheId: subscriptionsTable.crecheId })
+      .from(subscriptionsTable)
+      .where(
+        and(
+          eq(subscriptionsTable.status, "trial"),
+          isNotNull(subscriptionsTable.trialEndsAt),
+          lte(subscriptionsTable.trialEndsAt, now),
+        ),
+      );
+
+    if (!expired.length) return;
+
+    for (const sub of expired) {
+      await db
+        .update(subscriptionsTable)
+        .set({ status: "suspended" })
+        .where(eq(subscriptionsTable.id, sub.id));
+      console.log(`[scheduler] Trial expirado suspenso: crecheId=${sub.crecheId}`);
+    }
+    console.log(`[scheduler] ${expired.length} trial(s) expirado(s) convertido(s) para suspended.`);
+  } catch (err) {
+    console.error("[scheduler] Erro ao suspender trials expirados:", err);
+  }
+}
+
+export function startTrialExpirationJob() {
+  // Runs every hour on the hour, and immediately on startup.
+  cron.schedule("0 * * * *", async () => {
+    await suspendExpiredTrials();
+  });
+  suspendExpiredTrials();
+  console.log("[scheduler] Trial expiration job started.");
+}
+
 // ─── Auto-delete old Pix receipts (90 days LGPD) ──────────────────────────────
 import { ObjectStorageService } from "./objectStorage.js";
 // invoicesTable já importado no topo do arquivo — não re-importar aqui

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useSearch, useLocation } from "wouter";
 import {
   useListConversations,
@@ -125,6 +125,21 @@ export default function Chat() {
     isTutor ? user?.id : urlTutorId
   );
   const [showConversation, setShowConversation] = useState(isTutor || !!urlTutorId);
+  // ROOT CAUSE FIX: conversationView used to be rendered TWICE (mobile overlay
+  // + desktop card, one hidden by CSS). scrollContainerRef/messagesEndRef can
+  // only point at ONE element and ended up bound to the HIDDEN desktop copy
+  // (height 0), so the landing scroll "succeeded" against a zero-height div
+  // while the visible mobile container was never scrolled. Render exactly one
+  // copy per breakpoint via matchMedia so the refs always target the visible DOM.
+  const [isDesktop, setIsDesktop] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [taggedPetId, setTaggedPetId] = useState<number | undefined>();
@@ -134,6 +149,14 @@ export default function Chat() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [allOlderLoaded, setAllOlderLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const initialScrolledRef = useRef(false);
+  // B (F6.1): tracks USER INTENT to remain at the bottom — updated by the real
+  // scroll event, NOT recalculated after a resize. This separates intent from the
+  // post-resize distance, so a large image loading (+500px) doesn't flip intent
+  // to false and leave the viewport stranded mid-history.
+  const shouldStickToBottomRef = useRef(true);
   const petPickerRef = useRef<HTMLDivElement>(null);
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -183,9 +206,113 @@ export default function Chat() {
     }
   }, [urlTutorId, isTutor, user?.id]);
 
+  // Reset scroll sentinels SYNCHRONOUSLY when the conversation changes.
+  // MUST be declared BEFORE the landing effect below: effects run in
+  // declaration order within the same commit, so the landing effect must
+  // already see initialScrolledRef = false when selectedTutorId changes —
+  // otherwise it takes the smooth-scroll branch with the stale sentinel and
+  // a cached conversation with the same message count never re-lands.
+  useLayoutEffect(() => {
+    if (!selectedTutorId) return;
+    initialScrolledRef.current = false;
+    shouldStickToBottomRef.current = true;
+    // isDesktop dep: on breakpoint switch the container REMOUNTS (only one
+    // copy is rendered per breakpoint), so the landing must run again.
+  }, [selectedTutorId, isDesktop]);
+
+  // F9: scroll to the latest message.
+  // - First load: useLayoutEffect fires synchronously BEFORE the browser paints,
+  //   so the first visible frame already shows the newest messages (no flash to top).
+  //   Only marks initialScrolledRef=true once the scroll actually landed at the
+  //   bottom (distanceToBottom < 10). If the layout hasn't settled yet (scrollHeight
+  //   still 0 or images not loaded), a single requestAnimationFrame retries and then
+  //   marks initialized unconditionally — the ResizeObserver in the next effect
+  //   handles any remaining content shifts after that.
+  // - New message: smooth scroll only when user intent (shouldStickToBottomRef) is true.
+  // Deps include `showConversation` so the effect re-fires when the mobile
+  // overlay mounts (showConversation: false → true), giving the scroll container
+  // a chance to be in the DOM after the initial render where it was absent.
+  useLayoutEffect(() => {
+    if (!allMessages.length) return;
+    const container = scrollContainerRef.current;
+    if (!initialScrolledRef.current) {
+      // Container absent (mobile overlay not yet mounted) — leave the sentinel
+      // false so the effect re-fires when `showConversation` mounts it.
+      if (!container) return;
+
+      // Persistent landing loop: force scrollTop to the bottom every frame
+      // until the scroll actually LANDS (dist < 10) — or ~0.5 s passes.
+      // A single-frame retry is not enough on slow mobile devices where
+      // fonts/layout settle across several frames after first paint.
+      let attempts = 0;
+      let cancelled = false;
+      const land = () => {
+        if (cancelled) return;
+        container.scrollTop = container.scrollHeight;
+        const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+        if (dist < 10) {
+          initialScrolledRef.current = true;
+          shouldStickToBottomRef.current = true;
+        } else if (attempts++ < 30) {
+          requestAnimationFrame(land);
+        } else {
+          // Give up trying to verify — mark initialized so the stick-to-bottom
+          // ResizeObserver takes over from here.
+          initialScrolledRef.current = true;
+          shouldStickToBottomRef.current = true;
+        }
+      };
+      land();
+      return () => {
+        cancelled = true;
+      };
+    } else if (shouldStickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    return undefined;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMessages.length, showConversation, selectedTutorId, isDesktop]);
+
+  // F5/B: keep anchored to the bottom during layout shifts (images loading, etc.)
+  // Uses shouldStickToBottomRef (user intent) — NOT post-resize distance.
+  // This prevents a large image (+500 px) from flipping the near-bottom check
+  // to false and stranding the viewport mid-history (B1–B8).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [allMessages.length]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    // B5/B9: track user intent via the real scroll event.
+    // Programmatic scrolls (scrollTop = scrollHeight) also fire this handler,
+    // but they land exactly at the bottom so dist ≈ 0 < 120 → intent stays true.
+    const onScroll = () => {
+      if (!initialScrolledRef.current) return;
+      const dist = container.scrollHeight - container.scrollTop - container.clientHeight;
+      shouldStickToBottomRef.current = dist < 120;
+    };
+    container.addEventListener("scroll", onScroll, { passive: true });
+
+    // B7: ResizeObserver reads intent ref (set before resize) — not post-resize distance.
+    const observer = new ResizeObserver(() => {
+      if (!initialScrolledRef.current) return;
+      if (shouldStickToBottomRef.current) {
+        container.scrollTop = container.scrollHeight;
+      }
+      // B9: intent = false → user is reading history → do nothing.
+    });
+    observer.observe(container);
+    // Also observe the CONTENT wrapper: the container itself is flex-1 (fixed
+    // size), so content growth (fonts loading, new bubbles reflowing) never
+    // resizes it — only the inner wrapper grows. Without this, the viewport
+    // gets stranded mid-history when content height settles after the initial
+    // scroll on slow mobile devices.
+    if (contentRef.current) observer.observe(contentRef.current);
+
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      observer.disconnect();
+    };
+    // isDesktop: the container remounts on breakpoint switch — re-attach.
+  }, [selectedTutorId, isDesktop]);
 
   useEffect(() => {
     setOlderMessages([]);
@@ -348,7 +475,10 @@ export default function Chat() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 min-h-0 bg-background">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar p-4 min-h-0 bg-background">
+        {/* Content wrapper — observed by the ResizeObserver so content growth
+            (not just container resize) keeps the viewport pinned to bottom. */}
+        <div ref={contentRef} className="flex flex-col space-y-4 min-h-full">
         {!allOlderLoaded && (serverMessages?.length ?? 0) >= 50 && (
           <div className="flex justify-center mb-4">
             <button
@@ -414,7 +544,7 @@ export default function Chat() {
             <div ref={messagesEndRef} className="h-2" />
           </>
         ) : (
-          <div className="h-full flex items-center justify-center">
+          <div className="flex-1 flex items-center justify-center">
             <EmptyState
               icon={MessageSquare}
               title="Nenhuma mensagem ainda"
@@ -422,6 +552,7 @@ export default function Chat() {
             />
           </div>
         )}
+        </div>
       </div>
 
       {/* Input */}
@@ -576,7 +707,7 @@ export default function Chat() {
           Sits between the app header (h-16 = 4rem) and the bottom nav
           (72px + safe-area). This bypasses the overflow-y:auto main container
           so the input is never clipped by the bottom nav spacer.            */}
-      {(isTutor || showConversation) && (
+      {!isDesktop && (isTutor || showConversation) && (
         <div
           className="md:hidden fixed inset-x-0 z-30 flex flex-col shadow-2xl"
           style={{
@@ -601,6 +732,7 @@ export default function Chat() {
       )}
 
       {/* ── DESKTOP: side-by-side layout ──────────────────────────────────── */}
+      {isDesktop && (
       <div className="hidden md:flex gap-6 h-[calc(100dvh-14rem)] min-h-0 px-4 md:px-0">
         {!isTutor && (
           <div className="w-80 flex-shrink-0 flex flex-col min-h-0">
@@ -623,6 +755,7 @@ export default function Chat() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }

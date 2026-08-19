@@ -197,7 +197,15 @@ export default function Billing() {
   const currentPlanId = subscription?.planId;
   const status = subscription?.status ?? "trial";
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS.trial;
-  const paidPlans = (plans ?? []).filter((p) => p.priceBrl > 0);
+  // Include Enterprise (priceBrl=0, sob medida) but exclude Trial (also priceBrl=0).
+  // Enterprise always appears last in the list.
+  const paidPlans = (plans ?? [])
+    .filter((p) => p.priceBrl > 0 || p.name.toLowerCase() === "enterprise")
+    .sort((a, b) => {
+      if (a.name.toLowerCase() === "enterprise") return 1;
+      if (b.name.toLowerCase() === "enterprise") return -1;
+      return 0;
+    });
 
   const discountByInterval = new Map<string, number>();
   for (const plan of paidPlans) {

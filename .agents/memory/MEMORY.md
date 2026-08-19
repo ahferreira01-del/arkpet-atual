@@ -1,4 +1,5 @@
 - [Feed V2 architecture](feed-v2-architecture.md) — complete rewrite: mediaToken for <img> auth, cursor pagination, fire-and-forget push via interface, zero base64, 1 request per card.
+- [Chat scroll state machine](chat-scroll-state-machine.md) — sentinel-reset effect MUST precede landing effect; rAF landing loop; observe content wrapper not the flex-1 container.
 - [Push notification navigation](push-notification-navigation.md) — SW resolveTargetPath() maps type→URL; ?b= and ?t= params for booking/task deep-link highlighting; bump CACHE_NAME on every SW change.
 - [Lib rebuild order](lib-rebuild-order.md) — after codegen or schema changes, both lib/db and lib/api-client-react must be rebuilt (tsc --build) before frontend TS checks pass.
 - [Chat tutor-centric refactor](chat-tutor-centric.md) — chat is tutor-centric (conversations per tutor), petId is an optional tag on messages; orphan messages excluded via isNotNull(tutorId).
@@ -17,7 +18,11 @@
 - [Billing avulso isolation](billing-avulso-isolation.md) — POS immediate-pay charges MUST pass isAvulso:true to addCharge; omitting it re-opens and inflates the tutor's monthly invoice.
 - [Booking state machine by type](booking-state-machine-by-type.md) — SERVICE_BOOKING_TYPES (banho) use checkin→complete-service flow; never check-out or consumables. Extend set when adding new service types.
 - [Phase 13 checkout billing fix](phase13-checkout-billing.md) — checkout must NOT re-charge base price (charged at confirmation); catalogue PUT now saves costPrice/barcode; push cleanup on re-subscribe; stock-transactions catches table-not-exist.
-- [Phase 14 financial module restructure](phase14-financial-restructure.md) — InvoiceStateMachine, addCharge overflow-avulsa fix, invoice_items snapshot columns, idempotency gates, financialSync delegates to BillingService.
+- [Phase 14 financial module restructure](phase14-financial-restructure.md) — InvoiceStateMachine, invoice_items snapshots, idempotency gates, and financialSync delegation.
 - [Phase 15A financial split architecture](phase15a-financial-split.md) — routes/financial/ (10 sub-files), repositories/ layer (9 files), services/wallet+pos+expense; routes/financial.ts deleted; getCrecheAdminEmail in shared.ts.
 - [Financial outbox & structured logging](financial-outbox-logging.md) — financial_outbox table, OutboxRepository, domain events in services/events.ts, financialLog in lib/logger.ts; outbox inserts are ALWAYS inside the same tx as the main write.
 - [Phase 15C integration test patterns](phase15c-integration-tests.md) — avulso unique-index collision fix, null-tutorId addCharge routing, global error handler 4xx forwarding, outbox bookmark pattern.
+- [TypeScript dist resolution](ts-dist-resolution.md) — frontend uses project references → reads lib dist/.d.ts; stale dist = false TS errors; always run tsc --build (typecheck:libs) before diagnosing frontend typecheck failures.
+- [Prod one-shot imports](prod-one-shot-imports.md) — prod DB writes only via startup migration: advisory lock, setval-first, atomic tx, non-fatal, payload embedded in bundle then removed after verify.
+- [F8 Subscription Enforcement](f8-subscription-enforcement.md) — central gate at `/creches/:crecheId`; MUST chain `authenticate` before `requireActiveSubscription` or req.user is undefined and gate falls through.
+- [Receivables collector safety](receivables-collector-safety.md) — only unexpired pending invoices accept charges; frozen periods roll to normal successors under tutor locks.

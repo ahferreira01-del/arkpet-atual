@@ -240,17 +240,17 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                 const lineTotal = unitPrice * qty;
                 const formattedDate = item.itemDate ? new Date(item.itemDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '';
                 return (
-                  <div key={item.id} className="py-3 flex justify-between items-center group">
-                    <div className="flex items-center">
-                      <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-3">
+                  <div key={item.id} className="py-3 flex justify-between items-center gap-3 group">
+                    <div className="flex items-center min-w-0 flex-1">
+                      <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-3 shrink-0">
                         <PackageOpen className="w-5 h-5 text-slate-400" />
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-800 break-words">
                           {item.description}
-                          {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{item.petName}</span>}
+                          {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">{item.petName}</span>}
                         </p>
-                        <p className="text-xs text-muted-foreground flex items-center space-x-2 mt-1">
+                        <p className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2 mt-1">
                           {formattedDate && <span>{formattedDate} &bull;</span>}
                           <span>{qty} unidade(s) x {formatCentsToBRL(unitPrice)}</span>
                         </p>
@@ -1488,7 +1488,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                   </div>
                   <div>
                     <label className="text-sm font-medium">Código de Barras</label>
-                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." autoFocus={modalOpen && form.type === 'product'} className="mt-1.5" />
+                    <Input value={form.barcode} onChange={e => setForm({...form, barcode: e.target.value})} placeholder="Ex: 7891000..." className="mt-1.5" />
                   </div>
                   <div>
                     <label className="text-sm font-medium">SKU (opcional)</label>

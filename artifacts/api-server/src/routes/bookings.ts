@@ -539,6 +539,28 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
   try {
     const enriched = await db.transaction(async (tx) => {
+      // Discover the tutor without locking a row, then serialize every financial
+      // mutation for this creche+tutor before taking booking/credit/invoice locks.
+      const [bookingIdentity] = await tx
+        .select({ tutorId: bookingsTable.tutorId })
+        .from(bookingsTable)
+        .where(
+          and(
+            eq(bookingsTable.id, bookingId),
+            eq(bookingsTable.crecheId, crecheId),
+          ),
+        )
+        .limit(1);
+
+      if (!bookingIdentity) {
+        throw clientError("Reserva não encontrada.", 404);
+      }
+      await BillingService.acquireTutorFinancialLock(
+        crecheId,
+        bookingIdentity.tutorId,
+        tx
+      );
+
       // Fetch existing booking upfront
       const [existing] = await tx
         .select()
@@ -809,13 +831,23 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
           for (const [affectedInvoiceId, items] of byInvoice) {
             const [invoice] = await tx
-              .select({ id: invoicesTable.id, amount: invoicesTable.amount, status: invoicesTable.status })
+              .select({
+                id: invoicesTable.id,
+                amount: invoicesTable.amount,
+                status: invoicesTable.status,
+                dueDate: invoicesTable.dueDate,
+              })
               .from(invoicesTable)
               .where(eq(invoicesTable.id, affectedInvoiceId))
               .limit(1);
 
-            // Skip already-closed invoices — their items are financial history
-            if (!invoice || ["voided", "refunded", "paid"].includes(invoice.status)) continue;
+            // Only a not-yet-due pending invoice is editable. Every other state
+            // is immutable financial history.
+            if (
+              !invoice ||
+              invoice.status !== "pending" ||
+              invoice.dueDate < getBusinessDate()
+            ) continue;
 
             // Remove this booking's remaining items and tally the amount to subtract
             let amountToRemove = 0;
@@ -1169,18 +1201,26 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
       ),
     );
 
-  const hasSameSemanticTypeActive = activeBookings.some((ab) =>
-    isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
-  );
+  let skipPhysicalCheckin = false;
 
-  if (hasSameSemanticTypeActive) {
-    res
-      .status(409)
-      .json({
-        error:
-          "Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.",
-      });
-    return;
+  if (activeBookings.length > 0) {
+    const hasSameSemanticTypeActive = activeBookings.some((ab) =>
+      isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
+    );
+
+    if (hasSameSemanticTypeActive) {
+      res
+        .status(409)
+        .json({
+          error:
+            "Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.",
+        });
+      return;
+    }
+
+    // Different semantic classes are active (e.g. Presence + Service)
+    // The pet is already physically present, so skip incrementing occupancy
+    skipPhysicalCheckin = true;
   }
 
   // Proceed: check-in + clear on-the-way state
@@ -1201,19 +1241,21 @@ router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
     )
     .returning();
 
-  await db
-    .update(petsTable)
-    .set({ isCheckedIn: true })
-    .where(eq(petsTable.id, booking.petId));
-  await db
-    .update(crechesTable)
-    .set({
-      currentOccupancy: db.$count(
-        petsTable,
-        and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
-      ) as any,
-    })
-    .where(eq(crechesTable.id, crecheId));
+  if (!skipPhysicalCheckin) {
+    await db
+      .update(petsTable)
+      .set({ isCheckedIn: true })
+      .where(eq(petsTable.id, booking.petId));
+    await db
+      .update(crechesTable)
+      .set({
+        currentOccupancy: db.$count(
+          petsTable,
+          and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
+        ) as any,
+      })
+      .where(eq(crechesTable.id, crecheId));
+  }
 
   const enriched = await getBookingWithNames(booking);
 
@@ -1270,9 +1312,16 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
     }
 
     // Engine Financeira
-    await db.transaction(async (tx) => {
-      // 1. Atualizar o booking
-      await tx
+    const completedBooking = await db.transaction(async (tx) => {
+      await BillingService.acquireTutorFinancialLock(
+        crecheId,
+        existing.tutorId,
+        tx
+      );
+
+      // 1. Somente a requisição que transicionar active → completed pode
+      // faturar consumíveis. O UPDATE condicional é o gate de idempotência.
+      const [lockedBooking] = await tx
         .update(bookingsTable)
         .set({
           status: "completed",
@@ -1285,13 +1334,22 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
           and(
             eq(bookingsTable.crecheId, crecheId),
             eq(bookingsTable.id, bookingId),
+            eq(bookingsTable.status, "active"),
           ),
+        )
+        .returning();
+
+      if (!lockedBooking) {
+        throw clientError(
+          "A reserva não está ativa ou o check-out já foi concluído.",
+          409
         );
+      }
 
       await tx
         .update(petsTable)
         .set({ isCheckedIn: false })
-        .where(eq(petsTable.id, existing.petId));
+        .where(eq(petsTable.id, lockedBooking.petId));
 
       // 2. Coletar Consumables
       // Nota: o preço base da reserva foi faturado na confirmação (consumePackageCredits +
@@ -1313,17 +1371,17 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
       // na fase de confirmação). Faturar novamente aqui causaria cobrança em duplicidade.
       // Os créditos de pacote também são consumidos na confirmação via consumePackageCredits.
       const consumableCharges = consumables.filter(item => Number(item.chargedPrice) > 0);
-      if (consumableCharges.length > 0 && existing.tutorId) {
+      if (consumableCharges.length > 0 && lockedBooking.tutorId) {
         let firstInvoiceId: number | null = null;
         for (const item of consumableCharges) {
           const { invoiceId } = await BillingService.addCharge({
             crecheId,
-            tutorId: existing.tutorId,
+            tutorId: lockedBooking.tutorId,
             amount: Number(item.chargedPrice),
             quantity: item.quantity,
             description: item.itemName || `Consumível #${item.itemId}`,
             type: "consumable",
-            petId: existing.petId,
+            petId: lockedBooking.petId,
             bookingId: bookingId,
             itemDate: new Date(),
             tx: tx,
@@ -1341,34 +1399,28 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
           details: `Check-out da reserva #${bookingId}. ${consumableCharges.length} consumível(is) faturado(s) no check-out.`,
         }, tx);
       }
+      return lockedBooking;
     });
 
-    // Buscar o booking atualizado para retornar
-    const [booking] = await db
-      .select()
-      .from(bookingsTable)
-      .where(
-        and(
-          eq(bookingsTable.crecheId, crecheId),
-          eq(bookingsTable.id, bookingId),
-        ),
-      )
-      .limit(1);
-    const enriched = await getBookingWithNames(booking);
+    const enriched = await getBookingWithNames(completedBooking);
 
     // Notify tutor of check-out
-    if (booking.tutorId) {
-      sendPushToUser(booking.tutorId, {
+    if (completedBooking.tutorId) {
+      sendPushToUser(completedBooking.tutorId, {
         title: `🏠 ${enriched.petName ?? "Seu pet"} fez check-out!`,
         body: `${enriched.petName ?? "Seu pet"} está pronto para ir para casa.`,
-        tag: `checkout-${booking.id}`,
-        data: { type: "checkout", bookingId: booking.id, petId: booking.petId },
+        tag: `checkout-${completedBooking.id}`,
+        data: {
+          type: "checkout",
+          bookingId: completedBooking.id,
+          petId: completedBooking.petId,
+        },
       }).catch(() => {});
     }
 
     res.json(enriched);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error.status || 500).json({ error: error.message });
   }
 });
 

@@ -1,0 +1,1456 @@
+# FIN-01 v3.1 — FINAL SAFETY ADDENDUM
+
+# ESTE BLOCO COMPLEMENTA
+
+# A FIN-01 v3.
+
+# FIN-01 v3 CONTINUA VÁLIDA.
+
+# ESTES GATES DEVEM SER
+
+# EXECUTADOS ANTES
+
+# DE QUALQUER PATCH.
+
+============================================================
+
+1. EXISTINGINVOICEID — BYPASS AUDIT
+   ============================================================
+
+Existe um possível caminho
+de bypass financeiro:
+
+existingInvoiceId
+
+ou qualquer parâmetro
+equivalente que permita:
+
+"adicione esta cobrança
+diretamente nesta invoice".
+
+Esse caminho deve ser
+auditado explicitamente.
+
+============================================================
+2. GLOBAL SEARCH
+================
+
+Pesquisar no código inteiro por:
+
+existingInvoiceId
+
+invoiceId
+
+addCharge
+
+addInvoiceItem
+
+createInvoiceItem
+
+appendInvoiceItem
+
+invoice_id
+
+e funções equivalentes reais
+relacionadas a adicionar
+cobrança em invoice existente.
+
+============================================================
+3. MAP ALL CALLERS
+==================
+
+Para cada uso
+de existingInvoiceId
+ou mecanismo equivalente,
+registrar:
+
+FILE
+
+FUNCTION
+
+CALLER
+
+ORIGIN
+
+TRANSACTION?
+
+CRECHE ID AVAILABLE?
+
+TUTOR ID AVAILABLE?
+
+CHARGE DATE AVAILABLE?
+
+WHY EXISTING INVOICE
+IS SUPPLIED?
+
+IN FIN-01 SCOPE?
+
+============================================================
+4. IMPORTANT
+============
+
+Não assumir que:
+
+existingInvoiceId
+
+é apenas
+uma otimização interna.
+
+Provar todos
+os callers reais.
+
+============================================================
+5. NO DIRECT TRUST
+==================
+
+Nenhum caminho elegível
+de Contas a Receber
+pode confiar cegamente
+em:
+
+existingInvoiceId.
+
+============================================================
+6. IF EXISTING INVOICE IS PROVIDED
+==================================
+
+Antes de adicionar
+qualquer item,
+validar a invoice
+dentro do contexto
+transacional adequado.
+
+============================================================
+7. REQUIRED VALIDATION
+======================
+
+A invoice fornecida deve:
+
+1. existir;
+
+2. pertencer à:
+   crecheId correta;
+
+3. pertencer ao:
+   tutorId correto;
+
+4. estar no:
+   período financeiro correto;
+
+5. possuir status editável;
+
+6. não estar congelada
+   por dueDate;
+
+7. ser realmente
+   a collector válida
+   segundo FIN-01.
+
+============================================================
+8. FROZEN EXISTING INVOICE
+==========================
+
+Se existingInvoiceId
+apontar para:
+
+paid
+
+awaiting_confirmation
+
+overdue
+
+voided
+
+refunded
+
+cancelled
+
+ou status congelado
+equivalente:
+
+REJECT.
+
+Não adicionar item.
+
+============================================================
+9. DATE FREEZE ALSO APPLIES
+===========================
+
+Mesmo que status seja:
+
+pending
+
+se:
+
+dueDate < businessDate
+
+a invoice está:
+
+FROZEN.
+
+existingInvoiceId
+não pode contornar
+essa regra.
+
+============================================================
+10. WRONG PERIOD
+================
+
+Se existingInvoiceId
+apontar para invoice
+de período diferente
+da resolução financeira
+correta:
+
+não adicionar
+o lançamento nela.
+
+============================================================
+11. IMPORTANT DESIGN DECISION
+=============================
+
+Para fluxos
+de CONTAS A RECEBER:
+
+preferir que
+existingInvoiceId
+
+não determine
+a collector.
+
+A collector deve ser
+resolvida pela regra:
+
+creche
++
+tutor
++
+business date
++
+cycle
++
+status
++
+dueDate.
+
+============================================================
+12. EXISTING ID AS HINT
+=======================
+
+Se a arquitetura atual
+precisar manter
+existingInvoiceId,
+
+tratá-lo no máximo como:
+
+validated hint
+
+e não:
+
+financial authority.
+
+============================================================
+13. COLLECTOR AUTHORITY
+=======================
+
+A função central
+de collector
+continua sendo
+a autoridade final.
+
+============================================================
+14. OUT-OF-SCOPE FLOWS
+======================
+
+Alguns fluxos deliberadamente
+avulsos podem continuar
+usando invoice própria.
+
+Exemplos já definidos:
+
+package
+
+store order
+
+immediate POS
+
+quando aplicável.
+
+============================================================
+15. BUT FROZEN RULE IS GLOBAL
+=============================
+
+Mesmo em fluxo
+fora da consolidação:
+
+uma invoice congelada
+NUNCA deve receber
+novo item.
+
+============================================================
+16. IMPORTANT
+=============
+
+"Out of consolidation scope"
+
+NÃO significa:
+
+"may mutate paid invoice".
+
+============================================================
+17. BYPASS TEST — PAID
+======================
+
+Teste obrigatório:
+
+Criar invoice PAID.
+
+Tentar adicionar cobrança
+passando explicitamente:
+
+existingInvoiceId = paidInvoice.id.
+
+Expected:
+
+item NOT inserted.
+
+total unchanged.
+
+invoice unchanged.
+
+============================================================
+18. BYPASS TEST —
+AWAITING CONFIRMATION
+=====================
+
+Mesmo teste com:
+
+awaiting_confirmation.
+
+Expected:
+
+rejected/frozen.
+
+============================================================
+19. BYPASS TEST — EXPIRED PENDING
+=================================
+
+Invoice:
+
+status = pending
+
+dueDate < businessDate.
+
+Passar como:
+
+existingInvoiceId.
+
+Expected:
+
+não receber item.
+
+============================================================
+20. BYPASS TEST — WRONG TUTOR
+=============================
+
+existingInvoiceId
+pertence ao Tutor A.
+
+Charge pertence
+ao Tutor B.
+
+Expected:
+
+rejected.
+
+============================================================
+21. BYPASS TEST — WRONG CRECHE
+==============================
+
+existingInvoiceId
+pertence à Creche A.
+
+Charge ocorre na Creche B.
+
+Expected:
+
+rejected.
+
+============================================================
+22. BYPASS TEST — WRONG PERIOD
+==============================
+
+Invoice editável
+mas pertencente
+a período diferente.
+
+Expected:
+
+não ser utilizada
+como collector
+para a cobrança atual.
+
+============================================================
+23. BYPASS TEST — VALID
+=======================
+
+Invoice fornecida:
+
+same creche
+
+same tutor
+
+correct period
+
+pending
+
+not expired.
+
+Expected:
+
+pode ser reutilizada
+somente se corresponder
+à collector correta.
+
+============================================================
+24. IMPORTANT
+=============
+
+Não criar um segundo
+algoritmo de validação
+somente para
+existingInvoiceId.
+
+Reutilizar
+as mesmas regras
+do collector
+quando possível.
+
+============================================================
+25. ALL RECEIVABLE PATHS
+========================
+
+Antes do patch,
+todos os caminhos
+que enviam cobranças
+a Contas a Receber
+devem ser classificados.
+
+============================================================
+26. REQUIRED PATH REGISTER
+==========================
+
+Entregar uma tabela:
+
+ORIGIN
+
+CALLER
+
+USES COLLECTOR?
+
+USES existingInvoiceId?
+
+CREATES INVOICE DIRECTLY?
+
+CAN APPEND TO INVOICE?
+
+CONSOLIDATED BY FIN-01?
+
+DELIBERATELY AVULSO?
+
+SAFE?
+
+============================================================
+27. NO UNKNOWN PATHS
+====================
+
+FIN-01 não deve ser implementado
+com caminhos financeiros
+classificados como:
+
+UNKNOWN.
+
+Se houver caller
+que não seja compreendido:
+
+STOP.
+
+============================================================
+28. RECEIVABLE COVERAGE RULE
+============================
+
+Todo caminho
+que represente:
+
+receivable charge
+
+e esteja dentro
+do escopo FIN-01
+
+deve terminar
+na mesma regra
+de collector.
+
+============================================================
+29. ALLOWED EXCEPTIONS
+======================
+
+Um caminho pode
+não passar pelo collector
+somente se:
+
+A.
+for deliberadamente
+immediate/isolated;
+
+ou
+
+B.
+estiver explicitamente
+fora da consolidação
+por decisão de escopo.
+
+============================================================
+30. DOCUMENT EXCEPTIONS
+=======================
+
+Para cada exceção:
+
+PATH
+
+WHY NOT COLLECTOR
+
+EXPECTED INVOICE BEHAVIOR
+
+FROZEN-INVOICE PROTECTION
+
+KNOWN RISK.
+
+============================================================
+31. POS
+=======
+
+POS permanece:
+
+KNOWN OPEN RISK.
+
+Não tentar encaixá-lo
+artificialmente
+no collector FIN-01
+sem auditoria própria.
+
+============================================================
+32. LOCK ORDER — REAL CODE AUDIT
+================================
+
+Antes de implementar
+qualquer lock novo,
+mapear a ordem REAL
+de aquisição de locks
+nos fluxos afetados.
+
+============================================================
+33. SEARCH
+==========
+
+Pesquisar por:
+
+FOR UPDATE
+
+for("update")
+
+pg_advisory
+
+pg_advisory_xact_lock
+
+transaction
+
+booking update
+
+invoice update
+
+pet update
+
+ou equivalentes
+usados pelo ORM atual.
+
+============================================================
+34. LOCKABLE RESOURCES
+======================
+
+Mapear pelo menos:
+
+BOOKING
+
+CRECHE+TUTOR ADVISORY KEY
+
+INVOICE
+
+PET
+
+CONSUMABLE
+
+e qualquer outro lock
+real presente
+nos fluxos FIN-01.
+
+============================================================
+35. LOCK ORDER MATRIX
+=====================
+
+Entregar:
+
+FLOW
+
+LOCK #1
+
+LOCK #2
+
+LOCK #3
+
+LOCK #4
+
+TRANSACTION BOUNDARY.
+
+============================================================
+36. REQUIRED FLOWS
+==================
+
+Mapear ao menos:
+
+booking confirmation
+
+checkout
+
+addCharge
+
+manual receivable charge
+
+collector creation
+
+consumable billing.
+
+============================================================
+37. NO ABSTRACT GUESS
+=====================
+
+Não escrever:
+
+"we will use booking first"
+
+sem provar
+como os fluxos atuais
+já trabalham.
+
+============================================================
+38. SELECT ONE ORDER
+====================
+
+Depois da auditoria,
+definir uma ordem única
+para os recursos
+que podem coexistir.
+
+============================================================
+39. EXAMPLE ONLY
+================
+
+Pode acabar sendo:
+
+booking
+→ creche+tutor advisory
+→ invoice
+
+OU:
+
+creche+tutor advisory
+→ booking
+→ invoice.
+
+Mas NÃO escolher
+antes de observar
+o código real.
+
+============================================================
+40. CONSISTENCY
+===============
+
+Todos os fluxos
+alterados pelo FIN-01
+devem respeitar
+a mesma ordem
+quando adquirirem
+os mesmos recursos.
+
+============================================================
+41. CLASSIC DEADLOCK
+====================
+
+É proibido terminar
+com:
+
+Flow A:
+Booking
+→ Tutor lock
+
+Flow B:
+Tutor lock
+→ Booking.
+
+Isso cria
+potencial AB/BA deadlock.
+
+============================================================
+42. PET LOCK
+============
+
+Se Pet também
+é travado/alterado
+de modo bloqueante:
+
+incluir na ordem.
+
+============================================================
+43. INVOICE ROW LOCK
+====================
+
+Se invoice usa
+row-level lock:
+
+incluir na ordem.
+
+============================================================
+44. ADVISORY LOCK
+=================
+
+O lock:
+
+crecheId + tutorId
+
+deve continuar protegendo
+toda a resolução:
+
+initial period
+
+successor
+
+collector
+
+item addition.
+
+============================================================
+45. BUT LOCK ORDER WINS
+=======================
+
+Se introduzir esse lock
+na posição planejada
+criar inversão
+com fluxo existente:
+
+STOP.
+
+Não improvisar.
+
+============================================================
+46. DEADLOCK STOP CONDITION
+===========================
+
+Se não for possível
+definir ordem consistente
+com patch pequeno:
+
+FIN-01 BLOCKED /
+LOCK ORDER ARCHITECTURAL
+DECISION REQUIRED.
+
+============================================================
+47. NO GLOBAL LOCK
+==================
+
+Não resolver deadlock
+serializando:
+
+toda creche
+
+todo financeiro
+
+toda tabela.
+
+============================================================
+48. GRANULARITY
+===============
+
+Continuar preferindo:
+
+creche + tutor
+
+como unidade
+de serialização financeira.
+
+============================================================
+49. LOCK HOLD TIME
+==================
+
+Não manter advisory lock
+durante operações
+externas/lentas.
+
+============================================================
+50. DO NOT HOLD LOCK DURING
+===========================
+
+Não manter
+transaction/advisory lock
+enquanto aguarda:
+
+Stripe
+
+Object Storage
+
+email
+
+push
+
+network externo
+
+ou processamento
+não transacional.
+
+============================================================
+51. FINANCIAL DB SECTION ONLY
+=============================
+
+O lock deve cobrir
+a seção crítica
+de banco necessária
+à integridade financeira.
+
+============================================================
+52. TRANSACTION NESTING
+=======================
+
+Investigar se:
+
+addCharge
+
+collector
+
+checkout
+
+podem ser chamados
+dentro de transação existente.
+
+============================================================
+53. CRITICAL
+============
+
+Não abrir
+uma transação independente
+dentro de outra
+se isso quebrar:
+
+atomicidade
+
+lock visibility
+
+rollback.
+
+============================================================
+54. TRANSACTION PARAMETER
+=========================
+
+Se helpers atuais
+aceitam:
+
+db
+
+tx
+
+transaction client
+
+ou equivalente,
+
+preservar/reutilizar
+esse padrão.
+
+============================================================
+55. COLLECTOR AND CHECKOUT
+==========================
+
+Quando checkout
+faturar consumíveis:
+
+transição da booking
+
+e efeitos financeiros
+
+devem continuar
+na unidade atômica
+já definida.
+
+============================================================
+56. DEADLOCK TEST
+=================
+
+Além dos testes
+de concorrência existentes,
+executar stress pequeno
+com várias operações
+concorrentes do mesmo tutor
+quando infraestrutura permitir.
+
+============================================================
+57. EXAMPLE
+===========
+
+Executar, por exemplo:
+
+5 cobranças concorrentes
+
+para:
+
+same creche
+
+same tutor.
+
+Expected:
+
+no deadlock
+
+no duplicate collector
+
+all valid items persisted once.
+
+============================================================
+58. TIMEOUT ≠ DEADLOCK
+======================
+
+Se teste travar:
+
+não aumentar timeout
+automaticamente.
+
+Investigar:
+
+blocking PID
+
+transaction waiting
+
+lock ordering
+
+query logs
+
+quando disponível.
+
+============================================================
+59. CONCURRENT DIFFERENT TUTORS
+===============================
+
+Também provar:
+
+Tutor A
+
+Tutor B
+
+mesma creche
+
+podem processar
+suas cobranças
+sem serialização global.
+
+============================================================
+60. EXISTINGINVOICEID +
+CONCURRENCY
+===========
+
+Mesmo se existingInvoiceId
+for enviado:
+
+não pode permitir
+pular o:
+
+creche+tutor lock
+
+quando o fluxo
+estiver dentro de FIN-01.
+
+============================================================
+61. CRITICAL BYPASS
+===================
+
+Proibido:
+
+if existingInvoiceId:
+appendDirectly()
+else:
+useCollector()
+
+se appendDirectly
+não possuir
+as mesmas garantias.
+
+============================================================
+62. REQUIRED CONCEPT
+====================
+
+O caminho seguro é
+conceitualmente:
+
+resolve financial context
+
+→ acquire required lock
+
+→ validate supplied invoice
+if any
+
+→ resolve authoritative collector
+
+→ append charge.
+
+============================================================
+63. NO CLIENT AUTHORITY
+=======================
+
+existingInvoiceId
+recebido do frontend/API
+não pode ser tratado
+como autorização
+para alterar aquela invoice.
+
+============================================================
+64. TENANT SECURITY
+===================
+
+Sempre validar:
+
+# invoice.crecheId
+
+request crecheId.
+
+============================================================
+65. TUTOR SECURITY
+==================
+
+Sempre validar:
+
+# invoice.tutorId
+
+charge tutorId.
+
+============================================================
+66. STATUS SECURITY
+===================
+
+Sempre validar:
+
+invoice status
+
+antes de qualquer
+insert de item.
+
+============================================================
+67. DATE SECURITY
+=================
+
+Sempre validar:
+
+invoice dueDate
+against businessDate.
+
+============================================================
+68. CYCLE SECURITY
+==================
+
+Sempre validar:
+
+cycleStart
+
+cycleEnd
+
+período resolvido.
+
+============================================================
+69. NO MUTATION BEFORE VALIDATION
+=================================
+
+Nenhum:
+
+invoice item insert
+
+invoice total update
+
+booking side effect
+
+pode acontecer
+antes dessas validações
+no caminho relevante.
+
+============================================================
+70. PRE-IMPLEMENTATION OUTPUT A
+===============================
+
+EXISTINGINVOICEID CALLER MAP.
+
+============================================================
+71. PRE-IMPLEMENTATION OUTPUT B
+===============================
+
+ALL RECEIVABLE PATH MATRIX.
+
+============================================================
+72. PRE-IMPLEMENTATION OUTPUT C
+===============================
+
+CURRENT LOCK ORDER MATRIX.
+
+============================================================
+73. PRE-IMPLEMENTATION OUTPUT D
+===============================
+
+PROPOSED UNIFIED LOCK ORDER.
+
+============================================================
+74. PRE-IMPLEMENTATION OUTPUT E
+===============================
+
+CURRENT UNIQUE CONSTRAINT.
+
+============================================================
+75. PRE-IMPLEMENTATION OUTPUT F
+===============================
+
+TENANT MODEL.
+
+Responder explicitamente:
+
+Can same Tutor entity
+belong to multiple Creches?
+
+YES
+
+NO
+
+or
+
+INSUFFICIENT EVIDENCE.
+
+============================================================
+76. PRE-IMPLEMENTATION OUTPUT G
+===============================
+
+TRANSACTION BOUNDARY MAP.
+
+============================================================
+77. HARD GATE
+=============
+
+SOMENTE iniciar patch
+se todos forem verdadeiros:
+
+A.
+existingInvoiceId
+callers understood;
+
+B.
+all FIN-01 receivable paths
+classified;
+
+C.
+frozen-invoice bypass
+can be prevented;
+
+D.
+lock order is consistent;
+
+E.
+creche+tutor lock
+can protect successor resolution;
+
+F.
+no required migration;
+
+G.
+no required API contract change;
+
+H.
+no unresolved tenant
+constraint problem.
+
+============================================================
+78. IF A GATE FAILS
+===================
+
+STOP.
+
+Não implementar parcialmente.
+
+============================================================
+79. POSSIBLE VERDICTS
+=====================
+
+FIN-01 PRE-PATCH GATE PASSED /
+IMPLEMENTATION MAY BEGIN
+
+FIN-01 BLOCKED /
+EXISTING INVOICE BYPASS
+DECISION REQUIRED
+
+FIN-01 BLOCKED /
+LOCK ORDER DECISION REQUIRED
+
+FIN-01 BLOCKED /
+TENANT CONSTRAINT
+DECISION REQUIRED
+
+FIN-01 BLOCKED /
+SCHEMA CHANGE REQUIRED.
+
+============================================================
+80. POST-PATCH TEST ADDITIONS
+=============================
+
+Além dos testes
+da FIN-01 v3,
+adicionar:
+
+1.
+
+paid invoice supplied
+via existingInvoiceId
+→ rejected;
+
+2.
+
+awaiting_confirmation
+via existingInvoiceId
+→ rejected;
+
+3.
+
+expired pending
+via existingInvoiceId
+→ rejected;
+
+4.
+
+wrong tutor
+→ rejected;
+
+5.
+
+wrong creche
+→ rejected;
+
+6.
+
+wrong period
+→ rejected;
+
+7.
+
+valid collector ID
+→ reused safely;
+
+8.
+
+concurrent successor race
+→ one invoice;
+
+9.
+
+concurrent same-period
+→ one invoice;
+
+10.
+
+concurrent checkout
+→ one financial effect;
+
+11.
+
+stress same tutor
+→ no duplicate/deadlock;
+
+12.
+
+different tutors
+→ no unnecessary global blocking.
+
+============================================================
+81. FINAL REPORT ADDITIONS
+==========================
+
+No relatório final
+incluir obrigatoriamente:
+
+EXISTINGINVOICEID BEHAVIOR
+
+BYPASS PROTECTION
+
+RECEIVABLE PATH COVERAGE
+
+DELIBERATELY AVULSO PATHS
+
+LOCK ORDER BEFORE
+
+LOCK ORDER AFTER
+
+ADVISORY LOCK KEY
+
+TRANSACTION BOUNDARIES
+
+DEADLOCK TEST RESULT
+
+FROZEN INVOICE BYPASS TESTS
+
+TENANT BYPASS TESTS.
+
+============================================================
+82. FINAL QUESTIONNAIRE ADDITIONS
+=================================
+
+1. All existingInvoiceId
+   callers mapped?
+
+2. Any caller can still
+   append blindly?
+
+Expected NO.
+
+3. Paid invoice can receive
+   item through existingInvoiceId?
+
+Expected NO.
+
+4. Awaiting-confirmation invoice?
+
+Expected NO.
+
+5. Expired pending invoice?
+
+Expected NO.
+
+6. Wrong tutor invoice?
+
+Expected NO.
+
+7. Wrong creche invoice?
+
+Expected NO.
+
+8. Wrong-period invoice?
+
+Expected NO.
+
+9. Valid supplied invoice
+   still validated through
+   collector rules?
+
+10. All FIN-01 receivable
+    paths use collector?
+
+11. Every exception documented?
+
+12. Lock order based
+    on actual code inspection?
+
+13. Same order used
+    across affected flows?
+
+14. AB/BA inversion found?
+
+15. If found,
+    was implementation stopped
+    until resolved?
+
+16. Collector advisory lock
+    covers existingInvoiceId path?
+
+17. No lock held
+    over external network I/O?
+
+18. Transaction boundaries
+    remain atomic?
+
+19. Same-tutor stress
+    produces duplicate invoice?
+
+Expected NO.
+
+20. Deadlock observed?
+
+Expected NO.
+
+============================================================
+83. FINAL IMPLEMENTATION VERDICT
+================================
+
+FIN-01 só pode chegar a:
+
+FIN-01 CODE COMPLETE /
+ALL FIN-01 TESTS PASS /
+READY FOR PRODUCTION VALIDATION
+
+se também estiver comprovado:
+
+existingInvoiceId
+cannot bypass collector;
+
+lock order
+is consistent;
+
+all receivable paths
+are classified.
+
+============================================================
+84. FINAL WORDING
+=================
+
+Mesmo aprovado:
+
+usar:
+
+FIN-01 scope stabilized.
+
+NÃO usar:
+
+Financial fully stabilized.
+
+POS permanece
+em Remaining Risks.
+
+Packages/Store permanecem
+fora da consolidação
+por decisão de escopo.
+
+============================================================
+85. STOP
+========
+
+Se os gates passarem:
+
+implementar FIN-01
+conforme v3 + v3.1.
+
+Após implementação:
+
+executar todos os testes.
+
+Entregar relatório.
+
+STOP.
+
+Não:
+
+corrigir POS
+
+criar migration
+
+alterar pacotes/store
+
+retomar F10
+
+alterar R7B
+
+retomar Product Refinement
+sem nova aprovação.

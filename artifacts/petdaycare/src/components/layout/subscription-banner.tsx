@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CreditCard } from "lucide-react";
 
-type BannerStatus = "past_due" | "suspended" | "cancelled";
+type BannerStatus = "trial_expired" | "past_due" | "suspended" | "cancelled";
 
 const CONFIG: Record<BannerStatus, { message: string; className: string }> = {
+  trial_expired: {
+    message: "O período de teste encerrou. Assine um plano para continuar usando todos os recursos.",
+    className: "bg-red-500/10 border-red-500/25 text-red-200",
+  },
   past_due: {
     message: "Há um pagamento pendente na assinatura da creche. Regularize para evitar a suspensão dos serviços.",
     className: "bg-amber-500/10 border-amber-500/25 text-amber-200",
@@ -34,9 +38,19 @@ export function SubscriptionBanner() {
   if (location.includes("/assinatura")) return null;
 
   const status = data.status as string;
-  if (status !== "past_due" && status !== "suspended" && status !== "cancelled") return null;
+  const trialExpired =
+    status === "trial" &&
+    !!(data as any).trialEndsAt &&
+    new Date((data as any).trialEndsAt) < new Date();
+  const effectiveStatus: BannerStatus | null = trialExpired
+    ? "trial_expired"
+    : status === "past_due" || status === "suspended" || status === "cancelled"
+      ? (status as BannerStatus)
+      : null;
 
-  const config = CONFIG[status as BannerStatus];
+  if (!effectiveStatus) return null;
+
+  const config = CONFIG[effectiveStatus];
   const isAdmin = user?.role === "creche_admin";
 
   return (

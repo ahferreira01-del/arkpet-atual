@@ -1,0 +1,878 @@
+ARKPET — FUNCTIONAL STABILIZATION PROGRAM
+
+FASE F6
+
+CLOSURE / EDGE CASE CORRECTION / RUNTIME VALIDATION
+
+NÃO É PRODUCT REFINEMENT
+
+NÃO É REDESIGN
+
+NÃO CRIAR FEATURES
+
+============================================================
+0. CONTEXTO
+
+F0:
+ROOT CAUSE AUDIT
+APPROVED / FROZEN.
+
+F1-F5:
+IMPLEMENTADOS.
+
+Baseline atual:
+
+TypeScript:
+EXIT 0
+0 errors
+
+npx tsc -b:
+EXIT 0
+
+build:
+EXIT 0.
+
+Ainda NÃO declarar
+FUNCTIONAL STABILIZATION COMPLETE.
+
+Existem pendências comprovadas
+no próprio relatório F1-F5.
+
+============================================================
+
+1. OBJETIVO
+   ============================================================
+
+Fechar somente:
+
+A. Push end-to-end.
+
+B. Invoice overflow dueDate.
+
+C. Classificação correta
+de bookings de serviço/presença.
+
+D. Media runtime em dispositivo.
+
+E. Chat runtime.
+
+============================================================
+2. PROIBIDO
+
+NÃO implementar:
+
+Product Refinement R*
+
+redesign
+
+novos filtros
+
+novas features
+
+novos status
+
+novo módulo
+
+novo endpoint
+
+refactor arquitetural amplo.
+
+============================================================
+3. PRE-BASELINE
+
+Executar:
+
+git status
+
+npm run typecheck
+
+npx tsc -b
+
+npm run build.
+
+Registrar resultados reais.
+
+============================================================
+4. F6A — PUSH END-TO-END
+
+Estado atual:
+
+VAPID keypair:
+MATCH = YES.
+
+Mas:
+
+new subscription:
+PENDING
+
+provider delivery:
+PENDING
+
+device receipt:
+PENDING.
+
+============================================================
+5. PUSH SUCCESS CRITERION
+
+Não considerar Push concluído
+somente porque:
+
+[push] VAPID configured.
+
+Precisamos provar:
+
+browser/device
+↓
+subscription
+↓
+DB
+↓
+backend sender
+↓
+push provider
+↓
+service worker
+↓
+notification displayed.
+
+============================================================
+6. DEVICE
+
+Usar um browser/dispositivo
+real disponível.
+
+Preferencialmente também
+o dispositivo/PWA
+onde o usuário relatou falha.
+
+============================================================
+7. RESUBSCRIBE
+
+Com a VAPID_PUBLIC_KEY atual:
+
+registrar uma NOVA subscription.
+
+Confirmar no DB:
+
+subscription criada.
+
+Registrar:
+
+user id
+
+timestamp
+
+sem exibir endpoint completo
+ou chaves sensíveis.
+
+============================================================
+8. SEND TEST
+
+Usar o mecanismo
+de envio já existente.
+
+Não criar endpoint de teste
+permanente.
+
+============================================================
+9. PROVIDER RESPONSE
+
+Registrar resposta real:
+
+accepted/success
+
+ou código de erro.
+
+============================================================
+10. DEVICE RECEIPT
+
+Confirmar visualmente
+que a notificação chegou.
+
+Testar pelo menos:
+
+app/PWA fechada ou background.
+
+Se o sistema atual diferencia foreground,
+registrar também.
+
+============================================================
+11. STALE PRODUCTION SUBSCRIPTIONS
+
+Não depender exclusivamente
+de "algum dia receberão 410".
+
+Se houver mecanismo seguro
+já existente para remover
+subscriptions stale
+no primeiro envio:
+
+preservar.
+
+Não acessar/destruir produção
+sem autorização.
+
+============================================================
+12. IF NO DEVICE AVAILABLE
+
+Manter status:
+
+PUSH SERVER FIXED
+DEVICE QA PENDING.
+
+Nesse caso,
+F6 não pode afirmar
+end-to-end completo.
+
+============================================================
+13. F6B — INVOICE OVERFLOW
+
+O relatório F1-F5 revelou
+um segundo caminho:
+
+quando o ciclo mensal
+já está fechado/pago,
+
+o sistema cria
+invoice avulsa de overflow
+
+com:
+
+dueDate = itemDateStr.
+
+============================================================
+14. PROBLEM
+
+Para tutor identificado,
+isso ainda pode fazer
+a nova fatura nascer
+com vencimento no dia
+do pedido.
+
+Isso mantém uma variação
+do bug original.
+
+============================================================
+15. TARGET BUSINESS RULE
+
+Para TODA invoice avulsa
+associada a tutor identificado
+que NÃO represente
+pagamento imediato já concluído:
+
+usar o próximo vencimento válido
+do ciclo existente do tutor.
+
+============================================================
+16. REUSE
+
+Reutilizar:
+
+getTutorMensalidadeDia()
+
++ 
+
+getCycleDates()
+
+ou helper já criado/reutilizado
+no F2.
+
+============================================================
+17. NÃO DUPLICAR LÓGICA
+
+Se o cálculo agora aparece
+em mais de um path,
+é permitido extrair
+UMA função local/privada simples
+dentro do service apropriado,
+
+somente se reduzir duplicação
+sem mudar comportamento.
+
+Não criar framework
+de billing dates.
+
+============================================================
+18. ANONYMOUS
+
+Para:
+
+tutorId == null
+
+não existe ciclo financeiro
+do tutor.
+
+Preservar comportamento atual,
+salvo outra regra pré-existente
+comprovada no código.
+
+============================================================
+19. IMMEDIATE PAYMENT
+
+Não alterar fluxo
+que já representa pagamento
+imediato concluído.
+
+============================================================
+20. TEST MATRIX INVOICE
+
+Testar:
+
+A.
+Tutor identificado,
+ciclo aberto,
+pedido antes vencimento.
+
+B.
+Tutor identificado,
+ciclo aberto,
+pedido depois vencimento.
+
+C.
+Tutor identificado,
+ciclo anterior PAID/CLOSED,
+novo pedido cria overflow.
+
+D.
+Mesmo cenário C
+após dia de vencimento.
+
+E.
+Virada de mês.
+
+F.
+Virada de ano.
+
+G.
+tutorId null.
+
+============================================================
+21. TARGET
+
+C e D não podem
+reintroduzir:
+
+dueDate = hoje
+
+para tutor identificado
+apenas porque o ciclo anterior
+já estava pago.
+
+============================================================
+22. STATUS ENGINE
+
+Não alterar cálculo de overdue.
+
+Corrigir dueDate.
+
+============================================================
+23. F6C — SERVICE TYPE CLASSIFICATION
+
+Patch atual criou:
+
+SERVICE_BOOKING_TYPES = ["banho"].
+
+Antes de congelar,
+auditar TODOS os booking types
+realmente existentes.
+
+============================================================
+24. SOURCE OF TRUTH
+
+Procurar em:
+
+DB schema
+
+Zod
+
+OpenAPI
+
+backend constants
+
+frontend booking creation
+
+catalogue/service mapping.
+
+============================================================
+25. INVENTORY
+
+Entregar:
+
+INTERNAL TYPE
+
+LABEL
+
+PRESENCE BOOKING?
+
+SERVICE BOOKING?
+
+SOURCE.
+
+============================================================
+26. IMPORTANT
+
+NÃO assumir que:
+
+"não é banho"
+
+"presença".
+
+============================================================
+27. EXISTING SERVICE TYPES
+
+Identificar tipos reais,
+por exemplo somente se existirem:
+
+banho
+
+tosa
+
+taxi
+
+visita
+
+outros.
+
+Não inventar.
+
+============================================================
+28. TARGET
+
+O guard deve distinguir
+semanticamente:
+
+booking que representa
+presença física
+
+vs.
+
+booking que representa
+serviço executável
+durante presença.
+
+============================================================
+29. REUSE EXISTING CLASSIFICATION
+
+Se já houver constante/helper
+autoritativo:
+
+REUTILIZAR.
+
+============================================================
+30. IF NONE EXISTS
+
+Criar no máximo
+uma constante tipada local
+com TODOS os valores
+comprovadamente considerados
+service booking pelo backend atual.
+
+Não incluir tipos
+por adivinhação.
+
+============================================================
+31. TEST MATRIX
+
+Obrigatório:
+
+Day Use active
+
++ Bath confirmed
+  → PASS.
+
+Presence active
+
++ cada outro SERVICE TYPE real
+  → testar comportamento esperado
+  conforme arquitetura existente.
+
+Day Use
+
++ Day Use
+  → BLOCK.
+
+Service active
+
++ second service
+  → preservar regra atual,
+  não liberar automaticamente.
+
+No active booking
+
++ service
+  → PASS conforme fluxo atual.
+
+============================================================
+32. PHYSICAL PRESENCE
+
+Nunca duplicar:
+
+isCheckedIn
+
+occupancy
+
+physical check-in.
+
+============================================================
+33. COMPLETE SERVICE
+
+Não alterar
+complete-service.
+
+============================================================
+34. F6D — MEDIA DEVICE VALIDATION
+
+F4 foi validado
+majoritariamente por código.
+
+Agora precisamos
+de arquivos reais.
+
+============================================================
+35. IOS PHOTO TEST
+
+Em iPhone/iOS real:
+
+tirar/selecionar
+uma foto usando
+o fluxo que anteriormente falhava.
+
+Preferir arquivo
+original produzido
+pelo aparelho.
+
+============================================================
+36. VERIFY PHOTO
+
+Confirmar:
+
+preview aparece;
+
+upload retorna sucesso;
+
+não há 415;
+
+Object Storage recebe objeto;
+
+Content-Type corresponde
+ao conteúdo enviado;
+
+mediaDataRef recebe URL;
+
+task completion funciona;
+
+Feed post contém foto;
+
+foto aparece novamente
+ao recarregar o Feed.
+
+============================================================
+37. IMPORTANT
+
+Não basta:
+
+preview local apareceu.
+
+Precisamos provar:
+
+upload + persistência + Feed.
+
+============================================================
+38. HEIC OBSERVATION
+
+Registrar:
+
+original file.type
+
+original filename/extension
+
+normalized MIME
+
+normalized extension
+
+sem expor dados pessoais.
+
+============================================================
+39. IF HEIC NORMALIZATION FAILS
+
+Não adicionar
+HEIC raw automaticamente.
+
+Registrar:
+
+browser
+
+iOS version
+
+file.type
+
+stage of failure
+
+e STOP no media subcase.
+
+============================================================
+40. VIDEO REAL TEST
+
+Usar pelo menos
+um arquivo que antes falhava,
+se disponível.
+
+============================================================
+41. VIDEO VERIFY
+
+Registrar:
+
+extension
+
+file.type
+
+inferred MIME
+
+upload HTTP status
+
+stored Content-Type
+
+post created?
+
+playback?
+
+============================================================
+42. EMPTY MIME
+
+Provar ao menos um caso
+de arquivo suportado
+com MIME vazio,
+se for possível reproduzir.
+
+============================================================
+43. HEVC
+
+Não implementar transcoding.
+
+Se upload funciona
+mas playback falha por codec:
+
+registrar como:
+
+SEPARATE COMPATIBILITY LIMITATION.
+
+============================================================
+44. F6E — CHAT RUNTIME
+
+Validar em browser real.
+
+============================================================
+45. CHAT CASE A
+
+Abrir conversa
+com muitas mensagens.
+
+Esperado:
+
+viewport inicia
+nas mensagens mais recentes.
+
+============================================================
+46. CHAT CASE B
+
+Abrir conversa
+com imagens/mídia.
+
+Esperado:
+
+após layout estabilizar,
+continua no bottom.
+
+============================================================
+47. CHAT CASE C
+
+Usuário no bottom.
+
+Receber/enviar nova mensagem.
+
+Esperado:
+
+acompanha.
+
+============================================================
+48. CHAT CASE D
+
+Usuário sobe
+para ler histórico.
+
+Nova mensagem chega.
+
+Esperado:
+
+scroll não é sequestrado.
+
+============================================================
+49. CHAT CASE E
+
+Trocar de conversa.
+
+Esperado:
+
+nova conversa
+abre no final.
+
+============================================================
+50. RESIZEOBSERVER
+
+Durante teste,
+verificar se ResizeObserver:
+
+não causa loop;
+
+não produz jitter;
+
+não fica forçando scroll
+quando usuário lê histórico.
+
+============================================================
+51. IF CHAT BUG FOUND
+
+Corrigir somente
+o comportamento do scroll.
+
+Não alterar:
+
+queries
+
+message order
+
+polling
+
+send mutation
+
+attachments.
+
+============================================================
+52. VALIDATION AFTER PATCHES
+
+Executar:
+
+npm run typecheck
+
+TARGET:
+EXIT 0
+0 errors.
+
+============================================================
+53. TSC-B
+
+npx tsc -b
+
+TARGET:
+EXIT 0.
+
+============================================================
+54. BUILD
+
+npm run build
+
+TARGET:
+EXIT 0.
+
+Registrar duração.
+
+============================================================
+55. BACKEND
+
+Reiniciar.
+
+Sem startup errors.
+
+============================================================
+56. FRONTEND
+
+Reiniciar.
+
+Sem compile/runtime errors.
+
+============================================================
+57. FINAL VERDICT
+
+Só utilizar:
+
+FUNCTIONAL STABILIZATION
+COMPLETE / READY
+
+se:
+
+- push tiver entrega real
+  ou for explicitamente marcado
+  como única validação externa pendente;
+
+- invoice overflow corrigido;
+
+- service classification
+  não depender de classificação
+  incorreta "banho vs resto";
+
+- iOS task photo for
+  testada no fluxo real;
+
+- vídeo tiver teste real
+  quando arquivo reproduzível existir;
+
+- Chat tiver runtime test;
+
+- typecheck = 0;
+
+- tsc-b = 0;
+
+- build = 0.
+
+============================================================
+58. IF DEVICE TESTS IMPOSSIBLE
+
+Usar:
+
+FUNCTIONAL STABILIZATION
+IMPLEMENTED / DEVICE QA PENDING.
+
+Não usar COMPLETE.
+
+============================================================
+59. FINAL REPORT
+
+Entregar:
+
+A. PRE-BASELINE
+
+B. PUSH E2E
+
+C. INVOICE OVERFLOW
+
+D. BOOKING TYPE INVENTORY
+
+E. SERVICE GUARD FINAL
+
+F. IOS PHOTO DEVICE TEST
+
+G. VIDEO DEVICE TEST
+
+H. CHAT RUNTIME TEST
+
+I. FILES CHANGED
+
+J. TYPECHECK
+
+K. TSC-B
+
+L. BUILD
+
+M. REMAINING LIMITATIONS
+
+N. FINAL VERDICT.
+
+============================================================
+60. STOP
+
+NÃO iniciar Product Refinement.
+
+NÃO iniciar R4B.
+
+Entregar relatório
+e aguardar aprovação.

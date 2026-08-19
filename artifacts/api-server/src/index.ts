@@ -1,6 +1,6 @@
 import app from "./app";
 import { initializeDatabase, initStripe } from "./startup.js";
-import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender, startReceiptCleanupJob, startExpiredOrderCanceller, startOutboxWorker } from "./lib/scheduler.js";
+import { startScheduler, startMensalidadeScheduler, startScheduledPlanChangeApplicator, startPastDueSuspender, startReceiptCleanupJob, startExpiredOrderCanceller, startOutboxWorker, startTrialExpirationJob } from "./lib/scheduler.js";
 
 // Process-level backstop: a stray rejected promise or thrown error in async
 // code (e.g. a transient DB/network hiccup) must NEVER silently crash the API
@@ -30,6 +30,7 @@ initializeDatabase()
       startMensalidadeScheduler();
       startScheduledPlanChangeApplicator();
       startPastDueSuspender();
+      startTrialExpirationJob();
       startReceiptCleanupJob();
       startExpiredOrderCanceller();
       startOutboxWorker();

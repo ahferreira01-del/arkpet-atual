@@ -1,21 +1,16 @@
 ---
 name: Phase 14 financial module restructure
-description: Key architectural decisions from the Phase 14 financial refactor — state machine, addCharge overflow fix, snapshot columns, idempotency, financialSync delegation.
+description: Key architectural decisions from the Phase 14 financial refactor — state machine, snapshot columns, idempotency, and financialSync delegation.
 ---
 
 ## InvoiceStateMachine
 `BillingService` now exports `InvoiceStateMachine` as the sole authority for status transitions.
 Valid: pending→paid/voided/overdue, overdue→paid/voided, paid→refunded, voided→[], refunded→[].
-`isClosed(status)` = paid|refunded|voided (no more reopen).
+For new charges, `isClosed(status)` also includes awaiting confirmation and overdue. Payment idempotency is a separate question: overdue and awaiting-confirmation invoices may still transition to paid.
 
 **Why:** F-03 — `addCharge` was reopening paid/voided/refunded invoices, corrupting closed-cycle financials.
 
 **How to apply:** Any code that changes `invoicesTable.status` must call `InvoiceStateMachine.assertTransition(from, to)` or use the helper functions (voidInvoice, refundInvoice, approveReceipt).
-
-## addCharge overflow rule
-If the cycle invoice is already closed (`isClosed`), `addCharge` creates a new avulsa invoice with `cycleStart=NULL, cycleEnd=NULL` instead of reopening. NULLs are distinct in PostgreSQL UNIQUE indexes — multiple overflows per tutor are fine.
-
-**Why:** UNIQUE constraint on `(tutorId, cycleStart, cycleEnd)` prevents second invoice for same cycle; NULLs bypass it.
 
 ## invoice_items snapshot columns (Fase 14)
 Added to `invoiceItemsTable`: `catalogueItemId`, `snapshotName`, `snapshotPrice`, `creditsAmount`, `snapshotMaxPets`, `snapshotExpirationDays`.

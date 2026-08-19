@@ -10,7 +10,7 @@ import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { uploadFileDirect } from "@/lib/utils";
 import { useLocation } from "wouter";
-import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, Eye, Package, ShoppingCart, QrCode, Copy, Scissors, CalendarCheck, Printer } from "lucide-react";
+import { Receipt, UploadCloud, CheckCircle2, History, ExternalLink, Eye, Package, ShoppingCart, QrCode, Copy, Check, Scissors, CalendarCheck, Printer } from "lucide-react";
 import { ThermalReceiptModal } from "@/components/modals/ThermalReceiptModal";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -31,6 +31,7 @@ export default function TutorFinancial() {
   const { data: orders, isLoading: isLoadingOrders } = useListOrders(crecheId);
   const stripeMutation = useStripeCheckout(crecheId);
   
+  const [activeTab, setActiveTab] = useState("overview");
   const [uploadingFor, setUploadingFor] = useState<number | null>(null);
   const [detailsFor, setDetailsFor] = useState<number | null>(null);
   const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
@@ -317,10 +318,16 @@ export default function TutorFinancial() {
             </div>
             {renderInvoiceList(openInvoices.slice(0, 3))}
             {openInvoices.length > 3 && (
-              <Button variant="outline" className="w-full mt-2 h-12 text-muted-foreground hover:text-foreground bg-card border-border hover:bg-secondary" onClick={() => {
-                const tabsEl = document.querySelector('[role="tablist"] [value="invoices"]') as HTMLElement;
-                if (tabsEl) tabsEl.click();
-              }}>
+              <Button
+                variant="outline"
+                className="w-full mt-2 h-12 text-muted-foreground hover:text-foreground bg-card border-border hover:bg-secondary"
+                onClick={() => {
+                  setActiveTab("invoices");
+                  // Bring the tab content into view — on mobile the button sits
+                  // far down the page and the tab switch alone isn't noticeable.
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
                 Ver todas as {openInvoices.length} faturas pendentes
               </Button>
             )}
@@ -376,7 +383,7 @@ export default function TutorFinancial() {
         </div>
       </div>
 
-      <Tabs defaultTab="overview" tabs={tabsConfig} />
+      <Tabs defaultTab="overview" value={activeTab} onValueChange={setActiveTab} tabs={tabsConfig} />
 
       <input
         type="file"
@@ -463,6 +470,7 @@ function InvoiceDetailsModal({ isOpen, onClose, invoiceId, crecheId }: { isOpen:
 
 function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: boolean, onClose: () => void, invoice: any, onUploadClick: () => void }) {
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
   const { user } = useAuth();
   const { data: creche } = useGetCreche(user?.crecheId as number, {
     query: { 
@@ -494,6 +502,8 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
 
   const handleCopy = () => {
     navigator.clipboard.writeText(pixPayload);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
     toast({ title: "Código Copiado!", description: "Cole no aplicativo do seu banco para pagar." });
   };
 
@@ -525,8 +535,21 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
 
             <div className="bg-secondary/50 p-2 pl-4 rounded-2xl border border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
               <span className="text-foreground font-mono text-xs truncate w-full text-left font-medium opacity-80 pb-2 border-b border-border sm:border-0 sm:pb-0">{pixPayload}</span>
-              <Button variant="outline" size="sm" onClick={handleCopy} className="w-full sm:w-auto shrink-0 bg-card hover:bg-secondary text-foreground border-border rounded-xl min-h-[44px]">
-                <Copy className="h-4 w-4 mr-2" /> Copiar Código
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopy}
+                className={`w-full sm:w-auto shrink-0 rounded-xl min-h-[44px] transition-all duration-150 active:scale-95 ${
+                  copied
+                    ? "bg-success/10 text-success border-success/40 hover:bg-success/15"
+                    : "bg-card hover:bg-secondary text-foreground border-border"
+                }`}
+              >
+                {copied ? (
+                  <><Check className="h-4 w-4 mr-2" /> Copiado!</>
+                ) : (
+                  <><Copy className="h-4 w-4 mr-2" /> Copiar Código</>
+                )}
               </Button>
             </div>
           </>

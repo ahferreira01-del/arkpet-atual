@@ -1,0 +1,1952 @@
+# ARKPET — PRODUCTION FINANCIAL STABILIZATION
+
+# FIN-01 v2
+
+# CONTAS A RECEBER
+
+# FATURA COLETORA POR PERÍODO
+
+# FATURA SUCESSORA
+
+# VENCIMENTO
+
+# IDEMPOTÊNCIA DE CHECKOUT
+
+# CONCORRÊNCIA
+
+# PRIORIDADE: PRODUÇÃO
+
+============================================================
+0. PAUSAR OUTRAS INICIATIVAS
+============================
+
+PAUSAR:
+
+F10
+
+F10C.2
+
+R7B validation
+
+Product Refinement
+
+R8
+
+qualquer refactor não relacionado.
+
+Esta fase é exclusivamente
+uma correção financeira
+para a versão de produção.
+
+============================================================
+
+1. OBJETIVO
+   ============================================================
+
+Corrigir o módulo:
+
+FINANCEIRO
+→ CONTAS A RECEBER
+
+para garantir:
+
+1. uma única fatura EDITÁVEL
+   por:
+
+   creche
+   +
+   tutor
+   +
+   período financeiro;
+
+2. vários lançamentos elegíveis
+   do mesmo período
+   são agrupados
+   nessa mesma fatura;
+
+3. faturas encerradas/congeladas
+   nunca são reabertas;
+
+4. após uma fatura congelar,
+   novos lançamentos elegíveis
+   vão para uma fatura sucessora;
+
+5. a sucessora deve ser
+   reutilizada pelos lançamentos
+   seguintes;
+
+6. vencimentos permanecem
+   historicamente corretos;
+
+7. checkout repetido
+   não duplica efeitos financeiros;
+
+8. concorrência não cria
+   múltiplas faturas coletoras
+   para o mesmo tutor/período.
+
+============================================================
+2. REGRA CENTRAL — IMPORTANTE
+=============================
+
+A regra NÃO é:
+
+"uma única fatura global
+para todo o saldo histórico
+do tutor".
+
+A regra é:
+
+UMA ÚNICA FATURA EDITÁVEL
+POR:
+
+creche
++
+tutor
++
+período de vencimento.
+
+============================================================
+3. CONSEQUÊNCIA
+===============
+
+É permitido existir:
+
+Fatura Agosto
+→ overdue / congelada
+
+*
+
+Fatura Setembro
+→ pending / editável.
+
+Isso NÃO é duplicação.
+
+São documentos financeiros
+de períodos diferentes.
+
+============================================================
+4. REGRA EXPLÍCITA
+==================
+
+O hotfix NÃO deve fundir
+faturas de vencimentos históricos
+diferentes.
+
+Faturas vencidas permanecem
+separadas para preservar:
+
+dueDate
+
+histórico
+
+auditoria
+
+pagamento
+
+recibo.
+
+============================================================
+5. NÃO IMPLEMENTAR
+==================
+
+NÃO criar agora:
+
+"Pagar todas as pendências"
+
+saldo consolidado
+
+merge histórico
+
+nova cobrança agregadora
+
+novo checkout financeiro.
+
+Isso seria outra feature.
+
+============================================================
+6. FATURA EDITÁVEL
+==================
+
+Uma fatura pode receber
+novos itens somente se:
+
+A. pertence à mesma creche;
+
+B. pertence ao mesmo tutor;
+
+C. pertence ao período financeiro
+correto;
+
+D. status permite edição;
+
+E. dueDate ainda não passou.
+
+============================================================
+7. STATUS EDITÁVEL
+==================
+
+Confirmar os status REAIS
+do sistema.
+
+Esperado:
+
+pending
+→ potencialmente editável.
+
+Não inventar status.
+
+============================================================
+8. FATURAS CONGELADAS POR STATUS
+================================
+
+Não podem receber itens novos:
+
+paid
+
+awaiting_confirmation
+
+overdue
+
+voided
+
+refunded
+
+cancelled
+
+ou equivalentes reais existentes.
+
+============================================================
+9. FATURA CONGELADA POR DATA
+============================
+
+NÃO confiar somente
+no status overdue.
+
+Mesmo se status ainda for:
+
+pending
+
+se:
+
+dueDate < businessDate
+
+a fatura deve ser considerada:
+
+FROZEN FOR NEW ITEMS.
+
+============================================================
+10. DIA DO VENCIMENTO
+=====================
+
+Regra desejada:
+
+dueDate < businessDate
+→ vencida / frozen.
+
+dueDate === businessDate
+→ ainda pertence ao dia atual
+e pode permanecer válida
+conforme regra atual do sistema.
+
+============================================================
+11. TIMEZONE
+============
+
+Usar a mesma regra de:
+
+businessDate
+
+timezone
+
+calendar date
+
+já existente no ArkPet.
+
+Não introduzir
+nova conversão UTC/local.
+
+============================================================
+12. AWAITING_CONFIRMATION
+=========================
+
+Se o tutor enviou comprovante:
+
+awaiting_confirmation
+
+→ frozen.
+
+O total que está
+em análise financeira
+não pode mudar.
+
+============================================================
+13. ALGORITMO AUTORITATIVO
+DA FATURA COLETORA
+==================
+
+A implementação deve seguir
+conceitualmente este algoritmo:
+
+1. calcular o período normal
+   da cobrança;
+
+2. calcular:
+   cycleStart
+   cycleEnd
+   dueDate;
+
+3. procurar uma fatura EDITÁVEL
+   para:
+
+   crecheId
+   tutorId
+   cycleStart
+   cycleEnd;
+
+4. se existir:
+   retornar essa fatura;
+
+5. se não existir,
+   verificar se aquele período
+   já possui documento congelado
+   ou se dueDate já passou;
+
+6. se o período estiver encerrado,
+   avançar para o próximo
+   período aplicável;
+
+7. recalcular:
+
+   cycleStart
+   cycleEnd
+   dueDate
+
+   do período sucessor;
+
+8. procurar novamente
+   uma fatura editável
+   nesse período sucessor;
+
+9. se existir:
+   reutilizá-la;
+
+10. somente se não existir:
+    criar UMA nova fatura;
+
+11. retornar a nova fatura
+    como coletora daquele período.
+
+============================================================
+14. PONTO CRÍTICO
+=================
+
+A sucessora deve possuir
+campos financeiros NORMAIS:
+
+cycleStart
+
+cycleEnd
+
+dueDate.
+
+NÃO criar uma fatura
+"overflow avulsa"
+com ciclo nulo
+que os próximos lançamentos
+não consigam localizar.
+
+============================================================
+15. EXEMPLO
+===========
+
+Tutor vence dia 10.
+
+Período atual:
+11/08 → 10/09.
+
+Existe invoice:
+dueDate = 10/09
+status = paid.
+
+Novo serviço em 07/09.
+
+O serviço NÃO entra
+na invoice paga.
+
+Também NÃO cria
+uma avulsa solta.
+
+Deve procurar/criar
+a sucessora:
+
+11/09 → 10/10
+dueDate = 10/10.
+
+============================================================
+16. SEGUNDO LANÇAMENTO
+======================
+
+Novo serviço após isso:
+
+deve localizar
+a MESMA sucessora.
+
+============================================================
+17. EXPECTED
+============
+
+Invoice #100
+10/09
+PAID
+
+Invoice #101
+10/10
+PENDING
+
+Item A
+Item B
+Item C
+
+E NÃO:
+
+#101
+#102
+#103.
+
+============================================================
+18. REUTILIZAR CÁLCULO EXISTENTE
+================================
+
+Auditar e reutilizar
+as funções reais atuais
+relacionadas a:
+
+getTutorMensalidadeDia
+
+getCycleDates
+
+businessDate
+
+billing cycle
+
+dueDate
+
+ou nomes equivalentes.
+
+============================================================
+19. NÃO DUPLICAR MATEMÁTICA
+===========================
+
+Não criar
+uma implementação paralela
+de ciclos financeiros
+se a atual estiver correta.
+
+============================================================
+20. PRE-PATCH AUDIT OBRIGATÓRIA
+===============================
+
+ANTES de alterar código,
+mapear todos os caminhos
+que podem criar:
+
+invoice
+
+invoice item
+
+charge
+
+accounts receivable.
+
+============================================================
+21. ORIGIN MATRIX
+=================
+
+Mapear:
+
+booking confirmation
+
+additional services
+
+checkout consumables
+
+manual financial charge
+
+POS
+
+store
+
+packages
+
+orders
+
+e outros fluxos reais.
+
+Para cada um:
+
+ORIGIN
+
+FILE
+
+FUNCTION
+
+CREATES INVOICE?
+
+REUSES INVOICE?
+
+DUE DATE RULE
+
+IMMEDIATE PAYMENT?
+
+TUTOR REQUIRED?
+
+IN FIN-01 SCOPE?
+
+============================================================
+22. CONSOLIDAÇÃO NESTE HOTFIX
+=============================
+
+Reserva/diária a prazo
+→ CONSOLIDA.
+
+Serviço extra a prazo
+→ CONSOLIDA.
+
+Consumível de reserva
+→ CONSOLIDA.
+
+Venda a prazo
+com tutor identificado,
+SOMENTE se já usar
+Contas a Receber
+→ CONSOLIDA.
+
+============================================================
+23. FORA DO ESCOPO — INTENCIONAL
+================================
+
+Pacotes
+→ comportamento atual preservado.
+
+Pedidos da loja
+→ comportamento atual preservado.
+
+Venda já paga imediatamente
+→ comportamento atual preservado.
+
+Venda sem tutor
+→ comportamento atual preservado.
+
+============================================================
+24. IMPORTANTE
+==============
+
+Pacotes e pedidos
+podem continuar gerando
+faturas separadas.
+
+Isso é uma DECISÃO
+DE ESCOPO deste hotfix.
+
+No relatório final registrar:
+
+NOT CONSOLIDATED IN FIN-01
+BY SCOPE DECISION.
+
+============================================================
+25. POS — RISCO CONHECIDO
+=========================
+
+O POS possui um risco
+financeiro conhecido
+e NÃO deve ser declarado
+automaticamente "safe"
+apenas porque ficou fora
+do patch.
+
+============================================================
+26. POS RISK
+============
+
+Foi identificado anteriormente
+que o POS pode:
+
+processar itens individualmente;
+
+chamar addCharge
+múltiplas vezes;
+
+produzir mais de uma invoice;
+
+manter invoiceId
+apontando somente
+para a última;
+
+e potencialmente relacionar
+pagamento imediato
+de forma inconsistente.
+
+============================================================
+27. FIN-01 NÃO CORRIGE POS
+==========================
+
+NÃO corrigir POS
+neste hotfix,
+salvo se a implementação
+do collector afetá-lo
+inevitavelmente.
+
+Se afetar:
+
+STOP.
+
+Reportar.
+
+============================================================
+28. RELATÓRIO FINAL
+===================
+
+POS deve aparecer em:
+
+REMAINING RISKS.
+
+Não declarar:
+
+"Financial fully stabilized"
+
+enquanto esse risco
+não tiver sido auditado
+e corrigido separadamente.
+
+============================================================
+29. COLLECTOR SERVICE
+=====================
+
+Criar ou ajustar
+a MENOR função/service
+já existente responsável por:
+
+GET OR CREATE
+EDITABLE RECEIVABLE INVOICE.
+
+============================================================
+30. INPUT CONCEITUAL
+====================
+
+crecheId
+
+tutorId
+
+chargeDate
+
+transaction/db context
+
+cycle context.
+
+============================================================
+31. NÃO PEGAR "QUALQUER PENDING"
+================================
+
+Nunca buscar:
+
+first pending invoice
+
+sem verificar:
+
+tenant
+
+tutor
+
+cycle
+
+dueDate
+
+frozen status.
+
+============================================================
+32. CONCORRÊNCIA — O PROBLEMA
+=============================
+
+Busca antes de insert
+NÃO é suficiente.
+
+Cenário:
+
+Request A:
+não encontra invoice.
+
+Request B:
+não encontra invoice.
+
+A cria.
+
+B cria.
+
+Resultado:
+duplicação.
+
+============================================================
+33. PRE-AUDIT DE CONSTRAINT
+===========================
+
+Inspecionar o índice/constraint
+real atual relacionado a:
+
+tutorId
+
+cycleStart
+
+cycleEnd
+
+crecheId.
+
+============================================================
+34. VALIDAR TENANT
+==================
+
+Confirmar se a constraint
+existente inclui:
+
+crecheId.
+
+A regra de negócio
+é tenant-scoped.
+
+============================================================
+35. IMPORTANTE
+==============
+
+Se o índice atual for apenas:
+
+tutorId
++
+cycleStart
++
+cycleEnd
+
+documentar.
+
+Não assumir
+que isso é ideal
+para multi-tenant.
+
+============================================================
+36. ZERO MIGRATION DEFAULT
+==========================
+
+FIN-01 NÃO deve
+alterar schema automaticamente.
+
+============================================================
+37. SE CONSTRAINT PRECISAR MUDAR
+================================
+
+STOP.
+
+Reportar:
+
+current constraint
+
+problem
+
+proposed constraint
+
+existing-data impact
+
+migration risk.
+
+Aguardar aprovação.
+
+============================================================
+38. ESTRATÉGIA DE CONCORRÊNCIA
+==============================
+
+Sem migration,
+a implementação precisa usar
+uma estratégia CONCRETA.
+
+============================================================
+39. ESTRATÉGIA PREFERENCIAL
+===========================
+
+Se Postgres/Drizzle atual
+permitir de forma segura:
+
+usar transaction-scoped
+advisory lock
+
+por chave derivada de:
+
+crecheId
++
+tutorId
++
+período.
+
+============================================================
+40. POR QUÊ
+===========
+
+Lock de linha comum
+não resolve
+o caso em que:
+
+nenhuma invoice
+existe ainda.
+
+Advisory transaction lock
+serializa a criação
+do collector daquele grupo.
+
+============================================================
+41. ALTERNATIVA
+===============
+
+Se houver UNIQUE constraint
+correta e tenant-safe:
+
+pode usar estratégia:
+
+INSERT ... ON CONFLICT DO NOTHING
+
+*
+
+re-read collector invoice.
+
+============================================================
+42. ALTERNATIVA 2
+=================
+
+Retry transacional
+em conflito
+também é aceitável
+se já for padrão do projeto.
+
+============================================================
+43. NÃO FAZER
+=============
+
+NÃO usar:
+
+lock em memória
+
+Map
+
+Set
+
+mutex Node local
+
+debounce frontend
+
+timeout
+
+process variable.
+
+============================================================
+44. CONCURRENCY VERDICT
+=======================
+
+Não declarar concorrência resolvida
+sem:
+
+estratégia concreta
+
+*
+
+teste concorrente real.
+
+============================================================
+45. CHECKOUT DUPLICADO
+======================
+
+Checkout deve possuir
+idempotência financeira.
+
+============================================================
+46. REGRA
+=========
+
+Uma reserva só pode
+produzir efeitos financeiros
+de checkout UMA VEZ.
+
+============================================================
+47. LEITURA FORA DA TRANSAÇÃO
+=============================
+
+Leitura de:
+
+booking.status
+
+antes da transação
+NÃO é suficiente.
+
+Duas requests podem ler:
+
+active
+
+simultaneamente.
+
+============================================================
+48. CHECKOUT SAFE TRANSITION
+============================
+
+Dentro da transação,
+usar uma estratégia atômica.
+
+Preferência:
+
+UPDATE booking
+SET status = completed
+WHERE:
+
+id = bookingId
+AND
+crecheId = tenant
+AND
+status = ACTIVE_EXPECTED_STATUS
+
+RETURNING ...
+
+============================================================
+49. ALTERNATIVA
+===============
+
+Pode usar:
+
+SELECT ... FOR UPDATE
+
+dentro da transação
+
+*
+
+validação de estado
+
+*
+
+update.
+
+============================================================
+50. PRINCÍPIO
+=============
+
+Somente a request
+que obtiver a transição válida
+pode continuar
+para efeitos financeiros.
+
+============================================================
+51. SECOND REQUEST
+==================
+
+A segunda request:
+
+não pode faturar consumíveis.
+
+não pode criar invoice item.
+
+não pode alterar total.
+
+não pode gerar nova invoice.
+
+============================================================
+52. SIDE-EFFECT ORDER
+=====================
+
+A validação/transição
+deve ocorrer antes de:
+
+invoice item insert
+
+invoice total update
+
+consumable billing
+
+pet state update
+
+ou efeitos equivalentes.
+
+============================================================
+53. F10 GUARDS
+==============
+
+O checkout contém
+alterações recentes
+do F10 relacionadas a:
+
+SERVICE
+vs
+NON-SERVICE.
+
+Preservar todas.
+
+============================================================
+54. ORDER OF GUARDS
+===================
+
+As novas proteções
+de idempotência
+não podem:
+
+remover
+
+enfraquecer
+
+ou contornar
+os guards semânticos F10.
+
+============================================================
+55. ORIGEM DOS CONSUMÍVEIS
+==========================
+
+Investigar se invoice items
+já possuem:
+
+bookingId
+
+consumableId
+
+sourceId
+
+sourceType
+
+orderItemId
+
+metadata
+
+ou equivalente persistido.
+
+============================================================
+56. REQUIRED REPORT
+===================
+
+Para consumíveis,
+responder:
+
+QUAL é a origem persistida
+que permite distinguir
+um lançamento específico?
+
+============================================================
+57. IF ORIGIN EXISTS
+====================
+
+Usar quando apropriado
+como segunda proteção
+contra duplicação.
+
+============================================================
+58. IF NO UNIQUE ORIGIN EXISTS
+==============================
+
+Não criar migration
+automaticamente.
+
+============================================================
+59. STATE GUARD SUFFICIENCY
+===========================
+
+Provar por testes
+se a transição atômica
+da reserva já cobre:
+
+retry após sucesso
+
+duas requests simultâneas
+
+rollback
+
+vários consumíveis
+na mesma reserva.
+
+============================================================
+60. IF NOT SUFFICIENT
+=====================
+
+STOP.
+
+Reportar necessidade
+de identificador persistente
+de origem.
+
+Isso poderá exigir schema change.
+
+============================================================
+61. ROLLBACK
+============
+
+A operação financeira
+de checkout deve ocorrer
+na mesma unidade transacional
+adequada.
+
+Se ocorrer erro
+antes do commit:
+
+não pode ficar:
+
+booking completed
+sem faturamento
+
+ou:
+
+faturamento
+sem estado concluído.
+
+============================================================
+62. OLD TEST EXPECTATIONS
+=========================
+
+Testes existentes
+podem descrever
+o comportamento defeituoso
+de "overflow avulso".
+
+============================================================
+63. IMPORTANT
+=============
+
+É permitido atualizar
+expectativas de testes
+quando elas representam
+a REGRA ANTIGA BUGADA.
+
+============================================================
+64. NÃO FRAUDAR TESTE
+=====================
+
+Antes de alterar expectation:
+
+documentar:
+
+OLD EXPECTATION
+
+WHY IT REPRESENTED
+OLD BUG
+
+NEW BUSINESS RULE
+
+NEW EXPECTATION.
+
+============================================================
+65. EXPECTED TEST CHANGES
+=========================
+
+Podem precisar mudar:
+
+cycleStart
+
+cycleEnd
+
+dueDate
+
+invoice count
+
+invoiceId reuse
+
+overflow behavior.
+
+============================================================
+66. PRODUCTION HISTORY
+======================
+
+Nenhuma fatura histórica
+será modificada automaticamente.
+
+============================================================
+67. NO DATA REPAIR
+==================
+
+Não:
+
+merge invoices
+
+delete invoices
+
+reassign items
+
+recalculate totals
+
+change dueDates
+
+change statuses
+
+em produção
+durante FIN-01.
+
+============================================================
+68. EXISTING BAD DATA
+=====================
+
+Se encontrar
+histórico incorreto:
+
+registrar separadamente
+como:
+
+DATA REPAIR CANDIDATE.
+
+============================================================
+69. TEST 1 — SAME PERIOD
+========================
+
+Criar 3 cobranças elegíveis
+para o mesmo:
+
+creche
+
+tutor
+
+período.
+
+Expected:
+
+1 invoice
+
+3 items
+
+correct total
+
+correct dueDate
+
+same invoiceId.
+
+============================================================
+70. TEST 2 — PAID IMMUTABLE
+===========================
+
+Criar invoice.
+
+Adicionar itens.
+
+Pagar.
+
+Capturar:
+
+id
+
+cycleStart
+
+cycleEnd
+
+dueDate
+
+total
+
+items.
+
+Gerar nova cobrança.
+
+Expected:
+
+invoice paga
+100% unchanged.
+
+============================================================
+71. TEST 3 — SUCCESSOR
+======================
+
+Após fatura paga:
+
+Charge A
+→ cria successor.
+
+Charge B
+→ reusa successor.
+
+Charge C
+→ reusa successor.
+
+Expected:
+
+ONE successor invoice.
+
+============================================================
+72. SUCCESSOR FIELDS
+====================
+
+Assert:
+
+cycleStart != null
+
+cycleEnd != null
+
+dueDate correto.
+
+============================================================
+73. TEST 4 — PAID EARLY
+=======================
+
+Fatura ainda dentro
+do ciclo matemático atual,
+mas já PAID.
+
+Novo lançamento.
+
+Expected:
+
+advance to next
+applicable period.
+
+============================================================
+74. TEST 5 — AWAITING CONFIRMATION
+==================================
+
+Invoice awaiting_confirmation.
+
+Novo lançamento.
+
+Expected:
+
+original unchanged.
+
+novo lançamento
+→ successor period.
+
+============================================================
+75. TEST 6 — PENDING BUT EXPIRED
+================================
+
+Status:
+
+pending.
+
+dueDate:
+
+businessDate - 1 day.
+
+Novo lançamento.
+
+Expected:
+
+original frozen.
+
+new charge
+→ successor.
+
+============================================================
+76. TEST 7 — DUE TODAY
+======================
+
+status:
+pending.
+
+dueDate:
+businessDate.
+
+Expected:
+
+seguir regra definida
+de que o dia do vencimento
+ainda é válido.
+
+============================================================
+77. TEST 8 — OVERDUE STATUS
+===========================
+
+Status overdue.
+
+Novo lançamento.
+
+Expected:
+
+overdue invoice unchanged.
+
+============================================================
+78. TEST 9 — CHECKOUT REPEAT
+============================
+
+Reserva ACTIVE
+com múltiplos consumíveis.
+
+Checkout #1.
+
+Capture:
+
+invoice
+
+items
+
+total.
+
+Checkout #2.
+
+Expected:
+
+ZERO financial delta.
+
+============================================================
+79. TEST 10 — CONCURRENT CHECKOUT
+=================================
+
+Executar duas requests
+concorrentes
+para mesma reserva.
+
+Expected:
+
+one valid transition
+
+one financial effect.
+
+============================================================
+80. TEST 11 — CONCURRENT COLLECTOR
+==================================
+
+Executar 2 ou mais
+addCharge concorrentes
+para:
+
+same creche
+
+same tutor
+
+same period.
+
+Expected:
+
+ONE collector invoice.
+
+============================================================
+81. TEST 12 — TENANT ISOLATION
+==============================
+
+Creche A
+e
+Creche B
+
+não podem compartilhar
+collector mesmo que:
+
+tutorId/cycle
+coincidam de alguma forma.
+
+Validar constraint/query/lock
+com crecheId.
+
+============================================================
+82. TEST 13 — MULTIPLE CONSUMABLES
+==================================
+
+Uma reserva
+com vários consumíveis.
+
+Checkout.
+
+Expected:
+
+cada consumível correto
+é faturado UMA vez.
+
+============================================================
+83. TEST 14 — ROLLBACK
+======================
+
+Se infraestrutura permitir:
+
+forçar falha
+antes do commit.
+
+Expected:
+
+nenhuma meia-operação
+financeira persistida.
+
+============================================================
+84. TEST 15 — IMMEDIATE POS
+===========================
+
+NÃO usar este teste
+para declarar POS corrigido.
+
+============================================================
+85. POS TEST PURPOSE
+====================
+
+Apenas verificar
+que FIN-01 não introduziu
+regressão óbvia
+no fluxo imediato existente.
+
+============================================================
+86. POS REMAINS RISK
+====================
+
+Mesmo se passar:
+
+POS risk remains OPEN
+até auditoria própria.
+
+============================================================
+87. PACKAGE TEST
+================
+
+Comportamento atual
+preservado.
+
+Registrar:
+
+OUT OF CONSOLIDATION SCOPE.
+
+============================================================
+88. STORE ORDER TEST
+====================
+
+Comportamento atual
+preservado.
+
+Registrar:
+
+OUT OF CONSOLIDATION SCOPE.
+
+============================================================
+89. PRE-PATCH GIT STATUS
+========================
+
+Executar:
+
+git status --short.
+
+============================================================
+90. DIFF OWNERSHIP
+==================
+
+Separar claramente:
+
+F10
+
+R7B
+
+FIN-01
+
+test changes.
+
+============================================================
+91. NÃO REVERTER
+================
+
+Não remover
+mudanças anteriores.
+
+============================================================
+92. FILE SCOPE
+==============
+
+Antes do patch,
+listar arquivos reais
+necessários.
+
+============================================================
+93. LIMIT
+=========
+
+Se precisar alterar
+mais de:
+
+5 production source files
+
+STOP.
+
+Explicar necessidade.
+
+============================================================
+94. SCHEMA STOP RULE
+====================
+
+Se conclusão for:
+
+"precisamos mudar índice"
+
+ou:
+
+"precisamos adicionar
+source id"
+
+STOP.
+
+Não criar migration.
+
+Entregar:
+
+FIN-01 BLOCKED /
+SCHEMA DECISION REQUIRED.
+
+============================================================
+95. API CONTRACT
+================
+
+Expected:
+
+NO CHANGE.
+
+Se precisar mudar OpenAPI:
+
+STOP e reportar.
+
+============================================================
+96. UI
+======
+
+ZERO UI changes.
+
+============================================================
+97. TYPECHECK API
+=================
+
+Executar:
+
+pnpm --filter @workspace/api-server typecheck
+
+Expected:
+EXIT 0.
+
+============================================================
+98. TYPECHECK FRONTEND
+======================
+
+Executar:
+
+pnpm --filter @workspace/petdaycare typecheck
+
+Expected:
+EXIT 0.
+
+============================================================
+99. TSC-B
+=========
+
+Executar:
+
+npx tsc -b
+
+Expected:
+EXIT 0.
+
+============================================================
+100. BUILD
+==========
+
+Executar:
+
+pnpm --filter @workspace/petdaycare build
+
+Expected:
+EXIT 0.
+
+============================================================
+101. TARGETED TEST EXECUTION
+============================
+
+Reportar:
+
+exact command
+
+test files
+
+total tests
+
+passed
+
+failed
+
+skipped
+
+exit code
+
+duration.
+
+============================================================
+102. CONCURRENCY TEST EVIDENCE
+==============================
+
+Não basta dizer:
+
+"transaction used".
+
+Precisamos de
+teste concorrente executado.
+
+============================================================
+103. BEFORE FINAL VERDICT
+=========================
+
+Responder explicitamente:
+
+Is one editable invoice
+per period guaranteed?
+
+Is successor reusable?
+
+Can expired pending
+receive new items?
+
+Can simultaneous requests
+create two collectors?
+
+Can checkout financial effects
+execute twice?
+
+============================================================
+104. FINAL REPORT
+=================
+
+Entregar:
+
+A. PRE-PATCH GIT STATUS
+
+B. CURRENT FINANCIAL FLOW
+
+C. ROOT CAUSE
+
+D. CURRENT UNIQUE INDEX /
+CONSTRAINT MAP
+
+E. TENANT ISOLATION ANALYSIS
+
+F. EDITABLE INVOICE DEFINITION
+
+G. BUSINESS-DATE FREEZE RULE
+
+H. SUCCESSOR ALGORITHM
+
+I. COLLECTOR IMPLEMENTATION
+
+J. CONCURRENCY STRATEGY
+
+K. CHECKOUT ATOMIC TRANSITION
+
+L. CONSUMABLE ORIGIN ANALYSIS
+
+M. LEGACY/OLD TEST EXPECTATIONS UPDATED
+
+N. FILES CHANGED
+
+O. SCHEMA CHANGE
+
+P. API CONTRACT CHANGE
+
+Q. DATA MIGRATION
+
+R. TESTS ADDED/UPDATED
+
+S. TEST EXECUTION
+
+T. CONCURRENT TEST RESULTS
+
+U. API TYPECHECK
+
+V. FRONTEND TYPECHECK
+
+W. TSC-B
+
+X. BUILD
+
+Y. PRODUCTION DATA FINDINGS
+
+Z. REMAINING RISKS
+
+AA. POS KNOWN RISK
+
+AB. PACKAGE/STORE OUT-OF-SCOPE
+
+AC. FINAL VERDICT.
+
+============================================================
+105. FINAL QUESTIONNAIRE
+========================
+
+1. Rule explicitly remains
+   one EDITABLE invoice
+   per tutor/creche/period?
+
+2. Historical overdue invoices
+   remain separate?
+
+3. Successor algorithm
+   implemented exactly?
+
+4. Successor gets normal
+   cycleStart/cycleEnd/dueDate?
+
+5. Paid invoice immutable?
+
+6. awaiting_confirmation frozen?
+
+7. overdue status frozen?
+
+8. pending + dueDate in past
+   also frozen?
+
+9. dueDate today behavior tested?
+
+10. Business timezone preserved?
+
+11. Collector lookup centralized?
+
+12. Successor reused
+    for charge #2?
+
+13. Successor reused
+    for charge #3?
+
+14. Current unique constraint
+    identified?
+
+15. Constraint contains crecheId?
+
+16. If not,
+    tenant risk documented?
+
+17. Concurrency strategy
+    explicitly implemented?
+
+18. Concurrent collector test passed?
+
+19. Checkout validation/transition
+    occurs inside transaction?
+
+20. Two concurrent checkouts
+    produce one financial effect?
+
+21. Repeat checkout
+    produces zero new invoice items?
+
+22. Multiple consumables
+    each billed once?
+
+23. Rollback behavior safe?
+
+24. Existing F10 guards preserved?
+
+25. Consumable origin
+    identified?
+
+26. Schema needed
+    for stronger deduplication?
+
+27. If yes,
+    implementation stopped?
+
+28. POS corrected?
+    Expected NO.
+
+29. POS risk documented?
+    Expected YES.
+
+30. Package consolidated?
+    Expected NO.
+
+31. Store orders consolidated?
+    Expected NO.
+
+32. Immediate POS
+    declared fully safe?
+    Expected NO.
+
+33. Historical data modified?
+    Expected NO.
+
+34. Schema changed?
+    Expected NO unless approved.
+
+35. Migration?
+    Expected NO unless approved.
+
+36. API contract changed?
+    Expected NO.
+
+37. UI changed?
+    Expected NO.
+
+38. Old broken expectations
+    updated only with justification?
+
+39. API typecheck exit?
+
+40. Frontend typecheck exit?
+
+41. tsc-b exit?
+
+42. build exit?
+
+43. Tests total?
+
+44. Passed?
+
+45. Failed?
+
+46. Skipped?
+
+47. Concurrency tests passed?
+
+48. Remaining financial risks?
+
+49. Production-safe
+    for FIN-01 scope?
+
+50. Final verdict?
+
+============================================================
+106. VERDICT
+============
+
+Escolher exatamente um:
+
+FIN-01 CODE COMPLETE /
+ALL FIN-01 TESTS PASS /
+READY FOR PRODUCTION VALIDATION
+
+FIN-01 PARTIAL /
+ISSUES REMAIN
+
+FIN-01 BLOCKED /
+SCHEMA OR ARCHITECTURAL
+DECISION REQUIRED.
+
+============================================================
+107. IMPORTANT FINAL WORDING
+============================
+
+Mesmo se FIN-01 passar:
+
+NÃO declarar:
+
+"todo o financeiro está corrigido"
+
+ou:
+
+"Financial fully stabilized"
+
+se o risco POS
+continuar aberto.
+
+Usar:
+
+"FIN-01 scope stabilized."
+
+============================================================
+108. STOP
+=========
+
+Após relatório:
+
+STOP.
+
+NÃO:
+
+corrigir POS
+
+alterar pacotes
+
+alterar store orders
+
+retomar F10
+
+iniciar F10C.2
+
+alterar R7B
+
+retomar Product Refinement.
+
+Aguardar aprovação.

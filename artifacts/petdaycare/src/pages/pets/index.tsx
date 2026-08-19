@@ -78,7 +78,11 @@ export default function PetsDirectory() {
   const petLimit = subscription?.plan?.petLimit;
   const isLimitReached = typeof petLimit === "number" && activePetCount >= petLimit;
   const subStatus = subscription?.status;
-  const isSubBlocked = subStatus === "suspended" || subStatus === "cancelled";
+  const isTrialExpired =
+    subStatus === "trial" &&
+    !!subscription?.trialEndsAt &&
+    new Date(subscription.trialEndsAt) < new Date();
+  const isSubBlocked = isTrialExpired || subStatus === "suspended" || subStatus === "cancelled";
   const isBlocked = isLimitReached || isSubBlocked;
 
   const searchStr = useSearch();
@@ -306,14 +310,14 @@ export default function PetsDirectory() {
               
               {viewMode === "grid" ? (
                 <div className="flex-1 flex flex-col p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-display font-semibold text-foreground group-hover:text-primary transition-colors">{pet.name}</h3>
-                      <p className="text-sm text-muted-foreground capitalize mt-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-display font-semibold text-foreground group-hover:text-primary transition-colors truncate">{pet.name}</h3>
+                      <p className="text-sm text-muted-foreground capitalize mt-1 truncate">
                         {pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}
                       </p>
                     </div>
-                    <Link href={`/pets/${pet.id}`}>
+                    <Link href={`/pets/${pet.id}`} className="shrink-0">
                       <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
                         <MoreVertical className="h-5 w-5" />
                       </button>
@@ -336,7 +340,7 @@ export default function PetsDirectory() {
                 </div>
               ) : (
                 <div className="flex-1 flex flex-row items-center gap-4 sm:gap-6 ml-4 min-w-0">
-                  <div className="min-w-[120px] sm:min-w-[160px] truncate">
+                  <div className="min-w-0 flex-1 truncate">
                     <h3 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">{pet.name}</h3>
                     <p className="text-xs text-muted-foreground capitalize mt-0.5 truncate">{pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}</p>
                   </div>
@@ -404,11 +408,15 @@ export default function PetsDirectory() {
                 <AlertTriangle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
                 <div className="space-y-1">
                   <p className="text-sm font-semibold text-destructive">
-                    {isSubBlocked ? "Assinatura inativa" : "Limite de pets atingido"}
+                    {isSubBlocked
+                      ? isTrialExpired ? "Período de teste encerrado" : "Assinatura inativa"
+                      : "Limite de pets atingido"}
                   </p>
                   <p className="text-sm text-destructive/90">
                     {isSubBlocked
-                      ? "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
+                      ? isTrialExpired
+                        ? "O período de teste encerrou. Assine um plano para cadastrar novos pets."
+                        : "A assinatura da creche está inativa. Regularize o pagamento para cadastrar novos pets."
                       : `Você atingiu o limite de ${petLimit} ${petLimit === 1 ? "pet" : "pets"} do plano ${subscription?.plan?.name ?? ""}. Faça upgrade para cadastrar mais.`}
                   </p>
                 </div>
