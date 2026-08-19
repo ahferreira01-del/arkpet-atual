@@ -1,0 +1,1222 @@
+# ARKPET — PRODUCTION FINANCIAL STABILIZATION
+
+# FIN-01 v3
+
+# FINAL CONCURRENCY SPECIFICATION
+
+# ESTE BLOCO SUBSTITUI
+
+# AS REGRAS DE CONCORRÊNCIA
+
+# DA FIN-01 v2.
+
+# TODO O RESTANTE DA FIN-01 v2
+
+# PERMANECE VÁLIDO.
+
+============================================================
+
+1. PROBLEMA DE CONCORRÊNCIA
+   ============================================================
+
+A estratégia anterior de lock
+por:
+
+crecheId
++
+tutorId
++
+período
+
+NÃO é suficiente.
+
+Motivo:
+
+uma cobrança pode nascer
+matematicamente no período A,
+
+descobrir que A está congelado
+
+e ser redirecionada
+para a sucessora B.
+
+Ao mesmo tempo,
+outra cobrança pode nascer
+diretamente no período B.
+
+Se os locks forem
+por período:
+
+request 1
+pode possuir lock A
+
+enquanto:
+
+request 2
+possui lock B.
+
+As duas podem então
+tentar criar a mesma
+fatura sucessora B.
+
+============================================================
+2. REGRA AUTORITATIVA
+=====================
+
+A resolução da fatura coletora
+deve ser serializada por:
+
+CRECHE
++
+TUTOR
+
+e NÃO por período.
+
+============================================================
+3. LOCK SCOPE
+=============
+
+O lock transacional deve cobrir
+TODA a operação:
+
+1. receber cobrança;
+
+2. identificar creche/tutor;
+
+3. adquirir lock;
+
+4. calcular ciclo normal;
+
+5. procurar collector editável;
+
+6. detectar fatura congelada;
+
+7. avançar para próximo período;
+
+8. calcular sucessora;
+
+9. procurar sucessora existente;
+
+10. criar sucessora se necessário;
+
+11. adicionar lançamento;
+
+12. atualizar total;
+
+13. concluir transaction.
+
+============================================================
+4. LOCK MUST COME BEFORE
+PERIOD RESOLUTION
+=================
+
+Não fazer:
+
+calculate period
+
+→ choose successor
+
+→ acquire lock.
+
+Preferir:
+
+begin transaction
+
+→ acquire tutor/creche lock
+
+→ resolve period
+
+→ resolve successor
+
+→ get/create invoice
+
+→ add charge
+
+→ commit.
+
+============================================================
+5. POSTGRES PREFERRED STRATEGY
+==============================
+
+Se a infraestrutura atual
+for PostgreSQL
+e os IDs forem inteiros
+compatíveis:
+
+preferir advisory
+TRANSACTION lock
+baseado diretamente em:
+
+crecheId
++
+tutorId.
+
+Exemplo conceitual:
+
+pg_advisory_xact_lock(
+crecheId,
+tutorId
+)
+
+ou equivalente seguro
+compatível com o driver atual.
+
+============================================================
+6. IMPORTANT
+============
+
+Não copiar SQL cegamente.
+
+Primeiro confirmar:
+
+tipo real dos IDs;
+
+API Drizzle disponível;
+
+forma correta
+de executar advisory lock
+no projeto atual.
+
+============================================================
+7. TRANSACTION-SCOPED ONLY
+==========================
+
+Usar lock ligado
+à transação.
+
+Preferir:
+
+pg_advisory_xact_lock
+
+e NÃO:
+
+session-level lock
+que exige unlock manual.
+
+============================================================
+8. WHY TRANSACTION LOCK
+=======================
+
+O lock deve ser liberado
+automaticamente em:
+
+COMMIT
+
+ou:
+
+ROLLBACK.
+
+Evitar lock perdido
+por exception.
+
+============================================================
+9. LOCK KEY IS TENANT-SCOPED
+============================
+
+A chave DEVE distinguir:
+
+Creche A / Tutor X
+
+de:
+
+Creche B / Tutor X.
+
+============================================================
+10. NEVER LOCK ONLY TUTOR
+=========================
+
+Não usar apenas:
+
+tutorId
+
+se o mesmo identificador
+puder participar
+de contextos multi-tenant.
+
+A unidade financeira é:
+
+crecheId + tutorId.
+
+============================================================
+11. NEVER LOCK ONLY PERIOD
+==========================
+
+Não usar como lock principal:
+
+cycleStart
+
+cycleEnd
+
+dueDate
+
+period hash.
+
+A transição entre períodos
+é justamente a condição
+que queremos proteger.
+
+============================================================
+12. REQUEST A EXAMPLE
+=====================
+
+Request A:
+
+chargeDate
+→ ciclo setembro.
+
+Setembro:
+PAID.
+
+A precisa criar/localizar:
+
+Outubro.
+
+Como possui lock:
+
+Creche 30
++
+Tutor 55
+
+nenhuma outra cobrança
+desse mesmo par
+pode resolver Outubro
+simultaneamente.
+
+============================================================
+13. REQUEST B EXAMPLE
+=====================
+
+Request B chega
+diretamente para Outubro.
+
+Ela deve aguardar
+o lock:
+
+Creche 30
++
+Tutor 55.
+
+Depois do commit
+da Request A:
+
+B recalcula/reconsulta.
+
+Expected:
+
+encontra a invoice
+de Outubro criada por A.
+
+NÃO cria outra.
+
+============================================================
+14. RE-READ AFTER LOCK
+======================
+
+Toda consulta de existência
+relevante deve acontecer
+DEPOIS da aquisição do lock.
+
+============================================================
+15. IMPORTANT
+=============
+
+Não confiar em:
+
+invoice lookup
+realizado antes do lock.
+
+Dados obtidos antes
+podem estar stale.
+
+============================================================
+16. UNIQUE CONSTRAINT AUDIT
+===========================
+
+Antes da implementação,
+inspecionar a constraint
+real de invoices.
+
+Registrar:
+
+constraint name
+
+columns
+
+nullable behavior
+
+partial condition,
+se houver.
+
+============================================================
+17. SUSPECTED CURRENT INDEX
+===========================
+
+Existe indicação anterior
+de constraint baseada em:
+
+tutorId
+
+cycleStart
+
+cycleEnd
+
+sem:
+
+crecheId.
+
+Isso NÃO deve ser assumido.
+
+Confirmar no código/schema real.
+
+============================================================
+18. IF CRECHEID IS MISSING
+==========================
+
+Se a constraint realmente for:
+
+tutorId
++
+cycleStart
++
+cycleEnd
+
+sem crecheId,
+
+responder obrigatoriamente:
+
+A.
+Tutor é globalmente único
+entre creches?
+
+B.
+Uma mesma entidade tutor
+pode estar associada
+a mais de uma creche?
+
+C.
+A constraint atual
+pode causar conflito
+cross-tenant?
+
+============================================================
+19. IF TENANT RISK EXISTS
+=========================
+
+Se houver risco real
+de conflito entre creches:
+
+STOP.
+
+Não criar migration.
+
+Reportar:
+
+FIN-01 BLOCKED /
+TENANT UNIQUE CONSTRAINT
+DECISION REQUIRED.
+
+============================================================
+20. IMPORTANT DISTINCTION
+=========================
+
+O advisory lock
+corrige concorrência
+em runtime.
+
+Ele NÃO corrige
+uma constraint de banco
+semanticamente incorreta.
+
+São problemas diferentes.
+
+============================================================
+21. NO FALSE CLAIM
+==================
+
+Não declarar:
+
+tenant-safe
+
+apenas porque
+o lock contém crecheId.
+
+Também validar:
+
+queries
+
+WHERE clauses
+
+constraint.
+
+============================================================
+22. ON CONFLICT
+===============
+
+Se já existir
+uma UNIQUE constraint
+correta e tenant-safe,
+
+pode ser usado adicionalmente:
+
+INSERT
+ON CONFLICT DO NOTHING
+
+*
+
+re-read collector.
+
+============================================================
+23. DEFENSE IN DEPTH
+====================
+
+A combinação ideal,
+quando suportada pelo schema atual:
+
+transaction
+
+*
+
+creche/tutor advisory lock
+
+*
+
+tenant-safe unique constraint
+
+*
+
+re-read after insert conflict.
+
+============================================================
+24. BUT NO MIGRATION
+====================
+
+Não alterar constraint
+nesta fase
+sem aprovação explícita.
+
+============================================================
+25. COLLECTOR ALGORITHM
+=======================
+
+Dentro do lock:
+
+period =
+calculateCycle(chargeDate)
+
+LOOP:
+
+candidate =
+findEditableInvoice(
+crecheId,
+tutorId,
+period
+)
+
+if candidate exists:
+return candidate
+
+closedInvoice =
+findFrozenInvoice(
+crecheId,
+tutorId,
+period
+)
+
+periodExpired =
+period.dueDate < businessDate
+
+if closedInvoice exists
+OR periodExpired:
+period =
+nextApplicablePeriod(period)
+continue
+
+else:
+create normal invoice
+with:
+crecheId
+tutorId
+cycleStart
+cycleEnd
+dueDate
+
+```
+return invoice
+```
+
+============================================================
+26. LOOP SAFETY
+===============
+
+Não implementar
+loop infinito.
+
+A progressão de período
+deve sempre avançar.
+
+Se já existir helper
+de próximo ciclo:
+
+reutilizar.
+
+============================================================
+27. MULTIPLE CLOSED PERIODS
+===========================
+
+O algoritmo deve funcionar
+mesmo que existam:
+
+Setembro PAID
+
+Outubro OVERDUE
+
+Novembro AWAITING_CONFIRMATION.
+
+Novo lançamento deve avançar
+até o primeiro período
+que possa possuir
+uma nova collector editável.
+
+============================================================
+28. IMPORTANT
+=============
+
+Não sobrescrever
+nem reabrir nenhuma
+das anteriores.
+
+============================================================
+29. NO GLOBAL OPEN INVOICE SEARCH
+=================================
+
+Não fazer:
+
+SELECT pending
+WHERE tutorId = X
+LIMIT 1.
+
+A invoice precisa
+corresponder ao período
+resolvido pelo algoritmo.
+
+============================================================
+30. CHECKOUT CONCURRENCY
+========================
+
+A estratégia de checkout
+permanece separada
+do collector lock.
+
+============================================================
+31. CHECKOUT AUTHORITY
+======================
+
+Para uma mesma booking,
+usar transição atômica
+ou row lock
+dentro da transaction.
+
+============================================================
+32. PREFERRED CHECKOUT TRANSITION
+=================================
+
+Conceitualmente:
+
+UPDATE booking
+
+SET status = completed
+
+WHERE:
+
+id = bookingId
+
+AND crecheId = currentCreche
+
+AND status = expectedActiveStatus
+
+RETURNING booking.
+
+============================================================
+33. ZERO ROWS
+=============
+
+Se zero registros
+forem atualizados:
+
+NÃO processar efeitos
+financeiros de checkout.
+
+============================================================
+34. SIDE EFFECT ORDER
+=====================
+
+Somente depois
+de obter a transição:
+
+processar consumíveis
+
+add charges
+
+update invoice
+
+pet state
+
+demais efeitos atuais.
+
+============================================================
+35. TRANSACTION
+===============
+
+Tudo deve permanecer
+na mesma unidade transacional
+quando a arquitetura atual
+permitir.
+
+============================================================
+36. COLLECTOR LOCK INSIDE CHECKOUT
+==================================
+
+Se checkout chama
+o collector financeiro,
+
+esse collector deve adquirir
+ou respeitar
+o lock:
+
+crecheId + tutorId
+
+na mesma transaction.
+
+============================================================
+37. DEADLOCK REVIEW
+===================
+
+Verificar ordem dos locks.
+
+Não criar situação em que:
+
+fluxo A bloqueia booking
+e depois tutor
+
+enquanto:
+
+fluxo B bloqueia tutor
+e depois booking.
+
+============================================================
+38. LOCK ORDER
+==============
+
+Definir uma ordem consistente
+nos fluxos tocados pelo FIN-01.
+
+Documentar a ordem real.
+
+============================================================
+39. IF DEADLOCK RISK
+====================
+
+Se a arquitetura atual
+impedir ordem consistente:
+
+STOP.
+
+Reportar antes
+de introduzir locks complexos.
+
+============================================================
+40. TEST — SUCCESSOR RACE
+=========================
+
+Novo teste obrigatório.
+
+Preparar:
+
+Tutor T
+Creche C
+
+Período A:
+invoice PAID.
+
+Período B:
+nenhuma invoice.
+
+============================================================
+41. CONCURRENT REQUESTS
+=======================
+
+Disparar simultaneamente:
+
+Request 1:
+chargeDate pertencente
+matematicamente ao período A.
+
+Ela deve avançar para B.
+
+Request 2:
+chargeDate pertencente
+diretamente ao período B.
+
+============================================================
+42. EXPECTED
+============
+
+Após ambas:
+
+EXACTLY ONE
+invoice para período B.
+
+============================================================
+43. ASSERT
+==========
+
+Ambos os lançamentos
+devem estar associados
+ao MESMO:
+
+invoiceId.
+
+============================================================
+44. ASSERT FIELDS
+=================
+
+A invoice B deve possuir:
+
+correct crecheId
+
+correct tutorId
+
+correct cycleStart
+
+correct cycleEnd
+
+correct dueDate
+
+status correto.
+
+============================================================
+45. NO NULL OVERFLOW
+====================
+
+cycleStart:
+NOT NULL.
+
+cycleEnd:
+NOT NULL.
+
+dueDate:
+correct.
+
+============================================================
+46. TEST — SAME PERIOD RACE
+===========================
+
+Executar duas cobranças
+simultâneas diretamente
+para o mesmo período aberto.
+
+Expected:
+
+ONE collector.
+
+============================================================
+47. TEST — THREE REQUESTS
+=========================
+
+Se infraestrutura permitir:
+
+3 requests concorrentes
+
+para mesmo:
+
+creche
+
+tutor.
+
+Expected:
+
+sem invoices duplicadas.
+
+============================================================
+48. TEST — DIFFERENT TUTORS
+===========================
+
+Tutor A
+e Tutor B
+na mesma creche:
+
+não devem bloquear
+semanticamente um ao outro
+além do necessário.
+
+============================================================
+49. TEST — DIFFERENT CRECHES
+============================
+
+Mesmo cenário lógico
+em:
+
+Creche A
+
+Creche B
+
+não deve compartilhar
+collector ou lock key.
+
+============================================================
+50. CONCURRENCY EVIDENCE
+========================
+
+Reportar:
+
+requests launched
+
+timestamps/duration
+se disponível
+
+invoice IDs returned
+
+invoice count
+
+item count
+
+database result.
+
+============================================================
+51. NO SERIAL TEST FAKE
+=======================
+
+Não chamar:
+
+await requestA
+await requestB
+
+e declarar
+"concurrent test".
+
+Usar execução realmente
+concorrente,
+por exemplo mecanismo
+equivalente a:
+
+Promise.all(...)
+
+compatível com
+infraestrutura existente.
+
+============================================================
+52. CHECKOUT CONCURRENT TEST
+============================
+
+Também manter:
+
+2 checkout requests
+para a mesma booking.
+
+Expected:
+
+one succeeds
+in producing effects;
+
+the other produces:
+
+zero additional
+financial side effects.
+
+============================================================
+53. TEST RESULT IMPORTANT
+=========================
+
+O status HTTP da segunda
+é secundário.
+
+O critério principal:
+
+financial delta = ZERO.
+
+============================================================
+54. CONSUMABLE COUNT
+====================
+
+Se houver 3 consumíveis:
+
+após dois checkouts concorrentes:
+
+continuar existindo
+exatamente 3 lançamentos
+corretos,
+
+NÃO 6.
+
+============================================================
+55. ROLLBACK
+============
+
+Se uma transaction
+com advisory_xact_lock
+falhar:
+
+o lock deve ser liberado
+com rollback.
+
+Confirmar por comportamento
+ou semântica PostgreSQL usada.
+
+============================================================
+56. PRE-IMPLEMENTATION GATE
+===========================
+
+Antes do patch,
+responder:
+
+1. Postgres confirmado?
+
+2. Drizzle permite executar
+   advisory xact lock?
+
+3. crecheId integer?
+
+4. tutorId integer?
+
+5. Current unique constraint?
+
+6. Does it include crecheId?
+
+7. Can tutor span creches?
+
+8. Existing transaction boundary
+   supports collector lock?
+
+9. Checkout transaction
+   can use same collector safely?
+
+============================================================
+57. STOP CONDITIONS
+===================
+
+STOP antes da implementação se:
+
+A.
+constraint tenant-unsafe
+exigir migration;
+
+B.
+lock não puder ser aplicado
+na transaction existente;
+
+C.
+deadlock order não puder
+ser resolvida com patch pequeno;
+
+D.
+schema for necessário
+para deduplicação;
+
+E.
+API contract precisar mudar.
+
+============================================================
+58. FINAL CONCURRENCY ACCEPTANCE
+================================
+
+FIN-01 só pode declarar:
+
+COLLECTOR CONCURRENCY SAFE
+
+se TODOS passarem:
+
+same-period concurrent charges
+
+closed-period → successor race
+
+multiple concurrent charges
+
+tenant isolation
+
+single collector invoice.
+
+============================================================
+59. FINAL CHECKOUT ACCEPTANCE
+=============================
+
+FIN-01 só pode declarar:
+
+CHECKOUT IDEMPOTENT
+
+se passar:
+
+sequential retry
+
+concurrent retry
+
+multiple consumables
+
+zero second financial delta
+
+rollback safety
+quando testável.
+
+============================================================
+60. POS
+=======
+
+POS permanece:
+
+KNOWN OPEN RISK.
+
+NÃO corrigir.
+
+NÃO declarar
+financeiro completo.
+
+============================================================
+61. PACKAGES / STORE
+====================
+
+Permanecem:
+
+OUT OF FIN-01
+CONSOLIDATION SCOPE.
+
+============================================================
+62. FINAL REPORT ADDITIONS
+==========================
+
+Além do relatório
+da FIN-01 v2,
+incluir obrigatoriamente:
+
+CONCURRENCY LOCK KEY
+
+LOCK TYPE
+
+LOCK ACQUISITION POINT
+
+LOCK RELEASE SEMANTICS
+
+LOCK ORDER
+
+CURRENT UNIQUE CONSTRAINT
+
+TENANT-SAFETY RESULT
+
+SUCCESSOR RACE TEST
+
+SAME-PERIOD RACE TEST
+
+CONCURRENT CHECKOUT TEST
+
+DEADLOCK RISK
+
+REMAINING SCHEMA RISK.
+
+============================================================
+63. FINAL QUESTIONNAIRE ADDITIONS
+=================================
+
+1. Lock changed from
+   period-scoped
+   to creche+tutor scoped?
+
+2. Lock acquired BEFORE
+   period resolution?
+
+3. Lock covers successor resolution?
+
+4. Queries re-run after lock?
+
+5. Two requests entering
+   different initial cycles
+   but converging on same successor
+   create exactly one invoice?
+
+6. Same-period concurrent requests
+   create exactly one invoice?
+
+7. Lock key includes crecheId?
+
+8. Lock key includes tutorId?
+
+9. Unique constraint inspected?
+
+10. Constraint includes crecheId?
+
+11. Can tutor participate
+    in multiple creches?
+
+12. Tenant mismatch risk?
+
+13. Migration required?
+
+14. If migration required,
+    did implementation STOP?
+
+15. Lock order documented?
+
+16. Deadlock risk acceptable?
+
+17. Concurrent checkout
+    produces one financial effect?
+
+18. Three consumables
+    remain three after retry?
+
+19. POS still listed
+    as open risk?
+
+20. Final wording is:
+    "FIN-01 scope stabilized"
+    and not:
+    "financial fully stabilized"?
+
+============================================================
+64. FINAL VERDICT
+=================
+
+Somente aceitar:
+
+FIN-01 CODE COMPLETE /
+ALL FIN-01 TESTS PASS /
+READY FOR PRODUCTION VALIDATION
+
+se a concorrência
+da fatura sucessora
+também estiver comprovada.
+
+Caso constraint/schema
+bloqueie segurança:
+
+FIN-01 BLOCKED /
+SCHEMA OR TENANT
+CONSTRAINT DECISION REQUIRED.
+
+Caso lógica esteja parcial:
+
+FIN-01 PARTIAL /
+ISSUES REMAIN.
+
+============================================================
+65. STOP
+========
+
+Após implementação/testes:
+
+STOP.
+
+Não corrigir POS.
+
+Não criar migration
+sem autorização.
+
+Não retomar:
+
+F10
+
+F10C.2
+
+R7B
+
+Product Refinement.
+
+Entregar relatório
+e aguardar aprovação.
