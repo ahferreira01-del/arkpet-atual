@@ -2,7 +2,13 @@ import React, { useState } from "react";
 import { PetAvatar } from "@/components/pet-avatar";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { useListPets, useCreateBooking } from "@workspace/api-client-react";
+import {
+  useListPets,
+  useCreateBooking,
+  getListBookingsQueryKey,
+  getGetCrecheStatsQueryKey,
+  getListTasksQueryKey,
+} from "@workspace/api-client-react";
 import { useListCatalogue, usePackagesBalance, useServiceCredits } from "@/hooks/use-financial";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -50,17 +56,17 @@ const STEPS = [
 export default function NewBooking() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const isTutor = user?.role === "tutor";
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: petsResponse } = useListPets(crecheId);
+  const { data: petsResponse } = useListPets(crecheId ?? 0);
   const pets = (petsResponse as any)?.items;
   const { data: catalogue, isLoading: catalogueLoading } =
-    useListCatalogue(crecheId);
-  const { data: packagesData } = usePackagesBalance(crecheId);
-  const { data: serviceCreditsData } = useServiceCredits(crecheId);
+    useListCatalogue(crecheId ?? 0);
+  const { data: packagesData } = usePackagesBalance(crecheId ?? 0);
+  const { data: serviceCreditsData } = useServiceCredits(crecheId ?? 0);
   const createMutation = useCreateBooking();
 
   const [step, setStep] = useState(1);
@@ -186,7 +192,7 @@ export default function NewBooking() {
   };
 
   const handleConfirm = async () => {
-    if (!selectedService) return;
+    if (!crecheId || !selectedService) return;
 
     // Use the catalogue item's canonical type directly when it is a known
     // non-"service" type (e.g. "day_use"). For generic "service" catalogue
@@ -227,7 +233,12 @@ export default function NewBooking() {
         }),
       );
 
-      queryClient.invalidateQueries();
+      if (crecheId) {
+        queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
+        queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
+      }
       toast({
         title: "Reserva Efetuada",
         description:

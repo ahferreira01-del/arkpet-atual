@@ -133,7 +133,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
       setIsModalOpen(false);
       setSelectedPetId(0);
       setDuration(30);
-      queryClient.invalidateQueries({ queryKey: ["creche-walks"] });
+      queryClient.invalidateQueries({ queryKey: ["creche-walks", crecheId] });
     },
   });
 
@@ -148,7 +148,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
       if (!r.ok) throw new Error("Erro ao finalizar passeio");
       return r.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["creche-walks"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["creche-walks", crecheId] }),
   });
 
   const activeWalks = walks?.filter((w) => w.status === "in_progress") || [];

@@ -16,7 +16,7 @@ export function TutorSmartIndicators({ crecheId, tutorId }: { crecheId: number, 
       </div>
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><ShoppingBag className="w-3 h-3 mr-1" /> Faturas Pagas</p>
-        <p className="font-bold text-lg text-slate-800">{stats.purchasesCount}</p>
+        <p className="font-bold text-lg text-slate-800">{stats.purchaseCount}</p>
       </div>
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><TrendingUp className="w-3 h-3 mr-1" /> Ticket Médio</p>
@@ -25,7 +25,7 @@ export function TutorSmartIndicators({ crecheId, tutorId }: { crecheId: number, 
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><Calendar className="w-3 h-3 mr-1" /> Última Compra</p>
         <p className="font-bold text-lg text-slate-800">
-          {stats.lastPurchase ? new Date(stats.lastPurchase).toLocaleDateString('pt-BR') : 'N/A'}
+          {stats.lastPayment ? new Date(stats.lastPayment).toLocaleDateString('pt-BR') : 'N/A'}
         </p>
       </div>
     </div>
@@ -41,7 +41,7 @@ export function CatalogueSmartIndicators({ crecheId, itemId, type }: { crecheId:
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2 mb-6">
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><DollarSign className="w-3 h-3 mr-1" /> Receita Gerada</p>
-        <p className="font-bold text-lg text-emerald-600">{formatCentsToBRL(stats.totalRevenue)}</p>
+        <p className="font-bold text-lg text-emerald-600">{formatCentsToBRL(stats.revenue)}</p>
       </div>
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><Package className="w-3 h-3 mr-1" /> Qtd. Vendida</p>
@@ -54,7 +54,7 @@ export function CatalogueSmartIndicators({ crecheId, itemId, type }: { crecheId:
       <div className="bg-slate-50 border rounded-lg p-3">
         <p className="text-xs text-slate-500 flex items-center"><Calendar className="w-3 h-3 mr-1" /> Última Venda</p>
         <p className="font-bold text-lg text-slate-800">
-          {stats.lastSold ? new Date(stats.lastSold).toLocaleDateString('pt-BR') : 'N/A'}
+          {stats.lastSale ? new Date(stats.lastSale).toLocaleDateString('pt-BR') : 'N/A'}
         </p>
       </div>
     </div>

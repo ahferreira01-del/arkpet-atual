@@ -1,4 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  getListBookingsQueryKey,
+  getListPetsQueryKey,
+  getGetCrecheStatsQueryKey,
+} from "@workspace/api-client-react";
 
 export function useTutorInvoices(crecheId: number, tutorId: number | undefined) {
   return useQuery({
@@ -62,8 +67,10 @@ export function useDeleteBookingConsumable(crecheId: number) {
       });
       if (!res.ok) throw new Error("Erro ao remover consumível");
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["booking-consumables"] });
+    onSuccess: (_, { bookingId }) => {
+      queryClient.invalidateQueries({ queryKey: ["booking-consumables", crecheId, bookingId] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -87,7 +94,7 @@ export function useAddBookingConsumable(crecheId: number) {
     onSuccess: (_, { bookingId }) => {
       queryClient.invalidateQueries({ queryKey: ["booking-consumables", crecheId, bookingId] });
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -108,11 +115,11 @@ export function useFinancialCheckOut(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["listBookings"] });
-      queryClient.invalidateQueries({ queryKey: ["getPet"] });
-      queryClient.invalidateQueries({ queryKey: ["listPets"] });
-      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -172,18 +179,54 @@ export function useDashboardDre(crecheId: number, startDate?: string, endDate?: 
   });
 }
 
+export async function fetchAllInvoices(
+  crecheId: number,
+  fetchFn: typeof fetch = fetch,
+  token?: string | null
+) {
+  const authToken = token !== undefined ? token : (typeof localStorage !== "undefined" ? localStorage.getItem("auth_token") : null);
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
+
+  const firstRes = await fetchFn(`/api/creches/${crecheId}/financial/invoices?page=1&pageSize=100`, {
+    headers,
+  });
+  if (!firstRes.ok) throw new Error("Erro ao carregar faturas");
+  const firstPage = await firstRes.json();
+
+  if (firstPage.totalPages && firstPage.totalPages > 1) {
+    const remainingPages = Array.from({ length: firstPage.totalPages - 1 }, (_, i) => i + 2);
+    const remainingResults = await Promise.all(
+      remainingPages.map(async (page) => {
+        const pageRes = await fetchFn(`/api/creches/${crecheId}/financial/invoices?page=${page}&pageSize=100`, {
+          headers,
+        });
+        if (!pageRes.ok) throw new Error(`Erro ao carregar faturas (página ${page})`);
+        return pageRes.json();
+      })
+    );
+    const allInvoices = [
+      ...(firstPage.data || []),
+      ...remainingResults.flatMap((r: any) => r.data || []),
+    ];
+    return {
+      ...firstPage,
+      data: allInvoices,
+      pageSize: allInvoices.length,
+      total: firstPage.total ?? allInvoices.length,
+    };
+  }
+
+  return firstPage;
+}
+
 export function useListAllInvoices(crecheId: number) {
   return useQuery({
     staleTime: 5 * 60 * 1000, // 5 minutos de cache para evitar refetching
     queryKey: ["all-invoices", crecheId],
-    queryFn: async () => {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`/api/creches/${crecheId}/financial/invoices`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error("Erro ao carregar faturas");
-      return res.json();
-    },
+    queryFn: () => fetchAllInvoices(crecheId),
     enabled: !!crecheId,
   });
 }
@@ -205,8 +248,8 @@ export function useUpdateInvoiceStatus(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -232,10 +275,10 @@ export function usePayManualInvoice(crecheId: number) {
     },
     onSuccess: () => {
       // Fase 10: pagamento libera créditos e atualiza saldo de pacotes/serviços
-      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
-      queryClient.invalidateQueries({ queryKey: ["dre"] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
@@ -260,10 +303,10 @@ export function useApproveReceipt(crecheId: number) {
     },
     onSuccess: () => {
       // Fase 10: aprovação de comprovante libera créditos e atualiza saldo de pacotes/serviços
-      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow"] });
-      queryClient.invalidateQueries({ queryKey: ["dre"] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
@@ -305,7 +348,7 @@ export function useCreateExpense(crecheId: number) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["financialAuditLogs", crecheId] });
     }
   });
 }
@@ -323,12 +366,14 @@ export function useUpdateExpense(crecheId: number) {
         },
         body: JSON.stringify(data)
       });
-      if (!res.ok) throw new Error("Erro ao atualizar despesa");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || body?.message || "Erro ao atualizar despesa");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
     }
   });
 }
@@ -342,12 +387,15 @@ export function useDeleteExpense(crecheId: number) {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error("Erro ao deletar despesa");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || body?.message || "Erro ao deletar despesa");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["financialAuditLogs", crecheId] });
     }
   });
 }
@@ -361,19 +409,36 @@ export function usePayExpense(crecheId: number) {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (!res.ok) throw new Error("Erro ao pagar despesa");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || body?.message || "Erro ao pagar despesa");
+      }
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expenses", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-kpis", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["financialAuditLogs", crecheId] });
     }
   });
 }
 
-export function useListCatalogue(crecheId: number) {
+export function useListCatalogue(
+  crecheId: number,
+  options?: {
+    staleTime?: number;
+    refetchOnMount?: boolean | "always";
+    refetchOnWindowFocus?: boolean | "always";
+    refetchOnReconnect?: boolean | "always";
+  }
+) {
   return useQuery({
-    staleTime: 5 * 60 * 1000, // 5 minutos de cache para evitar refetching
+    staleTime: options?.staleTime ?? 5 * 60 * 1000,
+    refetchOnMount: options?.refetchOnMount,
+    refetchOnWindowFocus: options?.refetchOnWindowFocus,
+    refetchOnReconnect: options?.refetchOnReconnect,
     queryKey: ["catalogue", crecheId],
     queryFn: async () => {
       const token = localStorage.getItem("auth_token");
@@ -405,7 +470,9 @@ export function usePurchasePackage(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["all-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -561,7 +628,7 @@ export function useRefundInvoice(crecheId: number) {
     onSuccess: () => {
       // Fase 10: fatura estornada cancela orders vinculadas e afeta DRE e tutor-invoices
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
@@ -584,7 +651,7 @@ export function useVoidInvoice(crecheId: number) {
     onSuccess: () => {
       // Fase 10: void cancela orders vinculadas e invalida visão do tutor
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
     }
   });
@@ -728,7 +795,7 @@ export function useUpdateOrderStatus(crecheId: number) {
 export function useCreateOrder(crecheId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { items: { catalogueItemId: number, quantity: number }[], deliveryMethod: string, deliveryAddress?: string, deliveryFee: number }) => {
+    mutationFn: async (data: { operationId: string, items: { catalogueItemId: number, quantity: number }[], deliveryMethod: string, deliveryAddress?: string | null, deliveryFee?: number }) => {
       if (!crecheId) throw new Error("Tenant não identificado");
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`/api/creches/${crecheId}/orders`, {
@@ -750,7 +817,7 @@ export function useCreateOrder(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["orders", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["tutor-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["tutor-invoices", crecheId] });
     }
   });
 }
@@ -758,15 +825,24 @@ export function useCreateOrder(crecheId: number) {
 export function usePosSale(crecheId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { items: { catalogueItemId: number, quantity: number }[], paymentMethod?: string, tutorId?: number }) => {
+    mutationFn: async (payload: {
+      operationId?: string;
+      items: { catalogueItemId: number; quantity: number }[];
+      paymentMethod?: string;
+      tutorId?: number | null;
+    }) => {
       const token = localStorage.getItem("auth_token");
+      const finalPayload = {
+        ...payload,
+        operationId: payload.operationId || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : undefined),
+      };
       const res = await fetch(`/api/creches/${crecheId}/financial/pos-sale`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}` 
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(finalPayload)
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -775,11 +851,12 @@ export function usePosSale(crecheId: number) {
       return res.json();
     },
     onSuccess: () => {
-      // Fase 10: chaves corretas para dre e cash-flow (eram "dashboard-dre"/"dashboard-cash-flow")
       queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-kpis", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["financialAuditLogs", crecheId] });
     }
   });
 }
@@ -809,7 +886,7 @@ export function useRefundInvoiceItem(crecheId: number) {
       queryClient.invalidateQueries({ queryKey: ["catalogue", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["dre", crecheId] });
       queryClient.invalidateQueries({ queryKey: ["cash-flow", crecheId] });
-      queryClient.invalidateQueries({ queryKey: ["audit-logs", crecheId] });
+      queryClient.invalidateQueries({ queryKey: ["financialAuditLogs", crecheId] });
     }
   });
 }
@@ -925,14 +1002,14 @@ export function useTutorSmartIndicators(crecheId: number, tutorId: number | unde
     queryFn: async () => {
       if (!tutorId) return null;
       const token = localStorage.getItem('auth_token');
-      const res = await fetch(`/api/creches/${crecheId}/tutors/${tutorId}/stats`, {
+      const res = await fetch(`/api/creches/${crecheId}/financial/tutors/${tutorId}/stats`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Falha ao buscar indicadores');
       return await res.json();
     },
     enabled: !!crecheId && !!tutorId,
-      });
+  });
 }
 
 export function useCatalogueSmartIndicators(crecheId: number, itemId: number | undefined) {

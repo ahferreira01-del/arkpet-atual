@@ -4,6 +4,9 @@ import {
   useUpdatePet,
   useListBookings,
   useCheckIn,
+  getGetPetQueryKey,
+  getListPetsQueryKey,
+  getListBookingsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
@@ -30,14 +33,14 @@ const temperamentMap: Record<string, string> = { calm: "Calmo", playful: "Brinca
 
 export default function PetDetail({ id }: { id: number }) {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const queryClient = useQueryClient();
 
-  const { data: pet, isLoading } = useGetPet(crecheId, id);
-  const { data: bookingsResponse } = useListBookings(crecheId);
+  const { data: pet, isLoading } = useGetPet(crecheId ?? 0, id);
+  const { data: bookingsResponse } = useListBookings(crecheId ?? 0);
   const bookings = (bookingsResponse as any)?.items;
   const updatePetMutation = useUpdatePet();
-  const { data: tutorInvoicesData } = useTutorInvoices(crecheId, pet?.tutorId);
+  const { data: tutorInvoicesData } = useTutorInvoices(crecheId ?? 0, pet?.tutorId);
   const tutorInvoices = Array.isArray(tutorInvoicesData) 
     ? tutorInvoicesData 
     : (tutorInvoicesData as any)?.data ?? (tutorInvoicesData as any)?.items ?? [];
@@ -51,6 +54,7 @@ export default function PetDetail({ id }: { id: number }) {
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!crecheId) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingPhoto(true);
@@ -60,7 +64,12 @@ export default function PetDetail({ id }: { id: number }) {
       updatePetMutation.mutate(
         { crecheId, petId: id, data: { photoUrl: objectPath } },
         {
-          onSuccess: () => { queryClient.invalidateQueries(); },
+          onSuccess: () => {
+            if (crecheId) {
+              queryClient.invalidateQueries({ queryKey: getGetPetQueryKey(crecheId, id) });
+              queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+            }
+          },
           onError: () => {
             toast({ title: "Erro ao salvar foto", description: "Tente novamente.", variant: "destructive" });
           },
@@ -80,6 +89,7 @@ export default function PetDetail({ id }: { id: number }) {
 
   const onTheWayMutation = useMutation({
     mutationFn: async ({ bookingId, type, etaMinutes }: { bookingId: number; type: string; etaMinutes: number }) => {
+      if (!crecheId) throw new Error("Creche não identificada");
       const token = localStorage.getItem("auth_token");
       const r = await fetch(`/api/creches/${crecheId}/bookings/${bookingId}/on-the-way`, {
         method: "POST",
@@ -97,6 +107,7 @@ export default function PetDetail({ id }: { id: number }) {
 
   const handleEditProfile = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!crecheId) return;
     const fd = new FormData(e.currentTarget);
     updatePetMutation.mutate(
       {
@@ -117,7 +128,10 @@ export default function PetDetail({ id }: { id: number }) {
       {
         onSuccess: () => {
           setEditOpen(false);
-          queryClient.invalidateQueries();
+          if (crecheId) {
+            queryClient.invalidateQueries({ queryKey: getGetPetQueryKey(crecheId, id) });
+            queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+          }
         },
       }
     );
@@ -245,7 +259,7 @@ export default function PetDetail({ id }: { id: number }) {
             <span>Editar Perfil</span>
           </Button>
           {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
-            <CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} />
+            <CheckInButton crecheId={crecheId ?? 0} bookingId={confirmedBooking.id} petId={id} />
           )}
         </div>
       </div>
@@ -290,41 +304,39 @@ export default function PetDetail({ id }: { id: number }) {
         </div>
       </Modal>
 
-      {/* QR Code Modal */}
-      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={`QR Code — ${pet.name}`}>
-        <QrTab pet={pet} />
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title="Editar Perfil do Pet" className="max-w-2xl">
+      {/* Edit Profile Modal */}
+      <Modal isOpen={editOpen} onClose={() => setEditOpen(false)} title={`Editar ${pet.name}`} description="Atualize as informações do pet">
         <form onSubmit={handleEditProfile} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Nome</label>
-              <Input name="name" defaultValue={pet.name} required />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Raça</label>
-              <Input name="breed" defaultValue={pet.breed || ""} placeholder="Golden Retriever" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Nascimento</label>
-              <Input name="birthDate" type="date" defaultValue={pet.birthDate ? pet.birthDate.split('T')[0] : ""} className="h-12 w-full rounded-xl border border-border bg-background px-3 py-2" />
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Nome</label>
+            <Input name="name" defaultValue={pet.name} required />
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Peso (kg)</label>
-              <Input name="weight" type="number" step="0.1" defaultValue={pet.weight || ""} />
+              <label className="text-sm font-medium text-foreground">Raça</label>
+              <Input name="breed" defaultValue={pet.breed || ""} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Cor</label>
-              <Input name="color" defaultValue={pet.color || ""} placeholder="Caramelo" />
+              <label className="text-sm font-medium text-foreground">Data de Nascimento</label>
+              <Input type="date" name="birthDate" defaultValue={pet.birthDate || ""} />
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Peso (kg)</label>
+              <Input type="number" step="0.1" name="weight" defaultValue={pet.weight || ""} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Cor</label>
+              <Input name="color" defaultValue={pet.color || ""} />
+            </div>
+          </div>
+
           <div className="space-y-2">
-            <label className="text-sm font-medium">Temperamento</label>
-            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary backdrop-blur-md">
+            <label className="text-sm font-medium text-foreground">Temperamento</label>
+            <select name="temperament" defaultValue={pet.temperament || ""} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
               <option value="">Selecione...</option>
               <option value="calm">Calmo</option>
               <option value="playful">Brincalhão</option>
@@ -333,24 +345,25 @@ export default function PetDetail({ id }: { id: number }) {
               <option value="sociable">Sociável</option>
             </select>
           </div>
+
           <div className="space-y-2">
-            <label className="text-sm font-medium">Alergias</label>
-            <Input name="allergies" defaultValue={pet.allergies || ""} placeholder="Ex: frango, pó..." />
+            <label className="text-sm font-medium text-foreground">Alergias</label>
+            <Input name="allergies" defaultValue={pet.allergies || ""} placeholder="Ex: Frango, pólen..." />
           </div>
+
           <div className="space-y-2">
-            <label className="text-sm font-medium">Necessidades Especiais</label>
-            <Input name="specialNeeds" defaultValue={pet.specialNeeds || ""} placeholder="Ex: ração medicamentosa..." />
+            <label className="text-sm font-medium text-foreground">Necessidades Especiais</label>
+            <Input name="specialNeeds" defaultValue={pet.specialNeeds || ""} placeholder="Ex: Medo de trovão, não gosta de outros cães..." />
           </div>
-          <label className="flex items-center gap-3 p-3 rounded-xl bg-secondary border border-border cursor-pointer hover:bg-secondary/80 transition-colors">
-            <input type="checkbox" name="isCastrated" defaultChecked={!!(pet as any).isCastrated} className="h-4 w-4 rounded accent-primary" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Castrado(a)</p>
-              <p className="text-xs text-muted-foreground">Marque se o pet já foi castrado</p>
-            </div>
-          </label>
-          <div className="pt-4 flex justify-end gap-3 mt-4 border-t border-border">
+
+          <div className="flex items-center gap-2 pt-2">
+            <input type="checkbox" id="isCastrated" name="isCastrated" defaultChecked={!!(pet as any).isCastrated} className="rounded border-input text-primary" />
+            <label htmlFor="isCastrated" className="text-sm font-medium text-foreground cursor-pointer">Castrado</label>
+          </div>
+
+          <div className="modal-sticky-footer flex justify-end gap-2 pt-4">
             <Button type="button" variant="ghost" onClick={() => setEditOpen(false)}>Cancelar</Button>
-            <Button type="submit" isLoading={updatePetMutation.isPending}>Salvar Alterações</Button>
+            <Button type="submit" isLoading={updatePetMutation.isPending}>Salvar</Button>
           </div>
         </form>
       </Modal>
@@ -360,9 +373,9 @@ export default function PetDetail({ id }: { id: number }) {
         <Tabs
           defaultTab="overview"
           tabs={[
-            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
-            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
-            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
+            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId ?? 0} petId={id} /> },
+            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId ?? 0} petId={id} /> },
+            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId ?? 0} petId={id} /> },
 
             { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
           ]}
@@ -373,9 +386,9 @@ export default function PetDetail({ id }: { id: number }) {
       <div className="md:hidden pb-4">
         <Accordion type="single" collapsible defaultValue="overview" className="w-full space-y-3">
           {[
-            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId} petId={id} /> },
-            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId} petId={id} /> },
-            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId} petId={id} /> },
+            { id: "overview", label: "Visão Geral", content: <OverviewTab pet={pet} crecheId={crecheId ?? 0} petId={id} /> },
+            { id: "plan", label: "Plano", icon: <UtensilsCrossed className="h-4 w-4" />, content: <PlanTab pet={pet} crecheId={crecheId ?? 0} petId={id} /> },
+            { id: "medical", label: "Saúde", icon: <Syringe className="h-4 w-4" />, content: <MedicalTab crecheId={crecheId ?? 0} petId={id} /> },
 
             { id: "qr", label: "QR Code", icon: <QrCode className="h-4 w-4" />, content: <QrTab pet={pet} /> },
           ].map((tab) => (
@@ -414,14 +427,14 @@ export default function PetDetail({ id }: { id: number }) {
           <span>Editar Perfil</span>
         </Button>
         {user?.role !== "tutor" && !pet.isCheckedIn && confirmedBooking && (
-          <div className="flex-1 min-w-[120px]"><CheckInButton crecheId={crecheId} bookingId={confirmedBooking.id} /></div>
+          <div className="flex-1 min-w-[120px]"><CheckInButton crecheId={crecheId ?? 0} bookingId={confirmedBooking.id} petId={id} /></div>
         )}
       </div>
     </div>
   );
 }
 
-function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: number }) {
+function CheckInButton({ crecheId, bookingId, petId }: { crecheId: number; bookingId: number; petId: number }) {
   const checkInMutation = useCheckIn();
   const queryClient = useQueryClient();
 
@@ -431,7 +444,13 @@ function CheckInButton({ crecheId, bookingId }: { crecheId: number; bookingId: n
         checkInMutation.mutate(
           { crecheId, bookingId } as any,
           {
-            onSuccess: () => queryClient.invalidateQueries(),
+            onSuccess: () => {
+              if (crecheId) {
+                queryClient.invalidateQueries({ queryKey: getGetPetQueryKey(crecheId, petId) });
+                queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+                queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+              }
+            },
             onError: (err: any) => {
               const msg = err?.response?.data?.error ?? err?.message ?? "Tente novamente.";
               alert(msg);

@@ -34,7 +34,11 @@ const purchasePackageSchema = z.object({
 router.get("/balance", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
-    const tutorId = req.user!.id;
+    if (req.user!.role !== "tutor" && req.user!.role !== "creche_admin") {
+      res.status(403).json({ error: "Acesso não autorizado." });
+      return;
+    }
+    const tutorId = req.user!.role === "tutor" ? req.user!.id : (req.query.tutorId ? Number(req.query.tutorId) : req.user!.id);
     const balance = await WalletService.getBalance(tutorId, crecheId);
     res.json(balance);
   } catch (err) {
@@ -47,15 +51,16 @@ router.get("/balance", async (req: AuthRequest, res: Response, next: NextFunctio
 router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
+    if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+      res.status(403).json({ error: "Acesso não autorizado." });
+      return;
+    }
     const { page, pageSize, offset } = getPaginationParams(req.query);
     let tutorId: number | null = null;
     if (req.user!.role === "tutor") {
       tutorId = req.user!.id;
     } else if (req.query.tutorId) {
       tutorId = Number(req.query.tutorId);
-    } else {
-      res.status(400).json({ error: "tutorId é obrigatório." });
-      return;
     }
     const result = await WalletService.listPackages(crecheId, tutorId, pageSize, offset);
     res.json({ ...result, page, pageSize, totalPages: Math.ceil(result.total / pageSize) });
@@ -97,7 +102,15 @@ router.post(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const crecheId = Number(req.params.crecheId);
+      if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+        res.status(403).json({ error: "Acesso não autorizado." });
+        return;
+      }
       const { packageId, tutorId, paymentMethod } = req.body;
+      if (req.user!.role === "tutor" && tutorId !== req.user!.id) {
+        res.status(403).json({ error: "Acesso negado" });
+        return;
+      }
 
       const item = await CatalogueRepository.findPackage(packageId, crecheId);
       if (!item) { res.status(404).json({ error: "Pacote não encontrado" }); return; }

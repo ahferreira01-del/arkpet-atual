@@ -14,7 +14,7 @@ router.use(requireFinancialAccess);
 const expenseSchema = z.object({
   description: z.string().min(1),
   category: z.string().min(1),
-  amount: z.number().positive(),
+  amount: z.number().int().positive(),
   dueDate: z.string().min(1),
   supplier: z.string().optional(),
   notes: z.string().optional(),
@@ -76,6 +76,7 @@ router.put(
       const crecheId = Number(req.params.crecheId);
       const id = Number(req.params.id);
       const data = req.body;
+
       const expense = await ExpenseRepository.update(id, crecheId, {
         description: data.description,
         category: data.category,
@@ -84,6 +85,21 @@ router.put(
         supplier: data.supplier,
         notes: data.notes,
       });
+
+      if (!expense) {
+        const existing = await ExpenseRepository.findByIdAndCreche(id, crecheId);
+        if (!existing) {
+          res.status(404).json({ error: "Despesa não encontrada" });
+          return;
+        }
+        if (existing.isPaid) {
+          res.status(409).json({ error: "Não é possível editar uma despesa que já foi paga." });
+          return;
+        }
+        res.status(400).json({ error: "Não foi possível atualizar a despesa." });
+        return;
+      }
+
       res.json(expense);
     } catch (err) {
       next(err);
@@ -115,7 +131,22 @@ router.delete("/:id", async (req: AuthRequest, res: Response, next: NextFunction
   try {
     const crecheId = Number(req.params.crecheId);
     const id = Number(req.params.id);
-    await ExpenseRepository.delete(id, crecheId);
+
+    const deleted = await ExpenseRepository.delete(id, crecheId);
+
+    if (!deleted) {
+      const existing = await ExpenseRepository.findByIdAndCreche(id, crecheId);
+      if (!existing) {
+        res.status(404).json({ error: "Despesa não encontrada" });
+        return;
+      }
+      if (existing.isPaid) {
+        res.status(409).json({ error: "Não é possível excluir uma despesa que já foi paga." });
+        return;
+      }
+      res.status(400).json({ error: "Não foi possível excluir a despesa." });
+      return;
+    }
 
     await logFinancialAudit({
       crecheId,

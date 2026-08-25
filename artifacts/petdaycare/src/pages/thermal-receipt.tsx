@@ -28,7 +28,8 @@ export default function ThermalReceipt() {
         });
         if (!userRes.ok) throw new Error("Não autorizado");
         const userData = await userRes.json();
-        const crecheId = userData.crecheId || 1;
+        if (!userData.crecheId) throw new Error("Creche não identificada");
+        const crecheId = userData.crecheId;
 
         const res = await fetch(`/api/creches/${crecheId}/financial/invoices/${invoiceId}/receipt-data`, {
           headers: { Authorization: `Bearer ${token}` }

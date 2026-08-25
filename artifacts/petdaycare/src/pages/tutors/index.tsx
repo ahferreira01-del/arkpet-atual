@@ -19,11 +19,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { TutorSmartIndicators } from "@/components/financial/smart-indicators";
 
-function useTutors(crecheId: number) {
+function useTutors(crecheId: number | null) {
   const token = localStorage.getItem("auth_token");
   return useQuery<any[]>({
     queryKey: ["tutors-full", crecheId],
+    enabled: !!crecheId,
     queryFn: async () => {
+      if (!crecheId) return [];
       const r = await fetch(`/api/creches/${crecheId}/tutors/manage`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -222,13 +224,13 @@ function generateTempPassword() {
 
 export default function TutorsPage() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const { toast } = useToast();
   const qc = useQueryClient();
 
   const { data: tutors, isLoading } = useTutors(crecheId);
-  const createMutation = useCreateTutor(crecheId);
-  const toggleMutation = useToggleTutor(crecheId);
+  const createMutation = useCreateTutor(crecheId ?? 0);
+  const toggleMutation = useToggleTutor(crecheId ?? 0);
 
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -247,7 +249,7 @@ export default function TutorsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
+    if (!crecheId || !form.name.trim() || !form.email.trim()) return;
     try {
       const payload = {
         ...form,
@@ -421,7 +423,7 @@ export default function TutorsPage() {
       {selectedTutor && (
         <TutorPetsModal
           tutor={selectedTutor}
-          crecheId={crecheId}
+          crecheId={crecheId ?? 0}
           onClose={() => setSelectedTutor(null)}
         />
       )}

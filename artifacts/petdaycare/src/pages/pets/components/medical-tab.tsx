@@ -5,6 +5,8 @@ import {
   useListMedications,
   useAddVaccine,
   useAddMedication,
+  getListVaccinesQueryKey,
+  getListMedicationsQueryKey,
 } from "@workspace/api-client-react";
 import { compressImage } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,8 +18,15 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Syringe, Activity, Plus, Camera, X, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { parseLocalDate } from "@/lib/date-utils";
+import { parseLocalDate, todayBrazil } from "@/lib/date-utils";
 import { usePetIncidents, useCreateIncident } from "@/hooks/use-medical";
+
+function isVaccineExpired(nextDueDate: string | null | undefined): boolean {
+  if (!nextDueDate) return false;
+  const dueDateStr = String(nextDueDate).split("T")[0];
+  const today = todayBrazil();
+  return dueDateStr < today;
+}
 
 export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: number }) {
   const queryClient = useQueryClient();
@@ -71,7 +80,8 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
         onSuccess: () => {
           setVaccineOpen(false);
           setVaccinePhoto(null);
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListVaccinesQueryKey(crecheId, petId) });
+          queryClient.invalidateQueries({ queryKey: ["vaccines", crecheId, petId] });
         },
         onError: (err: any) => toast({ title: "Erro ao salvar vacina", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
@@ -99,7 +109,8 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
       {
         onSuccess: () => {
           setMedOpen(false);
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListMedicationsQueryKey(crecheId, petId) });
+          queryClient.invalidateQueries({ queryKey: ["medications", crecheId, petId] });
         },
         onError: (err: any) => toast({ title: "Erro ao salvar medicamento", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
@@ -121,7 +132,7 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
       {
         onSuccess: () => {
           setIncidentOpen(false);
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: ["incidents", crecheId, petId] });
         },
         onError: (err: any) => toast({ title: "Erro ao registrar incidente", description: err?.message ?? "Tente novamente.", variant: "destructive" }),
       }
@@ -184,47 +195,64 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
             <div className="flex items-center gap-2 py-4 text-muted-foreground text-sm"><Loader2 className="h-4 w-4 animate-spin" /> Carregando vacinas...</div>
           ) : vaccines?.length ? (
             <div className="space-y-3">
-              {vaccines.map((v) => (
-                <div key={v.id} className="rounded-xl bg-secondary border border-border overflow-hidden">
-                  {v.receiptUrl && (
-                    <button
-                      type="button"
-                      className="w-full block"
-                      onClick={() => setLightboxUrl(v.receiptUrl!)}
-                    >
-                      <img
-                        src={v.receiptUrl}
-                        alt="Carteirinha"
-                        className="w-full h-28 object-cover border-b border-border hover:opacity-90 transition-opacity"
-                      />
-                    </button>
-                  )}
-                  <div className="p-3 flex justify-between items-center gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-foreground">{v.name}</p>
-                        {v.receiptUrl && (
-                          <span className="text-xs text-primary flex items-center gap-0.5">
-                            <Camera className="h-3 w-3" /> foto
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Aplicada: {format(parseLocalDate(v.appliedDate), "dd/MM/yyyy")}
-                      </p>
-                      {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
-                    </div>
-                    {v.nextDueDate && (
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-muted-foreground">Próxima</p>
-                        <p className="text-sm font-medium text-warning">
-                          {format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}
-                        </p>
-                      </div>
+              {vaccines.map((v) => {
+                const expired = isVaccineExpired(v.nextDueDate);
+                return (
+                  <div key={v.id} className="rounded-xl bg-secondary border border-border overflow-hidden">
+                    {v.receiptUrl && (
+                      <button
+                        type="button"
+                        className="w-full block"
+                        onClick={() => setLightboxUrl(v.receiptUrl!)}
+                      >
+                        <img
+                          src={v.receiptUrl}
+                          alt="Carteirinha"
+                          className="w-full h-28 object-cover border-b border-border hover:opacity-90 transition-opacity"
+                        />
+                      </button>
                     )}
+                    <div className="p-3 flex justify-between items-center gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-foreground">{v.name}</p>
+                          {v.receiptUrl && (
+                            <span className="text-xs text-primary flex items-center gap-0.5">
+                              <Camera className="h-3 w-3" /> foto
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Aplicada: {format(parseLocalDate(v.appliedDate), "dd/MM/yyyy")}
+                        </p>
+                        {v.veterinarian && <p className="text-xs text-muted-foreground">Dr. {v.veterinarian}</p>}
+                      </div>
+                      {v.nextDueDate && (
+                        <div className="text-right flex-shrink-0">
+                          {expired ? (
+                            <div className="flex flex-col items-end gap-0.5">
+                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                                Vencida
+                              </Badge>
+                              <p className="text-xs text-muted-foreground">Próxima</p>
+                              <p className="text-sm font-medium text-destructive">
+                                {format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}
+                              </p>
+                            </div>
+                          ) : (
+                            <div>
+                              <p className="text-xs text-muted-foreground">Próxima</p>
+                              <p className="text-sm font-medium text-warning">
+                                {format(parseLocalDate(v.nextDueDate), "dd/MM/yyyy")}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <EmptyState icon={Syringe} title="Sem vacinas" description="Nenhum registro de vacina encontrado." />

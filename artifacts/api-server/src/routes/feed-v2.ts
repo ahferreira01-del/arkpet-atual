@@ -11,8 +11,11 @@ import {
   usersTable,
 } from "@workspace/db/schema";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { PushFeedNotificationService } from "../lib/notifications/PushFeedNotificationService.js";
 import type { IFeedNotificationService } from "../lib/notifications/IFeedNotificationService.js";
+import { parseCanonicalPrivateObjectPath } from "../lib/objectAuthorization.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,13 +43,22 @@ interface FeedPostDTO {
 
 const PAGE_SIZE = 20;
 
-const ALLOWED_MEDIA_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "video/mp4", "video/quicktime", "video/webm"]);
+const ALLOWED_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
 const MAX_IMAGE_BYTES = 10_000_000;
 const MAX_VIDEO_BYTES = 100_000_000;
 
 // ── Service (injectable, swap to queue later) ─────────────────────────────────
 
 const notificationService: IFeedNotificationService = new PushFeedNotificationService();
+const objectStorageService = new ObjectStorageService();
 
 // ── DTO builder ───────────────────────────────────────────────────────────────
 
@@ -54,10 +66,6 @@ function buildMediaItems(
   mediaUrl: string | null | undefined,
   mediaType: string | null | undefined,
 ): MediaItemDTO[] {
-  // Only emit a media item for properly stored object-storage paths.
-  // Old V1 rows have raw base64 strings as mediaUrl; skip them so the
-  // frontend never receives an invalid objectPath and the Service Worker
-  // never tries new URL(base64String) which throws and kills the fetch handler.
   if (!mediaUrl || !mediaType) return [];
   if (!mediaUrl.startsWith("/objects/")) return [];
   const type = mediaType === "video" ? "video" : "photo";
@@ -103,8 +111,6 @@ async function fetchAggregates(eventIds: number[], userId: number) {
     return { likeMap: {}, commentMap: {}, viewMap: {}, likedSet: new Set<number>() };
   }
 
-  // Single query: one pass over each table per event_id, returned as one row per
-  // event. Eliminates 3 of the 4 round-trips the old implementation made.
   const rows = await db.execute(sql`
     WITH
       lk AS (
@@ -140,28 +146,142 @@ async function fetchAggregates(eventIds: number[], userId: number) {
     LEFT JOIN vw ON vw.event_id = ids.event_id
   `);
 
-  const likeMap:    Record<number, number>  = {};
-  const commentMap: Record<number, number>  = {};
-  const viewMap:    Record<number, number>  = {};
+  const likeMap: Record<number, number> = {};
+  const commentMap: Record<number, number> = {};
+  const viewMap: Record<number, number> = {};
   const likedSet = new Set<number>();
 
   for (const r of rows.rows as any[]) {
     const id = Number(r.event_id);
-    likeMap[id]    = Number(r.like_count);
+    likeMap[id] = Number(r.like_count);
     commentMap[id] = Number(r.comment_count);
-    viewMap[id]    = Number(r.view_count);
+    viewMap[id] = Number(r.view_count);
     if (Number(r.user_liked) > 0) likedSet.add(id);
   }
 
   return { likeMap, commentMap, viewMap, likedSet };
 }
 
+// ── Object Authorization Helper ───────────────────────────────────────────────
+
+interface FeedEventAccessResult {
+  event: typeof timelineEventsTable.$inferSelect & { authorName: string | null };
+  pets: Array<{ petId: number; petName: string; petPhoto: string | null; tutorId: number | null }>;
+}
+
+async function verifyFeedEventAccess(
+  crecheId: number,
+  eventId: number,
+  user: { id: number; role: string; crecheId?: number | null },
+): Promise<FeedEventAccessResult | null> {
+  // 1. Fetch event scoped strictly to crecheId
+  const [event] = await db
+    .select({
+      id: timelineEventsTable.id,
+      crecheId: timelineEventsTable.crecheId,
+      petId: timelineEventsTable.petId,
+      authorId: timelineEventsTable.authorId,
+      authorName: usersTable.name,
+      type: timelineEventsTable.type,
+      content: timelineEventsTable.content,
+      mediaUrl: timelineEventsTable.mediaUrl,
+      mediaType: timelineEventsTable.mediaType,
+      createdAt: timelineEventsTable.createdAt,
+    })
+    .from(timelineEventsTable)
+    .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
+    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .limit(1);
+
+  if (!event) return null;
+
+  // 2. Fetch event pets relations
+  const pets = await db
+    .select({
+      petId: petsTable.id,
+      petName: petsTable.name,
+      petPhoto: petsTable.photoUrl,
+      tutorId: petsTable.tutorId,
+    })
+    .from(timelineEventPetsTable)
+    .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
+    .where(eq(timelineEventPetsTable.eventId, eventId));
+
+  // 3. Authorization check
+  if (user.role === "master_admin") {
+    return { event, pets };
+  }
+
+  if (user.role === "staff" || user.role === "creche_admin") {
+    if (user.crecheId === crecheId) {
+      return { event, pets };
+    }
+    return null;
+  }
+
+  if (user.role === "tutor") {
+    if (user.crecheId !== crecheId) {
+      return null;
+    }
+
+    // Check N:N relations first
+    if (pets.length > 0) {
+      const hasOwnPet = pets.some((p) => p.tutorId === user.id);
+      if (hasOwnPet) {
+        return { event, pets };
+      }
+      return null;
+    }
+
+    // Legacy fallback: if zero N:N relations and event.petId is set
+    if (event.petId != null) {
+      const [legacyPet] = await db
+        .select({
+          id: petsTable.id,
+          name: petsTable.name,
+          photoUrl: petsTable.photoUrl,
+          tutorId: petsTable.tutorId,
+        })
+        .from(petsTable)
+        .where(
+          and(
+            eq(petsTable.id, event.petId),
+            eq(petsTable.crecheId, crecheId),
+            eq(petsTable.tutorId, user.id),
+          ),
+        )
+        .limit(1);
+
+      if (legacyPet) {
+        return {
+          event,
+          pets: [
+            {
+              petId: legacyPet.id,
+              petName: legacyPet.name,
+              petPhoto: legacyPet.photoUrl,
+              tutorId: legacyPet.tutorId,
+            },
+          ],
+        };
+      }
+      return null;
+    }
+
+    // No pet association -> Tutor denied
+    return null;
+  }
+
+  return null;
+}
+
 // ── Router ────────────────────────────────────────────────────────────────────
 
 const router = Router({ mergeParams: true });
 
-// All routes in this file require authentication
+// All routes in this file require authentication and valid creche membership
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET / — Paginated feed list
@@ -315,8 +435,12 @@ router.post("/", async (req: AuthRequest, res) => {
     petIds?: number[];
   };
 
-  // Validation
-  if (!Array.isArray(petIds) || petIds.length === 0) {
+  // Normalize petIds: remove duplicates and non-positive numbers
+  const uniquePetIds = Array.from(
+    new Set((Array.isArray(petIds) ? petIds : []).map(Number)),
+  ).filter((id) => !Number.isNaN(id) && id > 0);
+
+  if (uniquePetIds.length === 0) {
     res.status(400).json({ error: "Selecione pelo menos um pet." });
     return;
   }
@@ -334,15 +458,42 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 
   // Backend media validation
-  if (mediaUrl && mediaType) {
+  let canonicalMediaUrl: string | null = null;
+  if (mediaUrl || mediaType) {
+    if (!mediaUrl || !mediaType) {
+      res.status(400).json({ error: "Informe tanto a URL quanto o tipo de mídia." });
+      return;
+    }
     if (!["photo", "video"].includes(mediaType)) {
       res.status(400).json({ error: "Tipo de mídia inválido." });
       return;
     }
-    if (!mediaUrl.startsWith("/objects/")) {
-      res.status(400).json({ error: "URL de mídia inválida." });
+    const parsedPath = parseCanonicalPrivateObjectPath(mediaUrl);
+    if (!parsedPath.ok || !parsedPath.pathCrecheId || parsedPath.pathCrecheId !== crecheId) {
+      res.status(400).json({ error: "URL de mídia inválida para esta creche." });
       return;
     }
+
+    canonicalMediaUrl = parsedPath.canonicalObjectPath!;
+
+    // Verify object exists in storage
+    try {
+      await objectStorageService.getObjectEntityFile(canonicalMediaUrl);
+    } catch {
+      res.status(400).json({ error: "Arquivo de mídia não encontrado no armazenamento." });
+      return;
+    }
+  }
+
+  // Validate that all selected pets exist and strictly belong to this creche
+  const validPets = await db
+    .select({ id: petsTable.id, name: petsTable.name, tutorId: petsTable.tutorId })
+    .from(petsTable)
+    .where(and(inArray(petsTable.id, uniquePetIds), eq(petsTable.crecheId, crecheId)));
+
+  if (validPets.length !== uniquePetIds.length) {
+    res.status(400).json({ error: "Um ou mais pets selecionados são inválidos para esta creche." });
+    return;
   }
 
   // Persist event + pet relations in a transaction
@@ -354,14 +505,14 @@ router.post("/", async (req: AuthRequest, res) => {
         authorId: userId,
         type: resolvedType as any,
         content:  content?.trim() || null,
-        mediaUrl:  mediaUrl  || null,
+        mediaUrl:  canonicalMediaUrl || null,
         mediaType: (mediaType as any) || null,
       })
       .returning();
 
-    if (petIds.length > 0) {
+    if (uniquePetIds.length > 0) {
       await tx.insert(timelineEventPetsTable).values(
-        petIds.map((petId) => ({ eventId: newEvent.id, petId })),
+        uniquePetIds.map((petId) => ({ eventId: newEvent.id, petId })),
       );
     }
 
@@ -389,56 +540,61 @@ router.post("/", async (req: AuthRequest, res) => {
     type:       event.type,
     authorName: req.user.name,
     crecheId,
-    petIds,
+    petIds:     uniquePetIds,
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /:id — Fetch details for a specific event (backward compatibility for V1 frontend)
+// GET /:id — Fetch details for a specific event (with strict object authorization)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/:id", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
   const crecheId = parseInt(String(req.params.crecheId), 10);
   const eventId  = parseInt(String(req.params.id), 10);
-  const userId   = req.user.id;
 
-  const [event] = await db
+  const access = await verifyFeedEventAccess(crecheId, eventId, req.user);
+  if (!access) {
+    res.status(404).json({ error: "Evento não encontrado" });
+    return;
+  }
+
+  const { event, pets } = access;
+
+  // For tutors: filter pet list to only include tutor's own pets for privacy
+  const isTutor = req.user.role === "tutor";
+  const filteredPets = isTutor
+    ? pets.filter((p) => p.tutorId === req.user!.id)
+    : pets;
+
+  const [likeStats] = await db
     .select({
-      id:          timelineEventsTable.id,
-      crecheId:    timelineEventsTable.crecheId,
-      authorId:    timelineEventsTable.authorId,
-      authorName:  usersTable.name,
-      type:        timelineEventsTable.type,
-      content:     timelineEventsTable.content,
-      mediaUrl:    timelineEventsTable.mediaUrl,
-      mediaType:   timelineEventsTable.mediaType,
-      createdAt:   timelineEventsTable.createdAt,
-      likeCount:   sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${timelineEventsTable.id})::int`,
-      isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${timelineEventsTable.id} AND user_id = ${userId})`,
+      likeCount: sql<number>`(SELECT COUNT(*) FROM timeline_likes WHERE event_id = ${eventId})::int`,
+      isLikedByUser: sql<boolean>`EXISTS(SELECT 1 FROM timeline_likes WHERE event_id = ${eventId} AND user_id = ${req.user.id})`,
     })
     .from(timelineEventsTable)
-    .leftJoin(usersTable, eq(timelineEventsTable.authorId, usersTable.id))
-    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+    .where(eq(timelineEventsTable.id, eventId))
     .limit(1);
-
-  if (!event) { res.status(404).json({ error: "Evento não encontrado" }); return; }
-
-  const pets = await db
-    .select({ petId: petsTable.id, petName: petsTable.name, petPhoto: petsTable.photoUrl })
-    .from(timelineEventPetsTable)
-    .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
-    .where(eq(timelineEventPetsTable.eventId, eventId));
 
   let mediaUrl: string | null | undefined = event.mediaUrl;
   if (mediaUrl && mediaUrl.startsWith("/objects/")) {
     mediaUrl = `/api/storage${mediaUrl}`;
   }
 
-  res.json({ ...event, mediaUrl, pets });
+  res.json({
+    ...event,
+    likeCount: likeStats?.likeCount ?? 0,
+    isLikedByUser: likeStats?.isLikedByUser ?? false,
+    mediaUrl,
+    pets: filteredPets.map((p) => ({
+      petId: p.petId,
+      petName: p.petName,
+      petPhoto: p.petPhoto,
+    })),
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PATCH /:id — Edit caption (author or creche_admin)
+// PATCH /:id — Edit caption (author or creche_admin or master_admin)
 // ─────────────────────────────────────────────────────────────────────────────
 router.patch("/:id", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
@@ -461,7 +617,11 @@ router.patch("/:id", async (req: AuthRequest, res) => {
 
   if (!existing) { res.status(404).json({ error: "Publicação não encontrada" }); return; }
 
-  if (req.user.role !== "creche_admin" && existing.authorId !== req.user.id) {
+  if (
+    req.user.role !== "creche_admin" &&
+    req.user.role !== "master_admin" &&
+    existing.authorId !== req.user.id
+  ) {
     res.status(403).json({ error: "Sem permissão para editar esta publicação" });
     return;
   }
@@ -476,7 +636,7 @@ router.patch("/:id", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE /:id — Delete post (staff / creche_admin only)
+// DELETE /:id — Delete post (staff / creche_admin / master_admin)
 // ─────────────────────────────────────────────────────────────────────────────
 router.delete("/:id", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
@@ -506,13 +666,20 @@ router.delete("/:id", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /:id/like — Toggle like (all authenticated users)
+// POST /:id/like — Toggle like (object-authorized)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/:id/like", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const eventId = parseInt(String(req.params.id), 10);
-  const userId  = req.user.id;
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const eventId  = parseInt(String(req.params.id), 10);
+  const userId   = req.user.id;
+
+  const access = await verifyFeedEventAccess(crecheId, eventId, req.user);
+  if (!access) {
+    res.status(404).json({ error: "Publicação não encontrada" });
+    return;
+  }
 
   const [existing] = await db
     .select({ id: timelineLikesTable.id })
@@ -537,13 +704,20 @@ router.post("/:id/like", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /:id/view — Record view (all authenticated users, idempotent)
+// POST /:id/view — Record view (object-authorized, idempotent)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/:id/view", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const eventId = parseInt(String(req.params.id), 10);
-  const userId  = req.user.id;
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const eventId  = parseInt(String(req.params.id), 10);
+  const userId   = req.user.id;
+
+  const access = await verifyFeedEventAccess(crecheId, eventId, req.user);
+  if (!access) {
+    res.status(404).json({ error: "Publicação não encontrada" });
+    return;
+  }
 
   const [existing] = await db
     .select({ id: timelineViewsTable.eventId })
@@ -559,12 +733,19 @@ router.post("/:id/view", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GET /:id/comments — List comments (all authenticated)
+// GET /:id/comments — List comments (object-authorized)
 // ─────────────────────────────────────────────────────────────────────────────
 router.get("/:id/comments", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const eventId = parseInt(String(req.params.id), 10);
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const eventId  = parseInt(String(req.params.id), 10);
+
+  const access = await verifyFeedEventAccess(crecheId, eventId, req.user);
+  if (!access) {
+    res.status(404).json({ error: "Publicação não encontrada" });
+    return;
+  }
 
   const comments = await db
     .select({
@@ -584,17 +765,24 @@ router.get("/:id/comments", async (req: AuthRequest, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /:id/comments — Add comment (all authenticated)
+// POST /:id/comments — Add comment (object-authorized)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/:id/comments", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
 
-  const eventId = parseInt(String(req.params.id), 10);
-  const userId  = req.user.id;
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const eventId  = parseInt(String(req.params.id), 10);
+  const userId   = req.user.id;
   const { content } = req.body as { content?: string };
 
   if (!content?.trim()) {
     res.status(400).json({ error: "Comentário não pode estar vazio" });
+    return;
+  }
+
+  const access = await verifyFeedEventAccess(crecheId, eventId, req.user);
+  if (!access) {
+    res.status(404).json({ error: "Publicação não encontrada" });
     return;
   }
 
@@ -628,4 +816,3 @@ router.post("/:id/comments", async (req: AuthRequest, res) => {
 });
 
 export default router;
-

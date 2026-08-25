@@ -20,6 +20,7 @@ export const tasksTable = pgTable("tasks", {
   status: taskStatusEnum("status").notNull().default("pending"),
   notes: text("notes"),
   priority: taskPriorityEnum("priority").notNull().default("medium"),
+  reminderSentAt: timestamp("reminder_sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("tasks_creche_idx").on(t.crecheId),

@@ -11,6 +11,10 @@ router.use(authenticate);
 router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
+    if (req.user!.role !== "creche_admin" && req.user!.role !== "staff" && req.user!.role !== "tutor") {
+      res.status(403).json({ error: "Acesso não autorizado." });
+      return;
+    }
     const { page, pageSize, offset } = getPaginationParams(req.query);
     let tutorId: number | null = null;
     if (req.user!.role === "tutor") {

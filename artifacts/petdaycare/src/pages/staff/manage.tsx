@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { useListCrecheStaff, useAddStaffMember } from "@workspace/api-client-react";
+import {
+  useListCrecheStaff,
+  useAddStaffMember,
+  getListCrecheStaffQueryKey,
+  getListUsersQueryKey,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,7 +74,11 @@ function EditMemberModal({
       return r.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries();
+      if (crecheId) {
+        queryClient.invalidateQueries({ queryKey: getListCrecheStaffQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: ["users-by-creche", crecheId] });
+      }
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       toast({ title: "Membro atualizado com sucesso!" });
       onClose();
     },
@@ -185,17 +194,18 @@ function EditMemberModal({
 
 export default function ManageStaff() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: staff, isLoading } = useListCrecheStaff(crecheId);
+  const { data: staff, isLoading } = useListCrecheStaff(crecheId ?? 0);
   const addStaffMutation = useAddStaffMember();
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!crecheId) return;
     const formData = new FormData(e.currentTarget);
     addStaffMutation.mutate(
       {
@@ -210,7 +220,11 @@ export default function ManageStaff() {
       {
         onSuccess: () => {
           setIsAddModalOpen(false);
-          queryClient.invalidateQueries();
+          if (crecheId) {
+            queryClient.invalidateQueries({ queryKey: getListCrecheStaffQueryKey(crecheId) });
+            queryClient.invalidateQueries({ queryKey: ["users-by-creche", crecheId] });
+          }
+          queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
           toast({ title: "Membro adicionado!", description: "Um e-mail com a senha provisória foi enviado." });
         },
         onError: () => {
@@ -396,7 +410,7 @@ export default function ManageStaff() {
       {editingMember && (
         <EditMemberModal
           member={editingMember}
-          crecheId={crecheId}
+          crecheId={crecheId ?? 0}
           onClose={() => setEditingMember(null)}
         />
       )}

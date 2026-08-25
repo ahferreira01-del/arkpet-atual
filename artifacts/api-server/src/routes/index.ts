@@ -22,6 +22,7 @@ import ordersRouter from "./orders.js";
 import logsRouter from "./logs.js";
 import { authenticate } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 
 const router = Router();
 
@@ -50,12 +51,12 @@ router.use("/creches/:crecheId/pets/:petId/walks", walksRouter);
 
 router.use("/creches/:crecheId/tutor-timeline", tutorTimelineRouter);
 router.use("/creches/:crecheId/feed", feedRouter);
-router.use("/creches/:crecheId/financial", financialRouter);
-router.use("/creches/:crecheId/financial", financialAnalyticsRouter);
-router.use("/creches/:crecheId/financial", financialSearchRouter);
-router.use("/creches/:crecheId/financial", financialReportsRouter);
+router.use("/creches/:crecheId/financial", requireCrecheMembership, financialRouter);
+router.use("/creches/:crecheId/financial", requireCrecheMembership, financialAnalyticsRouter);
+router.use("/creches/:crecheId/financial", requireCrecheMembership, financialSearchRouter);
+router.use("/creches/:crecheId/financial", requireCrecheMembership, financialReportsRouter);
 router.use("/creches/:crecheId/medical", medicalRouter);
-router.use("/creches/:crecheId/orders", ordersRouter);
+router.use("/creches/:crecheId/orders", requireCrecheMembership, ordersRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);

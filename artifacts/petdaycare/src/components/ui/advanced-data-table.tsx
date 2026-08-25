@@ -118,11 +118,26 @@ export function AdvancedDataTable<TData, TValue>({
     return { headers, data }
   }
 
+  const sanitizeCSVCell = (val: string): string => {
+    if (!val) return "";
+    const str = String(val);
+    const trimmed = str.trimStart();
+    if (
+      trimmed.startsWith("=") ||
+      trimmed.startsWith("+") ||
+      trimmed.startsWith("-") ||
+      trimmed.startsWith("@")
+    ) {
+      return `'${str}`;
+    }
+    return str;
+  };
+
   const exportCSV = () => {
     const { headers, data } = getExportData()
     const csvContent = [
-      headers.join(","),
-      ...data.map(row => row.map(val => `"${val.replace(/"/g, '""')}"`).join(","))
+      headers.map(h => `"${sanitizeCSVCell(h).replace(/"/g, '""')}"`).join(","),
+      ...data.map(row => row.map(val => `"${sanitizeCSVCell(val).replace(/"/g, '""')}"`).join(","))
     ].join("\n")
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })

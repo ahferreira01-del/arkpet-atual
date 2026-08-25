@@ -1,8 +1,11 @@
 /**
- * routes/orders.ts — Fase 8: controller fino
+ * routes/orders.ts — Fase R24F: controller fino e seguro
  *
- * Toda lógica de negócio foi extraída para services/orders.ts.
- * Esta rota apenas recebe, valida e delega.
+ * - Tenant isolation: requireCrecheMembership
+ * - Role enforcement: POST / apenas para role === 'tutor'
+ * - Idempotency: operationId UUID obrigatório
+ * - Delivery fee: autoridade 100% do servidor
+ * - State machine: proíbe forjar 'paid' diretamente e proíbe avanço operacional sem fatura paga
  */
 
 import { Router, type Response, type NextFunction } from "express";
@@ -15,17 +18,16 @@ import {
   usersTable,
 } from "@workspace/db/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
+import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { createOrder, cancelOrder, dispatchLowStockAlerts } from "../services/orders.js";
 import { sendPushToRole, sendPushToUser } from "../lib/push.js";
-import { releasePurchasedCredits } from "../services/credits.js";
-import { OutboxRepository } from "../repositories/outbox.repository.js";
-import type { FinancialDomainEvent } from "../services/events.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireCrecheMembership);
 
 function requireCrecheAccess(req: AuthRequest, res: Response, next: NextFunction) {
   const user = req.user;
@@ -37,25 +39,32 @@ function requireCrecheAccess(req: AuthRequest, res: Response, next: NextFunction
 }
 
 const createOrderSchema = z.object({
+  operationId: z.string().uuid("operationId deve ser um UUID válido"),
   items: z.array(z.object({
     catalogueItemId: z.number().int().positive(),
     quantity: z.number().int().positive()
   })).min(1),
   deliveryMethod: z.enum(["pickup", "delivery"]),
   deliveryAddress: z.string().optional().nullable(),
-  deliveryFee: z.number().nonnegative().default(0)
+  deliveryFee: z.number().nonnegative().optional()
 });
 
-// ─── POST / — Criar pedido ───────────────────────────────────────────────────
+// ─── POST / — Criar pedido (Tutor Store) ──────────────────────────────────────
 router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
+    if (req.user!.role !== "tutor") {
+      res.status(403).json({ error: "Apenas tutores podem realizar compras na loja." });
+      return;
+    }
+
     const crecheId = Number(req.params.crecheId);
     const tutorId = req.user!.id;
-    const { items, deliveryMethod, deliveryAddress, deliveryFee } = req.body;
+    const { operationId, items, deliveryMethod, deliveryAddress, deliveryFee } = req.body;
 
     const { result, lowStockAlerts } = await createOrder({
       crecheId,
       tutorId,
+      operationId,
       items,
       deliveryMethod,
       deliveryAddress,
@@ -75,7 +84,16 @@ router.post("/", validate(createOrderSchema), async (req: AuthRequest, res: Resp
     // Disparar alertas de baixo estoque de forma assíncrona — não bloqueia a resposta
     dispatchLowStockAlerts(crecheId, lowStockAlerts).catch(() => {});
   } catch (err: any) {
-    if (err.message && err.message.includes("Estoque")) {
+    if (err.status === 409 || (err.message && err.message.includes("Operação já processada"))) {
+      res.status(409).json({ error: err.message });
+    } else if (
+      err.status === 400 ||
+      (err.message && (
+        err.message.includes("Estoque") ||
+        err.message.includes("não encontrado ou inativo") ||
+        err.message.includes("inativo")
+      ))
+    ) {
       res.status(400).json({ error: err.message });
     } else {
       next(err);
@@ -154,13 +172,22 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       return;
     }
 
-    // Fase 8: cancelamento delegado ao OrderService.
-    // cancelOrder() includes the status→cancelled update inside its own
-    // transaction together with the outbox events, so they are atomic.
-    if (status === "cancelled" && order.status !== "cancelled") {
+    // Pedidos cancelados não podem ser reativados
+    if (order.status === "cancelled" && status !== "cancelled") {
+      res.status(409).json({ error: "Pedidos cancelados não podem ser reativados." });
+      return;
+    }
+
+    // Status 'paid' é controlado exclusivamente pela conciliação de pagamento da fatura
+    if (status === "paid") {
+      res.status(409).json({ error: "O status pago é controlado exclusivamente pela confirmação do pagamento da fatura." });
+      return;
+    }
+
+    // Cancelamento delegado ao OrderService
+    if (status === "cancelled") {
       const cancelledOrder = await cancelOrder({ order, crecheId, userId: req.user!.id });
       res.json(cancelledOrder);
-      // Notificar tutor que o pedido foi cancelado — fire-and-forget.
       sendPushToUser(order.tutorId, {
         title: "❌ Pedido cancelado",
         body: "Seu pedido na loja foi cancelado pela creche.",
@@ -170,12 +197,19 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       return;
     }
 
-    // Status update + credit release + outbox event must all commit in ONE
-    // transaction. Lock the row first so concurrent requests see the same
-    // pre-transition state — preventing duplicate credit releases and
-    // duplicate OrderPaid events when the same status is set twice.
+    // Status operacionais (preparing, ready_for_pickup, delivering, delivered)
+    // exigem que a fatura vinculada já esteja paga
+    if (["preparing", "ready_for_pickup", "delivering", "delivered"].includes(status)) {
+      if (order.invoiceId) {
+        const [inv] = await db.select({ status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.id, order.invoiceId));
+        if (!inv || inv.status !== "paid") {
+          res.status(409).json({ error: "O pedido não pode avançar para status operacional antes da confirmação do pagamento da fatura." });
+          return;
+        }
+      }
+    }
+
     const updatedOrder = await db.transaction(async (tx) => {
-      // Re-read with a row-level lock to get the authoritative pre-update status.
       const [locked] = await tx
         .select()
         .from(ordersTable)
@@ -184,34 +218,15 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
 
       if (!locked) throw Object.assign(new Error("Pedido não encontrado."), { status: 404 });
 
+      if (locked.status === "cancelled" && status !== "cancelled") {
+        throw Object.assign(new Error("Pedidos cancelados não podem ser reativados."), { status: 409 });
+      }
+
       const [updated] = await tx
         .update(ordersTable)
         .set({ status })
         .where(eq(ordersTable.id, orderId))
         .returning();
-
-      // Credit release happens at the first transition into
-      // {ready_for_pickup, paid, delivered}. Gate on the pre-update status
-      // so a ready_for_pickup → delivered sequence does not release twice.
-      const creditsAlreadyReleased = (["ready_for_pickup", "paid", "delivered"] as string[]).includes(locked.status);
-      // OrderPaid emits only when the order first reaches paid/delivered.
-      // A ready_for_pickup → paid sequence must still emit the event; a
-      // paid → delivered repeat must not.
-      const orderAlreadyPaid = (["paid", "delivered"] as string[]).includes(locked.status);
-
-      if (["delivered", "ready_for_pickup", "paid"].includes(status) && locked.invoiceId) {
-        if (!creditsAlreadyReleased) {
-          await releasePurchasedCredits(locked.invoiceId!, req.user!.id, tx);
-        }
-        if ((status === "paid" || status === "delivered") && !orderAlreadyPaid) {
-          await OutboxRepository.insert({
-            type: "OrderPaid",
-            crecheId,
-            invoiceId: locked.invoiceId!,
-            occurredAt: new Date().toISOString(),
-          } as FinancialDomainEvent, tx);
-        }
-      }
 
       return updated;
     });
@@ -234,8 +249,12 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       tag: `order-status-${orderId}`,
       data: { type: "order_status", orderId, crecheId },
     }).catch(() => {});
-  } catch (err) {
-    next(err);
+  } catch (err: any) {
+    if (err.status === 409 || err.message?.includes("não pode avançar") || err.message?.includes("cancelados")) {
+      res.status(409).json({ error: err.message });
+    } else {
+      next(err);
+    }
   }
 });
 

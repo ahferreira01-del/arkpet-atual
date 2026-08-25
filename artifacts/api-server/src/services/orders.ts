@@ -11,9 +11,8 @@
  * - Nunca duplica lógica existente.
  */
 
-import { db } from "@workspace/db";
-import { financialLog } from "../lib/logger.js";
 import {
+  db,
   ordersTable,
   orderItemsTable,
   catalogueItemsTable,
@@ -22,7 +21,9 @@ import {
   usersTable,
   crechesTable,
   tutorServiceCreditsTable,
-} from "@workspace/db/schema";
+  storeOrderOperationsTable,
+} from "@workspace/db";
+import { financialLog } from "../lib/logger.js";
 import { BillingService } from "./billing.js";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import type { FinancialDomainEvent } from "./events.js";
@@ -30,6 +31,7 @@ import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { releasePurchasedCredits } from "./credits.js";
 import { sendLowStockAlertEmail } from "./email.js";
 import { getBusinessDate } from "../lib/date.js";
+import { createHash } from "crypto";
 
 export interface CreateOrderItem {
   catalogueItemId: number;
@@ -39,10 +41,11 @@ export interface CreateOrderItem {
 export interface CreateOrderParams {
   crecheId: number;
   tutorId: number;
+  operationId: string;
   items: CreateOrderItem[];
   deliveryMethod: string;
   deliveryAddress?: string | null;
-  deliveryFee: number;
+  deliveryFee?: number;
 }
 
 export interface LowStockAlert {
@@ -58,149 +61,280 @@ export interface CreateOrderResult {
 
 /**
  * Cria um pedido completo com fatura avulsa, deduções de estoque e itens.
- * Retorna o resultado e a lista de alertas de baixo estoque para disparo
- * assíncrono (fora da transação).
+ * Protegido com idempotência transacional via store_order_operations (R24F).
  */
 export async function createOrder(
   params: CreateOrderParams
 ): Promise<{ result: CreateOrderResult; lowStockAlerts: LowStockAlert[] }> {
-  const { crecheId, tutorId, items, deliveryMethod, deliveryAddress, deliveryFee } = params;
+  const { crecheId, tutorId, operationId, items, deliveryMethod, deliveryAddress } = params;
   const lowStockAlerts: LowStockAlert[] = [];
   let result: CreateOrderResult = { order: {} as any, invoice: null };
 
-  await db.transaction(async (tx) => {
-    // Ordenar por ID para adquirir locks em ordem determinística (previne deadlocks)
-    const sortedReqItems = [...items].sort((a, b) => a.catalogueItemId - b.catalogueItemId);
-    const catalogueItems: (typeof catalogueItemsTable.$inferSelect)[] = [];
-    const orderItemsToInsert: {
-      catalogueItemId: number;
-      quantity: number;
-      unitPrice: string;
-      totalPrice: string;
-    }[] = [];
-    let subtotal = 0;
-
-    for (const reqItem of sortedReqItems) {
-      const [lockedItem] = await tx.select().from(catalogueItemsTable)
-        .where(and(
-          eq(catalogueItemsTable.id, reqItem.catalogueItemId),
-          eq(catalogueItemsTable.crecheId, crecheId),
-          eq(catalogueItemsTable.isActive, true),
-        ))
-        .for("update");
-
-      if (!lockedItem) {
-        throw new Error(`Item ID ${reqItem.catalogueItemId} não encontrado ou inativo.`);
-      }
-
-      // Only enforce stock for products that actually track stock.
-      // Services, day_use, and products with trackStock=false never block on quantity.
-      if (lockedItem.type === "product" && lockedItem.trackStock) {
-        if (lockedItem.stockQuantity < reqItem.quantity) {
-          throw new Error(`Estoque insuficiente para o item: ${lockedItem.name}. Saldo: ${lockedItem.stockQuantity}`);
-        }
-
-        await tx.update(catalogueItemsTable)
-          .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${reqItem.quantity}` })
-          .where(eq(catalogueItemsTable.id, lockedItem.id));
-
-        const newQuantity = lockedItem.stockQuantity - reqItem.quantity;
-        if (newQuantity <= lockedItem.minStockAlert) {
-          lowStockAlerts.push({
-            itemName: lockedItem.name,
-            currentStock: newQuantity,
-            reorderThreshold: lockedItem.minStockAlert,
-          });
-        }
-      }
-
-      catalogueItems.push(lockedItem);
-    }
-
-    for (const reqItem of items) {
-      const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-      if (!catItem) continue;
-
-      const unitPrice = Number(catItem.basePrice);
-      const totalPrice = unitPrice * reqItem.quantity;
-      subtotal += totalPrice;
-
-      orderItemsToInsert.push({
-        catalogueItemId: catItem.id,
-        quantity: reqItem.quantity,
-        unitPrice: unitPrice.toString(),
-        totalPrice: totalPrice.toString(),
-      });
-    }
-
-    const total = subtotal + Number(deliveryFee);
-
-    // Todos os itens do pedido compartilham uma única fatura avulsa
-    let firstInvoiceId: number | null = null;
-
-    for (const reqItem of orderItemsToInsert) {
-      const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
-      const { invoiceId: invId } = await BillingService.addCharge({
-        crecheId,
-        tutorId,
-        amount: reqItem.unitPrice,
-        quantity: reqItem.quantity,
-        description: catItem!.name,
-        type: catItem?.type ?? "product",
-        itemDate: new Date(),
-        isAvulso: !firstInvoiceId,
-        existingInvoiceId: firstInvoiceId ?? undefined,
-        tx,
-      });
-      if (!firstInvoiceId) firstInvoiceId = invId;
-    }
-
-    if (Number(deliveryFee) > 0) {
-      const { invoiceId: invId } = await BillingService.addCharge({
-        crecheId,
-        tutorId,
-        amount: deliveryFee.toString(),
-        quantity: 1,
-        description: "Taxa de Entrega",
-        type: "fee",
-        itemDate: new Date(),
-        isAvulso: !firstInvoiceId,
-        existingInvoiceId: firstInvoiceId ?? undefined,
-        tx,
-      });
-      if (!firstInvoiceId) firstInvoiceId = invId;
-    }
-
-    const [order] = await tx.insert(ordersTable).values({
-      crecheId,
-      tutorId,
-      invoiceId: firstInvoiceId!,
-      status: "pending_payment" as any, // schema enum may lag; cast avoids drift TS error
-      deliveryMethod: deliveryMethod as "pickup" | "delivery",
-      deliveryAddress,
-      deliveryFee: deliveryFee.toString(),
-      subtotal: subtotal.toString(),
-      total: total.toString(),
-    }).returning();
-
-    for (const oi of orderItemsToInsert) {
-      await tx.insert(orderItemsTable).values({
-        orderId: order.id,
-        catalogueItemId: oi.catalogueItemId,
-        quantity: oi.quantity,
-        unitPrice: oi.unitPrice,
-        totalPrice: oi.totalPrice,
-      });
-    }
-
-    let invoice: typeof invoicesTable.$inferSelect | null = null;
-    if (firstInvoiceId) {
-      const [fetchedInvoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, firstInvoiceId));
-      invoice = fetchedInvoice ?? null;
-    }
-
-    result = { order, invoice };
+  // Normalizar ordenação de itens e endereço para hash determinístico
+  const sortedReqItems = [...items].sort((a, b) => {
+    if (a.catalogueItemId !== b.catalogueItemId) return a.catalogueItemId - b.catalogueItemId;
+    return a.quantity - b.quantity;
   });
+  const normAddress = deliveryAddress && deliveryAddress.trim() ? deliveryAddress.trim() : null;
+  const payloadString = `${sortedReqItems.map(i => `${i.catalogueItemId}:${i.quantity}`).join(";")}|${deliveryMethod}|${normAddress ?? "null"}|${tutorId}`;
+  const payloadHash = createHash("sha256").update(payloadString).digest("hex");
+
+  // Fast-path: verificar se a operação já foi concluída
+  const [existingOp] = await db
+    .select()
+    .from(storeOrderOperationsTable)
+    .where(
+      and(
+        eq(storeOrderOperationsTable.crecheId, crecheId),
+        eq(storeOrderOperationsTable.operationId, operationId)
+      )
+    )
+    .limit(1);
+
+  if (existingOp) {
+    if (existingOp.payloadHash !== payloadHash) {
+      throw Object.assign(
+        new Error("Operação já processada com payload diferente."),
+        { status: 409 }
+      );
+    }
+    const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, existingOp.orderId));
+    const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, existingOp.invoiceId));
+    return { result: { order: order!, invoice: invoice ?? null }, lowStockAlerts: [] };
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Double check dentro da transação contra race condition
+      const [txExistingOp] = await tx
+        .select()
+        .from(storeOrderOperationsTable)
+        .where(
+          and(
+            eq(storeOrderOperationsTable.crecheId, crecheId),
+            eq(storeOrderOperationsTable.operationId, operationId)
+          )
+        )
+        .limit(1);
+
+      if (txExistingOp) {
+        if (txExistingOp.payloadHash !== payloadHash) {
+          throw Object.assign(
+            new Error("Operação já processada com payload diferente."),
+            { status: 409 }
+          );
+        }
+        const [order] = await tx.select().from(ordersTable).where(eq(ordersTable.id, txExistingOp.orderId));
+        const [invoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, txExistingOp.invoiceId));
+        result = { order: order!, invoice: invoice ?? null };
+        return;
+      }
+
+      // Ordenar por ID para adquirir locks em ordem determinística (previne deadlocks)
+      const sortedById = [...items].sort((a, b) => a.catalogueItemId - b.catalogueItemId);
+      const catalogueItems: (typeof catalogueItemsTable.$inferSelect)[] = [];
+      const orderItemsToInsert: {
+        catalogueItemId: number;
+        quantity: number;
+        unitPrice: string;
+        totalPrice: string;
+      }[] = [];
+      let subtotal = 0;
+
+      for (const reqItem of sortedById) {
+        const [lockedItem] = await tx.select().from(catalogueItemsTable)
+          .where(and(
+            eq(catalogueItemsTable.id, reqItem.catalogueItemId),
+            eq(catalogueItemsTable.crecheId, crecheId),
+            eq(catalogueItemsTable.isActive, true),
+          ))
+          .for("update");
+
+        if (!lockedItem) {
+          throw Object.assign(
+            new Error(`Item ID ${reqItem.catalogueItemId} não encontrado ou inativo.`),
+            { status: 400 }
+          );
+        }
+
+        // Only enforce stock for products that actually track stock.
+        // Services, day_use, and products with trackStock=false never block on quantity.
+        if (lockedItem.type === "product" && lockedItem.trackStock) {
+          if (lockedItem.stockQuantity < reqItem.quantity) {
+            throw Object.assign(
+              new Error(`Estoque insuficiente para o item: ${lockedItem.name}. Saldo: ${lockedItem.stockQuantity}`),
+              { status: 400 }
+            );
+          }
+
+          await tx.update(catalogueItemsTable)
+            .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${reqItem.quantity}` })
+            .where(eq(catalogueItemsTable.id, lockedItem.id));
+
+          const newQuantity = lockedItem.stockQuantity - reqItem.quantity;
+          if (newQuantity <= lockedItem.minStockAlert) {
+            lowStockAlerts.push({
+              itemName: lockedItem.name,
+              currentStock: newQuantity,
+              reorderThreshold: lockedItem.minStockAlert,
+            });
+          }
+        }
+
+        catalogueItems.push(lockedItem);
+      }
+
+      for (const reqItem of items) {
+        const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
+        if (!catItem) continue;
+
+        const unitPrice = Number(catItem.basePrice);
+        const totalPrice = unitPrice * reqItem.quantity;
+        subtotal += totalPrice;
+
+        orderItemsToInsert.push({
+          catalogueItemId: catItem.id,
+          quantity: reqItem.quantity,
+          unitPrice: unitPrice.toString(),
+          totalPrice: totalPrice.toString(),
+        });
+      }
+
+      // Cálculo autoritativo de taxa de entrega pelo servidor (R24F)
+      const hasPhysicalProducts = catalogueItems.some(c => c.type === "product");
+      let authoritativeDeliveryFee = 0;
+      if (deliveryMethod === "delivery" && hasPhysicalProducts) {
+        const [creche] = await tx
+          .select({ deliveryType: crechesTable.deliveryType, deliveryFee: crechesTable.deliveryFee })
+          .from(crechesTable)
+          .where(eq(crechesTable.id, crecheId));
+        if (creche?.deliveryType === "fixed") {
+          authoritativeDeliveryFee = Number(creche.deliveryFee || 0);
+        }
+      }
+
+      const total = subtotal + authoritativeDeliveryFee;
+
+      // Todos os itens do pedido compartilham uma única fatura avulsa
+      let firstInvoiceId: number | null = null;
+
+      for (const reqItem of orderItemsToInsert) {
+        const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId)!;
+        const { invoiceId: invId } = await BillingService.addCharge({
+          crecheId,
+          tutorId,
+          amount: reqItem.unitPrice,
+          quantity: reqItem.quantity,
+          description: catItem.name,
+          type: catItem.type ?? "product",
+          itemDate: new Date(),
+          isAvulso: !firstInvoiceId,
+          existingInvoiceId: firstInvoiceId ?? undefined,
+          catalogueItemId: catItem.id,
+          creditsAmount: catItem.creditsAmount ?? undefined,
+          snapshotMaxPets: catItem.maxPetsPerDay ?? undefined,
+          snapshotExpiration: (catItem as any).expirationDays ?? undefined,
+          tx,
+        });
+        if (!firstInvoiceId) firstInvoiceId = invId;
+      }
+
+      if (authoritativeDeliveryFee > 0) {
+        const { invoiceId: invId } = await BillingService.addCharge({
+          crecheId,
+          tutorId,
+          amount: authoritativeDeliveryFee.toString(),
+          quantity: 1,
+          description: "Taxa de Entrega",
+          type: "fee",
+          itemDate: new Date(),
+          isAvulso: !firstInvoiceId,
+          existingInvoiceId: firstInvoiceId ?? undefined,
+          tx,
+        });
+        if (!firstInvoiceId) firstInvoiceId = invId;
+      }
+
+      const [order] = await tx.insert(ordersTable).values({
+        crecheId,
+        tutorId,
+        invoiceId: firstInvoiceId!,
+        status: "pending_payment" as any,
+        deliveryMethod: deliveryMethod as "pickup" | "delivery",
+        deliveryAddress: normAddress,
+        deliveryFee: authoritativeDeliveryFee.toString(),
+        subtotal: subtotal.toString(),
+        total: total.toString(),
+      }).returning();
+
+      for (const oi of orderItemsToInsert) {
+        await tx.insert(orderItemsTable).values({
+          orderId: order.id,
+          catalogueItemId: oi.catalogueItemId,
+          quantity: oi.quantity,
+          unitPrice: oi.unitPrice,
+          totalPrice: oi.totalPrice,
+        });
+      }
+
+      // Persistir registro de idempotência dentro da mesma transação
+      await tx.insert(storeOrderOperationsTable).values({
+        crecheId,
+        operationId,
+        payloadHash,
+        orderId: order.id,
+        invoiceId: firstInvoiceId!,
+      });
+
+      let invoice: typeof invoicesTable.$inferSelect | null = null;
+      if (firstInvoiceId) {
+        const [fetchedInvoice] = await tx.select().from(invoicesTable).where(eq(invoicesTable.id, firstInvoiceId));
+        invoice = fetchedInvoice ?? null;
+      }
+
+      result = { order, invoice };
+    });
+  } catch (err: any) {
+    // Tratar race condition de índice único em store_order_operations
+    const STORE_ORDER_OPERATION_CONSTRAINT = "store_order_operations_creche_op_idx";
+
+    const errCode = err.code || err.cause?.code;
+    const errConstraint = err.constraint || err.cause?.constraint;
+    const errDetail = typeof err.detail === "string" ? err.detail : (typeof err.cause?.detail === "string" ? err.cause.detail : "");
+    const errMessage = typeof err.message === "string" ? err.message : "";
+
+    const isStoreOpConflict =
+      errCode === "23505" &&
+      (errConstraint === STORE_ORDER_OPERATION_CONSTRAINT ||
+        errDetail.includes(STORE_ORDER_OPERATION_CONSTRAINT) ||
+        errMessage.includes(STORE_ORDER_OPERATION_CONSTRAINT));
+
+    if (isStoreOpConflict) {
+      const [resolvedOp] = await db
+        .select()
+        .from(storeOrderOperationsTable)
+        .where(
+          and(
+            eq(storeOrderOperationsTable.crecheId, crecheId),
+            eq(storeOrderOperationsTable.operationId, operationId)
+          )
+        )
+        .limit(1);
+
+      if (resolvedOp) {
+        if (resolvedOp.payloadHash !== payloadHash) {
+          throw Object.assign(
+            new Error("Operação já processada com payload diferente."),
+            { status: 409 }
+          );
+        }
+        const [order] = await db.select().from(ordersTable).where(eq(ordersTable.id, resolvedOp.orderId));
+        const [invoice] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, resolvedOp.invoiceId));
+        return { result: { order: order!, invoice: invoice ?? null }, lowStockAlerts: [] };
+      }
+    }
+    throw err;
+  }
 
   return { result, lowStockAlerts };
 }
@@ -243,8 +377,8 @@ export async function dispatchLowStockAlerts(
 }
 
 /**
- * Cancela um pedido: restaura estoque de produtos, revoga créditos de serviço
- * liberados e cancela a fatura associada.
+ * Cancela um pedido: restaura estoque de produtos físicos controlados, revoga
+ * créditos de serviço liberados e cancela a fatura associada.
  */
 export async function cancelOrder(params: {
   order: typeof ordersTable.$inferSelect;
@@ -288,7 +422,8 @@ export async function cancelOrder(params: {
     for (const item of sortedItems) {
       const catItem = catItems.find(c => c.id === item.catalogueItemId);
 
-      if (catItem && catItem.type !== "service") {
+      // Apenas produtos físicos com trackStock=true tiveram estoque debitado e devem ser restaurados (R24F)
+      if (catItem && catItem.type === "product" && catItem.trackStock === true) {
         await tx.update(catalogueItemsTable)
           .set({ stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${item.quantity}` })
           .where(eq(catalogueItemsTable.id, item.catalogueItemId));
@@ -303,6 +438,7 @@ export async function cancelOrder(params: {
         });
       }
     }
+
 
     // Revogar créditos de serviço liberados (caso a fatura já tenha sido paga)
     if (order.invoiceId) {

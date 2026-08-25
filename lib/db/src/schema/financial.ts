@@ -277,6 +277,7 @@ export const invoiceItemsTable = pgTable("invoice_items", {
   creditsAmount: integer("credits_amount"),               // Qtd de créditos que este item concede (packages/services)
   snapshotMaxPets: integer("snapshot_max_pets"),          // maxPetsPerDay capturado (para packages multi-pet)
   snapshotExpirationDays: integer("snapshot_expiration_days"), // Dias até expirar (padrão 365)
+  refundedQuantity: integer("refunded_quantity").default(0).notNull(), // Qtd já estornada do item
 });
 
 export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({
@@ -444,4 +445,31 @@ export const financialOutboxTable = pgTable("financial_outbox", {
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ─── POS Sale Operations (Phase R20F) ─────────────────────────────────────────
+// Stores idempotency metadata for POS counter sales. Guaranteed unique per tenant.
+export const posSaleOperationsTable = pgTable("pos_sale_operations", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  operationId: varchar("operation_id", { length: 64 }).notNull(),
+  payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  crecheOpIdx: uniqueIndex("pos_sale_operations_creche_op_idx").on(table.crecheId, table.operationId),
+}));
+
+// ─── Store Order Operations (Phase R24F) ──────────────────────────────────────
+// Stores idempotency metadata for Tutor Store checkout orders. Guaranteed unique per tenant.
+export const storeOrderOperationsTable = pgTable("store_order_operations", {
+  id: serial("id").primaryKey(),
+  crecheId: integer("creche_id").notNull(),
+  operationId: varchar("operation_id", { length: 64 }).notNull(),
+  payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+  orderId: integer("order_id").notNull(),
+  invoiceId: integer("invoice_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  crecheOpIdx: uniqueIndex("store_order_operations_creche_op_idx").on(table.crecheId, table.operationId),
+}));
 

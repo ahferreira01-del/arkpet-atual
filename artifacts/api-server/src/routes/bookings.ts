@@ -22,7 +22,7 @@ import {
   tutorServiceCreditsTable,
 } from "@workspace/db/schema";
 import { eq, and, desc, gte, gt, sql, or, isNull, asc, inArray, count } from "drizzle-orm";
-import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
+import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { normalizeServiceType } from "../utils/service-name.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
@@ -55,12 +55,15 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 router.use(requireCrecheMembership);
 
-function isServiceBookingBackend(bookingType: string, catalogueItemType: string | null): boolean {
-  if (catalogueItemType !== null && catalogueItemType !== undefined) {
-    return catalogueItemType === "service";
+export function isServiceBookingBackend(bookingType: string, catalogueItemType: string | null | undefined): boolean {
+  if (catalogueItemType === undefined) {
+    throw new Error("Internal contract violation: catalogueItemType must not be undefined in isServiceBookingBackend");
   }
-  const LEGACY_SERVICE_TYPES = new Set(["banho", "visita_taxi", "creche_taxi", "tosa_higienica", "tosa_completa", "tosa_padrao", "avaliacao", "taxi"]);
-  return LEGACY_SERVICE_TYPES.has(bookingType);
+  const LEGACY_SERVICE_TYPES = new Set(["banho", "visita_taxi", "creche_taxi"]);
+  if (catalogueItemType === null) {
+    return LEGACY_SERVICE_TYPES.has(bookingType);
+  }
+  return catalogueItemType === "service";
 }
 
 async function getBookingWithNames(booking: typeof bookingsTable.$inferSelect) {
@@ -981,6 +984,28 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
     return;
   }
 
+  // Verify booking existence and tutor ownership
+  const [existing] = await db
+    .select({ tutorId: bookingsTable.tutorId })
+    .from(bookingsTable)
+    .where(
+      and(
+        eq(bookingsTable.crecheId, crecheId),
+        eq(bookingsTable.id, bookingId),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "Reserva não encontrada" });
+    return;
+  }
+
+  if (req.user.role === "tutor" && existing.tutorId !== req.user.id) {
+    res.status(404).json({ error: "Reserva não encontrada" });
+    return;
+  }
+
   const [booking] = await db
     .update(bookingsTable)
     .set({
@@ -1126,7 +1151,7 @@ router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
   res.json(await getBookingWithNames(booking));
 });
 
-router.post("/:bookingId/checkin", async (req: AuthRequest, res) => {
+router.post("/:bookingId/checkin", requireRole("staff", "creche_admin", "master_admin"), async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
 

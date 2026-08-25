@@ -4,14 +4,64 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
+import { db } from "@workspace/db";
+import { crechesTable, usersTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
-import { ObjectPermission } from "../lib/objectAcl.js";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { verifyMediaToken } from "../lib/mediaToken.js";
 import { validateUpload } from "../middlewares/validateUpload.js";
+import {
+  parseCanonicalPrivateObjectPath,
+  canUserAccessPrivateResource,
+} from "../lib/objectAuthorization.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+/**
+ * Resolves and validates target crecheId for storage upload requests.
+ * - master_admin: Requires ?crecheId=<id> pointing to an existing creche.
+ * - tutor / staff / creche_admin: Strictly bound to user's assigned session crecheId.
+ */
+async function resolveUploadCrecheId(
+  req: AuthRequest,
+  res: Response
+): Promise<{ ok: boolean; crecheId?: string }> {
+  if (!req.user) {
+    res.status(401).json({ error: "Não autenticado" });
+    return { ok: false };
+  }
+
+  if (req.user.role === "master_admin") {
+    const rawParam = req.query["crecheId"];
+    const qCreche = rawParam ? parseInt(String(rawParam), 10) : NaN;
+    if (Number.isNaN(qCreche) || qCreche <= 0) {
+      res.status(400).json({ error: "crecheId é obrigatório para upload por master_admin" });
+      return { ok: false };
+    }
+
+    const [targetCreche] = await db
+      .select({ id: crechesTable.id })
+      .from(crechesTable)
+      .where(eq(crechesTable.id, qCreche))
+      .limit(1);
+
+    if (!targetCreche) {
+      res.status(404).json({ error: "Creche de destino não encontrada" });
+      return { ok: false };
+    }
+
+    return { ok: true, crecheId: String(targetCreche.id) };
+  }
+
+  if (req.user.crecheId != null && req.user.crecheId > 0) {
+    return { ok: true, crecheId: String(req.user.crecheId) };
+  }
+
+  res.status(403).json({ error: "Usuário não possui creche associada" });
+  return { ok: false };
+}
 
 /**
  * POST /storage/uploads/request-url
@@ -28,11 +78,12 @@ router.post("/storage/uploads/request-url", authenticate, async (req: AuthReques
     return;
   }
 
+  const resolved = await resolveUploadCrecheId(req, res);
+  if (!resolved.ok || !resolved.crecheId) return;
+
   try {
     const { name, size, contentType } = parsed.data;
-
-    const crecheId = req.user?.crecheId ? String(req.user.crecheId) : undefined;
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL(crecheId);
+    const uploadURL = await objectStorageService.getObjectEntityUploadURL(resolved.crecheId);
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
     res.json(
@@ -57,6 +108,10 @@ router.post("/storage/uploads/request-url", authenticate, async (req: AuthReques
  */
 router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type: "*/*", limit: "100mb" }), async (req: AuthRequest, res: Response) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+
+  const resolved = await resolveUploadCrecheId(req, res);
+  if (!resolved.ok || !resolved.crecheId) return;
+
   try {
     const contentType = (req.headers["content-type"] as string) || "application/octet-stream";
     const buffer = req.body as Buffer;
@@ -64,8 +119,8 @@ router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type:
       res.status(400).json({ error: "Arquivo vazio ou inválido" });
       return;
     }
-    const crecheId = req.user.crecheId != null ? String(req.user.crecheId) : undefined;
-    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType, String(req.user.id), crecheId);
+
+    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType, String(req.user.id), resolved.crecheId);
     res.json({ objectPath });
   } catch (err) {
     console.error("Error uploading file directly", err);
@@ -125,8 +180,26 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       res.status(401).json({ error: "Token de mídia inválido ou expirado" });
       return;
     }
-    // Attach a minimal user object so downstream ACL checks work
-    req.user = { id: payload.userId, role: "media_reader", crecheId: payload.crecheId, name: "", email: "" };
+
+    // Load full user identity for authenticated user
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, payload.userId))
+      .limit(1);
+
+    if (!user || user.isActive === false) {
+      res.status(401).json({ error: "Não autenticado" });
+      return;
+    }
+
+    req.user = {
+      id: user.id,
+      role: user.role,
+      crecheId: user.crecheId,
+      name: user.name,
+      email: user.email,
+    };
   } else {
     // Fall through to standard Bearer authentication
     const authHeader = req.headers.authorization;
@@ -134,7 +207,7 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       res.status(401).json({ error: "Não autenticado" });
       return;
     }
-    // Reuse the authenticate middleware logic inline to avoid async middleware chaining
+
     const { verifyToken } = await import("../lib/auth.js");
     const token = authHeader.slice(7);
     const tokenPayload = verifyToken(token);
@@ -142,70 +215,59 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       res.status(401).json({ error: "Token inválido" });
       return;
     }
-    const { db: dbConn } = await import("@workspace/db");
-    const { usersTable } = await import("@workspace/db/schema");
-    const { eq } = await import("drizzle-orm");
-    const [user] = await dbConn.select().from(usersTable).where(eq(usersTable.id, tokenPayload.userId)).limit(1);
+
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, tokenPayload.userId))
+      .limit(1);
+
     if (!user || user.isActive === false) {
       res.status(401).json({ error: "Não autenticado" });
       return;
     }
-    req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
+
+    req.user = {
+      id: user.id,
+      role: user.role,
+      crecheId: user.crecheId,
+      name: user.name,
+      email: user.email,
+    };
   }
 
   try {
     const raw = req.params.path;
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
-    const objectPath = `/objects/${wildcardPath}`;
 
-    // --- Path-based ACL for creche-scoped uploads ---
-    // Objects uploaded via uploadBuffer with a crecheId are stored at
-    // /objects/uploads/c{N}/... so we can authorize them without a GCS
-    // metadata read (which uses a write-scoped token that isn't available).
-    const crechePathMatch = wildcardPath.match(/^uploads\/c(\d+)\//);
-    if (crechePathMatch) {
-      const pathCrecheId = parseInt(crechePathMatch[1], 10);
-      const userCrecheId = req.user?.crecheId;
-      const userRole     = req.user?.role;
-      if (
-        userRole !== "master_admin" &&
-        userCrecheId !== pathCrecheId
-      ) {
-        res.status(403).json({ error: "Sem acesso a este arquivo" });
-        return;
-      }
-      // Authorized — skip the GCS-metadata ACL check and go straight to download
-      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-      const response   = await objectStorageService.downloadObject(objectFile, 3600, req.headers.range);
-      res.status(response.status);
-      response.headers.forEach((value, key) => res.setHeader(key, value));
-      if (response.body) {
-        const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-        nodeStream.pipe(res);
-      } else {
-        res.end();
-      }
+    // Strict canonical path parse
+    const parsed = parseCanonicalPrivateObjectPath(wildcardPath);
+    if (!parsed.ok || !parsed.pathCrecheId || !parsed.canonicalObjectPath) {
+      res.status(403).json({ error: "Caminho de arquivo inválido ou não autorizado" });
       return;
     }
 
-    const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+    const { pathCrecheId, canonicalObjectPath } = parsed;
 
-    // --- Legacy ACL check via GCS metadata (non-creche-path objects) ---
-    if (!req.user) {
-      res.status(401).json({ error: "Unauthorized" });
+    // Cross-tenant gate
+    if (req.user.role !== "master_admin" && req.user.crecheId !== pathCrecheId) {
+      res.status(403).json({ error: "Sem acesso a este arquivo" });
       return;
     }
 
-    const canAccess = await objectStorageService.canAccessObjectEntity({
-      userId: String(req.user.id),
-      objectFile,
-      requestedPermission: ObjectPermission.READ,
+    // Resource-aware authorization check
+    const hasAccess = await canUserAccessPrivateResource({
+      canonicalObjectPath,
+      pathCrecheId,
+      user: req.user,
     });
-    if (!canAccess) {
-      res.status(403).json({ error: "Forbidden" });
+
+    if (!hasAccess) {
+      res.status(403).json({ error: "Sem acesso a este arquivo" });
       return;
     }
-    // ------------------------------------------------------------------
+
+    const objectFile = await objectStorageService.getObjectEntityFile(canonicalObjectPath);
     const response = await objectStorageService.downloadObject(objectFile, 3600, req.headers.range);
 
     res.status(response.status);
@@ -219,7 +281,6 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
     }
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
-      console.warn("Object not found", error);
       res.status(404).json({ error: "Object not found" });
       return;
     }

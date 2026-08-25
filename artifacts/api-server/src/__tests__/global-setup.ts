@@ -9,16 +9,12 @@
  * in test files via `import { inject } from "vitest"`.
  */
 
+import path from "path";
+import dotenv from "dotenv";
+dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+dotenv.config();
+
 import bcrypt from "bcryptjs";
-// These workspace packages run in the same Node process as vitest
-// (no bundling step) so ESM imports work directly.
-import { db } from "@workspace/db";
-import {
-  usersTable,
-  crechesTable,
-  subscriptionsTable,
-  plansTable,
-} from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 
 const PORT = process.env["API_TEST_PORT"] ?? "8080";
@@ -45,6 +41,14 @@ export async function setup({
 }: {
   provide: (key: string, value: unknown) => void;
 }) {
+  const { db } = await import("@workspace/db");
+  const {
+    usersTable,
+    crechesTable,
+    subscriptionsTable,
+    plansTable,
+  } = await import("@workspace/db/schema");
+
   const ts = Date.now();
   const email = `e2e-db-${ts}@test.invalid`;
   const password = "Test1234!";

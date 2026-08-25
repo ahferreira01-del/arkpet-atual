@@ -14,19 +14,11 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, desc, sql, gte, lte, count, lt, or, isNull, inArray } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireFinancialAccess } from "./financial/middleware.js";
 import { z } from "zod";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-
-function requireFinancialAccess(req: AuthRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  if (!user || (user.role !== "creche_admin" && user.role !== "staff")) {
-    res.status(403).json({ error: "Acesso não autorizado para tutores." });
-    return;
-  }
-  next();
-}
 
 function parseDates(req: Request) {
   const { startDate, endDate } = req.query;
@@ -70,7 +62,8 @@ router.get("/dashboard/kpis", requireFinancialAccess, async (req: AuthRequest, r
     const transactions = await db.select({
       type: transactionsTable.type,
       amount: transactionsTable.amount,
-      date: transactionsTable.transactionDate
+      date: transactionsTable.transactionDate,
+      description: transactionsTable.description,
     }).from(transactionsTable)
       .where(and(
         eq(transactionsTable.crecheId, crecheId),
@@ -183,12 +176,22 @@ router.get("/dashboard/kpis", requireFinancialAccess, async (req: AuthRequest, r
     const averageTicket = paidInvoicesCount > 0 ? receivedRevenue / paidInvoicesCount : 0;
     const averageRevenuePerTutor = uniqueTutors.size > 0 ? receivedRevenue / uniqueTutors.size : 0;
 
-    // Products and Services Sold
-    const items = await db.select({
+    // Products Sold (canonical formula from reports/products-sold: delivered store orders)
+    const deliveredOrderItems = await db.select({
       quantity: orderItemsTable.quantity
-    }).from(orderItemsTable);
+    }).from(orderItemsTable)
+      .innerJoin(ordersTable, eq(orderItemsTable.orderId, ordersTable.id))
+      .where(and(
+        eq(ordersTable.crecheId, crecheId),
+        gte(ordersTable.createdAt, new Date(dates.start)),
+        lte(ordersTable.createdAt, new Date(dates.end)),
+        eq(ordersTable.status, 'delivered')
+      ));
 
     let productsSold = 0;
+    for (const item of deliveredOrderItems) {
+      productsSold += item.quantity;
+    }
     let servicesRendered = 0;
 
     const orders = await db.select({ id: ordersTable.id }).from(ordersTable)
@@ -202,7 +205,7 @@ router.get("/dashboard/kpis", requireFinancialAccess, async (req: AuthRequest, r
 
     let posSalesCount = 0;
     for (const t of transactions) {
-      if (t.type === 'income' && (t as any).description === 'Venda Balcão') {
+      if (t.type === 'income' && t.description === 'Venda Balcão') {
         posSalesCount++;
       }
     }

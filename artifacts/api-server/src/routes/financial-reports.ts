@@ -10,43 +10,59 @@ import {
   ordersTable,
   orderItemsTable
 } from "@workspace/db/schema";
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, lt, sql } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireFinancialAccess } from "./financial/middleware.js";
+import {
+  getBusinessDate,
+  isValidCalendarDate,
+  getNextCalendarDay,
+  getPreviousCalendarDay,
+  getBusinessDayStartInstant
+} from "../lib/date.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
 
-function requireFinancialAccess(req: AuthRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  if (!user || (user.role !== "creche_admin" && user.role !== "staff")) {
-    res.status(403).json({ error: "Acesso não autorizado para tutores." });
-    return;
-  }
-  next();
-}
-
-function parseDates(req: Request) {
+function parseReportDates(req: Request): {
+  startStr: string;
+  endStr: string;
+  startInstant: Date;
+  nextDayInstant: Date;
+} | { error: string } {
   const { startDate, endDate } = req.query;
-  
-  const isValidDate = (d: any) => typeof d === 'string' && d !== "undefined" && d !== "null";
 
-  const end = isValidDate(endDate) ? new Date(endDate as string) : new Date();
-  end.setUTCHours(23, 59, 59, 999);
-  
-  let start: Date;
-  if (isValidDate(startDate)) {
-    start = new Date(startDate as string);
+  const todayStr = getBusinessDate();
+  let startStr: string;
+  let endStr: string;
+
+  if (endDate !== undefined && endDate !== null && endDate !== "" && endDate !== "undefined" && endDate !== "null") {
+    if (!isValidCalendarDate(endDate)) {
+      return { error: "Data final inválida. Use YYYY-MM-DD" };
+    }
+    endStr = String(endDate);
   } else {
-    start = new Date();
-    start.setDate(start.getDate() - 30);
+    endStr = todayStr;
   }
-  start.setUTCHours(0, 0, 0, 0);
+
+  if (startDate !== undefined && startDate !== null && startDate !== "" && startDate !== "undefined" && startDate !== "null") {
+    if (!isValidCalendarDate(startDate)) {
+      return { error: "Data inicial inválida. Use YYYY-MM-DD" };
+    }
+    startStr = String(startDate);
+  } else {
+    startStr = getPreviousCalendarDay(endStr, 30);
+  }
+
+  const startInstant = getBusinessDayStartInstant(startStr, "America/Sao_Paulo");
+  const nextDayStr = getNextCalendarDay(endStr);
+  const nextDayInstant = getBusinessDayStartInstant(nextDayStr, "America/Sao_Paulo");
 
   return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-    startDateObj: start,
-    endDateObj: end
+    startStr,
+    endStr,
+    startInstant,
+    nextDayInstant,
   };
 }
 
@@ -54,7 +70,12 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
   try {
     const crecheId = Number(req.params.crecheId);
     const type = req.params.type;
-    const dates = parseDates(req);
+    const parsed = parseReportDates(req);
+
+    if ("error" in parsed) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
 
     if (type === 'cash-flow') {
       const tx = await db.select({
@@ -67,8 +88,8 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
       }).from(transactionsTable)
         .where(and(
           eq(transactionsTable.crecheId, crecheId),
-          gte(transactionsTable.transactionDate, dates.start),
-          lte(transactionsTable.transactionDate, dates.end)
+          gte(transactionsTable.transactionDate, parsed.startStr),
+          lte(transactionsTable.transactionDate, parsed.endStr)
         ))
         .orderBy(desc(transactionsTable.transactionDate));
       return res.json({ data: tx });
@@ -86,8 +107,8 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
         .leftJoin(usersTable, eq(invoicesTable.tutorId, usersTable.id))
         .where(and(
           eq(invoicesTable.crecheId, crecheId),
-          gte(invoicesTable.createdAt, dates.startDateObj),
-          lte(invoicesTable.createdAt, dates.endDateObj)
+          gte(invoicesTable.createdAt, parsed.startInstant),
+          lt(invoicesTable.createdAt, parsed.nextDayInstant)
         ))
         .orderBy(desc(invoicesTable.createdAt));
       return res.json({ data: inv });
@@ -106,8 +127,8 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
       }).from(expensesTable)
         .where(and(
           eq(expensesTable.crecheId, crecheId),
-          gte(expensesTable.dueDate, dates.start),
-          lte(expensesTable.dueDate, dates.end)
+          gte(expensesTable.dueDate, parsed.startStr),
+          lte(expensesTable.dueDate, parsed.endStr)
         ))
         .orderBy(desc(expensesTable.dueDate));
       return res.json({ data: exp });
@@ -127,8 +148,8 @@ router.get("/reports/:type", requireFinancialAccess, async (req: AuthRequest, re
         .leftJoin(usersTable, eq(ordersTable.tutorId, usersTable.id))
         .where(and(
           eq(ordersTable.crecheId, crecheId),
-          gte(ordersTable.createdAt, dates.startDateObj),
-          lte(ordersTable.createdAt, dates.endDateObj),
+          gte(ordersTable.createdAt, parsed.startInstant),
+          lt(ordersTable.createdAt, parsed.nextDayInstant),
           eq(ordersTable.status, 'delivered')
         ))
         .orderBy(desc(ordersTable.createdAt));

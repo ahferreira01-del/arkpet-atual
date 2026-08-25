@@ -11,6 +11,11 @@ import {
   useUpdateBooking,
   useCompleteTask,
   useListUsers,
+  getGetCrecheStatsQueryKey,
+  getListPetsQueryKey,
+  getListBookingsQueryKey,
+  getListTasksQueryKey,
+  getListCrecheStaffQueryKey,
   ListTasksStatus,
 } from "@workspace/api-client-react";
 import { FeedPage } from "@/features/feed/components/FeedPage";
@@ -97,11 +102,14 @@ function NotificationPrompt() {
 }
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  if (user?.role === "staff") return <StaffDashboard user={user} />;
-  if (user?.role === "master_admin") return <MasterAdminDashboard />;
-  if (user?.role === "tutor") return <TutorDashboard user={user} />;
-  return <CrecheDashboard crecheId={user?.crecheId || 1} user={user} />;
+  const { user, isLoading } = useAuth();
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+  if (!user) return null;
+  if (user.role === "staff") return <StaffDashboard user={user} />;
+  if (user.role === "master_admin") return <MasterAdminDashboard />;
+  if (user.role === "tutor") return <TutorDashboard user={user} />;
+  if (!user.crecheId) return <div className="p-8 text-center text-muted-foreground">Nenhuma creche vinculada</div>;
+  return <CrecheDashboard crecheId={user.crecheId} user={user} />;
 }
 
 // ─── Creche Admin ──────────────────────────────────────────────────────────────
@@ -111,9 +119,16 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const [, navigate] = useLocation();
 
   useEffect(() => {
-    const id = setInterval(() => queryClient.invalidateQueries(), 20_000);
+    const id = setInterval(() => {
+      if (crecheId) {
+        queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+      }
+    }, 20_000);
     return () => clearInterval(id);
-  }, [queryClient]);
+  }, [queryClient, crecheId]);
 
   const { data: stats } = useGetCrecheStats(crecheId);
   const { data: pets, isLoading: petsLoading } = useListPets(crecheId);
@@ -225,15 +240,20 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
 
 // ─── Staff ────────────────────────────────────────────────────────────────────
 function StaffDashboard({ user }: { user: any }) {
-  const crecheId = user.crecheId || 1;
+  const crecheId = user?.crecheId ?? null;
   const queryClient = useQueryClient();
-  const { data: tasks, isLoading } = useListTasks(crecheId, { status: "pending" as ListTasksStatus });
-  const { data: pets } = useListPets(crecheId);
+  const { data: tasks, isLoading } = useListTasks(crecheId ?? 0, { status: "pending" as ListTasksStatus });
+  const { data: pets } = useListPets(crecheId ?? 0);
 
   useEffect(() => {
-    const id = setInterval(() => queryClient.invalidateQueries(), 20_000);
+    const id = setInterval(() => {
+      if (crecheId) {
+        queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+      }
+    }, 20_000);
     return () => clearInterval(id);
-  }, [queryClient]);
+  }, [queryClient, crecheId]);
   const petsArray = Array.isArray(pets) ? pets : (pets as any)?.items || [];
   const checkedIn = petsArray.filter((p: any) => p.isCheckedIn) || [];
   const checkedInIds = new Set(checkedIn.map((p: any) => p.id).filter((id: any): id is number => id != null));
@@ -542,11 +562,11 @@ function TimelineEventCard({
 }
 
 function TutorDashboard({ user }: { user: any }) {
-  const crecheId = user.crecheId || 1;
+  const crecheId = user?.crecheId ?? null;
   const queryClient = useQueryClient();
-  const { data: pets } = useListPets(crecheId);
-  const { data: timeline, isLoading: timelineLoading, isError: timelineError, refetch } = useTutorTimeline(crecheId, user.id);
-  const { data: invoices, isLoading: invoicesLoading } = useUpcomingInvoices(crecheId, user.id);
+  const { data: pets } = useListPets(crecheId ?? 0);
+  const { data: timeline, isLoading: timelineLoading, isError: timelineError, refetch } = useTutorTimeline(crecheId ?? 0, user?.id ?? 0);
+  const { data: invoices, isLoading: invoicesLoading } = useUpcomingInvoices(crecheId ?? 0, user?.id ?? 0);
 
   const myPets = Array.isArray(pets) ? pets : (pets as any)?.items || [];
   const checkedInPets = myPets.filter((p: any) => p.isCheckedIn);
@@ -555,13 +575,14 @@ function TutorDashboard({ user }: { user: any }) {
   const events = timeline || [];
 
   const handleLike = async (ev: TutorTimelineEvent) => {
+    if (!crecheId) return;
     const token = localStorage.getItem("auth_token");
     // Timeline events are stored in timeline_events — use the feed like endpoint
     await fetch(
       `/api/creches/${crecheId}/feed/${ev.id}/like`,
       { method: "POST", headers: { Authorization: `Bearer ${token}` } }
     );
-    queryClient.invalidateQueries({ queryKey: ["tutor-timeline"] });
+    queryClient.invalidateQueries({ queryKey: ["tutor-timeline", crecheId, user.id] });
   };
 
   const invoiceList = invoices?.data || (Array.isArray(invoices) ? invoices : []);

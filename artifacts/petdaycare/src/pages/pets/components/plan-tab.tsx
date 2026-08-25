@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useUpdatePet } from "@workspace/api-client-react";
+import { useUpdatePet, getGetPetQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
       {
         onSuccess: () => {
           setSaved(true);
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getGetPetQueryKey(crecheId, petId) });
           setTimeout(() => setSaved(false), 3000);
         },
       }

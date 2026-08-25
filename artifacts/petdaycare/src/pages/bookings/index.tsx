@@ -1,5 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useListBookings, useCreateBooking, useUpdateBooking, useCheckIn, useCheckOut, useListPets, useListTasks } from "@workspace/api-client-react";
+import {
+  useListBookings,
+  useCreateBooking,
+  useUpdateBooking,
+  useCheckIn,
+  useCheckOut,
+  useListPets,
+  useListTasks,
+  getListBookingsQueryKey,
+  getListPetsQueryKey,
+  getListTasksQueryKey,
+  getGetCrecheStatsQueryKey,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,12 +33,13 @@ import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
 import { AddConsumableModal } from "@/components/bookings/add-consumable-modal";
 
-function useTutors(crecheId: number, enabled: boolean) {
+function useTutors(crecheId: number | null, enabled: boolean) {
   const token = localStorage.getItem("auth_token");
   return useQuery<any[]>({
     queryKey: ["tutors-full", crecheId],
-    enabled,
+    enabled: enabled && !!crecheId,
     queryFn: async () => {
+      if (!crecheId) return [];
       const r = await fetch(`/api/creches/${crecheId}/tutors/manage`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -52,15 +65,12 @@ const bookingTypeLabel: Record<string, string> = {
   creche_taxi: "Creche + Táxi",
 };
 
-// Service bookings (grooming, etc.) follow a different operational flow:
-// confirmed → "Iniciar Serviço" (checkin) → active → "Concluir Serviço" (complete-service)
-// They don't have check-out or consumables — the pet leaves after the service.
-const SERVICE_BOOKING_TYPES = new Set(["banho", "visita_taxi", "creche_taxi"]);
-const isServiceBooking = (type: string) => SERVICE_BOOKING_TYPES.has(type);
+import { isServiceBooking, SERVICE_BOOKING_TYPES } from "@/lib/booking-utils";
+export { isServiceBooking, SERVICE_BOOKING_TYPES };
 
 const statusVariant: Record<BookingStatus, any> = {
   pending: "warning",
-  confirmed: "success",
+  confirmed: "default",
   active: "success",
   completed: "secondary",
   cancelled: "destructive",
@@ -114,26 +124,22 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
               className="h-9"
             />
           </div>
-          <div className="max-h-52 overflow-y-auto py-1">
+          <div className="max-h-56 overflow-y-auto p-1">
             <button
               type="button"
               onClick={() => { onChange(null); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary ${!value ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors ${!value ? "font-medium text-primary" : "text-foreground"}`}
             >
               Todos os pets
             </button>
-            {filtered.length === 0 && (
-              <p className="px-3 py-3 text-xs text-muted-foreground text-center">Nenhum pet encontrado</p>
-            )}
             {filtered.map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => { onChange(p.id); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-secondary flex items-center gap-2 ${value === p.id ? "text-primary font-medium" : "text-foreground hover:text-foreground"}`}
+                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors ${value === p.id ? "font-medium text-primary" : "text-foreground"}`}
               >
-                🐾 <span className="truncate">{p.name}</span>
-                {value === p.id && <span className="ml-auto text-xs text-primary">✓</span>}
+                {p.name}
               </button>
             ))}
           </div>
@@ -156,13 +162,16 @@ function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: numb
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const filtered = tutors?.filter((t) => t.name.toLowerCase().includes(search.toLowerCase())) || [];
-  const selected = tutors?.find((t) => t.id === value);
+  const filtered = tutors.filter((t) =>
+    t.name.toLowerCase().includes(search.toLowerCase()) ||
+    t.email.toLowerCase().includes(search.toLowerCase())
+  );
+  const selected = tutors.find((t) => t.id === value);
 
   return (
-    <div ref={ref} className="relative flex-1 min-w-[200px]">
+    <div ref={ref} className="relative flex-1 min-w-0">
       <FilterSelect
-        label={selected ? `👤 ${selected.name}` : "Todos os tutores"}
+        label={selected ? `👤 ${selected.name.split(" ")[0]}` : "Todos os tutores"}
         icon={UserRound}
         isActive={!!value}
         onClick={() => { setOpen((v) => !v); setSearch(""); }}
@@ -176,15 +185,14 @@ function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: numb
               autoFocus
               value={search}
               onChange={setSearch}
-              placeholder="Buscar tutor..."
-              className="h-9"
+              placeholder="Buscar tutor por nome ou e-mail..."
             />
           </div>
-          <div className="max-h-60 overflow-y-auto p-1">
+          <div className="max-h-56 overflow-y-auto p-1">
             <button
               type="button"
               onClick={() => { onChange(null); setOpen(false); }}
-              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary ${value === null ? "text-foreground font-medium" : "text-muted-foreground"}`}
+              className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors ${!value ? "font-medium text-primary" : "text-foreground"}`}
             >
               Todos os tutores
             </button>
@@ -193,10 +201,10 @@ function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: numb
                 key={t.id}
                 type="button"
                 onClick={() => { onChange(t.id); setOpen(false); }}
-                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary truncate flex justify-between items-center ${value === t.id ? "text-primary font-medium" : "text-foreground"}`}
+                className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors ${value === t.id ? "font-medium text-primary" : "text-foreground"}`}
               >
-                {t.name}
-                {value === t.id && <CheckCircle className="h-3 w-3" />}
+                <p className="font-medium text-foreground">{t.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{t.email}</p>
               </button>
             ))}
           </div>
@@ -261,7 +269,10 @@ function useOnTheWay(crecheId: number) {
       if (!r.ok) throw new Error("Erro ao notificar chegada");
       return r.json();
     },
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+    },
   });
 }
 
@@ -280,7 +291,11 @@ function useCompleteService(crecheId: number) {
       }
       return r.json();
     },
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: ["all-invoices", crecheId] });
+      queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+    },
   });
 }
 
@@ -299,13 +314,17 @@ function useForceCheckout(crecheId: number) {
       }
       return r.json();
     },
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+      queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+    },
   });
 }
 
 export default function Bookings() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const isTutor = user?.role === "tutor";
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -333,30 +352,25 @@ export default function Bookings() {
   const [bookingPersonalItems, setBookingPersonalItems] = useState<Record<number, { hasItems: boolean; photoUrl: string | null }>>({});
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
-  const { data: bookingsResponse, isLoading } = useListBookings(crecheId, {
+  const { data: bookingsResponse, isLoading } = useListBookings(crecheId ?? 0, {
     tutorId: tutorFilter || undefined,
     petId: petFilter || undefined,
     status: statusFilter === "all" ? undefined : statusFilter,
     date: startDateFilter || undefined,
     pageSize: 1000 // Get all for the report view
-  } as any, {
-    query: {
-      refetchInterval: 20_000,
-      refetchOnWindowFocus: true,
-    } as any,
-  });
-  const { data: petsResponse } = useListPets(crecheId);
+  } as any);
+  const { data: petsResponse } = useListPets(crecheId ?? 0);
   const { data: tutors } = useTutors(crecheId, !isTutor);
   const pets = (petsResponse as any)?.items || (Array.isArray(petsResponse) ? petsResponse : []);
   const bookings = (bookingsResponse as any)?.items || (Array.isArray(bookingsResponse) ? bookingsResponse : []);
-  const { data: allTasks } = useListTasks(crecheId);
+  const { data: allTasks } = useListTasks(crecheId ?? 0);
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
   const checkInMutation = useCheckIn();
   const checkOutMutation = useCheckOut();
-  const onTheWayMutation = useOnTheWay(crecheId);
-  const completeServiceMutation = useCompleteService(crecheId);
-  const forceCheckoutMutation = useForceCheckout(crecheId);
+  const onTheWayMutation = useOnTheWay(crecheId ?? 0);
+  const completeServiceMutation = useCompleteService(crecheId ?? 0);
+  const forceCheckoutMutation = useForceCheckout(crecheId ?? 0);
 
   const isPetPresent = (petId: number) => pets?.find((p: any) => p.id === petId)?.isCheckedIn ?? false;
 
@@ -367,6 +381,7 @@ export default function Bookings() {
   }) : [];
 
   const handleForceCheckout = (pet: any) => {
+    if (!crecheId) return;
     forceCheckoutMutation.mutate(pet.id, {
       onSuccess: () => toast({ title: `${pet.name} liberado`, description: "Pet removido da lista de presentes." }),
       onError: (err: any) => toast({ title: "Erro", description: err.message ?? "Não foi possível liberar o pet.", variant: "destructive" }),
@@ -431,11 +446,14 @@ export default function Bookings() {
   };
 
   const handleStatusUpdate = (bookingId: number, newStatus: BookingStatus) => {
+    if (!crecheId) return;
     updateMutation.mutate(
       { crecheId, bookingId, data: { status: newStatus } },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
           toast({
             title: statusSuccessMessages[newStatus] ?? "Status atualizado.",
           });
@@ -452,6 +470,7 @@ export default function Bookings() {
   };
 
   const handleCheckIn = (booking: any) => {
+    if (!crecheId) return;
     checkInMutation.mutate(
       { crecheId, bookingId: booking.id } as any,
       {
@@ -473,6 +492,7 @@ export default function Bookings() {
   };
 
   const handleCompleteService = (booking: any) => {
+    if (!crecheId) return;
     completeServiceMutation.mutate(booking.id, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
@@ -488,6 +508,7 @@ export default function Bookings() {
     (allTasks || []).filter((t) => t.petId === booking.petId && t.status === "pending");
 
   const doCheckOut = (bookingId: number) => {
+    if (!crecheId) return;
     checkOutMutation.mutate(
       { crecheId, bookingId } as any,
       {
@@ -508,6 +529,7 @@ export default function Bookings() {
   };
 
   const handleCheckOut = (booking: any) => {
+    if (!crecheId) return;
     const pending = pendingTasksForBooking(booking);
     if (pending.length > 0) {
       setCheckoutStep("confirm");
@@ -518,7 +540,7 @@ export default function Bookings() {
   };
 
   const handleCheckOutCompleteTasks = async () => {
-    if (!checkoutBooking) return;
+    if (!checkoutBooking || !crecheId) return;
     setCheckoutStep("completing");
     const token = localStorage.getItem("auth_token");
     try {
@@ -741,7 +763,7 @@ export default function Bookings() {
                                 onClick={() => handleStatusUpdate(booking.id, "cancelled")}
                                 isLoading={updateMutation.isPending}
                               >
-                                Aprovar Cancel.
+                                Aprovar Cancelamento
                               </Button>
                               <Button
                                 size="sm"
@@ -754,19 +776,42 @@ export default function Bookings() {
                               </Button>
                             </>
                           )}
-                          {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="w-full sm:w-auto h-10 text-sm px-4"
-                              onClick={() => handleCheckIn(booking)}
-                              isLoading={checkInMutation.isPending}
-                            >
-                              <LogIn className="mr-1.5 h-3.5 w-3.5" />
-                              {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
-                            </Button>
+                          {booking.status === "confirmed" && (
+                            isServiceBooking(booking) ? (
+                              isPetPresent(booking.petId) ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="w-full sm:w-auto h-10 text-sm px-4"
+                                  onClick={() => handleCompleteService(booking)}
+                                  isLoading={completeServiceMutation.isPending}
+                                >
+                                  <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="w-full sm:w-auto h-10 text-sm px-4"
+                                  onClick={() => handleCheckIn(booking)}
+                                  isLoading={checkInMutation.isPending}
+                                >
+                                  <LogIn className="mr-1.5 h-3.5 w-3.5" /> Iniciar Serviço
+                                </Button>
+                              )
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                className="w-full sm:w-auto h-10 text-sm px-4"
+                                onClick={() => handleCheckIn(booking)}
+                                isLoading={checkInMutation.isPending}
+                              >
+                                <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                              </Button>
+                            )
                           )}
-                          {booking.status === "confirmed" && isPetPresent(booking.petId) && (
+                          {booking.status === "active" && isServiceBooking(booking) && (
                             <Button
                               size="sm"
                               variant="secondary"
@@ -777,18 +822,7 @@ export default function Bookings() {
                               <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
                             </Button>
                           )}
-                          {booking.status === "active" && isServiceBooking(booking.type) && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="w-full sm:w-auto h-10 text-sm px-4"
-                              onClick={() => handleCompleteService(booking)}
-                              isLoading={completeServiceMutation.isPending}
-                            >
-                              <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
-                            </Button>
-                          )}
-                          {booking.status === "active" && !isServiceBooking(booking.type) && (
+                          {booking.status === "active" && !isServiceBooking(booking) && (
                             <>
                               <Button
                                 size="sm"
@@ -938,41 +972,53 @@ export default function Bookings() {
                                     </Button>
                                   </>
                                 )}
-                                {booking.status === "confirmed" && !isPetPresent(booking.petId) && (
+                                {booking.status === "confirmed" && (
+                                  isServiceBooking(booking) ? (
+                                    isPetPresent(booking.petId) ? (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                                        onClick={() => handleCompleteService(booking)}
+                                        isLoading={completeServiceMutation.isPending}
+                                      >
+                                        <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="border-success/30 text-success hover:bg-success/10"
+                                        onClick={() => handleCheckIn(booking)}
+                                        isLoading={checkInMutation.isPending}
+                                      >
+                                        <LogIn className="mr-1.5 h-3.5 w-3.5" /> Iniciar Serviço
+                                      </Button>
+                                    )
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-success/30 text-success hover:bg-success/10"
+                                      onClick={() => handleCheckIn(booking)}
+                                      isLoading={checkInMutation.isPending}
+                                    >
+                                      <LogIn className="mr-1.5 h-3.5 w-3.5" /> Check-in
+                                    </Button>
+                                  )
+                                )}
+                                {booking.status === "active" && isServiceBooking(booking) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="border-success/30 text-success hover:bg-success/10"
-                                    onClick={() => handleCheckIn(booking)}
-                                    isLoading={checkInMutation.isPending}
-                                  >
-                                    <LogIn className="mr-1.5 h-3.5 w-3.5" />
-                                    {isServiceBooking(booking.type) ? "Iniciar Serviço" : "Check-in"}
-                                  </Button>
-                                )}
-                                {booking.status === "confirmed" && isPetPresent(booking.petId) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
                                     onClick={() => handleCompleteService(booking)}
                                     isLoading={completeServiceMutation.isPending}
                                   >
                                     <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
                                   </Button>
                                 )}
-                                {booking.status === "active" && isServiceBooking(booking.type) && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-success/30 text-success hover:bg-success/10"
-                                    onClick={() => handleCompleteService(booking)}
-                                    isLoading={completeServiceMutation.isPending}
-                                  >
-                                    <CheckCircle className="mr-1.5 h-3.5 w-3.5" /> Concluir Serviço
-                                  </Button>
-                                )}
-                                {booking.status === "active" && !isServiceBooking(booking.type) && (
+                                {booking.status === "active" && !isServiceBooking(booking) && (
                                   <div className="flex gap-2">
                                     <Button
                                       size="sm"
@@ -1112,7 +1158,7 @@ export default function Bookings() {
           isOpen={!!consumableBooking}
           onClose={() => setConsumableBooking(null)}
           bookingId={consumableBooking.id}
-          crecheId={crecheId}
+          crecheId={crecheId ?? 0}
           petName={consumableBooking.petName}
         />
       )}

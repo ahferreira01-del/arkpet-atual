@@ -9,6 +9,7 @@ const router = Router({ mergeParams: true });
 router.use(authenticate);
 
 const posSaleSchema = z.object({
+  operationId: z.string().uuid("operationId deve ser um UUID válido."),
   items: z.array(
     z.object({
       catalogueItemId: z.number(),
@@ -28,9 +29,10 @@ router.post(
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const crecheId = Number(req.params.crecheId);
-      const { items, paymentMethod, tutorId } = req.body;
+      const { operationId, items, paymentMethod, tutorId } = req.body;
       const result = await PosService.processSale({
         crecheId,
+        operationId,
         items,
         paymentMethod,
         tutorId,
@@ -38,7 +40,11 @@ router.post(
       });
       res.status(201).json(result);
     } catch (err: any) {
-      if (err.message && err.message.includes("Estoque")) {
+      if (err.status === 409 || (err.message && err.message.includes("Operação já processada"))) {
+        res.status(409).json({ error: err.message });
+      } else if (err.status === 404) {
+        res.status(404).json({ error: err.message });
+      } else if (err.message && err.message.includes("Estoque")) {
         res.status(400).json({ error: err.message });
       } else if (err.status === 422) {
         res.status(422).json({ error: err.message });

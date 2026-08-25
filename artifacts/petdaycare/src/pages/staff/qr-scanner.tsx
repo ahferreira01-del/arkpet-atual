@@ -8,7 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { QrCode, Camera, Dog, AlertTriangle, CheckCircle2, XCircle, RefreshCw, LogIn } from "lucide-react";
 import { useLocation } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCheckIn } from "@workspace/api-client-react";
+import {
+  useCheckIn,
+  getListBookingsQueryKey,
+  getListPetsQueryKey,
+  getGetCrecheStatsQueryKey,
+  getListTasksQueryKey,
+} from "@workspace/api-client-react";
 import jsQR from "jsqr";
 
 type ScanState = "idle" | "scanning" | "found" | "checking_in" | "checked_in" | "error";
@@ -116,7 +122,12 @@ export default function QrScanner() {
     setScanState("checking_in");
     checkInMutation.mutate({ crecheId, bookingId: petInfo.bookingId }, {
       onSuccess: (updatedPet) => {
-        queryClient.invalidateQueries();
+        if (crecheId) {
+          queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+        }
         setPetInfo((prev: any) => ({ ...prev, isCheckedIn: true }));
         setScanState("checked_in");
       },

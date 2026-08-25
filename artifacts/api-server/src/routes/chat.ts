@@ -8,9 +8,9 @@ import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.
 import { sendPushToUsers } from "../lib/push.js";
 
 const sendMessageSchema = z.object({
-  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive(),
+  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
   content: z.string().optional().nullable(),
-  petId: z.number().int().positive().optional().nullable(),
+  petId: z.number().int().positive("petId inválido").optional().nullable(),
   mediaUrl: z.string().url("mediaUrl inválido").optional().nullable(),
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
@@ -18,8 +18,49 @@ const sendMessageSchema = z.object({
 );
 
 const markReadSchema = z.object({
-  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive(),
+  tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
 });
+
+/**
+ * Validates target tutor for a given creche and user role.
+ * - For tutors: only their own user.id is allowed (foreign tutorId -> 403 Forbidden).
+ * - For staff / creche_admin / master_admin: target tutor must exist in usersTable with role='tutor' and crecheId=crecheId (-> 404 Not Found if not).
+ */
+async function validateTargetTutor(
+  crecheId: number,
+  targetTutorId: number,
+  user: { id: number; role: string }
+): Promise<{ ok: true; tutorId: number } | { ok: false; status: 400 | 403 | 404; error: string }> {
+  if (isNaN(targetTutorId) || targetTutorId <= 0) {
+    return { ok: false, status: 400, error: "ID de tutor inválido" };
+  }
+
+  if (user.role === "tutor") {
+    if (targetTutorId !== user.id) {
+      return { ok: false, status: 403, error: "Acesso não autorizado à conversa de outro tutor" };
+    }
+    return { ok: true, tutorId: user.id };
+  }
+
+  // staff / creche_admin / master_admin
+  const [tutor] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.id, targetTutorId),
+        eq(usersTable.role, "tutor"),
+        eq(usersTable.crecheId, crecheId)
+      )
+    )
+    .limit(1);
+
+  if (!tutor) {
+    return { ok: false, status: 404, error: "Tutor não encontrado nesta creche" };
+  }
+
+  return { ok: true, tutorId: tutor.id };
+}
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -74,17 +115,33 @@ router.get("/conversations", async (req: AuthRequest, res) => {
     lastMsgMap.set(Number(r.tutor_id), { content: r.content, lastAt: r.last_at });
   }
 
-  const unreadConditions: any[] = [
-    eq(chatMessagesTable.crecheId, crecheId),
-    ne(chatMessagesTable.senderId, req.user.id),
-    isNull(chatMessagesTable.readAt),
-    isNotNull(chatMessagesTable.tutorId),
-    inArray(chatMessagesTable.tutorId, tutorIds),
-  ];
-  const unreadRows = await db
-    .select({ tutorId: chatMessagesTable.tutorId })
-    .from(chatMessagesTable)
-    .where(and(...unreadConditions));
+  // Directional unread query for conversation list:
+  // - Tutor: counts Team -> Tutor messages (senderId != tutorId)
+  // - Team (Staff/Admin/Master): counts Tutor -> Team messages (senderId == tutorId)
+  let unreadRows: { tutorId: number | null }[];
+  if (req.user.role === "tutor") {
+    unreadRows = await db
+      .select({ tutorId: chatMessagesTable.tutorId })
+      .from(chatMessagesTable)
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        eq(chatMessagesTable.tutorId, req.user.id),
+        ne(chatMessagesTable.senderId, req.user.id),
+        isNull(chatMessagesTable.readAt),
+      ));
+  } else {
+    unreadRows = await db
+      .select({ tutorId: chatMessagesTable.tutorId })
+      .from(chatMessagesTable)
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        isNotNull(chatMessagesTable.tutorId),
+        inArray(chatMessagesTable.tutorId, tutorIds),
+        eq(chatMessagesTable.senderId, chatMessagesTable.tutorId),
+        isNull(chatMessagesTable.readAt),
+      ));
+  }
+
   const unreadMap = new Map<number, number>();
   for (const r of unreadRows) {
     if (r.tutorId != null) {
@@ -119,29 +176,35 @@ router.get("/conversations", async (req: AuthRequest, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // GET /unread — unread count grouped by tutorId
+// Directional unread logic:
+// - Tutor: counts messages sent BY STAFF to this tutor (senderId != tutorId)
+// - Team: counts messages sent BY TUTORS to the creche team (senderId == tutorId)
 // ─────────────────────────────────────────────────────────────
 router.get("/unread", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
-
-  const baseConditions: any[] = [
-    eq(chatMessagesTable.crecheId, crecheId),
-    ne(chatMessagesTable.senderId, req.user.id),
-    isNull(chatMessagesTable.readAt),
-    isNotNull(chatMessagesTable.tutorId),
-  ];
 
   let rows: { tutorId: number | null }[];
   if (req.user.role === "tutor") {
     rows = await db
       .select({ tutorId: chatMessagesTable.tutorId })
       .from(chatMessagesTable)
-      .where(and(...baseConditions, eq(chatMessagesTable.tutorId, req.user.id)));
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        eq(chatMessagesTable.tutorId, req.user.id),
+        ne(chatMessagesTable.senderId, req.user.id),
+        isNull(chatMessagesTable.readAt),
+      ));
   } else {
     rows = await db
       .select({ tutorId: chatMessagesTable.tutorId })
       .from(chatMessagesTable)
-      .where(and(...baseConditions));
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        isNotNull(chatMessagesTable.tutorId),
+        eq(chatMessagesTable.senderId, chatMessagesTable.tutorId),
+        isNull(chatMessagesTable.readAt),
+      ));
   }
 
   const byTutor: Record<number, number> = {};
@@ -156,6 +219,9 @@ router.get("/unread", async (req: AuthRequest, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // POST /mark-read — mark conversation as read by tutorId
+// Directional read logic:
+// - Tutor: marks only messages sent BY TEAM to the tutor (senderId != tutorId)
+// - Team: marks only messages sent BY THE TUTOR to the team (senderId == tutorId)
 // ─────────────────────────────────────────────────────────────
 router.post("/mark-read", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
@@ -166,16 +232,32 @@ router.post("/mark-read", async (req: AuthRequest, res) => {
     res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { tutorId } = parsed.data;
 
-  await db.update(chatMessagesTable)
-    .set({ readAt: new Date() })
-    .where(and(
-      eq(chatMessagesTable.crecheId, crecheId),
-      eq(chatMessagesTable.tutorId, tutorId),
-      ne(chatMessagesTable.senderId, req.user.id),
-      isNull(chatMessagesTable.readAt),
-    ));
+  const validated = await validateTargetTutor(crecheId, parsed.data.tutorId, req.user);
+  if (!validated.ok) {
+    res.status(validated.status).json({ error: validated.error });
+    return;
+  }
+
+  if (req.user.role === "tutor") {
+    await db.update(chatMessagesTable)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        eq(chatMessagesTable.tutorId, req.user.id),
+        ne(chatMessagesTable.senderId, req.user.id),
+        isNull(chatMessagesTable.readAt),
+      ));
+  } else {
+    await db.update(chatMessagesTable)
+      .set({ readAt: new Date() })
+      .where(and(
+        eq(chatMessagesTable.crecheId, crecheId),
+        eq(chatMessagesTable.tutorId, validated.tutorId),
+        eq(chatMessagesTable.senderId, validated.tutorId),
+        isNull(chatMessagesTable.readAt),
+      ));
+  }
 
   res.json({ ok: true });
 });
@@ -184,24 +266,49 @@ router.post("/mark-read", async (req: AuthRequest, res) => {
 // GET / — list messages by tutorId with cursor-based pagination
 // ?tutorId=X&cursor=<lastId>&limit=50
 // Returns messages in ascending order (oldest first)
-// cursor = lowest id seen → load older messages above
 // ─────────────────────────────────────────────────────────────
 router.get("/", async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
   const crecheId = parseInt(String(req.params.crecheId));
   const { tutorId, cursor, limit } = req.query;
 
+  let targetTutorId: number;
+  if (req.user.role === "tutor") {
+    if (tutorId != null && String(tutorId).trim() !== "") {
+      const parsedQueryTutor = parseInt(tutorId as string, 10);
+      if (isNaN(parsedQueryTutor) || parsedQueryTutor !== req.user.id) {
+        res.status(403).json({ error: "Acesso não autorizado à conversa de outro tutor" });
+        return;
+      }
+    }
+    targetTutorId = req.user.id;
+  } else {
+    // Operational roles (staff / admin / master) MUST provide tutorId
+    if (!tutorId || isNaN(parseInt(tutorId as string, 10))) {
+      res.status(400).json({ error: "tutorId é obrigatório" });
+      return;
+    }
+    const validated = await validateTargetTutor(crecheId, parseInt(tutorId as string, 10), req.user);
+    if (!validated.ok) {
+      res.status(validated.status).json({ error: validated.error });
+      return;
+    }
+    targetTutorId = validated.tutorId;
+  }
+
   const conditions: any[] = [
     eq(chatMessagesTable.crecheId, crecheId),
-    isNotNull(chatMessagesTable.tutorId),
+    eq(chatMessagesTable.tutorId, targetTutorId),
   ];
-  if (tutorId) conditions.push(eq(chatMessagesTable.tutorId, parseInt(tutorId as string)));
-  // Tutor: only own conversation
-  if (req.user.role === "tutor") conditions.push(eq(chatMessagesTable.tutorId, req.user.id));
-  // cursor: load older messages (id < cursor)
-  if (cursor) conditions.push(lt(chatMessagesTable.id, parseInt(cursor as string)));
 
-  const pageSize = parseInt(limit as string) || 50;
+  if (cursor) {
+    const parsedCursor = parseInt(cursor as string, 10);
+    if (!isNaN(parsedCursor) && parsedCursor > 0) {
+      conditions.push(lt(chatMessagesTable.id, parsedCursor));
+    }
+  }
+
+  const pageSize = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 100);
 
   const messages = await db.select({
     id: chatMessagesTable.id,
@@ -242,29 +349,46 @@ router.post("/", async (req: AuthRequest, res) => {
   }
   const { tutorId, petId, content, mediaUrl } = parsed.data;
 
-  const parsedTutorId = tutorId;
-  const parsedPetId = petId ?? null;
+  // Validate target tutor authorization
+  const validated = await validateTargetTutor(crecheId, tutorId, req.user);
+  if (!validated.ok) {
+    res.status(validated.status).json({ error: validated.error });
+    return;
+  }
+  const targetTutorId = validated.tutorId;
 
+  // Validate petId if supplied: must belong to targetTutorId and crecheId
   let petName: string | null = null;
+  const parsedPetId = petId ?? null;
   if (parsedPetId) {
     const [pet] = await db
-      .select({ name: petsTable.name })
+      .select({ id: petsTable.id, name: petsTable.name })
       .from(petsTable)
-      .where(eq(petsTable.id, parsedPetId))
+      .where(and(
+        eq(petsTable.id, parsedPetId),
+        eq(petsTable.crecheId, crecheId),
+        eq(petsTable.tutorId, targetTutorId),
+      ))
       .limit(1);
-    petName = pet?.name ?? null;
+
+    if (!pet) {
+      res.status(400).json({ error: "Pet inválido ou não pertence a este tutor nesta creche" });
+      return;
+    }
+    petName = pet.name;
   }
 
+  // Insert message with authenticated user as senderId
   const [msg] = await db.insert(chatMessagesTable).values({
     crecheId,
-    tutorId: parsedTutorId,
+    tutorId: targetTutorId,
     petId: parsedPetId,
     senderId: req.user.id,
-    content: content ?? "",
+    content: content ? content.trim() : "",
     mediaUrl: mediaUrl ?? null,
   }).returning();
 
-  const safeContent = content ?? null;
+  const safeContent = content ? content.trim() : null;
   const preview = safeContent && safeContent.length > 60 ? safeContent.slice(0, 57) + "..." : safeContent;
   const pushTitle = petName
     ? `💬 ${req.user.name} → ${petName}`
@@ -273,8 +397,8 @@ router.post("/", async (req: AuthRequest, res) => {
   const pushPayload = {
     title: pushTitle,
     body: preview || "Enviou uma mídia.",
-    tag: `chat-${crecheId}-tutor-${parsedTutorId}`,
-    data: { type: "chat", crecheId, tutorId: parsedTutorId, petId: parsedPetId ?? null },
+    tag: `chat-${crecheId}-tutor-${targetTutorId}`,
+    data: { type: "chat", crecheId, tutorId: targetTutorId, petId: parsedPetId ?? null },
   };
 
   if (req.user.role === "tutor") {
@@ -292,8 +416,8 @@ router.post("/", async (req: AuthRequest, res) => {
     }
   } else {
     // Staff/admin sends → notify the tutor only
-    if (parsedTutorId !== req.user.id) {
-      sendPushToUsers([parsedTutorId], pushPayload).catch(() => {});
+    if (targetTutorId !== req.user.id) {
+      sendPushToUsers([targetTutorId], pushPayload).catch(() => {});
     }
   }
 

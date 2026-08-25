@@ -1,4 +1,4 @@
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import { db } from "@workspace/db";
 import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable } from "@workspace/db/schema";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
@@ -8,7 +8,35 @@ import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-
 import { sendPushToUser, sendPushToRole } from "./push.js";
 import { cancelOrder } from "../services/orders.js";
 
-const notifiedTaskIds = new Set<number>();
+export const SAO_PAULO_TZ = "America/Sao_Paulo";
+export const DAILY_TASK_GENERATION_LOCK_KEY = 999_100_001;
+
+const activeCronTasks: ScheduledTask[] = [];
+
+export function registerCronTask(task: ScheduledTask): ScheduledTask {
+  activeCronTasks.push(task);
+  return task;
+}
+
+export function stopAllSchedulers(): number {
+  let count = 0;
+  for (const task of activeCronTasks) {
+    try {
+      task.stop();
+      count++;
+    } catch (e) {
+      console.error("[scheduler] Error stopping cron task:", e);
+    }
+  }
+  activeCronTasks.length = 0;
+  console.log(`[scheduler] All background schedulers stopped (${count} handles stopped).`);
+  return count;
+}
+
+export function getActiveCronTaskCount(): number {
+  return activeCronTasks.length;
+}
+
 let taskReminderRunning = false;
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
@@ -70,6 +98,7 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
     const existingTasks = await db.select({
       petId: tasksTable.petId,
       type: tasksTable.type,
+      description: tasksTable.description,
       scheduledFor: tasksTable.scheduledFor,
     }).from(tasksTable).where(and(
       eq(tasksTable.petId, petId),
@@ -99,7 +128,7 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
       });
 
     const newTasks: (typeof tasksTable.$inferInsert)[] = [];
-    // Track what we're already adding in this batch so duplicates inside
+    // Track what we're already adding in this batch for feeding/walk so duplicates inside
     // the schedule itself (e.g. two identical walk entries) are skipped.
     const batchKeys = new Set<string>();
     const inBatch = (type: string, h: number, m: number) => batchKeys.has(`${type}:${h}:${m}`);
@@ -128,14 +157,51 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
       newTasks.push({ crecheId, petId, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
     }
 
+    // ─── Multiplicity-aware medication scheduling ────────────────────────────
+    // Count desired occurrences of each medication fingerprint (h:m:description)
+    const desiredMedOccurrences = new Map<string, { h: number; m: number; title: string; desc: string; count: number }>();
     for (const med of activeMeds) {
-      const times: string[] = Array.isArray(med.times) ? med.times as string[] : [];
-      for (const time of times) {
+      const desc = `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`;
+      const title = `Medicação — ${pet.name}`;
+      const rawTimes: string[] = Array.isArray(med.times) ? med.times as string[] : [];
+      const uniqueTimes = [...new Set(rawTimes)];
+      for (const time of uniqueTimes) {
         const [h, m] = time.split(":").map(Number);
         if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists("medication", h, m) || inBatch("medication", h, m)) continue;
-        markBatch("medication", h, m);
-        newTasks.push({ crecheId, petId, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
+        const key = `${h}:${m}:${desc}`;
+        const current = desiredMedOccurrences.get(key);
+        if (current) {
+          current.count += 1;
+        } else {
+          desiredMedOccurrences.set(key, { h, m, title, desc, count: 1 });
+        }
+      }
+    }
+
+    // Count existing medication tasks matching each fingerprint
+    const existingMedCounts = new Map<string, number>();
+    for (const t of existingTasks) {
+      if (t.type !== "medication") continue;
+      const { h, m } = getBRTHourMinute(new Date(t.scheduledFor));
+      const desc = t.description || "";
+      const key = `${h}:${m}:${desc}`;
+      existingMedCounts.set(key, (existingMedCounts.get(key) || 0) + 1);
+    }
+
+    // Generate only the missing delta (desiredCount - existingCount)
+    for (const [key, item] of desiredMedOccurrences.entries()) {
+      const existingCount = existingMedCounts.get(key) || 0;
+      const needed = Math.max(0, item.count - existingCount);
+      for (let i = 0; i < needed; i++) {
+        newTasks.push({
+          crecheId,
+          petId,
+          type: "medication",
+          title: item.title,
+          description: item.desc,
+          scheduledFor: makeTimeOnDate(todayStr, item.h, item.m),
+          priority: "high",
+        });
       }
     }
 
@@ -150,132 +216,173 @@ export async function generateTasksForPetToday(petId: number, crecheId: number) 
 
 // ─── Daily bulk task generation (midnight cron) ───────────────────────────────
 
-async function generateDailyTasks() {
+export async function generateDailyTasks() {
   try {
-    const todayStr = getBrazilDateStr();
-    const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
-    const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
+    await db.transaction(async (tx) => {
+      // PostgreSQL advisory transaction lock to serialize daily task generation across instances
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${DAILY_TASK_GENERATION_LOCK_KEY})`);
 
-    // Only generate tasks for pets that are ALREADY checked in (booking = "active").
-    // Pets with "confirmed" bookings haven't arrived yet — their tasks are generated
-    // on-demand via generateTasksForPetToday() when they check in.
-    // This prevents tarefas from appearing for pets of the same tutor that are
-    // booked but not yet at the creche.
-    const bookedRows = await db.select({ petId: bookingsTable.petId })
-      .from(bookingsTable)
-      .where(and(
-        eq(bookingsTable.status, "active"),
-        lte(bookingsTable.startDate, todayStr),
-        or(isNull(bookingsTable.endDate), gte(bookingsTable.endDate, todayStr)),
+      const todayStr = getBrazilDateStr();
+      const startOfDay = new Date(`${todayStr}T00:00:00-03:00`);
+      const endOfDay = new Date(`${todayStr}T23:59:59-03:00`);
+
+      // Only generate tasks for pets that are ALREADY checked in (booking = "active").
+      // Pets with "confirmed" bookings haven't arrived yet — their tasks are generated
+      // on-demand via generateTasksForPetToday() when they check in.
+      // This prevents tarefas from appearing for pets of the same tutor that are
+      // booked but not yet at the creche.
+      const bookedRows = await tx.select({ petId: bookingsTable.petId })
+        .from(bookingsTable)
+        .where(and(
+          eq(bookingsTable.status, "active"),
+          lte(bookingsTable.startDate, todayStr),
+          or(isNull(bookingsTable.endDate), gte(bookingsTable.endDate, todayStr)),
+        ));
+
+      const bookedPetIds = [...new Set(bookedRows.map((r) => r.petId))];
+      if (!bookedPetIds.length) return;
+
+      // Double-check with isCheckedIn flag on the pet itself.
+      const pets = await tx.select({
+        id: petsTable.id,
+        name: petsTable.name,
+        crecheId: petsTable.crecheId,
+        feedingSchedule: petsTable.feedingSchedule,
+        walkSchedule: petsTable.walkSchedule,
+      }).from(petsTable)
+        .where(and(
+          eq(petsTable.status, "active"),
+          eq(petsTable.isCheckedIn, true),
+          inArray(petsTable.id, bookedPetIds),
+        ));
+
+      if (!pets.length) return;
+
+      const existingTasks = await tx.select({
+        petId: tasksTable.petId,
+        type: tasksTable.type,
+        description: tasksTable.description,
+        scheduledFor: tasksTable.scheduledFor,
+      }).from(tasksTable).where(and(
+        gte(tasksTable.scheduledFor, startOfDay),
+        lte(tasksTable.scheduledFor, endOfDay),
       ));
 
-    const bookedPetIds = [...new Set(bookedRows.map((r) => r.petId))];
-    if (!bookedPetIds.length) return;
+      const allMedications = await tx.select({
+        id: medicationsTable.id,
+        petId: medicationsTable.petId,
+        crecheId: medicationsTable.crecheId,
+        name: medicationsTable.name,
+        dosage: medicationsTable.dosage,
+        times: medicationsTable.times,
+        startDate: medicationsTable.startDate,
+        endDate: medicationsTable.endDate,
+      }).from(medicationsTable).where(eq(medicationsTable.isActive, true));
 
-    // Double-check with isCheckedIn flag on the pet itself.
-    const pets = await db.select({
-      id: petsTable.id,
-      name: petsTable.name,
-      crecheId: petsTable.crecheId,
-      feedingSchedule: petsTable.feedingSchedule,
-      walkSchedule: petsTable.walkSchedule,
-    }).from(petsTable)
-      .where(and(
-        eq(petsTable.status, "active"),
-        eq(petsTable.isCheckedIn, true),
-        inArray(petsTable.id, bookedPetIds),
-      ));
-
-    if (!pets.length) return;
-
-    const existingTasks = await db.select({
-      petId: tasksTable.petId,
-      type: tasksTable.type,
-      scheduledFor: tasksTable.scheduledFor,
-    }).from(tasksTable).where(and(
-      gte(tasksTable.scheduledFor, startOfDay),
-      lte(tasksTable.scheduledFor, endOfDay),
-    ));
-
-    const allMedications = await db.select({
-      id: medicationsTable.id,
-      petId: medicationsTable.petId,
-      crecheId: medicationsTable.crecheId,
-      name: medicationsTable.name,
-      dosage: medicationsTable.dosage,
-      times: medicationsTable.times,
-      startDate: medicationsTable.startDate,
-      endDate: medicationsTable.endDate,
-    }).from(medicationsTable).where(eq(medicationsTable.isActive, true));
-
-    const activeMeds = allMedications.filter((m) => {
-      if (m.startDate > todayStr) return false;
-      if (m.endDate && m.endDate < todayStr) return false;
-      return true;
-    });
-
-    const medsByPet = new Map<number, typeof activeMeds>();
-    for (const med of activeMeds) {
-      if (!medsByPet.has(med.petId)) medsByPet.set(med.petId, []);
-      medsByPet.get(med.petId)!.push(med);
-    }
-
-    const alreadyExists = (petId: number, type: string, hours: number, minutes: number) =>
-      existingTasks.some((t) => {
-        if (t.petId !== petId || t.type !== type) return false;
-        const { h: taskH, m: taskM } = getBRTHourMinute(new Date(t.scheduledFor));
-        return taskH === hours && taskM === minutes;
+      const activeMeds = allMedications.filter((m) => {
+        if (m.startDate > todayStr) return false;
+        if (m.endDate && m.endDate < todayStr) return false;
+        return true;
       });
 
-    const newTasks: (typeof tasksTable.$inferInsert)[] = [];
-    // Track tasks already queued in this batch (key = petId:type:h:m) so that
-    // duplicate entries in feedingSchedule/walkSchedule don't produce duplicates.
-    const batchKeys = new Set<string>();
-    const inBatch = (petId: number, type: string, h: number, m: number) =>
-      batchKeys.has(`${petId}:${type}:${h}:${m}`);
-    const markBatch = (petId: number, type: string, h: number, m: number) =>
-      batchKeys.add(`${petId}:${type}:${h}:${m}`);
-
-    for (const pet of pets) {
-      const feeding: Array<{ time: string; amount?: string; notes?: string }> =
-        Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
-      for (const f of feeding) {
-        if (!f.time) continue;
-        const [h, m] = f.time.split(":").map(Number);
-        if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists(pet.id, "feeding", h, m) || inBatch(pet.id, "feeding", h, m)) continue;
-        markBatch(pet.id, "feeding", h, m);
-        const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
-        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+      const medsByPet = new Map<number, typeof activeMeds>();
+      for (const med of activeMeds) {
+        if (!medsByPet.has(med.petId)) medsByPet.set(med.petId, []);
+        medsByPet.get(med.petId)!.push(med);
       }
 
-      const walks: Array<{ time: string; durationMinutes?: number; notes?: string }> =
-        Array.isArray(pet.walkSchedule) ? pet.walkSchedule as any : [];
-      for (const w of walks) {
-        if (!w.time) continue;
-        const [h, m] = w.time.split(":").map(Number);
-        if (isNaN(h) || isNaN(m)) continue;
-        if (alreadyExists(pet.id, "walk", h, m) || inBatch(pet.id, "walk", h, m)) continue;
-        markBatch(pet.id, "walk", h, m);
-        newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+      const alreadyExists = (petId: number, type: string, hours: number, minutes: number) =>
+        existingTasks.some((t) => {
+          if (t.petId !== petId || t.type !== type) return false;
+          const { h: taskH, m: taskM } = getBRTHourMinute(new Date(t.scheduledFor));
+          return taskH === hours && taskM === minutes;
+        });
+
+      const newTasks: (typeof tasksTable.$inferInsert)[] = [];
+      // Track tasks already queued in this batch (key = petId:type:h:m) so that
+      // duplicate entries in feedingSchedule/walkSchedule don't produce duplicates.
+      const batchKeys = new Set<string>();
+      const inBatch = (petId: number, type: string, h: number, m: number) =>
+        batchKeys.has(`${petId}:${type}:${h}:${m}`);
+      const markBatch = (petId: number, type: string, h: number, m: number) =>
+        batchKeys.add(`${petId}:${type}:${h}:${m}`);
+
+      // Pre-count existing medication tasks by (petId:h:m:desc)
+      const existingMedCounts = new Map<string, number>();
+      for (const t of existingTasks) {
+        if (t.type !== "medication" || !t.petId) continue;
+        const { h, m } = getBRTHourMinute(new Date(t.scheduledFor));
+        const desc = t.description || "";
+        const key = `${t.petId}:${h}:${m}:${desc}`;
+        existingMedCounts.set(key, (existingMedCounts.get(key) || 0) + 1);
       }
 
-      for (const med of medsByPet.get(pet.id) ?? []) {
-        const times: string[] = Array.isArray(med.times) ? med.times as string[] : [];
-        for (const time of times) {
-          const [h, m] = time.split(":").map(Number);
+      for (const pet of pets) {
+        const feeding: Array<{ time: string; amount?: string; notes?: string }> =
+          Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
+        for (const f of feeding) {
+          if (!f.time) continue;
+          const [h, m] = f.time.split(":").map(Number);
           if (isNaN(h) || isNaN(m)) continue;
-          if (alreadyExists(pet.id, "medication", h, m) || inBatch(pet.id, "medication", h, m)) continue;
-          markBatch(pet.id, "medication", h, m);
-          newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "medication", title: `Medicação — ${pet.name}`, description: `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "high" });
+          if (alreadyExists(pet.id, "feeding", h, m) || inBatch(pet.id, "feeding", h, m)) continue;
+          markBatch(pet.id, "feeding", h, m);
+          const desc = [f.amount, f.notes].filter(Boolean).join(" · ") || null;
+          newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "feeding", title: `Alimentação — ${pet.name}`, description: desc, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+        }
+
+        const walks: Array<{ time: string; durationMinutes?: number; notes?: string }> =
+          Array.isArray(pet.walkSchedule) ? pet.walkSchedule as any : [];
+        for (const w of walks) {
+          if (!w.time) continue;
+          const [h, m] = w.time.split(":").map(Number);
+          if (isNaN(h) || isNaN(m)) continue;
+          if (alreadyExists(pet.id, "walk", h, m) || inBatch(pet.id, "walk", h, m)) continue;
+          markBatch(pet.id, "walk", h, m);
+          newTasks.push({ crecheId: pet.crecheId, petId: pet.id, type: "walk", title: `Passeio — ${pet.name}`, description: w.notes || null, scheduledFor: makeTimeOnDate(todayStr, h, m), priority: "medium" });
+        }
+
+        // ─── Multiplicity-aware medication scheduling for bulk daily cron ───────
+        const desiredMedOccurrences = new Map<string, { h: number; m: number; title: string; desc: string; count: number }>();
+        for (const med of medsByPet.get(pet.id) ?? []) {
+          const desc = `${med.name}${med.dosage ? ` · ${med.dosage}` : ""}`;
+          const title = `Medicação — ${pet.name}`;
+          const rawTimes: string[] = Array.isArray(med.times) ? med.times as string[] : [];
+          const uniqueTimes = [...new Set(rawTimes)];
+          for (const time of uniqueTimes) {
+            const [h, m] = time.split(":").map(Number);
+            if (isNaN(h) || isNaN(m)) continue;
+            const key = `${pet.id}:${h}:${m}:${desc}`;
+            const current = desiredMedOccurrences.get(key);
+            if (current) {
+              current.count += 1;
+            } else {
+              desiredMedOccurrences.set(key, { h, m, title, desc, count: 1 });
+            }
+          }
+        }
+
+        for (const [key, item] of desiredMedOccurrences.entries()) {
+          const existingCount = existingMedCounts.get(key) || 0;
+          const needed = Math.max(0, item.count - existingCount);
+          for (let i = 0; i < needed; i++) {
+            newTasks.push({
+              crecheId: pet.crecheId,
+              petId: pet.id,
+              type: "medication",
+              title: item.title,
+              description: item.desc,
+              scheduledFor: makeTimeOnDate(todayStr, item.h, item.m),
+              priority: "high",
+            });
+          }
         }
       }
-    }
 
-    if (newTasks.length > 0) {
-      await db.insert(tasksTable).values(newTasks);
-      console.log(`[scheduler] Gerou ${newTasks.length} tarefa(s) para ${todayStr}`);
-    }
+      if (newTasks.length > 0) {
+        await tx.insert(tasksTable).values(newTasks);
+        console.log(`[scheduler] Gerou ${newTasks.length} tarefa(s) para ${todayStr}`);
+      }
+    });
   } catch (err) {
     console.error("[scheduler] Erro ao gerar tarefas diárias:", err);
   }
@@ -305,53 +412,53 @@ async function deduplicateTasks() {
   }
 }
 
-export function startScheduler() {
-  deduplicateTasks();
-  generateDailyTasks();
+export async function runTaskReminderTick() {
+  if (taskReminderRunning) return;
+  taskReminderRunning = true;
+  try {
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 4 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 6 * 60 * 1000);
 
-  // 03:01 UTC = 00:01 BRT (Brasilia is UTC-3, no DST since 2019).
-  // Previously "1 0 * * *" fired at 21:01 BRT, creating tasks for "tomorrow"
-  // from the perspective of Brazil users.
-  cron.schedule("1 3 * * *", () => {
-    generateDailyTasks();
-  });
+    const upcoming = await db.select({
+      id: tasksTable.id,
+      title: tasksTable.title,
+      type: tasksTable.type,
+      scheduledFor: tasksTable.scheduledFor,
+      assignedToId: tasksTable.assignedToId,
+      petId: tasksTable.petId,
+      petName: petsTable.name,
+      assignedToName: usersTable.name,
+    })
+      .from(tasksTable)
+      .leftJoin(petsTable, eq(tasksTable.petId, petsTable.id))
+      .leftJoin(usersTable, eq(tasksTable.assignedToId, usersTable.id))
+      .where(and(
+        eq(tasksTable.status, "pending"),
+        isNull(tasksTable.reminderSentAt),
+        gte(tasksTable.scheduledFor, windowStart),
+        lte(tasksTable.scheduledFor, windowEnd),
+      ));
 
-  cron.schedule("* * * * *", async () => {
-    if (taskReminderRunning) return;
-    taskReminderRunning = true;
-    try {
-      const now = new Date();
-      const windowStart = new Date(now.getTime() + 4 * 60 * 1000);
-      const windowEnd = new Date(now.getTime() + 6 * 60 * 1000);
+    const typeLabels: Record<string, string> = {
+      feeding: "🍽️ Alimentação", medication: "💊 Medicação", grooming: "✂️ Banho/Tosa",
+      walk: "🦮 Passeio", checkup: "🏥 Avaliação", other: "📋 Tarefa",
+    };
 
-      const upcoming = await db.select({
-        id: tasksTable.id,
-        title: tasksTable.title,
-        type: tasksTable.type,
-        scheduledFor: tasksTable.scheduledFor,
-        assignedToId: tasksTable.assignedToId,
-        petId: tasksTable.petId,
-        petName: petsTable.name,
-        assignedToName: usersTable.name,
-      })
-        .from(tasksTable)
-        .leftJoin(petsTable, eq(tasksTable.petId, petsTable.id))
-        .leftJoin(usersTable, eq(tasksTable.assignedToId, usersTable.id))
-        .where(and(
-          eq(tasksTable.status, "pending"),
-          gte(tasksTable.scheduledFor, windowStart),
-          lte(tasksTable.scheduledFor, windowEnd),
-        ));
+    for (const task of upcoming) {
+      if (!task.assignedToId) continue;
 
-      const typeLabels: Record<string, string> = {
-        feeding: "🍽️ Alimentação", medication: "💊 Medicação", grooming: "✂️ Banho/Tosa",
-        walk: "🦮 Passeio", checkup: "🏥 Avaliação", other: "📋 Tarefa",
-      };
+      // PostgreSQL row-level lock serialization + durable reminder_sent_at marking
+      await db.transaction(async (tx) => {
+        const [lockedTask] = await tx
+          .select({ id: tasksTable.id, reminderSentAt: tasksTable.reminderSentAt })
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, task.id), isNull(tasksTable.reminderSentAt)))
+          .for("update");
 
-      for (const task of upcoming) {
-        if (notifiedTaskIds.has(task.id)) continue;
-        notifiedTaskIds.add(task.id);
-        if (!task.assignedToId) continue;
+        if (!lockedTask || lockedTask.reminderSentAt !== null) {
+          return; // Already processed by another concurrent instance
+        }
 
         const label = typeLabels[task.type] ?? "📋 Tarefa";
         const petSuffix = task.petName ? ` — ${task.petName}` : "";
@@ -359,29 +466,57 @@ export function startScheduler() {
           ? new Date(task.scheduledFor).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
           : "";
 
-        await sendPushToUser(task.assignedToId, {
-          title: `⏰ Em 5 minutos: ${label}${petSuffix}`,
-          body: task.title || `${label} agendada para ${timeStr}.`,
-          tag: `task-reminder-${task.id}`,
-          data: { type: "task", taskId: task.id },
-        }).catch(() => {});
-      }
+        try {
+          await sendPushToUser(task.assignedToId!, {
+            title: `⏰ Em 5 minutos: ${label}${petSuffix}`,
+            body: task.title || `${label} agendada para ${timeStr}.`,
+            tag: `task-reminder-${task.id}`,
+            data: { type: "task", taskId: task.id },
+          });
 
-      if (notifiedTaskIds.size > 500) {
-        const arr = Array.from(notifiedTaskIds);
-        arr.slice(0, 250).forEach((id) => notifiedTaskIds.delete(id));
-      }
-    } catch (err) {
-      console.error("[scheduler] error:", err);
-    } finally {
-      taskReminderRunning = false;
+          // Mark reminder as sent in the database
+          await tx
+            .update(tasksTable)
+            .set({ reminderSentAt: new Date() })
+            .where(eq(tasksTable.id, task.id));
+        } catch (pushErr) {
+          // If sending push throws, transaction rolls back: reminderSentAt remains NULL,
+          // allowing future retries if the task remains in the window.
+          console.error(`[scheduler] Erro ao enviar push para task ${task.id}:`, pushErr);
+          throw pushErr;
+        }
+      }).catch(() => {
+        // Handled: push error causes rollback, task remains available for retry
+      });
     }
-  });
+  } catch (err) {
+    console.error("[scheduler] task reminder error:", err);
+  } finally {
+    taskReminderRunning = false;
+  }
+}
+
+export function startScheduler() {
+  deduplicateTasks();
+  generateDailyTasks();
+
+  // 00:01 America/Sao_Paulo (preserves 03:01 UTC)
+  registerCronTask(
+    cron.schedule("1 0 * * *", () => {
+      generateDailyTasks();
+    }, { timezone: SAO_PAULO_TZ })
+  );
+
+  registerCronTask(
+    cron.schedule("* * * * *", () => {
+      runTaskReminderTick();
+    }, { timezone: SAO_PAULO_TZ })
+  );
 
   console.log("[scheduler] Task reminder scheduler started.");
 }
 
-async function sendInvoiceReminders() {
+export async function sendInvoiceReminders() {
   try {
     const pendingInvoices = await db
       .select({
@@ -504,10 +639,12 @@ async function sendInvoiceReminders() {
 }
 
 export function startMensalidadeScheduler() {
-  cron.schedule("0 9 * * *", async () => {
-    financialLog({ operation: "invoice_reminder_start", result: "running" });
-    await sendInvoiceReminders();
-  });
+  registerCronTask(
+    cron.schedule("0 6 * * *", async () => {
+      financialLog({ operation: "invoice_reminder_start", result: "running" });
+      await sendInvoiceReminders();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   console.log("[scheduler] Invoice reminder scheduler started.");
 }
 
@@ -515,7 +652,7 @@ export function startMensalidadeScheduler() {
 // Runs daily at 03:00 BRT. For every subscription whose currentPeriodEnd has
 // passed and has a pending scheduledPlanId, applies the queued plan change.
 
-async function applyScheduledPlanChanges() {
+export async function applyScheduledPlanChanges() {
   try {
     const now = new Date();
     const pending = await db
@@ -560,10 +697,12 @@ async function applyScheduledPlanChanges() {
 }
 
 export function startScheduledPlanChangeApplicator() {
-  cron.schedule("0 6 * * *", async () => {
-    console.log("[scheduler] Verificando mudanças de plano agendadas...");
-    await applyScheduledPlanChanges();
-  });
+  registerCronTask(
+    cron.schedule("0 3 * * *", async () => {
+      console.log("[scheduler] Verificando mudanças de plano agendadas...");
+      await applyScheduledPlanChanges();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   // Also apply on startup in case the server was down when a change was due.
   applyScheduledPlanChanges();
   console.log("[scheduler] Scheduled plan change applicator started.");
@@ -573,7 +712,7 @@ export function startScheduledPlanChangeApplicator() {
 
 const PAST_DUE_GRACE_DAYS = 7;
 
-async function suspendOverduePastDueSubscriptions(): Promise<void> {
+export async function suspendOverduePastDueSubscriptions(): Promise<void> {
   try {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - PAST_DUE_GRACE_DAYS);
@@ -605,11 +744,13 @@ async function suspendOverduePastDueSubscriptions(): Promise<void> {
 }
 
 export function startPastDueSuspender() {
-  // Runs daily at 07:00 BRT (after the plan-change applicator at 06:00).
-  cron.schedule("0 7 * * *", async () => {
-    console.log("[scheduler] Verificando assinaturas em atraso para suspensão...");
-    await suspendOverduePastDueSubscriptions();
-  });
+  // Runs daily at 04:00 BRT (previously 07:00 UTC)
+  registerCronTask(
+    cron.schedule("0 4 * * *", async () => {
+      console.log("[scheduler] Verificando assinaturas em atraso para suspensão...");
+      await suspendOverduePastDueSubscriptions();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   suspendOverduePastDueSubscriptions();
   console.log(`[scheduler] Past-due suspender iniciado (graça: ${PAST_DUE_GRACE_DAYS} dias).`);
 }
@@ -618,7 +759,7 @@ export function startPastDueSuspender() {
 // Complements the real-time check in requireActiveSubscription: ensures the DB
 // status stays accurate so reports, dashboards and Stripe sync reflect reality.
 
-async function suspendExpiredTrials(): Promise<void> {
+export async function suspendExpiredTrials(): Promise<void> {
   try {
     const now = new Date();
     const expired = await db
@@ -649,9 +790,11 @@ async function suspendExpiredTrials(): Promise<void> {
 
 export function startTrialExpirationJob() {
   // Runs every hour on the hour, and immediately on startup.
-  cron.schedule("0 * * * *", async () => {
-    await suspendExpiredTrials();
-  });
+  registerCronTask(
+    cron.schedule("0 * * * *", async () => {
+      await suspendExpiredTrials();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   suspendExpiredTrials();
   console.log("[scheduler] Trial expiration job started.");
 }
@@ -663,7 +806,7 @@ import { ObjectStorageService } from "./objectStorage.js";
 // Fase 14: flag de concorrência para evitar execução paralela
 let receiptCleanupRunning = false;
 
-async function deleteOldReceipts() {
+export async function deleteOldReceipts() {
   if (receiptCleanupRunning) {
     console.warn("[scheduler] deleteOldReceipts: execução anterior ainda em andamento, ignorando.");
     return;
@@ -715,11 +858,13 @@ async function deleteOldReceipts() {
 }
 
 export function startReceiptCleanupJob() {
-  // Runs daily at 04:00 BRT
-  cron.schedule("0 4 * * *", async () => {
-    console.log("[scheduler] Verificando comprovantes antigos para deleção...");
-    await deleteOldReceipts();
-  });
+  // Runs daily at 01:00 BRT (previously 04:00 UTC)
+  registerCronTask(
+    cron.schedule("0 1 * * *", async () => {
+      console.log("[scheduler] Verificando comprovantes antigos para deleção...");
+      await deleteOldReceipts();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   console.log("[scheduler] Receipt cleanup job iniciado.");
 }
 
@@ -732,7 +877,7 @@ const EXPIRED_ORDER_DAYS = 7;
 // Fase 14: flag de concorrência para cancelamento de pedidos
 let expiredOrderCancellerRunning = false;
 
-async function cancelExpiredOrders(): Promise<void> {
+export async function cancelExpiredOrders(): Promise<void> {
   if (expiredOrderCancellerRunning) {
     financialLog({ operation: "expired_order_canceller", result: "skipped_already_running" });
     return;
@@ -782,11 +927,13 @@ async function cancelExpiredOrders(): Promise<void> {
 }
 
 export function startExpiredOrderCanceller() {
-  // Runs daily at 05:00 BRT (after receipt cleanup at 04:00)
-  cron.schedule("0 5 * * *", async () => {
-    console.log("[scheduler] Verificando pedidos expirados...");
-    await cancelExpiredOrders();
-  });
+  // Runs daily at 02:00 BRT (previously 05:00 UTC)
+  registerCronTask(
+    cron.schedule("0 2 * * *", async () => {
+      console.log("[scheduler] Verificando pedidos expirados...");
+      await cancelExpiredOrders();
+    }, { timezone: SAO_PAULO_TZ })
+  );
   // Also run on startup to catch any orders that expired while server was down
   cancelExpiredOrders();
   console.log(`[scheduler] Expired-order canceller iniciado (graça: ${EXPIRED_ORDER_DAYS} dias).`);
@@ -858,7 +1005,7 @@ async function processOneOutboxEvent(): Promise<boolean> {
   return hadEvent;
 }
 
-async function processOutbox(): Promise<void> {
+export async function processOutbox(): Promise<void> {
   if (outboxWorkerRunning) return;
   outboxWorkerRunning = true;
   try {
@@ -875,7 +1022,9 @@ async function processOutbox(): Promise<void> {
 }
 
 export function startOutboxWorker(): void {
-  cron.schedule("* * * * *", processOutbox);
+  registerCronTask(
+    cron.schedule("* * * * *", processOutbox, { timezone: SAO_PAULO_TZ })
+  );
   console.log("[scheduler] Outbox worker started.");
 }
 

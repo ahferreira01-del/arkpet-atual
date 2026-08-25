@@ -38,15 +38,33 @@ export class ExpenseRepository {
     const [r] = await c(tx)
       .update(expensesTable)
       .set(values)
-      .where(and(eq(expensesTable.id, id), eq(expensesTable.crecheId, crecheId)))
+      .where(
+        and(
+          eq(expensesTable.id, id),
+          eq(expensesTable.crecheId, crecheId),
+          eq(expensesTable.isPaid, false)
+        )
+      )
       .returning();
     return r ?? null;
   }
 
-  static async delete(id: number, crecheId: number, tx?: any): Promise<void> {
-    await c(tx)
+  static async delete(
+    id: number,
+    crecheId: number,
+    tx?: any
+  ): Promise<typeof expensesTable.$inferSelect | null> {
+    const [r] = await c(tx)
       .delete(expensesTable)
-      .where(and(eq(expensesTable.id, id), eq(expensesTable.crecheId, crecheId)));
+      .where(
+        and(
+          eq(expensesTable.id, id),
+          eq(expensesTable.crecheId, crecheId),
+          eq(expensesTable.isPaid, false)
+        )
+      )
+      .returning();
+    return r ?? null;
   }
 
   static async markPaid(

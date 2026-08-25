@@ -111,7 +111,7 @@ function ConversationItem({
 
 export default function Chat() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const isTutor = user?.role === "tutor";
   const searchStr = useSearch();
   const queryClient = useQueryClient();
@@ -161,19 +161,18 @@ export default function Chat() {
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
-  const { data: conversations, isLoading: convLoading } = useListConversations(crecheId, {
+  const { data: conversations, isLoading: convLoading } = useListConversations(crecheId ?? 0, {
     query: { refetchInterval: 10000, staleTime: 0 } as any,
   });
 
   const selectedConv = conversations?.find((c) => c.tutorId === selectedTutorId);
 
   const { data: serverMessages, isLoading: msgsLoading } = useListMessages(
-    crecheId,
+    crecheId ?? 0,
     selectedTutorId ? { tutorId: selectedTutorId } : undefined,
     {
       query: {
-        enabled: !!selectedTutorId,
-        refetchInterval: 8000,
+        refetchInterval: 5000,
         staleTime: 0,
       } as any,
     }
@@ -342,7 +341,7 @@ export default function Chat() {
     })
       .then(() => {
         queryClient.invalidateQueries({ queryKey: ["chat-unread", crecheId] });
-        queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId) });
+        queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId ?? 0) });
       })
       .catch(() => {});
   }, [selectedTutorId]);
@@ -377,7 +376,7 @@ export default function Chat() {
   };
 
   const handleLoadOlder = async () => {
-    if (!selectedTutorId || loadingOlder || allOlderLoaded) return;
+    if (!crecheId || !selectedTutorId || loadingOlder || allOlderLoaded) return;
     const combined = [...olderMessages, ...(serverMessages ?? [])];
     const oldest = (combined as any[]).sort((a, b) => a.id - b.id)[0];
     if (!oldest) return;
@@ -399,7 +398,7 @@ export default function Chat() {
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || !selectedTutorId || !user) return;
+    if (!crecheId || !message.trim() || !selectedTutorId || !user) return;
     const content = message.trim();
     setMessage("");
     const taggedPet = selectedConv?.pets.find((p) => p.id === taggedPetId);
@@ -422,7 +421,7 @@ export default function Chat() {
           queryClient.invalidateQueries({
             predicate: (q) => String(q.queryKey[0]).includes("/chat"),
           });
-          queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId ?? 0) });
         },
         onError: () => {
           setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimistic.id));

@@ -11,7 +11,7 @@
  * These tests run against a live Postgres instance and rely on the row-level
  * locking implemented in financial.ts.
  */
-
+import { randomUUID } from "crypto";
 import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@workspace/db";
 import {
@@ -34,20 +34,21 @@ beforeAll(async () => {
   const res = await post<{ id: number; stockQuantity: number }>(
     `/creches/${ctx.crecheId}/financial/catalogue`,
     {
-      name: `Stock Concurrency Test Product ${Date.now()}`,
+      name: "Ração Premium Teste Concorrência",
       type: "product",
-      price: 10,
+      price: 50.0,
       stockQuantity: INITIAL_STOCK,
+      trackStock: true,
+      minStockAlert: 2,
     },
     ctx.token,
   );
 
   if (!res.ok || !res.body.id) {
     throw new Error(
-      `[stock-concurrency] Failed to create test product: ${JSON.stringify(res.body)}`,
+      `Failed to create test product: ${JSON.stringify(res.body)}`,
     );
   }
-
   productItemId = res.body.id;
 });
 
@@ -56,48 +57,53 @@ beforeAll(async () => {
 // ---------------------------------------------------------------------------
 async function readStock(itemId: number): Promise<number> {
   const [row] = await db
-    .select({ stockQuantity: catalogueItemsTable.stockQuantity })
+    .select({ stock: catalogueItemsTable.stockQuantity })
     .from(catalogueItemsTable)
-    .where(eq(catalogueItemsTable.id, itemId));
-  if (!row) throw new Error(`Item ${itemId} not found in DB`);
-  return row.stockQuantity;
+    .where(
+      and(
+        eq(catalogueItemsTable.id, itemId),
+        eq(catalogueItemsTable.crecheId, ctx.crecheId),
+      ),
+    )
+    .limit(1);
+  return row?.stock ?? -1;
 }
 
 // ---------------------------------------------------------------------------
-// 1. Concurrent POS sales
+// 1. Race: simultaneous POS sales on the same item
 // ---------------------------------------------------------------------------
-describe("Concurrent POS sales — stock never goes negative", () => {
+describe("Concurrent POS sales — stock cannot go negative", () => {
   it("two simultaneous sales each requesting half the stock: both succeed or one gets 400, stock ≥ 0", async () => {
     // Re-read current stock so the test is idempotent even if run multiple times
     const currentStock = await readStock(productItemId);
+    const qty = Math.max(1, Math.floor(currentStock / 2));
 
-    // Each sale requests half the stock (integer division).  If stock is odd
-    // one unit is left over — that is fine, we only care stock stays ≥ 0.
-    const qty = Math.floor(currentStock / 2);
-
-    if (qty < 1) {
-      // Stock already too low to run the concurrency test meaningfully; skip.
+    if (currentStock < 2) {
+      // Not enough stock to run a meaningful race — skip safely
       console.warn(
         `[stock-concurrency] currentStock=${currentStock}, qty=${qty} — skipping concurrent sale test`,
       );
       return;
     }
 
-    const saleBody = {
-      items: [{ catalogueItemId: productItemId, quantity: qty }],
-      paymentMethod: "cash",
-    };
-
-    // Fire both requests simultaneously
+    // Fire both requests simultaneously with distinct operation IDs
     const [resA, resB] = await Promise.all([
       post<{ invoice: { id: number } }>(
         `/creches/${ctx.crecheId}/financial/pos-sale`,
-        saleBody,
+        {
+          operationId: randomUUID(),
+          items: [{ catalogueItemId: productItemId, quantity: qty }],
+          paymentMethod: "cash",
+        },
         ctx.token,
       ),
       post<{ invoice: { id: number } }>(
         `/creches/${ctx.crecheId}/financial/pos-sale`,
-        saleBody,
+        {
+          operationId: randomUUID(),
+          items: [{ catalogueItemId: productItemId, quantity: qty }],
+          paymentMethod: "cash",
+        },
         ctx.token,
       ),
     ]);
@@ -220,6 +226,7 @@ describe("Mixed race — POS sale vs stock-adjustment on the same item", () => {
       post<{ invoice: { id: number } } | { error: string }>(
         `/creches/${ctx.crecheId}/financial/pos-sale`,
         {
+          operationId: randomUUID(),
           items: [{ catalogueItemId: productItemId, quantity: saleQty }],
           paymentMethod: "cash",
         },
@@ -272,6 +279,7 @@ describe("Mixed race — POS sale vs stock-adjustment on the same item", () => {
       post(
         `/creches/${ctx.crecheId}/financial/pos-sale`,
         {
+          operationId: randomUUID(),
           items: [{ catalogueItemId: productItemId, quantity: 3 }],
           paymentMethod: "cash",
         },
@@ -285,6 +293,7 @@ describe("Mixed race — POS sale vs stock-adjustment on the same item", () => {
       post(
         `/creches/${ctx.crecheId}/financial/pos-sale`,
         {
+          operationId: randomUUID(),
           items: [{ catalogueItemId: productItemId, quantity: 3 }],
           paymentMethod: "cash",
         },

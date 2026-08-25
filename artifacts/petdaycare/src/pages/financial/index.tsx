@@ -147,7 +147,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
       case 'paid': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'pending': return 'bg-amber-100 text-amber-800 border-amber-200';
       case 'overdue': return 'bg-red-100 text-red-800 border-red-200';
-      case 'void': return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'voided': return 'bg-slate-100 text-slate-800 border-slate-200';
       case 'refunded': return 'bg-purple-100 text-purple-800 border-purple-200';
       default: return 'bg-slate-100 text-slate-800 border-slate-200';
     }
@@ -158,7 +158,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
       case 'paid': return 'Paga';
       case 'pending': return 'Pendente';
       case 'overdue': return 'Atrasada';
-      case 'void': return 'Cancelada';
+      case 'voided': return 'Cancelada';
       case 'refunded': return 'Estornada';
       default: return status;
     }
@@ -374,8 +374,8 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
     { accessorKey: "status", header: "Status", cell: (info: any) => {
         const status = info.getValue();
         return (
-          <Badge variant={status === "paid" ? "success" : status === "awaiting_confirmation" ? "default" : status === "refunded" ? "outline" : status === "void" ? "secondary" : status === "overdue" ? "destructive" : "secondary"}>
-            {status === "paid" ? "Pago" : status === "awaiting_confirmation" ? "Em Análise" : status === "refunded" ? "Estornado" : status === "void" ? "Cancelado" : status === "overdue" ? "Atrasado" : "Pendente"}
+          <Badge variant={status === "paid" ? "success" : status === "awaiting_confirmation" ? "default" : status === "refunded" ? "outline" : status === "voided" ? "secondary" : status === "overdue" ? "destructive" : "secondary"}>
+            {status === "paid" ? "Pago" : status === "awaiting_confirmation" ? "Em Análise" : status === "refunded" ? "Estornado" : status === "voided" ? "Cancelado" : status === "overdue" ? "Atrasado" : "Pendente"}
           </Badge>
         );
     } },
@@ -438,8 +438,8 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
             <span className="font-semibold text-foreground leading-tight truncate max-w-[200px]">{inv.tutorName || "Desconhecido"}</span>
             <span className="text-xs text-muted-foreground mt-0.5">#{inv.id}</span>
           </div>
-          <Badge variant={inv.status === "paid" ? "success" : inv.status === "awaiting_confirmation" ? "default" : inv.status === "refunded" ? "outline" : inv.status === "void" ? "secondary" : inv.status === "overdue" ? "destructive" : "secondary"}>
-            {inv.status === "paid" ? "Pago" : inv.status === "awaiting_confirmation" ? "Em Análise" : inv.status === "refunded" ? "Estornado" : inv.status === "void" ? "Cancelado" : inv.status === "overdue" ? "Atrasado" : "Pendente"}
+          <Badge variant={inv.status === "paid" ? "success" : inv.status === "awaiting_confirmation" ? "default" : inv.status === "refunded" ? "outline" : inv.status === "voided" ? "secondary" : inv.status === "overdue" ? "destructive" : "secondary"}>
+            {inv.status === "paid" ? "Pago" : inv.status === "awaiting_confirmation" ? "Em Análise" : inv.status === "refunded" ? "Estornado" : inv.status === "voided" ? "Cancelado" : inv.status === "overdue" ? "Atrasado" : "Pendente"}
           </Badge>
         </div>
 
@@ -705,26 +705,28 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
         return (
           <div className="flex justify-end gap-1">
             {!exp.isPaid && (
-              <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground h-8">
-                Pagar
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+              <>
+                <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground h-8">
+                  Pagar
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem onClick={() => openEditModal(exp)}>
-                  <Pencil className="mr-2 h-4 w-4" /> Editar
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" /> Excluir
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40">
+                    <DropdownMenuItem onClick={() => openEditModal(exp)}>
+                      <Pencil className="mr-2 h-4 w-4" /> Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
+                      <Trash2 className="mr-2 h-4 w-4" /> Excluir
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
           </div>
         );
       }
@@ -762,26 +764,28 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
 
         <div className="flex justify-end items-center gap-2 pt-1">
           {!exp.isPaid && (
-            <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[100px] h-9">
-              Pagar
-            </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9">
-                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+            <>
+              <Button size="sm" onClick={() => handlePay(exp.id)} isLoading={payMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[100px] h-9">
+                Pagar
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => openEditModal(exp)}>
-                <Pencil className="mr-2 h-4 w-4" /> Editar Despesa
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
-                <Trash2 className="mr-2 h-4 w-4" /> Excluir Despesa
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                    <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem onClick={() => openEditModal(exp)}>
+                    <Pencil className="mr-2 h-4 w-4" /> Editar Despesa
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleDelete(exp.id)} disabled={deleteMutation.isPending} className="text-destructive focus:text-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" /> Excluir Despesa
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
       </div>
     );

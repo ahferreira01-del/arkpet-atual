@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import { useGetCreche, useUpdateCreche } from "@workspace/api-client-react";
+import {
+  useGetCreche,
+  useUpdateCreche,
+  getGetCrecheQueryKey,
+  getGetMeQueryKey,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { usePush } from "@/hooks/use-push";
 import { useTheme } from "@/components/theme-provider";
@@ -23,9 +28,9 @@ function isInStandaloneMode() {
 export default function Settings() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const queryClient = useQueryClient();
-  const { data: creche, isLoading } = useGetCreche(crecheId);
+  const { data: creche, isLoading } = useGetCreche(crecheId ?? 0);
   const updateMutation = useUpdateCreche();
   const [saved, setSaved] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -36,6 +41,7 @@ export default function Settings() {
   const { toast } = useToast();
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!crecheId) return;
     const file = e.target.files?.[0];
     if (!file) return;
     const token = localStorage.getItem("auth_token");
@@ -46,9 +52,13 @@ export default function Settings() {
       const objectPath = await uploadFileDirect(file, token);
       updateMutation.mutate({
         crecheId,
-        data: { logoUrl: `/api/storage/public-objects/${objectPath}` }
+        data: { logoUrl: `/api/storage/public-objects/${objectPath.replace(/^\/+/, "")}` }
       }, {
-        onSuccess: () => queryClient.invalidateQueries()
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetCrecheQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: ["creche", crecheId] });
+          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+        }
       });
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -60,6 +70,7 @@ export default function Settings() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!crecheId) return;
     const formData = new FormData(e.currentTarget);
 
     const rawDeliveryFee = (formData.get("deliveryFee") as string || "").trim();
@@ -89,7 +100,8 @@ export default function Settings() {
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getGetCrecheQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: ["creche", crecheId] });
           setSaved(true);
           setTimeout(() => setSaved(false), 3000);
         },
@@ -97,7 +109,7 @@ export default function Settings() {
     );
   };
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+  if (isLoading && !!crecheId) return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 lg:space-y-8 pb-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -109,7 +121,7 @@ export default function Settings() {
 
 
       {/* Creche Info */}
-      {user?.role !== "tutor" && (
+      {user?.role !== "tutor" && user?.role !== "master_admin" && !!crecheId && (
         <Card className="rounded-2xl shadow-sm overflow-hidden">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
@@ -466,7 +478,7 @@ export default function Settings() {
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between py-3 gap-1">
                 <p className="text-xs font-medium text-muted-foreground">Creche vinculada</p>
-                <p className="text-sm font-semibold text-foreground">#{crecheId}</p>
+                <p className="text-sm font-semibold text-foreground">{user?.crecheId ? `#${user.crecheId}` : "Global (Master)"}</p>
               </div>
             </div>
           </div>

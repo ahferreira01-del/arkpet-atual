@@ -34,11 +34,11 @@ export function CommandPalette({ crecheId }: CommandPaletteProps) {
     setOpen(false);
     // Navigation logic based on result type
     if (result.type === 'invoice') {
-      setLocation(`/creches/${crecheId}/financial?highlight=invoice-${result.id}`);
+      setLocation('/financial?tab=receivables');
     } else if (result.type === 'tutor') {
-      setLocation(`/creches/${crecheId}/tutors/${result.id}`);
+      setLocation('/tutors');
     } else if (result.type === 'product' || result.type === 'service') {
-      setLocation(`/creches/${crecheId}/catalogue?highlight=${result.id}`);
+      setLocation('/financial?tab=catalogue');
     }
   };
 

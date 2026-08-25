@@ -1,5 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
-import { useListTasks, useCompleteTask, useListPets, useAddFeedPost } from "@workspace/api-client-react";
+import {
+  useListTasks,
+  useCompleteTask,
+  useListPets,
+  useAddFeedPost,
+  getListTasksQueryKey,
+  getListFeedQueryKey,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -129,7 +136,7 @@ function TaskCompleteModal({
       { crecheId, taskId: task.id, data: {} },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
           toast({ title: "Tarefa concluída!", description: task.title });
           onClose();
         },
@@ -162,12 +169,14 @@ function TaskCompleteModal({
             },
             {
               onSuccess: () => {
-                queryClient.invalidateQueries();
+                queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+                queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) });
+                queryClient.invalidateQueries({ queryKey: ["tutor-timeline", crecheId] });
                 toast({ title: "Publicado e concluído!", description: `Atualização enviada para o tutor de ${task.petName}.` });
                 onClose();
               },
               onError: () => {
-                queryClient.invalidateQueries();
+                queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
                 toast({ title: "Tarefa concluída", description: "Mas houve um erro ao publicar na linha do tempo.", variant: "destructive" });
                 onClose();
               },
@@ -388,7 +397,8 @@ function StandalonePublishModal({
       },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: ["tutor-timeline", crecheId] });
           toast({ title: "Publicado!", description: "Atualização enviada para o tutor." });
           onClose();
         },
@@ -582,7 +592,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
         { crecheId, taskId: task.id, data: {} },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries();
+            queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
             toast({ title: "Tarefa concluída!", description: task.title });
           },
         }

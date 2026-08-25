@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useListPets, useCheckIn } from "@workspace/api-client-react";
+import {
+  useListPets,
+  useCheckIn,
+  getListBookingsQueryKey,
+  getListPetsQueryKey,
+  getGetCrecheStatsQueryKey,
+  getListTasksQueryKey,
+} from "@workspace/api-client-react";
 import { Search, Dog, LogIn } from "lucide-react";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -69,7 +76,10 @@ export function QuickCheckIn() {
       {
         onSuccess: () => {
           toast({ title: "Check-in realizado com sucesso!", description: `${pet.name} está agora na creche.` });
-          queryClient.invalidateQueries();
+          queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
           setSearch("");
           setIsOpen(false);
         },

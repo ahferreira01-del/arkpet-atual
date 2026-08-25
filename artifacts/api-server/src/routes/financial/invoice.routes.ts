@@ -42,6 +42,10 @@ const uploadReceiptSchema = z.object({
 router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
+    if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+      res.status(403).json({ error: "Acesso não autorizado." });
+      return;
+    }
     const { page, pageSize, offset } = getPaginationParams(req.query);
     const tutorId = req.user!.role === "tutor" ? req.user!.id : null;
     const result = await InvoiceRepository.listByCreche(crecheId, tutorId, pageSize, offset);
@@ -58,17 +62,17 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
 router.get("/upcoming", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const crecheId = Number(req.params.crecheId);
+    if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+      res.status(403).json({ error: "Acesso não autorizado." });
+      return;
+    }
     
-    // Admin/Staff explicit tutorId filtering, or null for all (wait, if Admin queries without tutorId, is it allowed? 
-    // The PROMPT says: "Para Staff/Admin: tutorId deve ser explicitamente informado quando a operação for referente a um tutor".
-    // But for invoices, maybe it's different than credits? The prompt says: "A consulta deve: respeitar crecheId; respeitar tutorId; retornar somente invoices elegíveis; ... impedir cross-tenant access."
-    // Let's implement it defensively:
     let tutorId: number | null = null;
 
     if (req.user!.role === "tutor") {
       tutorId = req.user!.id; // Tutor só acessa a si mesmo
     } else {
-      // Staff/Admin
+      // Creche Admin
       if (req.query.tutorId) {
         tutorId = Number(req.query.tutorId);
       } else {
@@ -109,9 +113,12 @@ router.get(
       const crecheId = Number(req.params.crecheId);
       const invoiceId = Number(req.params.invoiceId);
 
-      const invoice = req.user!.role === "tutor"
-        ? await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId)
-        : await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId);
+      if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+        res.status(403).json({ error: "Acesso não autorizado." });
+        return;
+      }
+
+      const invoice = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId);
 
       if (!invoice) { res.status(404).json({ error: "Fatura não encontrada" }); return; }
       if (req.user!.role === "tutor" && invoice.tutorId !== req.user!.id) {
@@ -140,7 +147,7 @@ router.get(
         if (!owned || owned.tutorId !== req.user!.id) {
           res.status(403).json({ error: "Não autorizado" }); return;
         }
-      } else if (req.user!.role !== "master_admin" && req.user!.crecheId !== crecheId) {
+      } else if (req.user!.role !== "creche_admin") {
         res.status(403).json({ error: "Não autorizado" }); return;
       }
 
@@ -186,7 +193,7 @@ router.get(
         if (!inv || inv.tutorId !== req.user!.id) {
           res.status(403).json({ error: "Não autorizado" }); return;
         }
-      } else if (req.user!.crecheId !== crecheId && req.user!.role !== "master_admin") {
+      } else if (req.user!.role !== "creche_admin") {
         res.status(403).json({ error: "Não autorizado" }); return;
       }
 
@@ -226,10 +233,20 @@ router.post(
       const crecheId = Number(req.params.crecheId);
       const invoiceId = Number(req.params.invoiceId);
 
+      if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+        res.status(403).json({ error: "Acesso não autorizado." });
+        return;
+      }
+
       const invoice = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId);
       if (!invoice) { res.status(404).json({ error: "Fatura não encontrada" }); return; }
       if (req.user!.role === "tutor" && invoice.tutorId !== req.user!.id) {
         res.status(403).json({ error: "Acesso negado" }); return;
+      }
+
+      if (invoice.status !== "pending" && invoice.status !== "overdue") {
+        res.status(409).json({ error: `Fatura com status '${invoice.status}' não permite pagamento via checkout.` });
+        return;
       }
 
       const stripe = await getUncachableStripeClient();
@@ -239,7 +256,7 @@ router.post(
           price_data: {
             currency: "brl",
             product_data: { name: `Fatura #${invoiceId}` },
-            unit_amount: Math.round(Number(invoice.amount) * 100),
+            unit_amount: Math.round(Number(invoice.amount)),
           },
           quantity: 1,
         }],
@@ -267,10 +284,21 @@ router.post(
       const invoiceId = Number(req.params.invoiceId);
       const { receiptPhotoPath } = req.body;
 
+      if (req.user!.role !== "creche_admin" && req.user!.role !== "tutor") {
+        res.status(403).json({ error: "Acesso não autorizado." });
+        return;
+      }
+
       const invoice = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId);
       if (!invoice) { res.status(404).json({ error: "Fatura não encontrada" }); return; }
       if (req.user!.role === "tutor" && invoice.tutorId !== req.user!.id) {
         res.status(403).json({ error: "Acesso negado" }); return;
+      }
+
+      const ALLOWED_RECEIPT_STATUSES = ["pending", "overdue", "awaiting_confirmation"];
+      if (!ALLOWED_RECEIPT_STATUSES.includes(invoice.status)) {
+        res.status(409).json({ error: `Fatura com status '${invoice.status}' não permite envio de comprovante.` });
+        return;
       }
 
       await InvoiceRepository.markAwaitingConfirmation(invoiceId, receiptPhotoPath);
@@ -324,8 +352,9 @@ router.post(
         }).catch(() => {});
       }
       res.json({ ok: true });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    } catch (err: any) {
+      const statusCode = err?.status ?? err?.statusCode ?? (err?.name === "StateConflictError" ? 409 : 400);
+      res.status(statusCode).json({ error: err instanceof Error ? err.message : String(err) });
     }
   }
 );
@@ -353,8 +382,9 @@ router.post(
         }).catch(() => {});
       }
       res.json({ ok: true });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    } catch (err: any) {
+      const statusCode = err?.status ?? err?.statusCode ?? (err?.name === "StateConflictError" ? 409 : 400);
+      res.status(statusCode).json({ error: err instanceof Error ? err.message : String(err) });
     }
   }
 );
@@ -381,8 +411,9 @@ router.post(
         }).catch(() => {});
       }
       res.json({ ok: true });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    } catch (err: any) {
+      const statusCode = err?.status ?? err?.statusCode ?? (err?.name === "StateConflictError" ? 409 : 400);
+      res.status(statusCode).json({ error: err instanceof Error ? err.message : String(err) });
     }
   }
 );
@@ -410,8 +441,9 @@ router.post(
         }).catch(() => {});
       }
       res.json({ ok: true });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+    } catch (err: any) {
+      const statusCode = err?.status ?? err?.statusCode ?? (err?.name === "StateConflictError" ? 409 : 400);
+      res.status(statusCode).json({ error: err instanceof Error ? err.message : String(err) });
     }
   }
 );

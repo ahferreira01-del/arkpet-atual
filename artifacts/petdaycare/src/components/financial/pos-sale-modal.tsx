@@ -21,6 +21,7 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
 
   const [cart, setCart] = useState<{ item: any, quantity: number }[]>([]);
   const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [operationId, setOperationId] = useState<string>(() => crypto.randomUUID());
 
   const filtered = catalogue?.filter((item: any) => 
     item.type === "service" || item.type === "product" || item.type === "day_use"
@@ -30,6 +31,7 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
   ) || [];
 
   const handleAdd = (item: any) => {
+    setOperationId(crypto.randomUUID());
     setCart(prev => {
       const existing = prev.find(i => i.item.id === item.id);
       if (existing) {
@@ -41,11 +43,13 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
   };
 
   const handleRemove = (itemId: number) => {
+    setOperationId(crypto.randomUUID());
     setCart(prev => prev.filter(i => i.item.id !== itemId));
   };
 
   const handleQuantityChange = (itemId: number, newQuantity: number) => {
     if (newQuantity < 1) return;
+    setOperationId(crypto.randomUUID());
     setCart(prev => prev.map(i => i.item.id === itemId ? { ...i, quantity: newQuantity } : i));
   };
 
@@ -75,6 +79,7 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
     }
 
     const payload = {
+      operationId,
       items: cart.map(c => ({
         catalogueItemId: c.item.id,
         quantity: c.quantity
@@ -87,6 +92,7 @@ export function POSSaleModal({ isOpen, onClose, crecheId }: POSSaleModalProps) {
         toast({ title: "Venda Concluída", description: "Venda finalizada com sucesso." });
         setCart([]);
         setPaymentMethod("cash");
+        setOperationId(crypto.randomUUID());
         onClose();
       },
       onError: (err: any) => {

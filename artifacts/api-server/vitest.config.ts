@@ -10,6 +10,7 @@ export default defineConfig({
     // to avoid hitting the sensitiveLimiter (10 req/hour) and DB contention.
     fileParallelism: false,
     globalSetup: ["src/__tests__/global-setup.ts"],
+    setupFiles: ["dotenv/config"],
     include: ["src/__tests__/**/*.test.ts"],
     reporters: ["verbose"],
   },

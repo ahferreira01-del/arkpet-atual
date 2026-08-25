@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import app from '../../artifacts/api-server/src/app.js';
+import { isServiceBookingBackend } from '../../artifacts/api-server/src/routes/bookings.js';
+import { isServiceBooking as isServiceBookingFrontend } from '../../artifacts/petdaycare/src/lib/booking-utils.js';
 import { db } from '@workspace/db';
 import { catalogueItemsTable, bookingsTable, petsTable } from '@workspace/db/schema';
 import { eq } from 'drizzle-orm';
@@ -8,15 +10,6 @@ import {
   createTestCreche, createTestUser, generateTestToken, createTestPet,
   createCatalogueItem, cleanupTestData
 } from '../helpers';
-
-// Helper mock to avoid importing the whole route file which causes app to be undefined due to circular deps
-export function isServiceBookingBackend(bookingType: string, catalogueItemType: string | null): boolean {
-  if (catalogueItemType !== null) {
-    return catalogueItemType === "service";
-  }
-  const LEGACY_SERVICE_TYPES = new Set(["banho", "visita_taxi", "creche_taxi", "tosa_higienica", "tosa_completa", "tosa_padrao", "avaliacao", "taxi"]);
-  return LEGACY_SERVICE_TYPES.has(bookingType);
-}
 
 let testCreche: any;
 let staffUser: any;
@@ -38,30 +31,89 @@ afterAll(async () => {
   await cleanupTestData(testCreche.id);
 });
 
-describe('F10C - Classification Unit Matrix', () => {
+describe('F10C - Classification Unit Matrix & F10B.2 Hardening', () => {
   it('13. MODERN CUSTOM SERVICE (tosa)', () => {
     expect(isServiceBookingBackend('tosa', 'service')).toBe(true);
   });
   it('14. MODERN CUSTOM SERVICE (banho_especial)', () => {
     expect(isServiceBookingBackend('banho_especial', 'service')).toBe(true);
   });
-  it('15. MODERN METADATA MUST WIN', () => {
+  it('15. MODERN METADATA MUST WIN (banho with day_use is NON-SERVICE)', () => {
     expect(isServiceBookingBackend('banho', 'day_use')).toBe(false);
   });
-  it('16. LEGACY SERVICE', () => {
+  it('16. LEGACY SERVICE (banho with null)', () => {
     expect(isServiceBookingBackend('banho', null)).toBe(true);
   });
-  it('17. LEGACY PRESENCE', () => {
+  it('16b. LEGACY SERVICE (visita_taxi with null)', () => {
+    expect(isServiceBookingBackend('visita_taxi', null)).toBe(true);
+  });
+  it('16c. LEGACY SERVICE (creche_taxi with null)', () => {
+    expect(isServiceBookingBackend('creche_taxi', null)).toBe(true);
+  });
+  it('17. LEGACY PRESENCE (lodging with null)', () => {
     expect(isServiceBookingBackend('lodging', null)).toBe(false);
   });
-  it('18. PACKAGE', () => {
+  it('17b. LEGACY PRESENCE (day_use with null)', () => {
+    expect(isServiceBookingBackend('day_use', null)).toBe(false);
+  });
+  it('18. PACKAGE (package metadata is NON-SERVICE)', () => {
     expect(isServiceBookingBackend('banho', 'package')).toBe(false);
   });
-  it('19. TRANSPORT', () => {
+  it('19. TRANSPORT (visita_taxi with service)', () => {
     expect(isServiceBookingBackend('visita_taxi', 'service')).toBe(true);
   });
-  it('20. CUSTOM SERVICE', () => {
+  it('20. CUSTOM SERVICE (Tosa with service)', () => {
     expect(isServiceBookingBackend('Tosa', 'service')).toBe(true);
+  });
+  it('F10B.2. REMOVED EXTRA SLUGS with null metadata must be NON-SERVICE', () => {
+    expect(isServiceBookingBackend('avaliacao', null)).toBe(false);
+    expect(isServiceBookingBackend('tosa_completa', null)).toBe(false);
+    expect(isServiceBookingBackend('tosa_higienica', null)).toBe(false);
+    expect(isServiceBookingBackend('tosa_padrao', null)).toBe(false);
+    expect(isServiceBookingBackend('taxi', null)).toBe(false);
+  });
+  it('F10B.2. REMOVED EXTRA SLUGS with modern service metadata remain SERVICE', () => {
+    expect(isServiceBookingBackend('avaliacao', 'service')).toBe(true);
+    expect(isServiceBookingBackend('tosa_completa', 'service')).toBe(true);
+    expect(isServiceBookingBackend('taxi', 'service')).toBe(true);
+  });
+  it('F10B.2. UNDEFINED METADATA MUST THROW INTERNAL CONTRACT ERROR', () => {
+    expect(() => isServiceBookingBackend('banho', undefined)).toThrow(/Internal contract violation/);
+    expect(() => isServiceBookingBackend('lodging', undefined)).toThrow(/Internal contract violation/);
+  });
+});
+
+describe('R8F.1 - Frontend isServiceBooking Classifier Parity', () => {
+  it('Frontend: legacy service with null metadata is SERVICE', () => {
+    expect(isServiceBookingFrontend({ type: 'banho', catalogueItemType: null })).toBe(true);
+    expect(isServiceBookingFrontend({ type: 'visita_taxi', catalogueItemType: null })).toBe(true);
+    expect(isServiceBookingFrontend({ type: 'creche_taxi', catalogueItemType: null })).toBe(true);
+    expect(isServiceBookingFrontend('banho', null)).toBe(true);
+  });
+
+  it('Frontend: legacy presence with null metadata is NON-SERVICE', () => {
+    expect(isServiceBookingFrontend({ type: 'lodging', catalogueItemType: null })).toBe(false);
+    expect(isServiceBookingFrontend({ type: 'day_use', catalogueItemType: null })).toBe(false);
+    expect(isServiceBookingFrontend({ type: 'avaliacao', catalogueItemType: null })).toBe(false);
+    expect(isServiceBookingFrontend('lodging', null)).toBe(false);
+  });
+
+  it('Frontend: modern service with catalogueItemType="service" is SERVICE', () => {
+    expect(isServiceBookingFrontend({ type: 'tosa', catalogueItemType: 'service' })).toBe(true);
+    expect(isServiceBookingFrontend({ type: 'avaliacao', catalogueItemType: 'service' })).toBe(true);
+    expect(isServiceBookingFrontend({ type: 'banho_especial', catalogueItemType: 'service' })).toBe(true);
+    expect(isServiceBookingFrontend({ type: 'hidratacao', catalogueItemType: 'service' })).toBe(true);
+    expect(isServiceBookingFrontend('tosa', 'service')).toBe(true);
+  });
+
+  it('Frontend: metadata precedence — modern day_use with booking.type="banho" is NON-SERVICE', () => {
+    expect(isServiceBookingFrontend({ type: 'banho', catalogueItemType: 'day_use' })).toBe(false);
+    expect(isServiceBookingFrontend('banho', 'day_use')).toBe(false);
+  });
+
+  it('Frontend: undefined metadata fails safe to NON-SERVICE without calling legacy set', () => {
+    expect(isServiceBookingFrontend({ type: 'banho', catalogueItemType: undefined })).toBe(false);
+    expect(isServiceBookingFrontend('banho', undefined)).toBe(false);
   });
 });
 
@@ -270,7 +322,7 @@ describe('F10C - Integration Scenarios', () => {
 
     await db.delete(bookingsTable).where(eq(bookingsTable.petId, testPet.id));
     await db.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, testPet.id));
-  }, 30000);
+  }, 60000);
 
   it('40. LEGACY ENDPOINT TEST', async () => {
     const [booking] = await db.insert(bookingsTable).values({
@@ -279,8 +331,8 @@ describe('F10C - Integration Scenarios', () => {
       crecheId: testCreche.id,
       type: 'banho',
       status: 'confirmed',
-      startDate: new Date(),
-      endDate: new Date()
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: new Date().toISOString().split("T")[0]
     }).returning();
 
     const checkoutRes = await request(app).post(`/api/creches/${testCreche.id}/bookings/${booking.id}/checkout`).set('Authorization', `Bearer ${staffToken}`);

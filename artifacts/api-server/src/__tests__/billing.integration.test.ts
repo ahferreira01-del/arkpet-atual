@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import {
   invoicesTable,
@@ -667,6 +668,7 @@ describe("processManualPayment — concurrency (double-payment race)", () => {
     const { result } = await createOrder({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
+      operationId: randomUUID(),
       items: [{ catalogueItemId: item.id, quantity: 1 }],
       deliveryMethod: "pickup",
       deliveryFee: 0,
@@ -706,6 +708,7 @@ describe("processManualPayment — concurrency (double-payment race)", () => {
     const { result } = await createOrder({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
+      operationId: randomUUID(),
       items: [{ catalogueItemId: item.id, quantity: 1 }],
       deliveryMethod: "pickup",
       deliveryFee: 0,
@@ -747,6 +750,7 @@ describe("processManualPayment — concurrency (double-payment race)", () => {
     const { result } = await createOrder({
       crecheId: ctx.crecheId,
       tutorId: tutor.id,
+      operationId: randomUUID(),
       items: [{ catalogueItemId: item.id, quantity: 1 }],
       deliveryMethod: "pickup",
       deliveryFee: 0,

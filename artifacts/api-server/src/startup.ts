@@ -407,8 +407,34 @@ async function ensureInvoicesSchema(): Promise<void> {
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS credits_amount        INTEGER;
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_max_pets     INTEGER;
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_expiration_days INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS refunded_quantity      INTEGER NOT NULL DEFAULT 0;
+
+    -- pos_sale_operations: technical idempotency table for POS sales (Phase R20F)
+    CREATE TABLE IF NOT EXISTS pos_sale_operations (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL,
+      operation_id VARCHAR(64) NOT NULL,
+      payload_hash VARCHAR(64) NOT NULL,
+      invoice_id INTEGER NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS pos_sale_operations_creche_op_idx
+      ON pos_sale_operations (creche_id, operation_id);
+
+    -- store_order_operations: idempotency table for tutor store checkout (R24F)
+    CREATE TABLE IF NOT EXISTS store_order_operations (
+      id           SERIAL PRIMARY KEY,
+      creche_id    INTEGER NOT NULL,
+      operation_id VARCHAR(64) NOT NULL,
+      payload_hash VARCHAR(64) NOT NULL,
+      order_id     INTEGER NOT NULL,
+      invoice_id   INTEGER NOT NULL,
+      created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS store_order_operations_creche_op_idx
+      ON store_order_operations (creche_id, operation_id);
   `);
-  console.log("[startup] invoices/invoice_items: schema verificado (idempotente).");
+  console.log("[startup] invoices/invoice_items/pos_sale_operations/store_order_operations: schema verificado (idempotente).");
 }
 
 /**
@@ -486,6 +512,13 @@ async function ensureCrechesAndCreditsSchema(): Promise<void> {
   console.log("[startup] creches/credits/stock-transactions: schema verificado (idempotente).");
 }
 
+async function ensureTasksSchema(): Promise<void> {
+  await (db as any).execute(`
+    ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+  `);
+  console.log("[startup] tasks: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -495,6 +528,8 @@ export async function initializeDatabase() {
   await ensureInvoicesSchema();
   // creches pix columns + service-credits tables (runs in all environments)
   await ensureCrechesAndCreditsSchema();
+  // Phase R30B: idempotent tasks reminder_sent_at schema creation (runs in all environments)
+  await ensureTasksSchema();
 
   await seedPlans();
 

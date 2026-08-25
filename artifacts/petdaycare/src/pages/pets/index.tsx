@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { resolvePhotoUrl } from "@/lib/utils";
 import { PetAvatar } from "@/components/pet-avatar";
-import { useListPets, useCreatePet, useGetBillingSubscription, useGetCrecheStats, PetSpecies, PetGender } from "@workspace/api-client-react";
+import {
+  useListPets,
+  useCreatePet,
+  useGetBillingSubscription,
+  useGetCrecheStats,
+  getListPetsQueryKey,
+  getGetCrecheStatsQueryKey,
+  getListUsersQueryKey,
+  PetSpecies,
+  PetGender,
+} from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch, useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,10 +38,14 @@ const selectClass = "flex h-12 w-full rounded-xl border border-border bg-backgro
 
 interface Tutor { id: number; name: string; email: string; }
 
-function useTutors(crecheId: number) {
+function useTutors(crecheId: number | null) {
   const token = localStorage.getItem("auth_token");
   const [tutors, setTutors] = useState<Tutor[]>([]);
   useEffect(() => {
+    if (!crecheId) {
+      setTutors([]);
+      return;
+    }
     fetch(`/api/creches/${crecheId}/tutors`, {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.ok ? r.json() : []).then(setTutors).catch(() => {});
@@ -41,14 +55,14 @@ function useTutors(crecheId: number) {
 
 export default function PetsDirectory() {
   const { user } = useAuth();
-  const crecheId = user?.crecheId || 1;
+  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
   const [page, setPage] = useState(1);
   const [allPets, setAllPets] = useState<any[]>([]);
-  const { data: petsResponse, isLoading } = useListPets(crecheId);
-  const { data: stats } = useGetCrecheStats(crecheId);
+  const { data: petsResponse, isLoading } = useListPets(crecheId ?? 0);
+  const { data: stats } = useGetCrecheStats(crecheId ?? 0);
   
   useEffect(() => {
     if (petsResponse?.items) {
@@ -121,7 +135,10 @@ export default function PetsDirectory() {
     },
     onSuccess: () => {
       // Refresh the tutor/pet list so the new tutor appears immediately.
-      queryClient.invalidateQueries();
+      if (crecheId) {
+        queryClient.invalidateQueries({ queryKey: ["tutors-full", crecheId] });
+        queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      }
     },
   });
 
@@ -150,6 +167,7 @@ export default function PetsDirectory() {
 
   const handleCreate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!crecheId) return;
     const formData = new FormData(e.currentTarget);
 
     let tutorId: number;
@@ -198,7 +216,10 @@ export default function PetsDirectory() {
     }, {
       onSuccess: () => {
         if (!createdTutorPassword) setIsModalOpen(false);
-        queryClient.invalidateQueries();
+        if (crecheId) {
+          queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+        }
         resetModal();
       },
       onError: (err: any) => {

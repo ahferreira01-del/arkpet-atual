@@ -2,6 +2,7 @@ import { db } from "@workspace/db";
 import {
   invoicesTable,
   invoiceItemsTable,
+  transactionsTable,
   usersTable,
   petsTable,
 } from "@workspace/db/schema";
@@ -308,6 +309,16 @@ export class InvoiceRepository {
     return r ?? null;
   }
 
+  /** Requires tx — FOR UPDATE prevents concurrent item refund races. */
+  static async findItemByIdForUpdate(itemId: number, invoiceId: number, tx: any) {
+    const [r] = await tx
+      .select()
+      .from(invoiceItemsTable)
+      .where(and(eq(invoiceItemsTable.id, itemId), eq(invoiceItemsTable.invoiceId, invoiceId)))
+      .for("update");
+    return r ?? null;
+  }
+
   static async updateItemQuantity(itemId: number, qty: number, tx?: any): Promise<void> {
     await c(tx)
       .update(invoiceItemsTable)
@@ -315,7 +326,65 @@ export class InvoiceRepository {
       .where(eq(invoiceItemsTable.id, itemId));
   }
 
+  static async incrementRefundedQuantity(itemId: number, qty: number, tx?: any): Promise<void> {
+    await c(tx)
+      .update(invoiceItemsTable)
+      .set({
+        refundedQuantity: sql`${invoiceItemsTable.refundedQuantity} + ${qty}`,
+      })
+      .where(eq(invoiceItemsTable.id, itemId));
+  }
+
   static async deleteItem(itemId: number, tx?: any): Promise<void> {
     await c(tx).delete(invoiceItemsTable).where(eq(invoiceItemsTable.id, itemId));
+  }
+
+  /**
+   * Checks if an invoice has any legacy negative income transactions.
+   */
+  static async hasNegativeIncome(invoiceId: number, tx?: any): Promise<boolean> {
+    const [r] = await c(tx)
+      .select({ id: transactionsTable.id })
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.invoiceId, invoiceId),
+          eq(transactionsTable.type, "income"),
+          sql`${transactionsTable.amount} < 0`
+        )
+      )
+      .limit(1);
+    return !!r;
+  }
+
+  /**
+   * Sums the total refundedQuantity across all items of an invoice.
+   */
+  static async sumRefundedQuantity(invoiceId: number, tx?: any): Promise<number> {
+    const [r] = await c(tx)
+      .select({
+        totalRefunded: sql<number>`COALESCE(SUM(${invoiceItemsTable.refundedQuantity}), 0)::integer`,
+      })
+      .from(invoiceItemsTable)
+      .where(eq(invoiceItemsTable.invoiceId, invoiceId));
+    return Number(r?.totalRefunded || 0);
+  }
+
+  /**
+   * Computes the net paid income for an invoice (positive income minus negative item refund transactions).
+   */
+  static async getNetPaidIncome(invoiceId: number, tx?: any): Promise<number> {
+    const [r] = await c(tx)
+      .select({
+        netPaid: sql<number>`COALESCE(SUM(${transactionsTable.amount}), 0)::numeric`,
+      })
+      .from(transactionsTable)
+      .where(
+        and(
+          eq(transactionsTable.invoiceId, invoiceId),
+          eq(transactionsTable.type, "income")
+        )
+      );
+    return Number(r?.netPaid || 0);
   }
 }

@@ -14,19 +14,11 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, desc, sql, gte, lte, count, lt, or, isNull, inArray, ilike } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
+import { requireFinancialAccess } from "./financial/middleware.js";
 import { z } from "zod";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
-
-function requireFinancialAccess(req: AuthRequest, res: Response, next: NextFunction) {
-  const user = req.user;
-  if (!user || (user.role !== "creche_admin" && user.role !== "staff")) {
-    res.status(403).json({ error: "Acesso não autorizado para tutores." });
-    return;
-  }
-  next();
-}
 
 router.get("/search", requireFinancialAccess, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

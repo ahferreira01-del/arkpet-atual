@@ -13,6 +13,14 @@ import { getBusinessDate } from "../lib/date.js";
 import { ordersTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
 
+export class StateConflictError extends Error {
+  readonly status = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = "StateConflictError";
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Máquina de Estados da Invoice (Fase 14)
 // Única fonte de verdade para transições válidas de status.
@@ -35,7 +43,7 @@ export class InvoiceStateMachine {
   static assertTransition(from: string, to: string): void {
     if (!this.canTransition(from, to)) {
       const allowed = (this.VALID_TRANSITIONS[from] ?? []).join(", ") || "nenhuma";
-      throw new Error(
+      throw new StateConflictError(
         `Transição de status inválida para Invoice: "${from}" → "${to}". ` +
         `Transições permitidas de "${from}": [${allowed}]`
       );
@@ -294,13 +302,19 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
     if (!invoice) throw new Error("Fatura não encontrada");
     InvoiceStateMachine.assertTransition(invoice.status, "refunded");
 
+    // Net remaining refundable income
+    const remainingRefundable = await InvoiceRepository.getNetPaidIncome(invoiceId, tx);
+    if (remainingRefundable <= 0) {
+      throw new StateConflictError("Fatura já totalmente estornada.");
+    }
+
     await InvoiceRepository.markRefunded(invoiceId, tx);
 
     await TransactionRepository.create({
       crecheId: invoice.crecheId,
       invoiceId: invoice.id,
       type: "expense",
-      amount: invoice.amount,
+      amount: remainingRefundable.toString(),
       transactionDate: getBusinessDate(),
       paymentMethod: invoice.paymentMethod || "pix",
       description: `Estorno da Fatura #${invoice.id}`,
@@ -322,7 +336,7 @@ export async function refundInvoice(invoiceId: number, crecheId: number, userId:
       crecheId,
       invoiceId: invoice.id,
       tutorId: invoice.tutorId,
-      amount: invoice.amount,
+      amount: remainingRefundable.toString(),
       occurredAt: new Date().toISOString(),
     } as FinancialDomainEvent, tx);
 
@@ -732,11 +746,8 @@ export class BillingService {
       const invoice = await lockInvoiceForMutation(invoiceId, crecheId, tx);
       if (!invoice) throw Object.assign(new Error("Fatura não encontrada."), { status: 404 });
 
-      const invoiceItem = await InvoiceRepository.findItemById(invoiceItemId, invoiceId, tx);
+      const invoiceItem = await InvoiceRepository.findItemByIdForUpdate(invoiceItemId, invoiceId, tx);
       if (!invoiceItem) throw Object.assign(new Error("Item da fatura não encontrado."), { status: 404 });
-      if ((invoiceItem.quantity ?? 1) < quantity) {
-        throw Object.assign(new Error("Quantidade de devolução maior que a comprada."), { status: 400 });
-      }
 
       const canAdjustPending =
         invoice.status === "pending" &&
@@ -747,6 +758,28 @@ export class BillingService {
           new Error("Fatura congelada não permite estorno parcial de itens."),
           { status: 422 }
         );
+      }
+
+      if (canAdjustPending) {
+        if ((invoiceItem.quantity ?? 1) < quantity) {
+          throw Object.assign(new Error("Quantidade de devolução maior que a comprada."), { status: 400 });
+        }
+      } else if (canRefundPaid) {
+        // Check for legacy ambiguous partial refunds
+        const hasLegacyNegative = await InvoiceRepository.hasNegativeIncome(invoiceId, tx);
+        const totalRefundedQty = await InvoiceRepository.sumRefundedQuantity(invoiceId, tx);
+        if (hasLegacyNegative && totalRefundedQty === 0) {
+          throw new StateConflictError(
+            "Esta fatura possui estornos parciais históricos sem identificação estruturada por item. Para preservar a integridade financeira e de estoque, novos estornos por item não são permitidos. Utilize o estorno do saldo restante da fatura."
+          );
+        }
+
+        const remainingQty = (invoiceItem.quantity ?? 1) - (invoiceItem.refundedQuantity ?? 0);
+        if (quantity <= 0 || quantity > remainingQty) {
+          throw new StateConflictError(
+            `Quantidade de devolução (${quantity}) excede a quantidade disponível para estorno (${remainingQty}).`
+          );
+        }
       }
 
       // Restore stock if this is a product (Phase 14: prefer catalogueItemId snapshot)
@@ -782,6 +815,9 @@ export class BillingService {
           );
         }
       } else if (canRefundPaid) {
+        // Atomically increment refundedQuantity on the item
+        await InvoiceRepository.incrementRefundedQuantity(invoiceItemId, quantity, tx);
+
         // Paid invoices keep history intact — create a negative transaction
         await TransactionRepository.create({
           crecheId,

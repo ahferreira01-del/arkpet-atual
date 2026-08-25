@@ -22,18 +22,33 @@ const createCrecheSchema = z.object({
   adminPassword: z.string().optional().nullable(),
 });
 
+const CANONICAL_LOGO_REGEX =
+  /^(?:\/api\/storage\/public-objects)?(?:\/objects)?\/uploads\/c([1-9]\d*)\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:\.[a-zA-Z0-9]+)?$/;
+
 const updateCrecheSchema = z.object({
   name: z.string().min(1).optional(),
   address: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   email: z.string().email("email inválido").optional().nullable(),
   maxCapacity: z.number().int().positive().optional().nullable(),
-  status: z.string().optional().nullable(),
-  logoUrl: z.string().url("logoUrl inválido").optional().nullable(),
+  status: z.enum(["active", "inactive"]).optional(),
+  logoUrl: z
+    .string()
+    .refine((val) => {
+      if (val === "" || val === null) return true;
+      if (val.includes("..") || val.includes("\\") || val.includes("%2e") || val.includes("%2E")) return false;
+      if (/^https?:\/\//i.test(val)) return true;
+      return CANONICAL_LOGO_REGEX.test(val);
+    }, "logoUrl inválido")
+    .optional()
+    .nullable(),
   pixKey: z.string().optional().nullable(),
   pixName: z.string().optional().nullable(),
   deliveryType: z.enum(["fixed", "on_demand"]).optional().nullable(),
-  deliveryFee: z.string().optional().nullable(),
+  deliveryFee: z
+    .string()
+    .regex(/^\d{1,8}$/, "deliveryFee deve ser um número inteiro de centavos não-negativo (máx 8 dígitos)")
+    .optional(),
   auditEnabled: z.boolean().optional(),
 });
 
@@ -56,8 +71,8 @@ const router = Router();
 
 router.use(authenticate);
 
-// GET tutors (simple list, used internally) — accessible by all authenticated members
-router.get("/:crecheId/tutors", async (req: AuthRequest, res) => {
+// GET tutors (simple list, used internally) — accessible only by staff, creche_admin, and master_admin
+router.get("/:crecheId/tutors", requireRole("master_admin", "creche_admin", "staff"), async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== crecheId && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" });
@@ -235,6 +250,19 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
     return;
   }
   const { name, address, phone, email, maxCapacity, status, logoUrl, pixKey, pixName, deliveryType, deliveryFee } = parsed.data;
+
+  // Strict tenant ownership validation for relative ArkPet logo paths (NO master exception)
+  if (logoUrl !== undefined && logoUrl !== null && logoUrl !== "") {
+    const match = logoUrl.match(CANONICAL_LOGO_REGEX);
+    if (match) {
+      const pathCrecheId = parseInt(match[1], 10);
+      if (pathCrecheId !== id) {
+        res.status(403).json({ error: "Sem permissão para associar mídia pertencente a outra creche" });
+        return;
+      }
+    }
+  }
+
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (address !== undefined) updates.address = address;
@@ -242,7 +270,7 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
   if (email !== undefined) updates.email = email;
   if (maxCapacity !== undefined) updates.maxCapacity = maxCapacity;
   if (status !== undefined) updates.status = status;
-  if (logoUrl !== undefined) updates.logoUrl = logoUrl;
+  if (logoUrl !== undefined) updates.logoUrl = logoUrl === "" ? null : logoUrl;
   if (pixKey !== undefined) updates.pixKey = pixKey;
   if (pixName !== undefined) updates.pixName = pixName;
   if (deliveryType !== undefined) updates.deliveryType = deliveryType;

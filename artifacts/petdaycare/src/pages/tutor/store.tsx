@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useListCatalogue, useCreateOrder, useCreche } from "@/hooks/use-financial";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
@@ -22,6 +22,37 @@ function useMediaToken() {
   return token;
 }
 
+function StoreImage({
+  src,
+  alt,
+  fallback,
+  className,
+}: {
+  src?: string | null;
+  alt: string;
+  fallback: React.ReactNode;
+  className?: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (!src || hasError) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 export default function TutorStore() {
   const { user } = useAuth();
   const crecheId = user?.crecheId as number;
@@ -29,7 +60,11 @@ export default function TutorStore() {
   const { toast } = useToast();
   const mediaToken = useMediaToken();
 
-  const { data: catalogue, isLoading } = useListCatalogue(crecheId);
+  const { data: catalogue, isLoading } = useListCatalogue(crecheId, {
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchOnReconnect: "always",
+  });
   const { data: creche } = useCreche(crecheId);
   const createOrderMutation = useCreateOrder(crecheId);
 
@@ -41,12 +76,21 @@ export default function TutorStore() {
   const [cartModalOpen, setCartModalOpen] = useState(false);
   const [deliveryMethod, setDeliveryMethod] = useState<'pickup' | 'delivery'>('pickup');
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const checkoutOpIdRef = useRef<string | null>(null);
+
+  const isTrackedProduct = (item: any) => item.type === "product" && item.trackStock === true;
+  const isOutOfStock = (item: any) => isTrackedProduct(item) && item.stockQuantity !== null && item.stockQuantity <= 0;
 
   const addToCart = (item: any) => {
+    if (isOutOfStock(item)) {
+      toast({ title: "Item esgotado", variant: "destructive" });
+      return;
+    }
+    checkoutOpIdRef.current = null;
     setCart(prev => {
       const existing = prev.find(i => i.item.id === item.id);
       if (existing) {
-        if (item.type === 'product' && item.trackStock && item.stockQuantity !== null && existing.quantity >= item.stockQuantity) {
+        if (isTrackedProduct(item) && item.stockQuantity !== null && existing.quantity >= item.stockQuantity) {
           toast({ title: "Estoque insuficiente", variant: "destructive" });
           return prev;
         }
@@ -58,15 +102,17 @@ export default function TutorStore() {
   };
 
   const removeFromCart = (itemId: number) => {
+    checkoutOpIdRef.current = null;
     setCart(prev => prev.filter(i => i.item.id !== itemId));
   };
 
   const updateQuantity = (itemId: number, delta: number) => {
+    checkoutOpIdRef.current = null;
     setCart(prev => prev.map(i => {
       if (i.item.id === itemId) {
         const newQ = i.quantity + delta;
         if (newQ < 1) return i;
-        if (i.item.type === 'product' && i.item.trackStock && i.item.stockQuantity !== null && newQ > i.item.stockQuantity) {
+        if (isTrackedProduct(i.item) && i.item.stockQuantity !== null && newQ > i.item.stockQuantity) {
           toast({ title: "Estoque insuficiente", variant: "destructive" });
           return i;
         }
@@ -89,14 +135,21 @@ export default function TutorStore() {
       return;
     }
 
+    if (!checkoutOpIdRef.current) {
+      checkoutOpIdRef.current = crypto.randomUUID();
+    }
+    const currentOpId = checkoutOpIdRef.current;
+
     createOrderMutation.mutate({
+      operationId: currentOpId,
       items: cart.map(c => ({ catalogueItemId: c.item.id, quantity: c.quantity })),
       deliveryMethod: cartHasPhysicalItems ? deliveryMethod : 'pickup',
-      deliveryAddress,
+      deliveryAddress: deliveryAddress.trim() || null,
       deliveryFee
     }, {
       onSuccess: (data) => {
         setCart([]);
+        checkoutOpIdRef.current = null;
         setCartModalOpen(false);
         setPixModal({ open: true, invoice: data.invoice, item: { name: "Seu Pedido", creditsAmount: 0 } });
       },
@@ -114,11 +167,12 @@ export default function TutorStore() {
     <Card key={item.id} className="overflow-hidden group border-border hover:border-primary/50 transition-colors flex flex-col bg-card">
       <CardContent className="p-0 flex flex-col flex-1">
         <div className="h-48 bg-secondary/50 relative flex items-center justify-center overflow-hidden">
-          {item.mediaUrls && item.mediaUrls.length > 0 ? (
-            <img src={buildMediaSrc(item.mediaUrls[0], mediaToken)} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-          ) : (
-            <Sparkles className="h-16 w-16 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />
-          )}
+          <StoreImage
+            src={item.mediaUrls && item.mediaUrls.length > 0 ? buildMediaSrc(item.mediaUrls[0], mediaToken) : null}
+            alt={item.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            fallback={<Sparkles className="h-16 w-16 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />}
+          />
           <div className="absolute top-4 right-4 flex flex-col gap-1 items-end">
             <Badge variant="secondary" className="uppercase text-[10px] tracking-wider">
               {item.category || 'Serviço'}
@@ -162,11 +216,12 @@ export default function TutorStore() {
     <Card key={item.id} className="overflow-hidden group border-border hover:border-primary/50 transition-colors flex flex-col bg-card">
       <CardContent className="p-0 flex flex-col flex-1">
         <div className="h-48 bg-secondary/50 relative flex items-center justify-center overflow-hidden">
-          {item.mediaUrls && item.mediaUrls.length > 0 ? (
-            <img src={buildMediaSrc(item.mediaUrls[0], mediaToken)} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-          ) : (
-            <PackageOpen className="h-16 w-16 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />
-          )}
+          <StoreImage
+            src={item.mediaUrls && item.mediaUrls.length > 0 ? buildMediaSrc(item.mediaUrls[0], mediaToken) : null}
+            alt={item.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            fallback={<PackageOpen className="h-16 w-16 text-muted-foreground group-hover:scale-110 transition-transform duration-500" />}
+          />
           <div className="absolute top-4 right-4">
             <Badge variant="secondary" className="uppercase text-[10px] tracking-wider">
               {item.type === 'package' ? 'Pacote' : item.category || item.type}
@@ -190,7 +245,7 @@ export default function TutorStore() {
               <p className="text-xs text-muted-foreground mt-1">Inclui {item.creditsAmount} diárias</p>
             )}
 
-            {item.type === 'product' && item.stockQuantity !== null && (
+            {isTrackedProduct(item) && item.stockQuantity !== null && (
               <p className="text-xs text-muted-foreground mt-1">
                 Estoque: <span className={item.stockQuantity === 0 ? "text-destructive font-bold" : "text-primary font-bold"}>{item.stockQuantity} un.</span>
               </p>
@@ -200,10 +255,10 @@ export default function TutorStore() {
           <Button
             className="w-full h-11 shadow-sm"
             variant="default"
-            disabled={item.type === 'product' && item.stockQuantity === 0}
+            disabled={isOutOfStock(item)}
             onClick={() => addToCart(item)}
           >
-            <ShoppingCart className="mr-2 h-4 w-4" /> {(item.type === 'product' && item.stockQuantity === 0) ? 'Esgotado' : 'Adicionar ao Carrinho'}
+            <ShoppingCart className="mr-2 h-4 w-4" /> {isOutOfStock(item) ? 'Esgotado' : 'Adicionar ao Carrinho'}
           </Button>
         </div>
       </CardContent>
@@ -286,13 +341,18 @@ export default function TutorStore() {
               {cart.map((cartItem) => (
                 <div key={cartItem.item.id} className="flex gap-4 items-center bg-card p-3 rounded-xl border border-border shadow-sm">
                   <div className="w-16 h-16 rounded-lg bg-secondary flex items-center justify-center overflow-hidden shrink-0 border border-border">
-                    {cartItem.item.mediaUrls?.[0] ? (
-                      <img src={buildMediaSrc(cartItem.item.mediaUrls[0], mediaToken)} alt="prod" className="w-full h-full object-cover" />
-                    ) : cartItem.item.type === 'service' ? (
-                      <Sparkles className="h-6 w-6 text-muted-foreground" />
-                    ) : (
-                      <PackageOpen className="h-6 w-6 text-muted-foreground" />
-                    )}
+                    <StoreImage
+                      src={cartItem.item.mediaUrls?.[0] ? buildMediaSrc(cartItem.item.mediaUrls[0], mediaToken) : null}
+                      alt={cartItem.item.name}
+                      className="w-full h-full object-cover"
+                      fallback={
+                        cartItem.item.type === 'service' ? (
+                          <Sparkles className="h-6 w-6 text-muted-foreground" />
+                        ) : (
+                          <PackageOpen className="h-6 w-6 text-muted-foreground" />
+                        )
+                      }
+                    />
                   </div>
                   <div className="flex-1 min-w-0 py-1">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -334,13 +394,13 @@ export default function TutorStore() {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       className={`p-3 text-sm rounded-lg border transition-colors flex items-center justify-center font-medium h-12 ${deliveryMethod === 'pickup' ? 'bg-primary/10 border-primary text-primary' : 'bg-card border-border text-muted-foreground hover:bg-secondary'}`}
-                      onClick={() => setDeliveryMethod('pickup')}
+                      onClick={() => { checkoutOpIdRef.current = null; setDeliveryMethod('pickup'); }}
                     >
                       Retirar na Creche
                     </button>
                     <button
                       className={`p-3 text-sm rounded-lg border transition-colors flex items-center justify-center font-medium h-12 ${deliveryMethod === 'delivery' ? 'bg-primary/10 border-primary text-primary' : 'bg-card border-border text-muted-foreground hover:bg-secondary'}`}
-                      onClick={() => setDeliveryMethod('delivery')}
+                      onClick={() => { checkoutOpIdRef.current = null; setDeliveryMethod('delivery'); }}
                     >
                       Receber em Casa
                     </button>
@@ -352,7 +412,7 @@ export default function TutorStore() {
                       <Input
                         placeholder="Rua, Número, Bairro, CEP"
                         value={deliveryAddress}
-                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        onChange={(e) => { checkoutOpIdRef.current = null; setDeliveryAddress(e.target.value); }}
                         className="text-base h-12"
                       />
                       {creche?.deliveryType === 'on_demand' && (

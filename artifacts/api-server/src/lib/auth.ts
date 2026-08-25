@@ -1,9 +1,24 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 
-const JWT_SECRET = process.env.JWT_SECRET ?? "jwt_secret_key";
 const PASSWORD_SALT = process.env.PASSWORD_SALT ?? "pet_daycare_salt";
 const BCRYPT_ROUNDS = 10;
+
+export function getJwtSecret(): string {
+  const isProduction = process.env.NODE_ENV === "production";
+  const rawSecret = process.env.JWT_SECRET;
+  const secret = rawSecret ? rawSecret.trim() : "";
+
+  if (isProduction && !secret) {
+    throw new Error("JWT_SECRET must be configured in production");
+  }
+
+  return secret || "jwt_secret_key";
+}
+
+export function validateJwtConfig(): void {
+  getJwtSecret();
+}
 
 // Legacy hashing kept ONLY to verify pre-bcrypt credentials so existing users
 // are not locked out. New hashes are always bcrypt (see hashPassword).
@@ -37,19 +52,21 @@ export function needsRehash(hash: string): boolean {
 }
 
 export function generateToken(userId: number, role: string): string {
+  const secret = getJwtSecret();
   const payload = `${userId}:${role}:${Date.now()}`;
-  const sig = crypto.createHash("sha256").update(payload + JWT_SECRET).digest("hex");
+  const sig = crypto.createHash("sha256").update(payload + secret).digest("hex");
   return Buffer.from(`${payload}:${sig}`).toString("base64");
 }
 
 export function verifyToken(token: string): { userId: number; role: string; issuedAt: number } | null {
   try {
+    const secret = getJwtSecret();
     const decoded = Buffer.from(token, "base64").toString("utf-8");
     const parts = decoded.split(":");
     if (parts.length < 4) return null;
     const [userId, role, timestamp, sig] = parts;
     const payload = `${userId}:${role}:${timestamp}`;
-    const expectedSig = crypto.createHash("sha256").update(payload + JWT_SECRET).digest("hex");
+    const expectedSig = crypto.createHash("sha256").update(payload + secret).digest("hex");
     if (sig !== expectedSig) return null;
     return { userId: parseInt(userId), role, issuedAt: parseInt(timestamp) };
   } catch {
