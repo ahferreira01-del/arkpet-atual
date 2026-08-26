@@ -28,6 +28,8 @@ vi.mock("../hooks/use-financial", async () => {
     useDashboardDre: vi.fn(),
     useCreche: vi.fn(),
     useUpdateCrecheSettings: vi.fn(),
+    useListAllInvoices: vi.fn(),
+    useApproveReceipt: vi.fn(),
   };
 });
 
@@ -42,8 +44,9 @@ vi.mock("wouter", async () => {
   };
 });
 
-describe("Financial Tabs Characterization Tests (R33F.B1)", () => {
+describe("Financial Tabs Characterization Tests (R33F.B1 & R33F.B2)", () => {
   const mockUpdateCrecheSettingsMutate = vi.fn();
+  const mockApproveReceiptMutate = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,6 +83,27 @@ describe("Financial Tabs Characterization Tests (R33F.B1)", () => {
     });
     (useFinancialModule.useUpdateCrecheSettings as any).mockReturnValue({
       mutate: mockUpdateCrecheSettingsMutate,
+      isPending: false,
+    });
+
+    // Default mock data for ReceiptsTab
+    (useFinancialModule.useListAllInvoices as any).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 101,
+            tutorName: "Carlos Silva",
+            amount: 15000,
+            dueDate: "2026-08-25T12:00:00.000Z",
+            status: "awaiting_confirmation",
+            receiptPhotoPath: "receipts/rec_101.jpg",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+    (useFinancialModule.useApproveReceipt as any).mockReturnValue({
+      mutate: mockApproveReceiptMutate,
       isPending: false,
     });
   });
@@ -125,6 +149,47 @@ describe("Financial Tabs Characterization Tests (R33F.B1)", () => {
 
     expect(mockUpdateCrecheSettingsMutate).toHaveBeenCalledWith(
       { auditEnabled: false },
+      expect.any(Object)
+    );
+  });
+
+  it("renders Receipts financial tab with pending confirmation items and formatted currency", async () => {
+    mockSearchString = "?tab=receipts";
+    renderWithProviders(<FinancialDashboard />);
+
+    expect(screen.getByText("Comprovantes Pendentes de Aprovação")).toBeInTheDocument();
+    expect(screen.getAllByText("Carlos Silva").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("R$ 150,00").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Ver Comprovante").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Aprovar").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens receipt preview image modal from pending receipt", async () => {
+    mockSearchString = "?tab=receipts";
+    renderWithProviders(<FinancialDashboard />);
+
+    const previewButtons = screen.getAllByText("Ver Comprovante");
+    expect(previewButtons.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(previewButtons[0]);
+
+    expect(screen.getByText("Comprovante de Pagamento")).toBeInTheDocument();
+    const img = screen.getByAltText("Comprovante");
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute("src");
+  });
+
+  it("triggers receipt approval mutation with expected invoice id", async () => {
+    mockSearchString = "?tab=receipts";
+    renderWithProviders(<FinancialDashboard />);
+
+    const approveButtons = screen.getAllByText("Aprovar");
+    expect(approveButtons.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(approveButtons[0]);
+
+    expect(mockApproveReceiptMutate).toHaveBeenCalledWith(
+      101,
       expect.any(Object)
     );
   });
