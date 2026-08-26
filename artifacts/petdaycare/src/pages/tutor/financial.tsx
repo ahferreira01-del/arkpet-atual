@@ -493,7 +493,14 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
       setPixPayload(payload);
       QRCode.toDataURL(payload, { width: 256, margin: 1, color: { dark: "#0f172a", light: "#ffffff" } })
         .then((url: string) => setQrCodeUrl(url))
-        .catch(console.error);
+        .catch((err: any) => {
+          console.error(err);
+          toast({
+            title: "Erro ao gerar QR Code",
+            description: "Não foi possível gerar o código QR do Pix.",
+            variant: "destructive",
+          });
+        });
     } else {
       setQrCodeUrl(null);
       setPixPayload("");

@@ -476,7 +476,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9">
+              <Button variant="ghost" size="icon" aria-label="Mais opções da fatura" className="h-9 w-9">
                 <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
@@ -711,7 +711,7 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <Button variant="ghost" size="icon" aria-label="Mais opções da despesa" className="h-8 w-8">
                       <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -770,7 +770,7 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9">
+                  <Button variant="ghost" size="icon" aria-label="Mais opções da despesa" className="h-9 w-9">
                     <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1326,7 +1326,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="ghost" className="px-2 w-9 h-9 shrink-0">
+                      <Button size="sm" variant="ghost" aria-label="Mais opções do item" className="px-2 w-9 h-9 shrink-0">
                         <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                       </Button>
                     </DropdownMenuTrigger>

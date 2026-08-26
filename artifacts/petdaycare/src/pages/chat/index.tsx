@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import { parseUTC } from "@/lib/date-utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ export default function Chat() {
   const searchStr = useSearch();
   const queryClient = useQueryClient();
   const token = localStorage.getItem("auth_token");
+  const { toast } = useToast();
 
   const urlTutorId = searchStr
     ? parseInt(new URLSearchParams(searchStr).get("tutor") ?? "", 10) || undefined
@@ -392,7 +394,13 @@ export default function Chat() {
         const existingIds = new Set(prev.map((m: any) => m.id));
         return [...older.filter((m) => !existingIds.has(m.id)), ...prev];
       });
-    } catch {}
+    } catch {
+      toast({
+        title: "Erro ao carregar mensagens",
+        description: "Não foi possível carregar o histórico de mensagens.",
+        variant: "destructive",
+      });
+    }
     setLoadingOlder(false);
   };
 
