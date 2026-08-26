@@ -44,6 +44,7 @@ function FeedCard({
   user: any;
   onDeleted: () => void;
 }) {
+  const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   // V2 uses isLiked; V1 used isLikedByUser
   const [liked, setLiked] = useState<boolean>(event.isLiked ?? event.isLikedByUser ?? false);
@@ -173,13 +174,23 @@ function FeedCard({
   const handleEditSave = async () => {
     setEditSaving(true);
     try {
-      await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
+      const res = await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
         method: "PATCH",
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ content: editContent }),
       });
+      if (!res.ok) {
+        throw new Error("Falha ao salvar edição");
+      }
       queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) });
       setEditing(false);
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: "Erro ao editar publicação",
+        description: "Não foi possível editar a publicação. Tente novamente.",
+        variant: "destructive",
+      });
     } finally {
       setEditSaving(false);
     }
@@ -188,13 +199,21 @@ function FeedCard({
   const handleDelete = async () => {
     if (!confirm("Tem certeza que deseja apagar?")) return;
     try {
-      await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
+      const res = await fetch(`/api/creches/${crecheId}/feed/${event.id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
+      if (!res.ok) {
+        throw new Error("Falha ao excluir publicação");
+      }
       onDeleted();
     } catch (e) {
       console.error(e);
+      toast({
+        title: "Erro ao excluir publicação",
+        description: "Não foi possível excluir a publicação. Tente novamente.",
+        variant: "destructive",
+      });
     }
   };
 

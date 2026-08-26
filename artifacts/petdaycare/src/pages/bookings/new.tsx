@@ -271,6 +271,7 @@ export default function NewBooking() {
             variant="ghost"
             size="icon"
             onClick={() => setLocation("/bookings")}
+            aria-label="Voltar para reservas"
             className="rounded-full"
           >
             <ArrowLeft className="h-5 w-5" />

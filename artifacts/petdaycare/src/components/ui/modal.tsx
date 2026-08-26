@@ -111,7 +111,7 @@ export function Modal({ isOpen, onClose, title, description, children, className
                   <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
                   {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
                 </div>
-                <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full -mr-2">
+                <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fechar" className="rounded-full -mr-2">
                   <X className="h-5 w-5" />
                 </Button>
               </div>

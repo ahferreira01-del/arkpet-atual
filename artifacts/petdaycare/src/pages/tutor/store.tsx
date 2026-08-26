@@ -371,15 +371,15 @@ export default function TutorStore() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-                    <Button variant="outline" size="icon" className="h-11 w-11 rounded-full shrink-0" onClick={() => updateQuantity(cartItem.item.id, -1)}>
+                    <Button variant="outline" size="icon" aria-label="Diminuir quantidade" className="h-11 w-11 rounded-full shrink-0" onClick={() => updateQuantity(cartItem.item.id, -1)}>
                       <Minus className="h-4 w-4" />
                     </Button>
                     <span className="text-foreground text-sm font-medium w-6 text-center">{cartItem.quantity}</span>
-                    <Button variant="outline" size="icon" className="h-11 w-11 rounded-full shrink-0" onClick={() => updateQuantity(cartItem.item.id, 1)}>
+                    <Button variant="outline" size="icon" aria-label="Aumentar quantidade" className="h-11 w-11 rounded-full shrink-0" onClick={() => updateQuantity(cartItem.item.id, 1)}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-11 w-11 text-muted-foreground hover:text-destructive shrink-0" onClick={() => removeFromCart(cartItem.item.id)}>
+                  <Button variant="ghost" size="icon" aria-label="Remover item do carrinho" className="h-11 w-11 text-muted-foreground hover:text-destructive shrink-0" onClick={() => removeFromCart(cartItem.item.id)}>
                     <X className="h-5 w-5" />
                   </Button>
                 </div>
