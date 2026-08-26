@@ -13,7 +13,8 @@
     "test:security": "vitest run tests/security",
     "test:e2e": "playwright test tests/e2e",
     "test:all": "vitest run && playwright test",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:frontend": "pnpm --filter @workspace/petdaycare run test"
   },
   "private": true,
   "devDependencies": {
