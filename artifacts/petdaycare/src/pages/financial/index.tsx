@@ -24,6 +24,7 @@ import { CashFlowTab } from "./tabs/cash-flow-tab";
 import { AuditTab } from "./tabs/audit-tab";
 import { ReceiptsTab } from "./tabs/receipts-tab";
 import { DefaultersTab } from "./tabs/defaulters-tab";
+import { OrdersTab } from "./tabs/orders-tab";
 import { LayoutDashboard, ArrowRight, ChevronDown, CheckCircle, Clock, Pencil } from "lucide-react";
 import { CommandPalette } from "@/components/financial/command-palette";
 import { CatalogueSmartIndicators } from "@/components/financial/smart-indicators";
@@ -65,7 +66,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
   return (
     <Modal isOpen={true} onClose={onClose} title={`Fatura #${invoiceId} - Visão Executiva`} className="max-w-4xl">
       <div className="space-y-6 text-foreground">
-        
+
         {/* Executive Header */}
         <div className="flex flex-col gap-3 p-5 bg-card rounded-2xl border shadow-sm">
           <div className="flex justify-between items-center border-b border-border/50 pb-2">
@@ -94,14 +95,14 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
           <div className="flex sm:items-center sm:justify-between relative flex-col sm:flex-row gap-6 sm:gap-0">
             <div className="hidden sm:block absolute top-1/2 left-0 w-full h-0.5 bg-muted -z-10 -translate-y-1/2"></div>
             <div className="sm:hidden absolute top-0 left-[15px] w-0.5 h-full bg-muted -z-10"></div>
-            
+
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
               <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <FileText className="w-4 h-4" />
               </div>
               <p className="text-xs font-medium sm:mt-2 text-card-foreground">Criada</p>
             </div>
-            
+
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
               <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <Receipt className="w-4 h-4" />
@@ -156,9 +157,9 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                     </div>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm font-bold text-foreground">
                       <span className="text-right">{formatCentsToBRL(lineTotal)}</span>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => {
                           const refundQtyStr = prompt(`Quantos itens deseja estornar? (Máximo: ${qty})`, "1");
                           if (!refundQtyStr) return;
@@ -202,7 +203,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
   const payManualMutation = usePayManualInvoice(crecheId);
   const approveReceiptMutation = useApproveReceipt(crecheId);
   const { toast } = useToast();
-  
+
   const [payModal, setPayModal] = useState<{ open: boolean; invoiceId: number | null }>({ open: false, invoiceId: null });
   const [receiptModalId, setReceiptModalId] = useState<number | null>(null);
   const [detailsModal, setDetailsModal] = useState<{open: boolean, invoiceId: number | null}>({ open: false, invoiceId: null });
@@ -212,7 +213,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
   // Filters
   const [tutorFilter, setTutorFilter] = useState("");
   const { startDate: startDateFilter, endDate: endDateFilter } = useFinancialContext();
-  
+
   // tutor dropdown removed in favor of AdvancedDataTable global search
 
   const handleRefund = (id: number) => {
@@ -327,7 +328,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
     const inv = row.original;
     const isOverdue = inv.dueDate && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(inv.dueDate).getTime() < new Date().setHours(0,0,0,0);
     const dueDateStr = inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—";
-    
+
     return (
       <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-4 shadow-sm relative overflow-hidden">
         {/* Top: Tutor + Status */}
@@ -365,7 +366,7 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
               Aprovar
             </Button>
           )}
-          
+
           {inv.status !== "pending" && inv.status !== "overdue" && inv.status !== "awaiting_confirmation" && (
              <Button variant="outline" size="sm" onClick={() => setDetailsModal({ open: true, invoiceId: inv.id })} className="h-9 border-border">
               Detalhes
@@ -417,18 +418,18 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
       <Card>
         <CardContent className="p-0">
           <div className="p-4">
-            <AdvancedDataTable 
-              columns={columns} 
-              data={invoiceList} 
-              searchKey="tutorName" 
-              searchPlaceholder="Buscar por tutor..." 
-              fileName="A_Receber" 
+            <AdvancedDataTable
+              columns={columns}
+              data={invoiceList}
+              searchKey="tutorName"
+              searchPlaceholder="Buscar por tutor..."
+              fileName="A_Receber"
               renderMobileCard={renderMobileCard}
             />
           </div>
         </CardContent>
       </Card>
-      
+
       {payModal.open && (
         <Modal isOpen={true} onClose={() => setPayModal({ open: false, invoiceId: null })} title="Dar Baixa Manual">
           <div className="space-y-6 pt-2">
@@ -443,10 +444,10 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
                 </div>
               </div>
             )}
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Método de Pagamento</label>
-              <select 
+              <select
                 className="flex h-11 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                 value={paymentMethod}
                 onChange={e => setPaymentMethod(e.target.value)}
@@ -470,10 +471,10 @@ function ReceivablesTab({ crecheId }: { crecheId: number }) {
         </Modal>
       )}
 
-      <InvoiceERPView 
-        crecheId={crecheId} 
-        invoiceId={detailsModal.invoiceId} 
-        open={detailsModal.open} 
+      <InvoiceERPView
+        crecheId={crecheId}
+        invoiceId={detailsModal.invoiceId}
+        open={detailsModal.open}
         onClose={() => setDetailsModal({ open: false, invoiceId: null })}
         invoiceStatus={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.status}
         issueDate={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.createdAt}
@@ -581,7 +582,7 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
   };
 
 
-  
+
   const columns = React.useMemo(() => [
     { accessorKey: "description", header: "Descrição", cell: (info: any) => <span className="font-medium text-foreground">{info.getValue()}</span> },
     { accessorKey: "category", header: "Categoria", cell: (info: any) => <Badge variant="outline" className="capitalize font-normal text-muted-foreground">{info.getValue()}</Badge> },
@@ -591,8 +592,8 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
     } },
     { accessorKey: "amount", header: () => <div className="text-right">Valor</div>, meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <div className="text-right font-semibold text-destructive">-{formatCentsToBRL(info.getValue())}</div> },
     { accessorKey: "isPaid", header: "Status", cell: (info: any) => {
-        return info.getValue() 
-          ? <Badge variant="success">Pago</Badge> 
+        return info.getValue()
+          ? <Badge variant="success">Pago</Badge>
           : <Badge variant="secondary" className="text-muted-foreground">Pendente</Badge>;
     } },
     {
@@ -643,8 +644,8 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
             <span className="font-semibold text-foreground leading-tight">{exp.description}</span>
             <span className="text-xs text-muted-foreground mt-0.5 capitalize">{exp.category}</span>
           </div>
-          {exp.isPaid 
-            ? <Badge variant="success" className="shrink-0">Pago</Badge> 
+          {exp.isPaid
+            ? <Badge variant="success" className="shrink-0">Pago</Badge>
             : <Badge variant="secondary" className="text-muted-foreground shrink-0">Pendente</Badge>
           }
         </div>
@@ -706,12 +707,12 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
           </Button>
         </div>
         <div className="p-4">
-          <AdvancedDataTable 
-            columns={columns} 
-            data={expenses || []} 
-            searchKey="description" 
-            searchPlaceholder="Buscar despesa..." 
-            fileName="Despesas" 
+          <AdvancedDataTable
+            columns={columns}
+            data={expenses || []}
+            searchKey="description"
+            searchPlaceholder="Buscar despesa..."
+            fileName="Despesas"
             renderMobileCard={renderMobileCard}
           />
         </div>
@@ -723,46 +724,46 @@ function PayablesTab({ crecheId }: { crecheId: number }) {
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Descrição <span className="text-destructive">*</span></label>
-            <Input 
-              value={form.description} 
-              onChange={e => setForm({...form, description: e.target.value})} 
-              placeholder="Ex: Conta de Luz" 
+            <Input
+              value={form.description}
+              onChange={e => setForm({...form, description: e.target.value})}
+              placeholder="Ex: Conta de Luz"
               className="h-11 sm:h-10 text-base sm:text-sm"
             />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">Categoria <span className="text-destructive">*</span></label>
-            <Input 
-              value={form.category} 
-              onChange={e => setForm({...form, category: e.target.value})} 
-              placeholder="Ex: operacional" 
+            <Input
+              value={form.category}
+              onChange={e => setForm({...form, category: e.target.value})}
+              placeholder="Ex: operacional"
               className="h-11 sm:h-10 text-base sm:text-sm"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Valor (R$) <span className="text-destructive">*</span></label>
-              <Input 
-                type="number" 
-                min="0" 
-                step="0.01" 
-                value={form.amount} 
-                onChange={e => setForm({...form, amount: e.target.value})} 
-                placeholder="Ex: 150.00" 
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.amount}
+                onChange={e => setForm({...form, amount: e.target.value})}
+                placeholder="Ex: 150.00"
                 className="h-11 sm:h-10 text-base sm:text-sm"
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Vencimento <span className="text-destructive">*</span></label>
-              <Input 
-                type="date" 
-                value={form.dueDate} 
-                onChange={e => setForm({...form, dueDate: e.target.value})} 
+              <Input
+                type="date"
+                value={form.dueDate}
+                onChange={e => setForm({...form, dueDate: e.target.value})}
                 className="h-11 sm:h-10 text-base sm:text-sm"
               />
             </div>
           </div>
-          
+
           <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
             <Button variant="outline" onClick={() => setModalOpen(false)} className="h-11 sm:h-10 min-w-[120px] rounded-full">
               Cancelar
@@ -828,7 +829,7 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
   return (
     <Modal isOpen={true} onClose={onClose} title={`Histórico de Estoque — ${itemName}`} className="max-w-2xl">
       <div className="space-y-6">
-        
+
         {/* Inline adjustment form */}
         <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
           <h4 className="text-sm font-semibold text-foreground mb-4">Ajustar Estoque</h4>
@@ -867,7 +868,7 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
         {/* Histórico */}
         <div className="space-y-4">
           <h4 className="text-sm font-semibold text-foreground">Movimentações</h4>
-          
+
           {isLoading ? (
             <div className="text-center p-8 text-muted-foreground bg-muted/30 rounded-xl border border-border">Carregando histórico...</div>
           ) : transactions.length === 0 ? (
@@ -880,7 +881,7 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
                 <span className="text-right">Delta</span>
                 <span className="text-right">Motivo</span>
               </div>
-              
+
               <div className="divide-y divide-border">
                 {transactions.map((tx: any) => {
                   const { label, color } = typeLabel(tx.type);
@@ -892,17 +893,17 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
                         </p>
                         <p className="text-xs text-muted-foreground truncate">{tx.userName || "Sistema"}</p>
                       </div>
-                      
+
                       <div className="flex justify-between sm:contents items-center mt-2 sm:mt-0">
                         <span className="sm:hidden text-xs text-muted-foreground font-medium">Tipo:</span>
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold w-fit ${color}`}>{label}</span>
                       </div>
-                      
+
                       <div className="flex justify-between sm:contents items-center mt-1 sm:mt-0">
                         <span className="sm:hidden text-xs text-muted-foreground font-medium">Delta:</span>
                         <span className={`sm:text-right font-bold text-base ${color.split(' ')[0]}`}>{typeDelta(tx.type, tx.quantity)}</span>
                       </div>
-                      
+
                       {tx.reason && (
                         <div className="flex flex-col sm:block mt-1 sm:mt-0">
                           <span className="sm:hidden text-xs text-muted-foreground font-medium mb-0.5">Motivo:</span>
@@ -932,7 +933,7 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
           ) : (
             <div className="hidden sm:block"></div>
           )}
-          
+
           <Button className="h-11 w-full sm:w-auto" variant="outline" onClick={onClose}>Fechar</Button>
         </div>
       </div>
@@ -946,7 +947,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   const updateMutation = useUpdateCatalogueItem(crecheId);
   const deleteMutation = useDeleteCatalogueItem(crecheId);
   const { toast } = useToast();
-  
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [historyItem, setHistoryItem] = useState<{ id: number; name: string } | null>(null);
@@ -1163,7 +1164,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                 ) : (
                   <PackageOpen className="h-10 w-10 text-muted-foreground opacity-30 group-hover:scale-110 transition-transform duration-300" />
                 )}
-                
+
                 {item.type === "product" && item.stockQuantity !== null && item.reorderThreshold != null && item.stockQuantity <= item.reorderThreshold && (
                   <Badge variant="destructive" className="absolute top-2 right-2 shadow-sm font-bold">
                     Estoque Baixo
@@ -1174,7 +1175,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                 <div className="flex justify-between items-start gap-2 mb-2">
                   <h4 className="font-semibold text-foreground leading-tight line-clamp-2">{item.name}</h4>
                   <Badge variant="outline" className="capitalize text-[10px] shrink-0 font-medium">
-                    {item.type === 'package' ? 'Pacote' : 
+                    {item.type === 'package' ? 'Pacote' :
                      item.type === 'day_use' ? 'Day Use' :
                      item.type === 'service' ? 'Serviço' : 'Produto'}
                   </Badge>
@@ -1282,9 +1283,9 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
 
               <div>
                 <label className="text-sm font-medium">Tipo</label>
-                <select 
+                <select
                   className="w-full bg-background border border-input rounded-md h-10 px-3 text-sm mt-1.5 text-foreground focus:ring-2 focus:ring-ring outline-none"
-                  value={form.type} 
+                  value={form.type}
                   onChange={e => setForm({...form, type: e.target.value})}
                 >
                   <option value="product">Produto</option>
@@ -1306,11 +1307,11 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
 
               <div className="sm:col-span-2">
                 <label className="text-sm font-medium">Descrição</label>
-                <textarea 
-                  value={form.description} 
-                  onChange={e => setForm({...form, description: e.target.value})} 
+                <textarea
+                  value={form.description}
+                  onChange={e => setForm({...form, description: e.target.value})}
                   className="w-full bg-background border border-input rounded-md p-3 text-sm min-h-[80px] mt-1.5 resize-y focus:ring-2 focus:ring-ring outline-none"
-                  placeholder="Detalhes opcionais do item..." 
+                  placeholder="Detalhes opcionais do item..."
                 />
               </div>
 
@@ -1370,7 +1371,7 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
                 </div>
               </div>
             </div>
-            
+
             {form.type === "product" && (
               <div className="space-y-4 pt-4 border-t border-border">
                 <h4 className="text-sm font-semibold text-foreground">Controle de Estoque</h4>
@@ -1469,177 +1470,6 @@ function CatalogueTab({ crecheId }: { crecheId: number }) {
   );
 }
 
-function OrdersTab({ crecheId }: { crecheId: number }) {
-  const { data: orders, isLoading } = useListOrders(crecheId);
-  const updateStatus = useUpdateOrderStatus(crecheId);
-  const approveReceipt = useApproveReceipt(crecheId);
-  const { toast } = useToast();
-  
-  const [confirmModal, setConfirmModal] = React.useState<{isOpen: boolean, orderId: number, nextStatus: string, order: any} | null>(null);
-
-
-  const getStatusBadge = (status: string) => {
-    switch(status) {
-      case 'pending_payment': return <Badge variant="outline" className="text-warning border-warning/20 bg-warning/10">Pendente</Badge>;
-      case 'paid': return <Badge variant="outline" className="text-success border-success/20 bg-success/10">Pago</Badge>;
-      case 'preparing': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Separando</Badge>;
-      case 'ready_for_pickup': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Pronto p/ Retirada</Badge>;
-      case 'delivering': return <Badge variant="outline" className="text-primary border-primary/20 bg-primary/10">Em Rota</Badge>;
-      case 'delivered': return <Badge variant="outline" className="text-muted-foreground border-border bg-muted">Entregue</Badge>;
-      case 'cancelled': return <Badge variant="outline" className="text-destructive border-destructive/20 bg-destructive/10">Cancelado</Badge>;
-      default: return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
-  const handleUpdateStatus = (orderId: number, status: string, order: any) => {
-    // Se a fatura ainda estiver pendente e estamos avançando o status do pedido
-    if (order.invoiceStatus === 'pending' && status !== 'cancelled' && status !== 'pending_payment') {
-      setConfirmModal({ isOpen: true, orderId, nextStatus: status, order });
-      return;
-    }
-    
-    executeStatusUpdate(orderId, status);
-  };
-
-  const executeStatusUpdate = (orderId: number, status: string) => {
-    updateStatus.mutate({ orderId, status }, {
-      onSuccess: () => toast({ title: "Status do pedido atualizado" }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
-    });
-  };
-
-  const handleConfirmWithPayment = () => {
-    if (!confirmModal) return;
-    
-    // 1. Aprova a fatura financeira
-    approveReceipt.mutate(confirmModal.order.invoiceId, {
-      onSuccess: () => {
-        toast({ title: "Pagamento confirmado", description: "Fatura baixada e diárias liberadas (se houver)." });
-        // 2. Atualiza o status do pedido logístico
-        executeStatusUpdate(confirmModal.orderId, confirmModal.nextStatus);
-        setConfirmModal(null);
-      },
-      onError: (err: any) => {
-        toast({ title: "Erro ao confirmar pagamento", description: err.message, variant: "destructive" });
-      }
-    });
-  };
-
-  const handleConfirmWithoutPayment = () => {
-    if (!confirmModal) return;
-    executeStatusUpdate(confirmModal.orderId, confirmModal.nextStatus);
-    setConfirmModal(null);
-  };
-
-  if (isLoading) return <div className="text-center p-8 text-muted-foreground">Carregando pedidos...</div>;
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="font-medium text-foreground">Pedidos da Loja</h3>
-      </div>
-      
-      <div className="overflow-y-auto max-h-[70vh] pr-1 grid grid-cols-1 md:grid-cols-2 gap-4 custom-scrollbar">
-        {orders?.length === 0 && <p className="text-muted-foreground col-span-full text-center py-8">Nenhum pedido encontrado.</p>}
-        {orders?.map((order: any) => (
-          <Card key={order.id} className="bg-card border-border shadow-sm flex flex-col">
-            <CardContent className="p-4 flex flex-col h-full">
-              
-              <div className="flex justify-between items-start gap-2 mb-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="font-bold text-foreground text-lg">#{order.id}</h4>
-                  {getStatusBadge(order.status)}
-                  <Badge variant="secondary" className="bg-muted text-muted-foreground border-border">
-                    {order.deliveryMethod === 'delivery' ? 'Entrega' : 'Retirada'}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div className="space-y-1 mb-4">
-                <p className="text-sm text-foreground font-medium flex items-center gap-2">
-                  <span className="text-muted-foreground">Tutor:</span> {order.tutor?.name} {order.tutor?.phone && <span className="text-muted-foreground font-normal">({order.tutor?.phone})</span>}
-                </p>
-                {order.deliveryMethod === 'delivery' && (
-                  <p className="text-sm text-foreground flex items-start gap-2">
-                    <span className="text-muted-foreground shrink-0">Endereço:</span>
-                    <span className="leading-tight">{order.deliveryAddress}</span>
-                  </p>
-                )}
-              </div>
-              
-              <div className="bg-muted/30 rounded-xl border border-border p-3 mb-4 space-y-2">
-                {order.items?.map((item: any, idx: number) => (
-                  <div key={idx} className="flex justify-between items-center text-sm">
-                    <span className="text-foreground">
-                      <span className="font-semibold text-muted-foreground mr-1">{item.quantity}x</span> 
-                      {item.name}
-                    </span>
-                    <span className="text-muted-foreground font-medium">{formatCentsToBRL(item.totalPrice)}</span>
-                  </div>
-                ))}
-                
-                <div className="pt-2 mt-2 border-t border-border/50 flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Frete</span>
-                  <span className="text-sm text-muted-foreground">{formatCentsToBRL(order.deliveryFee)}</span>
-                </div>
-              </div>
-
-              <div className="mt-auto flex flex-col space-y-4">
-                <div className="flex justify-between items-end border-t border-border pt-4">
-                  <span className="text-muted-foreground font-medium">Total</span>
-                  <span className="text-2xl font-bold text-foreground tracking-tight">{formatCentsToBRL(order.total)}</span>
-                </div>
-                
-                <div className="flex gap-2 flex-wrap items-center">
-                  {order.status === 'pending_payment' && (
-                    <>
-                      <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'paid', order)}>
-                        Confirmar Pagamento
-                      </Button>
-                      <Button variant="destructive" className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'cancelled', order)}>
-                        Cancelar
-                      </Button>
-                    </>
-                  )}
-                  {order.status === 'paid' && (
-                    <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, 'preparing', order)}>
-                      Iniciar Separação
-                    </Button>
-                  )}
-                  {order.status === 'preparing' && (
-                    <Button className="h-11 flex-1 sm:flex-none" onClick={() => handleUpdateStatus(order.id, order.deliveryMethod === 'delivery' ? 'delivering' : 'ready_for_pickup', order)}>
-                      {order.deliveryMethod === 'delivery' ? 'Saiu p/ Entrega' : 'Pronto p/ Retirada'}
-                    </Button>
-                  )}
-                  {(order.status === 'delivering' || order.status === 'ready_for_pickup') && (
-                    <Button className="h-11 flex-1 sm:flex-none bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => handleUpdateStatus(order.id, 'delivered', order)}>
-                      Marcar Entregue
-                    </Button>
-                  )}
-                </div>
-              </div>
-              
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <Modal isOpen={confirmModal?.isOpen || false} onClose={() => setConfirmModal(null)} title="Fatura em Aberto ⚠️" description={`Este pedido possui uma fatura pendente no valor de ${formatCentsToBRL(confirmModal?.order?.invoiceAmount || 0)}. O tutor já realizou o pagamento no balcão/Pix?`}>
-          <div className="flex flex-col gap-3 mt-4">
-            <Button onClick={handleConfirmWithPayment} className="h-11 w-full justify-start">
-              <CheckCircle className="mr-2 h-4 w-4" /> Sim, confirmar pagamento e dar baixa na fatura
-            </Button>
-            <Button variant="outline" onClick={handleConfirmWithoutPayment} className="h-11 w-full justify-start border-border hover:bg-muted text-foreground">
-              <Clock className="mr-2 h-4 w-4 text-warning" /> Não, vai pagar depois (manter fatura aberta)
-            </Button>
-            <Button variant="ghost" onClick={() => setConfirmModal(null)} className="h-11 w-full text-muted-foreground hover:text-foreground">
-              Cancelar alteração
-            </Button>
-          </div>
-      </Modal>
-    </div>
-  );
-}
-
 function FinancialDashboardContent() {
   const { user } = useAuth();
   const crecheId = user?.crecheId as number;
@@ -1679,10 +1509,10 @@ function FinancialDashboardContent() {
   ];
 
   const activeTabId = urlParams.get('tab') || 'reports';
-  
+
   let activeContent: React.ReactNode = null;
   let activeGroupId: string | null = null;
-  
+
   TAB_GROUPS.forEach(g => {
     g.items.forEach(i => {
       if (i.id === activeTabId) {
@@ -1695,10 +1525,10 @@ function FinancialDashboardContent() {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col lg:flex-row justify-between lg:items-center items-start gap-4">
-        <PageHeader 
-          title="Financeiro" 
-          description="Gestão de faturamento, despesas e fluxo de caixa." 
-          icon={CircleDollarSign} 
+        <PageHeader
+          title="Financeiro"
+          description="Gestão de faturamento, despesas e fluxo de caixa."
+          icon={CircleDollarSign}
         />
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:space-x-4 w-full lg:w-auto">
           <div className="flex flex-row items-center gap-2 w-full sm:w-auto">
@@ -1730,8 +1560,8 @@ function FinancialDashboardContent() {
           return (
             <DropdownMenu key={group.id}>
               <DropdownMenuTrigger asChild>
-                <Button 
-                  variant={isActiveGroup ? "outline" : "ghost"} 
+                <Button
+                  variant={isActiveGroup ? "outline" : "ghost"}
                   className={`w-full sm:w-auto justify-between sm:justify-center ${isActiveGroup ? 'bg-primary/20 text-primary hover:bg-primary/30 border-primary/50' : 'text-muted-foreground'}`}
                 >
                   <span className="font-semibold">{group.label}</span>
@@ -1746,8 +1576,8 @@ function FinancialDashboardContent() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56 bg-zinc-950 border-white/10">
                 {group.items.map(item => (
-                  <DropdownMenuItem 
-                    key={item.id} 
+                  <DropdownMenuItem
+                    key={item.id}
                     onClick={() => handleTabChange(item.id)}
                     className={`cursor-pointer ${item.id === activeTabId ? 'bg-white/10 text-white' : 'text-muted-foreground hover:text-white'}`}
                   >
@@ -1760,7 +1590,7 @@ function FinancialDashboardContent() {
           );
         })}
       </div>
-      
+
       <div className="pt-2 relative flex-1">
         {activeContent}
       </div>
