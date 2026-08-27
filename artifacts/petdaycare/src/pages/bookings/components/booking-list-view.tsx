@@ -1,4 +1,5 @@
 import React from "react";
+import type { BadgeProps } from "@/components/ui/badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { resolvePhotoUrl } from "@/lib/utils";
@@ -16,11 +17,37 @@ import {
   Clock,
 } from "lucide-react";
 import { isServiceBooking, SERVICE_BOOKING_TYPES } from "@/lib/booking-utils";
+import type {
+  Booking,
+  BookingStatus as GeneratedBookingStatus,
+  Pet,
+} from "@workspace/api-client-react";
 
 export { isServiceBooking, SERVICE_BOOKING_TYPES };
 
-export type BookingStatus = "pending" | "confirmed" | "active" | "completed" | "cancelled" | "cancel_requested";
-export type BookingType = "day_use" | "lodging" | "banho" | "hospedagem_banho" | "visita" | "pacote_4dias" | "pacote_8dias" | "pacote_20dias" | "visita_taxi" | "creche_taxi";
+export type BookingStatus = GeneratedBookingStatus;
+export type BookingType =
+  | "day_use"
+  | "lodging"
+  | "banho"
+  | "hospedagem_banho"
+  | "visita"
+  | "pacote_4dias"
+  | "pacote_8dias"
+  | "pacote_20dias"
+  | "visita_taxi"
+  | "creche_taxi";
+
+export interface BookingAdditionalService {
+  id: number;
+  itemName: string;
+}
+
+export type BookingListItem = Omit<Booking, "type"> & {
+  type: string;
+  additionalServices?: BookingAdditionalService[] | null;
+  onTheWayAt?: string | null;
+};
 
 export const bookingTypeLabel: Record<string, string> = {
   day_use: "Day Use",
@@ -35,7 +62,7 @@ export const bookingTypeLabel: Record<string, string> = {
   creche_taxi: "Creche + Táxi",
 };
 
-export const statusVariant: Record<BookingStatus, any> = {
+export const statusVariant: Record<BookingStatus, NonNullable<BadgeProps["variant"]>> = {
   pending: "warning",
   confirmed: "default",
   active: "success",
@@ -55,19 +82,19 @@ export const statusLabel: Record<string, string> = {
 };
 
 export interface BookingListViewProps {
-  bookings: any[];
-  pets: any[];
+  bookings: BookingListItem[];
+  pets: Pet[];
   isTutor: boolean;
   highlightBookingId: number | null;
   isPetPresent: (petId: number) => boolean;
   bookingPersonalItems: Record<number, { hasItems: boolean; photoUrl: string | null }>;
   handleStatusUpdate: (bookingId: number, newStatus: BookingStatus) => void;
-  handleCheckIn: (booking: any) => void;
-  handleCompleteService: (booking: any) => void;
-  handleCheckOut: (booking: any) => void;
-  onOpenOnTheWay: (booking: any) => void;
-  onOpenConsumable: (booking: any) => void;
-  onOpenEdit: (booking: any) => void;
+  handleCheckIn: (booking: BookingListItem) => void;
+  handleCompleteService: (booking: BookingListItem) => void;
+  handleCheckOut: (booking: BookingListItem) => void;
+  onOpenOnTheWay: (booking: BookingListItem) => void;
+  onOpenConsumable: (booking: BookingListItem) => void;
+  onOpenEdit: (booking: BookingListItem) => void;
   isUpdatePending: boolean;
   isCheckInPending: boolean;
   isCompleteServicePending: boolean;
@@ -97,7 +124,7 @@ export function BookingListView({
     <>
       {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
       <div className="md:hidden divide-y divide-border">
-        {bookings.map((booking: any) => (
+        {bookings.map((booking) => (
           <div
             key={booking.id}
             id={`booking-${booking.id}`}
@@ -106,8 +133,8 @@ export function BookingListView({
             {/* Row 1 & 2: Pet Name, Photo, Tutor & Badges */}
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center">
-                {pets?.find((p: any) => p.id === booking.petId)?.photoUrl ? (
-                  <img src={resolvePhotoUrl(pets.find((p: any) => p.id === booking.petId)?.photoUrl) || undefined} alt={booking.petName} className="h-full w-full object-cover" />
+                {pets?.find((p) => p.id === booking.petId)?.photoUrl ? (
+                  <img src={resolvePhotoUrl(pets.find((p) => p.id === booking.petId)?.photoUrl) || undefined} alt={booking.petName || undefined} className="h-full w-full object-cover" />
                 ) : (
                   <PawPrint className="h-5 w-5 text-muted-foreground opacity-50" />
                 )}
@@ -116,7 +143,7 @@ export function BookingListView({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2">
                   <h3 className="text-base font-semibold text-foreground truncate leading-tight">{booking.petName}</h3>
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"} className="h-5 px-1.5 text-[10px]">
+                    <Badge variant={statusVariant[booking.status] || "secondary"} className="h-5 px-1.5 text-[10px]">
                       {statusLabel[booking.status] || booking.status}
                     </Badge>
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground bg-secondary border-border">
@@ -140,25 +167,25 @@ export function BookingListView({
                     {booking.endDate && ` → ${format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}`}
                   </span>
                 </div>
-                {(booking.checkInTime || (booking as any).checkOutTime) && (
+                {(booking.checkInTime || booking.checkOutTime) && (
                   <div className="flex items-center gap-3">
                     {booking.checkInTime && (
                       <span className="text-emerald-500 font-medium flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" /> In: {format(new Date(booking.checkInTime), "HH:mm")}
                       </span>
                     )}
-                    {(booking as any).checkOutTime && (
+                    {booking.checkOutTime && (
                       <span className="text-amber-500 font-medium flex items-center gap-1">
-                        <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
+                        <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date(booking.checkOutTime), "HH:mm")}
                       </span>
                     )}
                   </div>
                 )}
               </div>
 
-              {Array.isArray((booking as any).additionalServices) && (booking as any).additionalServices.length > 0 && (
+              {Array.isArray(booking.additionalServices) && booking.additionalServices.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-0.5">
-                  {(booking as any).additionalServices.map((addon: any) => (
+                  {booking.additionalServices.map((addon) => (
                     <Badge key={addon.id} variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-medium h-5">
                       + {addon.itemName}
                     </Badge>
@@ -166,7 +193,7 @@ export function BookingListView({
                 </div>
               )}
 
-              {(booking as any).onTheWayAt && booking.status !== "completed" && (
+              {booking.onTheWayAt && booking.status !== "completed" && (
                 <div className="mt-0.5">
                   <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20 font-medium h-5 flex items-center gap-1 w-fit">
                     <Car className="h-3 w-3" /> A caminho
@@ -335,7 +362,7 @@ export function BookingListView({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {bookings.map((booking: any) => (
+            {bookings.map((booking) => (
               <tr key={booking.id} className="hover:bg-secondary transition-colors">
                 <td className="px-6 py-4">
                   <p className="font-medium text-foreground">{booking.petName}</p>
@@ -358,9 +385,9 @@ export function BookingListView({
                       Check-in: {format(new Date(booking.checkInTime), "HH:mm")}
                     </p>
                   )}
-                  {(booking as any).checkOutTime && (
+                  {booking.checkOutTime && (
                     <p className="text-xs text-amber-500 mt-0.5">
-                      Check-out: {format(new Date((booking as any).checkOutTime), "HH:mm")}
+                      Check-out: {format(new Date(booking.checkOutTime), "HH:mm")}
                     </p>
                   )}
                   {booking.notes && (
@@ -368,10 +395,10 @@ export function BookingListView({
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <Badge variant={statusVariant[booking.status as BookingStatus] || "secondary"}>
+                  <Badge variant={statusVariant[booking.status] || "secondary"}>
                     {statusLabel[booking.status] || booking.status}
                   </Badge>
-                  {(booking as any).onTheWayAt && booking.status !== "completed" && (
+                  {booking.onTheWayAt && booking.status !== "completed" && (
                     <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
                       <Car className="h-3 w-3" /> A caminho
                     </p>
