@@ -30,6 +30,8 @@ vi.mock("../hooks/use-financial", async () => {
     useUpdateCrecheSettings: vi.fn(),
     useListAllInvoices: vi.fn(),
     useApproveReceipt: vi.fn(),
+    useVoidInvoice: vi.fn(),
+    useRefundInvoice: vi.fn(),
   };
 });
 
@@ -44,9 +46,11 @@ vi.mock("wouter", async () => {
   };
 });
 
-describe("Financial Tabs Characterization Tests (R33F.B1 & R33F.B2)", () => {
+describe("Financial Tabs Characterization Tests (R33F.B1, R33F.B2 & R33F.B3)", () => {
   const mockUpdateCrecheSettingsMutate = vi.fn();
   const mockApproveReceiptMutate = vi.fn();
+  const mockVoidInvoiceMutate = vi.fn();
+  const mockRefundInvoiceMutate = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -104,6 +108,14 @@ describe("Financial Tabs Characterization Tests (R33F.B1 & R33F.B2)", () => {
     });
     (useFinancialModule.useApproveReceipt as any).mockReturnValue({
       mutate: mockApproveReceiptMutate,
+      isPending: false,
+    });
+    (useFinancialModule.useVoidInvoice as any).mockReturnValue({
+      mutate: mockVoidInvoiceMutate,
+      isPending: false,
+    });
+    (useFinancialModule.useRefundInvoice as any).mockReturnValue({
+      mutate: mockRefundInvoiceMutate,
       isPending: false,
     });
   });
@@ -192,5 +204,159 @@ describe("Financial Tabs Characterization Tests (R33F.B1 & R33F.B2)", () => {
       101,
       expect.any(Object)
     );
+  });
+
+  it("renders Defaulters financial tab with overdue invoices, daysLate calculation and total overdue card", async () => {
+    mockSearchString = "?tab=defaulters";
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-26T12:00:00.000Z"));
+
+    (useFinancialModule.useListAllInvoices as any).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 201,
+            tutorName: "Mariana Souza",
+            amount: 25000,
+            dueDate: "2026-08-20",
+            status: "overdue",
+          },
+          {
+            id: 202,
+            tutorName: "Bruno Lima",
+            amount: 15000,
+            dueDate: "2026-08-24",
+            status: "pending",
+          },
+          {
+            id: 203,
+            tutorName: "Cliente Em Dia",
+            amount: 50000,
+            dueDate: "2026-08-28",
+            status: "pending",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<FinancialDashboard />);
+
+    // Total in default card
+    expect(screen.getByText("Total em Inadimplência")).toBeInTheDocument();
+    expect(screen.getByText("R$ 400,00")).toBeInTheDocument();
+
+    // Table title & overdue rows
+    expect(screen.getByText("Faturas Inadimplentes")).toBeInTheDocument();
+    expect(screen.getAllByText("Mariana Souza").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Bruno Lima").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Cliente Em Dia")).not.toBeInTheDocument();
+
+    // Days late calculations
+    expect(screen.getAllByText("6 dias").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("2 dias").length).toBeGreaterThanOrEqual(1);
+
+    vi.useRealTimers();
+  });
+
+  it("opens WhatsApp collection link with encoded message for overdue invoice", async () => {
+    mockSearchString = "?tab=defaulters";
+    const mockOpen = vi.spyOn(window, "open").mockImplementation(() => null as any);
+
+    (useFinancialModule.useListAllInvoices as any).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 201,
+            tutorName: "Mariana Souza",
+            amount: 25000,
+            dueDate: "2026-08-20",
+            status: "overdue",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<FinancialDashboard />);
+
+    const cobrarButtons = screen.getAllByText("Cobrar");
+    expect(cobrarButtons.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(cobrarButtons[0]);
+
+    expect(mockOpen).toHaveBeenCalledWith(
+      expect.stringContaining("https://wa.me/?text=Ol%C3%A1%20Mariana%20Souza%2C%20notamos%20que%20h%C3%A1%20uma%20fatura%20em%20aberto%20no%20valor%20de%20"),
+      "_blank"
+    );
+
+    mockOpen.mockRestore();
+  });
+
+  it("does not trigger void mutation when cancellation confirmation is denied", async () => {
+    mockSearchString = "?tab=defaulters";
+    const mockConfirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    (useFinancialModule.useListAllInvoices as any).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 201,
+            tutorName: "Mariana Souza",
+            amount: 25000,
+            dueDate: "2026-08-20",
+            status: "overdue",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<FinancialDashboard />);
+
+    const cancelarButtons = screen.getAllByText("Cancelar");
+    expect(cancelarButtons.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(cancelarButtons[0]);
+
+    expect(mockConfirm).toHaveBeenCalledWith("Tem certeza que deseja cancelar esta fatura?");
+    expect(mockVoidInvoiceMutate).not.toHaveBeenCalled();
+
+    mockConfirm.mockRestore();
+  });
+
+  it("triggers void invoice mutation when cancellation confirmation is accepted", async () => {
+    mockSearchString = "?tab=defaulters";
+    const mockConfirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    (useFinancialModule.useListAllInvoices as any).mockReturnValue({
+      data: {
+        data: [
+          {
+            id: 201,
+            tutorName: "Mariana Souza",
+            amount: 25000,
+            dueDate: "2026-08-20",
+            status: "overdue",
+          },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<FinancialDashboard />);
+
+    const cancelarButtons = screen.getAllByText("Cancelar");
+    expect(cancelarButtons.length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(cancelarButtons[0]);
+
+    expect(mockConfirm).toHaveBeenCalledWith("Tem certeza que deseja cancelar esta fatura?");
+    expect(mockVoidInvoiceMutate).toHaveBeenCalledWith(
+      201,
+      expect.any(Object)
+    );
+
+    mockConfirm.mockRestore();
   });
 });
