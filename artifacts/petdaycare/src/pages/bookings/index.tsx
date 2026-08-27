@@ -11,6 +11,10 @@ import {
   getListPetsQueryKey,
   getListTasksQueryKey,
   getGetCrecheStatsQueryKey,
+  type Pet,
+  type Task,
+  type ListBookingsParams,
+  type ListBookingsStatus,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useSearch, useLocation } from "wouter";
@@ -33,9 +37,15 @@ import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
 import { AddConsumableModal } from "@/components/bookings/add-consumable-modal";
 
+export interface TutorOption {
+  id: number;
+  name: string;
+  email: string;
+}
+
 function useTutors(crecheId: number | null, enabled: boolean) {
   const token = localStorage.getItem("auth_token");
-  return useQuery<any[]>({
+  return useQuery<TutorOption[]>({
     queryKey: ["tutors-full", crecheId],
     enabled: enabled && !!crecheId,
     queryFn: async () => {
@@ -58,11 +68,65 @@ import {
   SERVICE_BOOKING_TYPES,
   type BookingStatus,
   type BookingType,
+  type BookingListItem,
+  type BookingAdditionalService,
 } from "./components/booking-list-view";
 
 export { isServiceBooking, SERVICE_BOOKING_TYPES };
 
-function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | null; onChange: (id: number | null) => void }) {
+export interface RootBookingAdditionalService extends BookingAdditionalService {
+  catalogueItemName?: string | null;
+  catalogueItemId?: number | null;
+  catalogueItem?: {
+    name?: string | null;
+  } | null;
+  status?: string | null;
+}
+
+export type RootBookingListItem = Omit<BookingListItem, "additionalServices"> & {
+  additionalServices?: RootBookingAdditionalService[] | null;
+  hasPersonalItems?: boolean | null;
+  personalItemsPhotoUrl?: string | null;
+};
+
+export interface BookingsListEnvelope {
+  data?: RootBookingListItem[];
+  items?: RootBookingListItem[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+}
+
+export interface PetsListEnvelope {
+  items?: Pet[];
+  total?: number;
+}
+
+type BoundedListBookingsParams = ListBookingsParams & {
+  tutorId?: number;
+  petId?: number;
+  pageSize?: number;
+};
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (typeof err === "object" && err !== null) {
+    const record = err as Record<string, unknown>;
+    if (
+      typeof record.data === "object" &&
+      record.data !== null &&
+      typeof (record.data as Record<string, unknown>).error === "string"
+    ) {
+      return (record.data as Record<string, unknown>).error as string;
+    }
+    if (typeof record.message === "string" && record.message) {
+      return record.message;
+    }
+  }
+  return fallback;
+}
+
+function PetCombobox({ pets, value, onChange }: { pets: Pet[]; value: number | null; onChange: (id: number | null) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -124,7 +188,7 @@ function PetCombobox({ pets, value, onChange }: { pets: any[]; value: number | n
   );
 }
 
-function TutorCombobox({ tutors, value, onChange }: { tutors: any[]; value: number | null; onChange: (id: number | null) => void }) {
+function TutorCombobox({ tutors, value, onChange }: { tutors: TutorOption[]; value: number | null; onChange: (id: number | null) => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -308,7 +372,7 @@ export default function Bookings() {
   const urlParams = new URLSearchParams(searchStr);
   const highlightBookingId = urlParams.get("b") ? parseInt(urlParams.get("b")!) : null;
   const [, setLocation] = useLocation();
-  const [editBooking, setEditBooking] = useState<any | null>(null);
+  const [editBooking, setEditBooking] = useState<RootBookingListItem | null>(null);
   // When navigating from a notification with a specific booking, show all statuses so it's visible
   const [statusFilter, setStatusFilter] = useState<string>(() => {
     if (highlightBookingId) return "all";
@@ -318,26 +382,44 @@ export default function Bookings() {
   const [petFilter, setPetFilter] = useState<number | null>(null);
   const [startDateFilter, setStartDateFilter] = useState<string>("");
   const [endDateFilter, setEndDateFilter] = useState<string>("");
-  const [onTheWayBooking, setOnTheWayBooking] = useState<any | null>(null);
+  const [onTheWayBooking, setOnTheWayBooking] = useState<RootBookingListItem | null>(null);
   const [eta, setEta] = useState("15");
-  const [checkoutBooking, setCheckoutBooking] = useState<any | null>(null);
-  const [consumableBooking, setConsumableBooking] = useState<any | null>(null);
+  const [checkoutBooking, setCheckoutBooking] = useState<RootBookingListItem | null>(null);
+  const [consumableBooking, setConsumableBooking] = useState<RootBookingListItem | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<"confirm" | "completing">("confirm");
-  const [personalItemsBooking, setPersonalItemsBooking] = useState<any | null>(null);
+  const [personalItemsBooking, setPersonalItemsBooking] = useState<RootBookingListItem | null>(null);
   const [bookingPersonalItems, setBookingPersonalItems] = useState<Record<number, { hasItems: boolean; photoUrl: string | null }>>({});
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
-  const { data: bookingsResponse, isLoading } = useListBookings(crecheId ?? 0, {
-    tutorId: tutorFilter || undefined,
-    petId: petFilter || undefined,
-    status: statusFilter === "all" ? undefined : statusFilter,
-    date: startDateFilter || undefined,
-    pageSize: 1000 // Get all for the report view
-  } as any);
+  const listParams: BoundedListBookingsParams | undefined = !isTutor
+    ? {
+        tutorId: tutorFilter || undefined,
+        petId: petFilter || undefined,
+        status: statusFilter === "all" ? undefined : (statusFilter as ListBookingsStatus),
+        date: startDateFilter || undefined,
+        pageSize: 1000, // Get all for the report view
+      }
+    : undefined;
+
+  const { data: bookingsResponse, isLoading } = useListBookings(
+    crecheId ?? 0,
+    listParams
+  );
   const { data: petsResponse } = useListPets(crecheId ?? 0);
   const { data: tutors } = useTutors(crecheId, !isTutor);
-  const pets = (petsResponse as any)?.items || (Array.isArray(petsResponse) ? petsResponse : []);
-  const bookings = (bookingsResponse as any)?.items || (Array.isArray(bookingsResponse) ? bookingsResponse : []);
+  const petsPayload = petsResponse as Pet[] | PetsListEnvelope | undefined;
+  const pets: Pet[] = Array.isArray(petsPayload)
+    ? petsPayload
+    : petsPayload?.items ?? [];
+
+  const bookingsPayload = bookingsResponse as
+    | RootBookingListItem[]
+    | BookingsListEnvelope
+    | undefined;
+  const bookings: RootBookingListItem[] = Array.isArray(bookingsPayload)
+    ? bookingsPayload
+    : bookingsPayload?.items ?? [];
+
   const { data: allTasks } = useListTasks(crecheId ?? 0);
   const createMutation = useCreateBooking();
   const updateMutation = useUpdateBooking();
@@ -347,19 +429,19 @@ export default function Bookings() {
   const completeServiceMutation = useCompleteService(crecheId ?? 0);
   const forceCheckoutMutation = useForceCheckout(crecheId ?? 0);
 
-  const isPetPresent = (petId: number) => pets?.find((p: any) => p.id === petId)?.isCheckedIn ?? false;
+  const isPetPresent = (petId: number) => pets?.find((p) => p.id === petId)?.isCheckedIn ?? false;
 
   // Pets marcados como presentes mas sem reserva ativa (estado inconsistente)
-  const stuckPets = !isTutor ? (pets ?? []).filter((p: any) => {
+  const stuckPets = !isTutor ? (pets ?? []).filter((p) => {
     if (!p.isCheckedIn) return false;
-    return !(bookings ?? []).some((b: any) => b.petId === p.id && b.status === "active");
+    return !(bookings ?? []).some((b) => b.petId === p.id && b.status === "active");
   }) : [];
 
-  const handleForceCheckout = (pet: any) => {
+  const handleForceCheckout = (pet: Pet) => {
     if (!crecheId) return;
     forceCheckoutMutation.mutate(pet.id, {
       onSuccess: () => toast({ title: `${pet.name} liberado`, description: "Pet removido da lista de presentes." }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message ?? "Não foi possível liberar o pet.", variant: "destructive" }),
+      onError: (err: unknown) => toast({ title: "Erro", description: getErrorMessage(err, "Não foi possível liberar o pet."), variant: "destructive" }),
     });
   };
 
@@ -372,8 +454,8 @@ export default function Bookings() {
     return () => clearTimeout(timer);
   }, [highlightBookingId, bookings?.length]);
 
-  const myBookings = isTutor ? bookings?.filter((b: any) => {
-    const myPetIds = pets?.map((p: any) => p.id) || [];
+  const myBookings = isTutor ? bookings?.filter((b) => {
+    const myPetIds = pets?.map((p) => p.id) || [];
     return myPetIds.includes(b.petId);
   }) : bookings;
 
@@ -381,7 +463,7 @@ export default function Bookings() {
   // since startDateFilter is already sent to the backend.
   // We also don't need petFilter/tutorFilter/statusFilter because they are sent to backend,
   // except maybe if the UI isn't perfectly synced yet. It's safer to keep local filtering as a fallback.
-  const bookingsFilteredByDate = myBookings.filter((b: any) => {
+  const bookingsFilteredByDate = myBookings.filter((b) => {
     if (startDateFilter && b.startDate < startDateFilter) return false;
     if (endDateFilter && b.startDate > endDateFilter) return false;
     if (petFilter && b.petId !== petFilter) return false;
@@ -401,7 +483,7 @@ export default function Bookings() {
     cancel_requested: 0,
   };
   
-  baseForStatus.forEach((b: any) => {
+  baseForStatus.forEach((b) => {
     if (statusCounts[b.status] !== undefined) {
       statusCounts[b.status]++;
     } else {
@@ -409,9 +491,7 @@ export default function Bookings() {
     }
   });
 
-  const filtered = statusFilter === "all" ? baseForStatus : baseForStatus.filter((b: any) => b.status === statusFilter);
-
-
+  const filtered = statusFilter === "all" ? baseForStatus : baseForStatus.filter((b) => b.status === statusFilter);
 
   const statusSuccessMessages: Partial<Record<BookingStatus, string>> = {
     confirmed: "Reserva confirmada com sucesso!",
@@ -433,10 +513,10 @@ export default function Bookings() {
             title: statusSuccessMessages[newStatus] ?? "Status atualizado.",
           });
         },
-        onError: (err: any) => {
+        onError: (err: unknown) => {
           toast({
             title: "Erro ao atualizar reserva",
-            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            description: getErrorMessage(err, "Tente novamente."),
             variant: "destructive",
           });
         },
@@ -444,17 +524,17 @@ export default function Bookings() {
     );
   };
 
-  const handleCheckIn = (booking: any) => {
+  const handleCheckIn = (booking: RootBookingListItem) => {
     if (!crecheId) return;
     checkInMutation.mutate(
-      { crecheId, bookingId: booking.id } as any,
+      { crecheId, bookingId: booking.id },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
           setPersonalItemsBooking({ ...booking, crecheId });
         },
-        onError: (err: any) => {
-          const msg = err?.data?.error ?? err?.message ?? "Tente novamente.";
+        onError: (err: unknown) => {
+          const msg = getErrorMessage(err, "Tente novamente.");
           const isDouble = typeof msg === "string" && msg.includes("check-in ativo");
           toast({
             title: isDouble ? "Check-in não permitido" : "Erro no check-in",
@@ -466,36 +546,36 @@ export default function Bookings() {
     );
   };
 
-  const handleCompleteService = (booking: any) => {
+  const handleCompleteService = (booking: RootBookingListItem) => {
     if (!crecheId) return;
     completeServiceMutation.mutate(booking.id, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
         toast({ title: "Serviço concluído!", description: `A reserva de ${booking.petName} foi finalizada. O pet permanece na creche.` });
       },
-      onError: (err: any) => {
-        toast({ title: "Erro", description: err?.data?.error ?? err?.message ?? "Tente novamente.", variant: "destructive" });
+      onError: (err: unknown) => {
+        toast({ title: "Erro", description: getErrorMessage(err, "Tente novamente."), variant: "destructive" });
       },
     });
   };
 
-  const pendingTasksForBooking = (booking: any) =>
-    (allTasks || []).filter((t) => t.petId === booking.petId && t.status === "pending");
+  const pendingTasksForBooking = (booking: RootBookingListItem | null | undefined): Task[] =>
+    !booking ? [] : (allTasks || []).filter((t) => t.petId === booking.petId && t.status === "pending");
 
   const doCheckOut = (bookingId: number) => {
     if (!crecheId) return;
     checkOutMutation.mutate(
-      { crecheId, bookingId } as any,
+      { crecheId, bookingId },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: [`/api/creches/${crecheId}/bookings`] });
           setCheckoutBooking(null);
           toast({ title: "Check-out realizado!" });
         },
-        onError: (err: any) => {
+        onError: (err: unknown) => {
           toast({
             title: "Erro no check-out",
-            description: err?.data?.error ?? err?.message ?? "Tente novamente.",
+            description: getErrorMessage(err, "Tente novamente."),
             variant: "destructive",
           });
         },
@@ -503,7 +583,7 @@ export default function Bookings() {
     );
   };
 
-  const handleCheckOut = (booking: any) => {
+  const handleCheckOut = (booking: RootBookingListItem) => {
     if (!crecheId) return;
     const pending = pendingTasksForBooking(booking);
     if (pending.length > 0) {
@@ -566,7 +646,7 @@ export default function Bookings() {
               : `${stuckPets.length} pets estão marcados como presentes sem reserva ativa.`}
           </p>
           <div className="flex flex-wrap gap-2">
-            {stuckPets.map((p: any) => (
+            {stuckPets.map((p) => (
               <Button
                 key={p.id}
                 size="sm"
@@ -664,11 +744,11 @@ export default function Bookings() {
                 <span className="font-medium text-foreground">{format(parseLocalDate(editBooking.startDate), "dd/MM/yyyy")}</span>
               </div>
               {/* Add-on services */}
-              {(editBooking as any).additionalServices?.length > 0 && (
+              {editBooking.additionalServices && editBooking.additionalServices.length > 0 && (
                 <div className="pt-1 space-y-1">
                   <span className="text-xs text-muted-foreground uppercase tracking-wide">Serviços adicionais</span>
                   <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {(editBooking as any).additionalServices.map((s: any) => (
+                    {editBooking.additionalServices.map((s) => (
                       <span
                         key={s.id}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/15 border border-violet-400/25 text-violet-300"
@@ -733,7 +813,7 @@ export default function Bookings() {
           onClose={() => setConsumableBooking(null)}
           bookingId={consumableBooking.id}
           crecheId={crecheId ?? 0}
-          petName={consumableBooking.petName}
+          petName={consumableBooking.petName ?? ""}
         />
       )}
 
@@ -787,7 +867,7 @@ export default function Bookings() {
                   </div>
                 </div>
                 <ul className="space-y-1.5 max-h-40 overflow-y-auto">
-                  {pendingTasksForBooking(checkoutBooking).map((t: any) => (
+                  {pendingTasksForBooking(checkoutBooking).map((t) => (
                     <li key={t.id} className="flex items-center gap-2 text-sm text-muted-foreground px-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                       {t.title}
