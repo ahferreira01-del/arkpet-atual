@@ -9,19 +9,12 @@ import Walks from "../walks/index";
 export default function StaffBoard() {
   const searchStr = useSearch();
   const urlParams = new URLSearchParams(searchStr);
-  const initialTab = urlParams.get("tab") === "passeios" ? "passeios" : "tarefas";
+  const activeTab = urlParams.get("tab") === "passeios" ? "passeios" : "tarefas";
+  const activeTabLabel = activeTab === "passeios" ? "Passeios" : "Tarefas";
   const [location, navigate] = useLocation();
 
-  // Estado espelho exclusivo para a Presentation Layer (PageHeader)
-  const [activeTabLabel, setActiveTabLabel] = React.useState(
-    initialTab === "passeios" ? "Passeios" : "Tarefas"
-  );
-
   const handleTabChange = (value: string) => {
-    // 1. Atualiza o estado visual do título dinamicamente
-    setActiveTabLabel(value === "passeios" ? "Passeios" : "Tarefas");
-    
-    // 2. Sincroniza a URL preservando o replace e parâmetros filhos existentes
+    // Sincroniza a URL preservando o replace e parâmetros filhos existentes
     const newParams = new URLSearchParams(searchStr);
     newParams.set("tab", value);
     navigate(`${location}?${newParams.toString()}`, { replace: true });
@@ -35,7 +28,7 @@ export default function StaffBoard() {
         icon={CheckSquare}
       />
       <Tabs
-        defaultTab={initialTab}
+        value={activeTab}
         onValueChange={handleTabChange}
         tabs={[
           {

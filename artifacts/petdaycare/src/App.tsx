@@ -106,11 +106,12 @@ function CrecheAdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function RedirectToStaffBoard() {
+function RedirectToStaffBoard({ tab }: { tab?: "passeios" } = {}) {
   const [, setLocation] = useLocation();
   useEffect(() => {
-    setLocation("/staff/board", { replace: true });
-  }, [setLocation]);
+    const destination = tab === "passeios" ? "/staff/board?tab=passeios" : "/staff/board";
+    setLocation(destination, { replace: true });
+  }, [setLocation, tab]);
   return null;
 }
 
@@ -290,7 +291,7 @@ function App() {
 
                 <Route path="/walks">
                   <OperationGuard>
-                    <RedirectToStaffBoard />
+                    <RedirectToStaffBoard tab="passeios" />
                   </OperationGuard>
                 </Route>
 
