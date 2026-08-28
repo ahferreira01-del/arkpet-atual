@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,16 @@ import { formatCentsToBRL, parseReaisInputToCents } from "@/lib/money";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+export interface ExpenseRow {
+  id: number;
+  description: string;
+  category: string;
+  amount: number | string;
+  dueDate: string;
+  date?: string | null;
+  isPaid: boolean;
+}
+
 export function PayablesTab({ crecheId }: { crecheId: number }) {
   const { data: expenses, isLoading } = useListExpenses(crecheId);
   const createMutation = useCreateExpense(crecheId);
@@ -25,12 +36,14 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ description: "", category: "operacional", amount: "", dueDate: "" });
 
-  const openEditModal = (exp: any) => {
+  const expenseList = (expenses as ExpenseRow[] | undefined) || [];
+
+  const openEditModal = (exp: ExpenseRow) => {
     setEditingId(exp.id);
     setForm({
       description: exp.description,
       category: exp.category,
-      amount: (exp.amount / 100).toString(),
+      amount: (Number(exp.amount) / 100).toString(),
       dueDate: new Date(exp.dueDate || exp.date || new Date()).toISOString().split('T')[0]
     });
     setModalOpen(true);
@@ -60,7 +73,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
           setEditingId(null);
           setForm({ description: "", category: "operacional", amount: "", dueDate: "" });
         },
-        onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+        onError: (err) => toast({ title: "Erro", description: err.message, variant: "destructive" })
       });
     } else {
       createMutation.mutate({ ...form, amount: amountCents }, {
@@ -69,7 +82,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
           setModalOpen(false);
           setForm({ description: "", category: "operacional", amount: "", dueDate: "" });
         },
-        onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+        onError: (err) => toast({ title: "Erro", description: err.message, variant: "destructive" })
       });
     }
   };
@@ -78,7 +91,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
     if (confirm("Tem certeza que deseja excluir esta despesa?")) {
       deleteMutation.mutate(id, {
         onSuccess: () => toast({ title: "Sucesso", description: "Despesa excluída com sucesso." }),
-        onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+        onError: (err) => toast({ title: "Erro", description: err.message, variant: "destructive" })
       });
     }
   };
@@ -86,29 +99,49 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
   const handlePay = (id: number) => {
     payMutation.mutate(id, {
       onSuccess: () => toast({ title: "Sucesso", description: "Despesa paga e baixada no fluxo de caixa." }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+      onError: (err) => toast({ title: "Erro", description: err.message, variant: "destructive" })
     });
   };
 
-
-
-  const columns = React.useMemo(() => [
-    { accessorKey: "description", header: "Descrição", cell: (info: any) => <span className="font-medium text-foreground">{info.getValue()}</span> },
-    { accessorKey: "category", header: "Categoria", cell: (info: any) => <Badge variant="outline" className="capitalize font-normal text-muted-foreground">{info.getValue()}</Badge> },
-    { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => {
-        const d = info.getValue() || info.row.original.date || new Date();
+  const columns = React.useMemo<ColumnDef<ExpenseRow, unknown>[]>(() => [
+    {
+      accessorKey: "description",
+      header: "Descrição",
+      cell: (info) => <span className="font-medium text-foreground">{info.row.original.description}</span>
+    },
+    {
+      accessorKey: "category",
+      header: "Categoria",
+      cell: (info) => <Badge variant="outline" className="capitalize font-normal text-muted-foreground">{info.row.original.category}</Badge>
+    },
+    {
+      accessorKey: "dueDate",
+      header: "Vencimento",
+      cell: (info) => {
+        const exp = info.row.original;
+        const d = exp.dueDate || exp.date || new Date();
         return <span className="text-muted-foreground">{format(new Date(d), "dd/MM/yyyy", { locale: ptBR })}</span>;
-    } },
-    { accessorKey: "amount", header: () => <div className="text-right">Valor</div>, meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <div className="text-right font-semibold text-destructive">-{formatCentsToBRL(info.getValue())}</div> },
-    { accessorKey: "isPaid", header: "Status", cell: (info: any) => {
-        return info.getValue()
+      }
+    },
+    {
+      accessorKey: "amount",
+      header: () => <div className="text-right">Valor</div>,
+      meta: { exportValue: (v: unknown) => formatCentsToBRL(Number(v)) },
+      cell: (info) => <div className="text-right font-semibold text-destructive">-{formatCentsToBRL(Number(info.row.original.amount))}</div>
+    },
+    {
+      accessorKey: "isPaid",
+      header: "Status",
+      cell: (info) => {
+        return info.row.original.isPaid
           ? <Badge variant="success">Pago</Badge>
           : <Badge variant="secondary" className="text-muted-foreground">Pendente</Badge>;
-    } },
+      }
+    },
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
-      cell: ({ row }: any) => {
+      cell: ({ row }) => {
         const exp = row.original;
         return (
           <div className="flex justify-end gap-1">
@@ -141,7 +174,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
     }
   ], [payMutation.isPending, deleteMutation.isPending]);
 
-  const renderMobileCard = React.useCallback((row: any) => {
+  const renderMobileCard = React.useCallback((row: { original: ExpenseRow }) => {
     const exp = row.original;
     const d = exp.dueDate || exp.date || new Date();
     const dueDateStr = format(new Date(d), "dd/MM/yyyy", { locale: ptBR });
@@ -162,7 +195,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
         <div className="grid grid-cols-2 gap-2 bg-muted/30 p-3 rounded-xl border border-border">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Valor</span>
-            <span className="text-sm font-bold text-destructive">-{formatCentsToBRL(exp.amount)}</span>
+            <span className="text-sm font-bold text-destructive">-{formatCentsToBRL(Number(exp.amount))}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Vencimento</span>
@@ -218,7 +251,7 @@ export function PayablesTab({ crecheId }: { crecheId: number }) {
         <div className="p-4">
           <AdvancedDataTable
             columns={columns}
-            data={expenses || []}
+            data={expenseList}
             searchKey="description"
             searchPlaceholder="Buscar despesa..."
             fileName="Despesas"
