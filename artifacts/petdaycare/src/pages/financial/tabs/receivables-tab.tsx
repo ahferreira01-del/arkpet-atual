@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { type ColumnDef } from "@tanstack/react-table";
 import { parseLocalDate } from "@/lib/date-utils";
 import { formatCentsToBRL } from "@/lib/money";
 import { useToast } from "@/hooks/use-toast";
@@ -37,13 +38,60 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 
+export type InvoiceStatus =
+  | "pending"
+  | "paid"
+  | "overdue"
+  | "voided"
+  | "refunded"
+  | "awaiting_confirmation";
+
+export interface InvoiceRow {
+  id: number;
+  amount: number | string;
+  status: InvoiceStatus | string;
+  dueDate?: string | null;
+  tutorId?: number | null;
+  tutorName?: string | null;
+  createdAt?: string | null;
+  paymentMethod?: string | null;
+  receiptPhotoPath?: string | null;
+}
+
+export interface InvoiceItem {
+  id: number;
+  description?: string | null;
+  quantity?: number | null;
+  amount: number | string;
+  itemDate?: string | null;
+  itemType?: string | null;
+  petId?: number | null;
+  petName?: string | null;
+}
+
+export interface InvoicesEnvelope {
+  data?: InvoiceRow[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+}
+
+function getErrorMessage(err: unknown, fallback = "Erro na operação."): string {
+  if (err && typeof err === "object" && "message" in err && typeof err.message === "string") {
+    return err.message;
+  }
+  return fallback;
+}
+
 function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "pending", issueDate = new Date().toISOString(), tutorName = "Tutor" }: { crecheId: number, invoiceId: number | null, open: boolean, onClose: () => void, invoiceStatus?: string, issueDate?: string, tutorName?: string }) {
   const { data: items, isLoading } = useInvoiceItems(crecheId, invoiceId || undefined);
   const refundItemMutation = useRefundInvoiceItem(crecheId);
 
   if (!open || !invoiceId) return null;
 
-  const total = items?.reduce((sum: number, item: any) => sum + (Number(item.amount) * (item.quantity || 1)), 0) || 0;
+  const invoiceItems = items as InvoiceItem[] | undefined;
+  const total = invoiceItems?.reduce((sum: number, item: InvoiceItem) => sum + (Number(item.amount) * (item.quantity || 1)), 0) || 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -135,9 +183,9 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
            <h4 className="text-sm font-bold text-card-foreground mb-4">Itens da Fatura</h4>
           {isLoading ? (
             <div className="text-center p-8 text-muted-foreground">Carregando itens...</div>
-          ) : items?.length > 0 ? (
+          ) : (invoiceItems && invoiceItems.length > 0) ? (
             <div className="divide-y divide-slate-100">
-              {items.map((item: any) => {
+              {invoiceItems.map((item: InvoiceItem) => {
                 const unitPrice = Number(item.amount);
                 const qty = item.quantity || 1;
                 const lineTotal = unitPrice * qty;
@@ -174,7 +222,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                           }
                           refundItemMutation.mutate({ invoiceId: invoiceId!, invoiceItemId: item.id, quantity: refundQty }, {
                             onSuccess: () => alert("Estorno/Devolução realizado com sucesso."),
-                            onError: (err: any) => alert(`Erro ao estornar: ${err?.message ?? "Tente novamente."}`),
+                            onError: (err: unknown) => alert(`Erro ao estornar: ${getErrorMessage(err, "Tente novamente.")}`),
                           });
                         }}
                         className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors opacity-0 group-hover:opacity-100"
@@ -224,7 +272,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
     if (!confirm("Tem certeza que deseja estornar esta fatura?")) return;
     refundMutation.mutate(id, {
       onSuccess: () => toast({ title: "Sucesso", description: "Fatura estornada com sucesso." }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+      onError: (err: unknown) => toast({ title: "Erro", description: getErrorMessage(err, "Erro ao estornar fatura."), variant: "destructive" })
     });
   };
 
@@ -232,7 +280,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
     if (!confirm("Tem certeza que deseja cancelar esta fatura?")) return;
     voidMutation.mutate(id, {
       onSuccess: () => toast({ title: "Sucesso", description: "Fatura cancelada com sucesso." }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+      onError: (err: unknown) => toast({ title: "Erro", description: getErrorMessage(err, "Erro ao cancelar fatura."), variant: "destructive" })
     });
   };
 
@@ -243,7 +291,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         toast({ title: "Sucesso", description: "Baixa manual realizada com sucesso.", variant: "default" });
         setPayModal({ open: false, invoiceId: null });
       },
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+      onError: (err: unknown) => toast({ title: "Erro", description: getErrorMessage(err, "Erro ao realizar baixa manual."), variant: "destructive" })
     });
   };
 
@@ -251,31 +299,36 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
     if (!confirm("Confirmar o recebimento via comprovante Pix?")) return;
     approveReceiptMutation.mutate(id, {
       onSuccess: () => toast({ title: "Sucesso", description: "Comprovante aprovado com sucesso.", variant: "default" }),
-      onError: (err: any) => toast({ title: "Erro", description: err.message, variant: "destructive" })
+      onError: (err: unknown) => toast({ title: "Erro", description: getErrorMessage(err, "Erro ao aprovar comprovante."), variant: "destructive" })
     });
   };
 
   // Opens receipt synchronously so browsers don't block the popup.
   // buildMediaSrc appends ?mt= so the storage endpoint accepts the request
   // without an Authorization header (which <a>/<window.open> cannot send).
-  const handleViewReceipt = (receiptPhotoPath: string) => {
+  const handleViewReceipt = (receiptPhotoPath?: string | null) => {
+    if (!receiptPhotoPath) return;
     setPreviewUrl(buildMediaSrc(receiptPhotoPath, getMediaToken()));
   };
 
-  const invoiceList = invoicesData?.data || (Array.isArray(invoicesData) ? invoicesData : []);
+  const invoicePayload = invoicesData as InvoicesEnvelope | InvoiceRow[] | undefined;
+  const invoiceList: InvoiceRow[] = Array.isArray(invoicePayload) ? invoicePayload : invoicePayload?.data ?? [];
 
-  const columns = React.useMemo(() => [
-    { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => info.getValue() || "Desconhecido" },
-    { accessorKey: "createdAt", header: "Emissão", cell: (info: any) => info.getValue() ? format(new Date(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
-    { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => {
-        const val = info.getValue();
+  const columns = React.useMemo<ColumnDef<InvoiceRow, unknown>[]>(() => [
+    { accessorKey: "tutorName", header: "Tutor", cell: (info) => info.row.original.tutorName || "Desconhecido" },
+    { accessorKey: "createdAt", header: "Emissão", cell: (info) => {
+      const createdAt = info.row.original.createdAt;
+      return createdAt ? format(new Date(createdAt), "dd/MM/yyyy", { locale: ptBR }) : "—";
+    } },
+    { accessorKey: "dueDate", header: "Vencimento", cell: (info) => {
         const inv = info.row.original;
+        const val = inv.dueDate;
         const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(val).getTime() < new Date().setHours(0,0,0,0);
         return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
     } },
-    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => formatCentsToBRL(info.getValue()) },
-    { accessorKey: "status", header: "Status", cell: (info: any) => {
-        const status = info.getValue();
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: unknown) => formatCentsToBRL(Number(v)) }, cell: (info) => formatCentsToBRL(Number(info.row.original.amount)) },
+    { accessorKey: "status", header: "Status", cell: (info) => {
+        const status = info.row.original.status;
         return (
           <Badge variant={status === "paid" ? "success" : status === "awaiting_confirmation" ? "default" : status === "refunded" ? "outline" : status === "voided" ? "secondary" : status === "overdue" ? "destructive" : "secondary"}>
             {status === "paid" ? "Pago" : status === "awaiting_confirmation" ? "Em Análise" : status === "refunded" ? "Estornado" : status === "voided" ? "Cancelado" : status === "overdue" ? "Atrasado" : "Pendente"}
@@ -285,7 +338,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
     {
       id: "actions",
       header: () => <div className="text-right">Ações</div>,
-      cell: ({ row }: any) => {
+      cell: ({ row }) => {
         const inv = row.original;
         return (
           <div className="flex justify-end gap-1">
@@ -328,7 +381,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
     }
   ], [approveReceiptMutation.isPending, refundMutation.isPending, voidMutation.isPending]);
 
-  const renderMobileCard = React.useCallback((row: any) => {
+  const renderMobileCard = React.useCallback((row: { original: InvoiceRow }) => {
     const inv = row.original;
     const isOverdue = inv.dueDate && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(inv.dueDate).getTime() < new Date().setHours(0,0,0,0);
     const dueDateStr = inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—";
@@ -350,7 +403,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         <div className="grid grid-cols-2 gap-2 bg-muted/30 p-3 rounded-xl border border-border">
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Valor</span>
-            <span className="text-sm font-bold text-foreground">{formatCentsToBRL(inv.amount)}</span>
+            <span className="text-sm font-bold text-foreground">{formatCentsToBRL(Number(inv.amount))}</span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Vencimento</span>
@@ -437,14 +490,14 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
       {payModal.open && (
         <Modal isOpen={true} onClose={() => setPayModal({ open: false, invoiceId: null })} title="Dar Baixa Manual">
           <div className="space-y-6 pt-2">
-            {invoiceList.find((i:any) => i.id === payModal.invoiceId) && (
+            {invoiceList.find((i: InvoiceRow) => i.id === payModal.invoiceId) && (
               <div className="bg-muted/30 p-4 rounded-xl flex flex-col gap-1 border border-border shadow-sm">
                 <div className="flex justify-between items-start">
-                  <span className="font-semibold text-foreground truncate mr-2">{invoiceList.find((i:any) => i.id === payModal.invoiceId)?.tutorName || "Desconhecido"}</span>
+                  <span className="font-semibold text-foreground truncate mr-2">{invoiceList.find((i: InvoiceRow) => i.id === payModal.invoiceId)?.tutorName || "Desconhecido"}</span>
                   <span className="text-xs text-muted-foreground shrink-0 mt-0.5">#{payModal.invoiceId}</span>
                 </div>
                 <div className="text-2xl font-bold text-foreground mt-1 tracking-tight">
-                  {formatCentsToBRL(invoiceList.find((i:any) => i.id === payModal.invoiceId)?.amount)}
+                  {formatCentsToBRL(Number(invoiceList.find((i: InvoiceRow) => i.id === payModal.invoiceId)?.amount || 0))}
                 </div>
               </div>
             )}
@@ -480,9 +533,9 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         invoiceId={detailsModal.invoiceId}
         open={detailsModal.open}
         onClose={() => setDetailsModal({ open: false, invoiceId: null })}
-        invoiceStatus={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.status}
-        issueDate={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.createdAt}
-        tutorName={invoiceList.find((i:any) => i.id === detailsModal.invoiceId)?.tutorName}
+        invoiceStatus={invoiceList.find((i: InvoiceRow) => i.id === detailsModal.invoiceId)?.status}
+        issueDate={invoiceList.find((i: InvoiceRow) => i.id === detailsModal.invoiceId)?.createdAt ?? undefined}
+        tutorName={invoiceList.find((i: InvoiceRow) => i.id === detailsModal.invoiceId)?.tutorName ?? undefined}
       />
       {previewUrl && (
         <Modal isOpen onClose={() => setPreviewUrl(null)} title="Comprovante de Pagamento">
