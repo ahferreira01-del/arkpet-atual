@@ -376,8 +376,8 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
     expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Reserva confirmada com sucesso!" }));
   });
 
-  // TEST 7 — Staff rejects pending booking
-  it("7. staff rejects pending booking triggering cancelled status update", async () => {
+  // TEST 7 — Staff direct-cancels pending/confirmed booking through Edit Reservation
+  it("7. staff rejects pending booking triggering cancelled status update after confirmation", async () => {
     renderWithProviders(<Bookings />);
 
     const editButtons = screen.getAllByRole("button", { name: /Editar/i });
@@ -388,6 +388,16 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
     const cancelStatusBtn = screen.getByRole("button", { name: /Cancelada/i });
     fireEvent.click(cancelStatusBtn);
 
+    // Confirmation dialog opens with direct-cancel title and context
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Cancelar Reserva/i })).toBeInTheDocument();
+    expect(screen.getByText(/Deseja cancelar esta reserva\?/i)).toBeInTheDocument();
+    expect(mockUpdateBookingMutate).not.toHaveBeenCalled();
+
+    // Confirm direct cancellation
+    const confirmBtn = screen.getByRole("button", { name: /^Cancelar Reserva$/i });
+    fireEvent.click(confirmBtn);
+
     expect(mockUpdateBookingMutate).toHaveBeenCalledWith(
       { crecheId: 1, bookingId: 1, data: { status: "cancelled" } },
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) })
@@ -395,11 +405,11 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
 
     const options = mockUpdateBookingMutate.mock.calls[0][1];
     options.onSuccess();
-    expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Reserva cancelada." }));
+    expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Reserva cancelada com sucesso." }));
   });
 
   // TEST 8 — Tutor requests cancellation
-  it("8. tutor requests cancellation for pending/confirmed booking", async () => {
+  it("8. tutor requests cancellation for pending/confirmed booking after confirmation", async () => {
     (useAuthModule.useAuth as any).mockReturnValue({
       user: { id: 1, name: "Carlos Tutor", email: "carlos@test.com", role: "tutor", crecheId: 1 },
       isLoading: false,
@@ -409,6 +419,16 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
 
     const cancelReqButtons = screen.getAllByRole("button", { name: /Solicitar Cancelamento/i });
     fireEvent.click(cancelReqButtons[0]);
+
+    // Confirmation dialog opens with tutor request title, body and context
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Solicitar Cancelamento$/i })).toBeInTheDocument();
+    expect(screen.getByText(/A creche analisará o pedido/i)).toBeInTheDocument();
+    expect(mockUpdateBookingMutate).not.toHaveBeenCalled();
+
+    // Confirm tutor cancellation request
+    const confirmButtons = screen.getAllByRole("button", { name: /^Solicitar Cancelamento$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
 
     expect(mockUpdateBookingMutate).toHaveBeenCalledWith(
       { crecheId: 1, bookingId: 1, data: { status: "cancel_requested" } },
@@ -421,20 +441,29 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
   });
 
   // TEST 9 — Staff approves cancel request
-  it("9. staff approves cancellation request transitioning status to cancelled", async () => {
+  it("9. staff approves cancellation request transitioning status to cancelled after confirmation", async () => {
     renderWithProviders(<Bookings />);
 
     const approveCancelButtons = screen.getAllByRole("button", { name: /Aprovar Cancelamento/i });
     fireEvent.click(approveCancelButtons[0]);
 
+    // Confirmation dialog opens
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^Aprovar Cancelamento$/i })).toBeInTheDocument();
+    expect(screen.getByText(/Deseja aprovar a solicitação de cancelamento desta reserva\?/i)).toBeInTheDocument();
+    expect(mockUpdateBookingMutate).not.toHaveBeenCalled();
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^Aprovar Cancelamento$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
     expect(mockUpdateBookingMutate).toHaveBeenCalledWith(
       { crecheId: 1, bookingId: 6, data: { status: "cancelled" } },
-      expect.objectContaining({ onSuccess: expect.any(Function) })
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) })
     );
 
     const options = mockUpdateBookingMutate.mock.calls[0][1];
     options.onSuccess();
-    expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Reserva cancelada." }));
+    expect(mockToast).toHaveBeenCalledWith(expect.objectContaining({ title: "Reserva cancelada com sucesso." }));
   });
 
   // TEST 10 — Staff rejects cancel request
@@ -443,6 +472,8 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
 
     const rejectButtons = screen.getAllByRole("button", { name: /Recusar/i });
     fireEvent.click(rejectButtons[0]);
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
 
     expect(mockUpdateBookingMutate).toHaveBeenCalledWith(
       { crecheId: 1, bookingId: 6, data: { status: "confirmed" } },
@@ -1136,5 +1167,136 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
 
     expect(screen.queryByText("Alergia")).not.toBeInTheDocument();
     expect(screen.queryByText("Cuidados especiais")).not.toBeInTheDocument();
+  });
+
+  // TEST 42 — EVO-R34-004: tutor aborts cancellation request closing dialog with zero mutations
+  it("42. tutor aborts cancellation request closing dialog with zero mutations", async () => {
+    (useAuthModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Carlos Tutor", email: "carlos@test.com", role: "tutor", crecheId: 1 },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    const cancelReqButtons = screen.getAllByRole("button", { name: /Solicitar Cancelamento/i });
+    fireEvent.click(cancelReqButtons[0]);
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    const backBtn = screen.getByRole("button", { name: /^Voltar$/i });
+    fireEvent.click(backBtn);
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(mockUpdateBookingMutate).not.toHaveBeenCalled();
+  });
+
+  // TEST 43 — EVO-R34-004: staff aborts direct cancellation in Edit Modal and retains edit state
+  it("43. staff aborts direct cancellation in Edit Modal and retains edit state", async () => {
+    renderWithProviders(<Bookings />);
+
+    const editButtons = screen.getAllByRole("button", { name: /Editar/i });
+    fireEvent.click(editButtons[0]);
+
+    expect(screen.getByText("Editar Reserva")).toBeInTheDocument();
+
+    const cancelStatusBtn = screen.getByRole("button", { name: /Cancelada/i });
+    fireEvent.click(cancelStatusBtn);
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    const backBtn = screen.getByRole("button", { name: /^Voltar$/i });
+    fireEvent.click(backBtn);
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Editar Reserva")).toBeInTheDocument();
+    expect(mockUpdateBookingMutate).not.toHaveBeenCalled();
+  });
+
+  // TEST 44 — EVO-R34-004: cancellation mutation error 422 displays real server error description in toast
+  it("44. cancellation mutation error 422 displays real server error description in toast", async () => {
+    renderWithProviders(<Bookings />);
+
+    const approveCancelButtons = screen.getAllByRole("button", { name: /Aprovar Cancelamento/i });
+    fireEvent.click(approveCancelButtons[0]);
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^Aprovar Cancelamento$/i });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    const options = mockUpdateBookingMutate.mock.calls[0][1];
+    options.onError({
+      status: 422,
+      message: "Não é possível cancelar — a reserva possui cobranças com pagamento já processado.",
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Erro ao processar cancelamento",
+        description: "Não é possível cancelar — a reserva possui cobranças com pagamento já processado.",
+        variant: "destructive",
+      })
+    );
+  });
+
+  // TEST 45 — EVO-R34-004: generic status update error does not use cancellation-specific error title
+  it("45. generic status update error does not use cancellation-specific error title", async () => {
+    renderWithProviders(<Bookings />);
+
+    const confirmButtons = screen.getAllByRole("button", { name: /^Confirmar$/i });
+    fireEvent.click(confirmButtons[0]);
+
+    const options = mockUpdateBookingMutate.mock.calls[0][1];
+    options.onError(new Error("Erro de conexão"));
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Erro ao atualizar reserva",
+        variant: "destructive",
+      })
+    );
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Erro ao processar cancelamento",
+      })
+    );
+  });
+
+  // TEST 46 — EVO-R34-004: cancellation confirmation dialog does not contain speculative financial promises or irreversibility statements
+  it("46. cancellation confirmation dialog does not contain speculative financial promises or irreversibility statements", async () => {
+    (useAuthModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Carlos Tutor", email: "carlos@test.com", role: "tutor", crecheId: 1 },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    const cancelReqButtons = screen.getAllByRole("button", { name: /Solicitar Cancelamento/i });
+    fireEvent.click(cancelReqButtons[0]);
+
+    const dialog = screen.getByRole("alertdialog");
+    const dialogText = dialog.textContent || "";
+
+    expect(dialogText).not.toMatch(/reembolso/i);
+    expect(dialogText).not.toMatch(/reembolsado/i);
+    expect(dialogText).not.toMatch(/crédito será/i);
+    expect(dialogText).not.toMatch(/devolvido/i);
+    expect(dialogText).not.toMatch(/não haverá cobrança/i);
+    expect(dialogText).not.toMatch(/estorno automático/i);
+    expect(dialogText).not.toMatch(/não poderá ser desfeita/i);
+    expect(dialogText).not.toMatch(/irrevers/i);
+  });
+
+  // TEST 47 — EVO-R34-004: cancellation confirmation actions meet mobile touch target contract with h-11 min-h-[44px]
+  it("47. cancellation confirmation actions meet mobile touch target contract with h-11 min-h-[44px]", async () => {
+    renderWithProviders(<Bookings />);
+
+    const approveCancelButtons = screen.getAllByRole("button", { name: /Aprovar Cancelamento/i });
+    fireEvent.click(approveCancelButtons[0]);
+
+    const backBtn = screen.getByRole("button", { name: /^Voltar$/i });
+    const confirmButtons = screen.getAllByRole("button", { name: /^Aprovar Cancelamento$/i });
+    const confirmBtn = confirmButtons[confirmButtons.length - 1];
+
+    expect(backBtn.className).toMatch(/min-h-\[44px\]|h-11/);
+    expect(confirmBtn.className).toMatch(/min-h-\[44px\]|h-11/);
   });
 });

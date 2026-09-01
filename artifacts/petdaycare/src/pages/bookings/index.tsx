@@ -36,6 +36,15 @@ import { useQueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { PersonalItemsModal } from "@/components/bookings/personal-items-modal";
 import { AddConsumableModal } from "@/components/bookings/add-consumable-modal";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface TutorOption {
   id: number;
@@ -373,6 +382,10 @@ export default function Bookings() {
   const highlightBookingId = urlParams.get("b") ? parseInt(urlParams.get("b")!) : null;
   const [, setLocation] = useLocation();
   const [editBooking, setEditBooking] = useState<RootBookingListItem | null>(null);
+  const [cancellationState, setCancellationState] = useState<{
+    booking: RootBookingListItem;
+    intent: "tutor_request" | "staff_approve" | "staff_direct";
+  } | null>(null);
   // When navigating from a notification with a specific booking, show all statuses so it's visible
   const [statusFilter, setStatusFilter] = useState<string>(() => {
     if (highlightBookingId) return "all";
@@ -516,6 +529,39 @@ export default function Bookings() {
         onError: (err: unknown) => {
           toast({
             title: "Erro ao atualizar reserva",
+            description: getErrorMessage(err, "Tente novamente."),
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
+  const handleConfirmCancellation = () => {
+    if (!cancellationState || !crecheId) return;
+    const { booking, intent } = cancellationState;
+    const targetStatus: BookingStatus = intent === "tutor_request" ? "cancel_requested" : "cancelled";
+
+    updateMutation.mutate(
+      { crecheId, bookingId: booking.id, data: { status: targetStatus } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
+          queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
+          toast({
+            title: intent === "tutor_request"
+              ? "Solicitação de cancelamento enviada à creche."
+              : "Reserva cancelada com sucesso.",
+          });
+          setCancellationState(null);
+          if (intent === "staff_direct") {
+            setEditBooking(null);
+          }
+        },
+        onError: (err: unknown) => {
+          toast({
+            title: "Erro ao processar cancelamento",
             description: getErrorMessage(err, "Tente novamente."),
             variant: "destructive",
           });
@@ -705,6 +751,8 @@ export default function Bookings() {
               isPetPresent={isPetPresent}
               bookingPersonalItems={bookingPersonalItems}
               handleStatusUpdate={handleStatusUpdate}
+              onRequestCancel={(booking) => setCancellationState({ booking, intent: "tutor_request" })}
+              onApproveCancel={(booking) => setCancellationState({ booking, intent: "staff_approve" })}
               handleCheckIn={handleCheckIn}
               handleCompleteService={handleCompleteService}
               handleCheckOut={handleCheckOut}
@@ -772,8 +820,12 @@ export default function Bookings() {
                   <button
                     key={s}
                     onClick={() => {
-                      handleStatusUpdate(editBooking.id, s);
-                      setEditBooking(null);
+                      if (s === "cancelled") {
+                        setCancellationState({ booking: editBooking, intent: "staff_direct" });
+                      } else {
+                        handleStatusUpdate(editBooking.id, s);
+                        setEditBooking(null);
+                      }
                     }}
                     className={`px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
                       editBooking.status === s
@@ -954,6 +1006,84 @@ export default function Bookings() {
           </div>
         </Modal>
       )}
+
+      {/* Cancellation Confirmation Dialog */}
+      <AlertDialog
+        open={!!cancellationState}
+        onOpenChange={(open) => {
+          if (!open && !updateMutation.isPending) {
+            setCancellationState(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {cancellationState?.intent === "tutor_request"
+                ? "Solicitar Cancelamento"
+                : cancellationState?.intent === "staff_approve"
+                  ? "Aprovar Cancelamento"
+                  : "Cancelar Reserva"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cancellationState?.intent === "tutor_request"
+                ? "Tem certeza de que deseja solicitar o cancelamento desta reserva? A creche analisará o pedido."
+                : cancellationState?.intent === "staff_approve"
+                  ? "Deseja aprovar a solicitação de cancelamento desta reserva?"
+                  : "Deseja cancelar esta reserva?"}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {cancellationState && (
+            <div className="p-3.5 rounded-xl bg-secondary/60 border border-border text-xs space-y-1.5 text-muted-foreground my-1">
+              <div className="flex justify-between">
+                <span>Pet:</span>
+                <span className="font-semibold text-foreground">{cancellationState.booking.petName || "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Serviço:</span>
+                <span className="font-medium text-foreground capitalize">
+                  {bookingTypeLabel[cancellationState.booking.type] || cancellationState.booking.type}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Data:</span>
+                <span className="font-medium text-foreground">
+                  {format(parseLocalDate(cancellationState.booking.startDate), "dd/MM/yyyy")}
+                  {cancellationState.booking.endDate && cancellationState.booking.endDate !== cancellationState.booking.startDate && (
+                    ` → ${format(parseLocalDate(cancellationState.booking.endDate), "dd/MM/yyyy")}`
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <AlertDialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:space-x-2 pt-2">
+            <AlertDialogCancel
+              disabled={updateMutation.isPending}
+              onClick={() => setCancellationState(null)}
+              className="h-11 min-h-[44px] w-full sm:w-auto"
+            >
+              Voltar
+            </AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={updateMutation.isPending}
+              className="h-11 min-h-[44px] w-full sm:w-auto"
+              onClick={handleConfirmCancellation}
+              isLoading={updateMutation.isPending}
+            >
+              {updateMutation.isPending
+                ? (cancellationState?.intent === "tutor_request" ? "Solicitando..." : "Cancelando...")
+                : (cancellationState?.intent === "tutor_request"
+                    ? "Solicitar Cancelamento"
+                    : cancellationState?.intent === "staff_approve"
+                      ? "Aprovar Cancelamento"
+                      : "Cancelar Reserva")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -89,6 +89,8 @@ export interface BookingListViewProps {
   isPetPresent: (petId: number) => boolean;
   bookingPersonalItems: Record<number, { hasItems: boolean; photoUrl: string | null }>;
   handleStatusUpdate: (bookingId: number, newStatus: BookingStatus) => void;
+  onRequestCancel?: (booking: BookingListItem) => void;
+  onApproveCancel?: (booking: BookingListItem) => void;
   handleCheckIn: (booking: BookingListItem) => void;
   handleCompleteService: (booking: BookingListItem) => void;
   handleCheckOut: (booking: BookingListItem) => void;
@@ -109,6 +111,8 @@ export function BookingListView({
   isPetPresent,
   bookingPersonalItems,
   handleStatusUpdate,
+  onRequestCancel,
+  onApproveCancel,
   handleCheckIn,
   handleCompleteService,
   handleCheckOut,
@@ -245,7 +249,7 @@ export function BookingListView({
                   size="sm"
                   variant="outline"
                   className="w-full sm:w-auto h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
-                  onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
+                  onClick={() => onRequestCancel ? onRequestCancel(booking) : handleStatusUpdate(booking.id, "cancel_requested")}
                   isLoading={isUpdatePending}
                 >
                   Solicitar Cancelamento
@@ -259,7 +263,7 @@ export function BookingListView({
                         size="sm"
                         variant="outline"
                         className="w-full sm:w-auto h-10 text-sm px-4 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
-                        onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                        onClick={() => onApproveCancel ? onApproveCancel(booking) : handleStatusUpdate(booking.id, "cancelled")}
                         isLoading={isUpdatePending}
                       >
                         Aprovar Cancelamento
@@ -460,7 +464,7 @@ export function BookingListView({
                         size="sm"
                         variant="outline"
                         className="border-destructive/40 text-destructive/80 hover:bg-destructive/10"
-                        onClick={() => handleStatusUpdate(booking.id, "cancel_requested")}
+                        onClick={() => onRequestCancel ? onRequestCancel(booking) : handleStatusUpdate(booking.id, "cancel_requested")}
                         isLoading={isUpdatePending}
                       >
                         Solicitar Cancelamento
@@ -474,7 +478,7 @@ export function BookingListView({
                               size="sm"
                               variant="outline"
                               className="border-destructive/40 text-destructive/80 hover:bg-destructive/10"
-                              onClick={() => handleStatusUpdate(booking.id, "cancelled")}
+                              onClick={() => onApproveCancel ? onApproveCancel(booking) : handleStatusUpdate(booking.id, "cancelled")}
                               isLoading={isUpdatePending}
                             >
                               Aprovar Cancelamento
