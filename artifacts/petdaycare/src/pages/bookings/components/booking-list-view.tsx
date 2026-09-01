@@ -124,7 +124,11 @@ export function BookingListView({
     <>
       {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
       <div className="md:hidden divide-y divide-border">
-        {bookings.map((booking) => (
+        {bookings.map((booking) => {
+          const bookingPet = pets?.find((p) => p.id === booking.petId);
+          const hasAllergy = Boolean(bookingPet?.allergies && bookingPet.allergies.trim().length > 0);
+          const hasSpecialNeeds = Boolean(bookingPet?.specialNeeds && bookingPet.specialNeeds.trim().length > 0);
+          return (
           <div
             key={booking.id}
             id={`booking-${booking.id}`}
@@ -133,15 +137,31 @@ export function BookingListView({
             {/* Row 1 & 2: Pet Name, Photo, Tutor & Badges */}
             <div className="flex items-start gap-3">
               <div className="h-10 w-10 shrink-0 rounded-full bg-secondary overflow-hidden flex items-center justify-center">
-                {pets?.find((p) => p.id === booking.petId)?.photoUrl ? (
-                  <img src={resolvePhotoUrl(pets.find((p) => p.id === booking.petId)?.photoUrl) || undefined} alt={booking.petName || undefined} className="h-full w-full object-cover" />
+                {bookingPet?.photoUrl ? (
+                  <img src={resolvePhotoUrl(bookingPet.photoUrl) || undefined} alt={booking.petName || undefined} className="h-full w-full object-cover" />
                 ) : (
                   <PawPrint className="h-5 w-5 text-muted-foreground opacity-50" />
                 )}
               </div>
               <div className="flex-1 min-w-0 flex flex-col gap-1">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-2">
-                  <h3 className="text-base font-semibold text-foreground truncate leading-tight">{booking.petName}</h3>
+                  <div>
+                    <h3 className="text-base font-semibold text-foreground truncate leading-tight">{booking.petName}</h3>
+                    {(hasAllergy || hasSpecialNeeds) && (
+                      <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                        {hasAllergy && (
+                          <Badge variant="destructive" className="h-4 px-1.5 text-[9px] font-medium leading-none">
+                            Alergia
+                          </Badge>
+                        )}
+                        {hasSpecialNeeds && (
+                          <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                            Cuidados especiais
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge variant={statusVariant[booking.status] || "secondary"} className="h-5 px-1.5 text-[10px]">
                       {statusLabel[booking.status] || booking.status}
@@ -346,7 +366,8 @@ export function BookingListView({
               )}
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
 
       {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
@@ -362,10 +383,28 @@ export function BookingListView({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {bookings.map((booking) => (
+            {bookings.map((booking) => {
+              const bookingPet = pets?.find((p) => p.id === booking.petId);
+              const hasAllergy = Boolean(bookingPet?.allergies && bookingPet.allergies.trim().length > 0);
+              const hasSpecialNeeds = Boolean(bookingPet?.specialNeeds && bookingPet.specialNeeds.trim().length > 0);
+              return (
               <tr key={booking.id} className="hover:bg-secondary transition-colors">
                 <td className="px-6 py-4">
                   <p className="font-medium text-foreground">{booking.petName}</p>
+                  {(hasAllergy || hasSpecialNeeds) && (
+                    <div className="flex items-center gap-1 flex-wrap mt-1">
+                      {hasAllergy && (
+                        <Badge variant="destructive" className="h-4 px-1.5 text-[9px] font-medium leading-none">
+                          Alergia
+                        </Badge>
+                      )}
+                      {hasSpecialNeeds && (
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                          Cuidados especiais
+                        </Badge>
+                      )}
+                    </div>
+                  )}
                   {!isTutor && (
                     <p className="text-xs text-muted-foreground mt-0.5">{booking.tutorName || "—"}</p>
                   )}
@@ -536,7 +575,8 @@ export function BookingListView({
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+          })}
           </tbody>
         </table>
       </div>

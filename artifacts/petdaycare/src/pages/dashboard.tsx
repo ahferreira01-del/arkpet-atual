@@ -58,6 +58,7 @@ import {
   Heart,
   Gamepad2,
   RefreshCw,
+  Receipt,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { format } from "date-fns";
@@ -136,6 +137,24 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
   const { data: tasks } = useListTasks(crecheId, { status: "pending" as ListTasksStatus, date: todayBrazil() });
   const { data: staff } = useListCrecheStaff(crecheId);
 
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const { data: awaitingReceiptsData, isSuccess: awaitingSuccess } = useQuery({
+    queryKey: ["financial-awaiting-count", crecheId],
+    queryFn: async () => {
+      if (!crecheId) return { count: 0 };
+      const r = await fetch(
+        `/api/creches/${crecheId}/financial/invoices/awaiting-count`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!r.ok) throw new Error("Falha ao buscar comprovantes pendentes");
+      return r.json();
+    },
+    enabled: Boolean(crecheId && user?.role === "creche_admin"),
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+  const awaitingCount = awaitingSuccess && typeof awaitingReceiptsData?.count === "number" ? awaitingReceiptsData.count : 0;
+
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
   const firstName = user?.name?.split(" ")[0] || "Admin";
@@ -168,6 +187,35 @@ function CrecheDashboard({ crecheId, user }: { crecheId: number; user: any }) {
         </Link>
       </div>
 
+      {/* Financial attention alert */}
+      {awaitingCount > 0 && (
+        <Link href="/financial?tab=receipts" className="block">
+          <div
+            role="alert"
+            className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4 cursor-pointer hover:bg-amber-500/15 transition-colors shadow-sm"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                <Receipt className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  {awaitingCount === 1
+                    ? "1 comprovante aguardando validação"
+                    : `${awaitingCount} comprovantes aguardando validação`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Clique para revisar e dar baixa nas faturas PIX
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium shrink-0">
+              <span>Revisar</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </div>
+          </div>
+        </Link>
+      )}
 
       <div className="mt-4 sm:mt-6">
         <Tabs 

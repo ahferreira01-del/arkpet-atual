@@ -1057,4 +1057,84 @@ describe("Bookings Page Characterization Tests (R33F.B8)", () => {
       );
     });
   });
+
+  // TEST 38 — EVO-R34-002: renders Alergia badge when pet has allergies
+  it("38. renders Alergia badge when booking pet has non-empty allergies", async () => {
+    (apiClientReact.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 101, name: "Rex", tutorId: 1, tutorName: "Carlos Tutor", photoUrl: "/rex.jpg", isCheckedIn: false, allergies: "Frango e pólen" },
+          { id: 102, name: "Luna", tutorId: 2, tutorName: "Ana Tutora", photoUrl: "/luna.jpg", isCheckedIn: true },
+          { id: 103, name: "Thor", tutorId: 3, tutorName: "Marcos Tutor", photoUrl: null, isCheckedIn: true },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    const allergyBadges = await screen.findAllByText("Alergia");
+    expect(allergyBadges.length).toBeGreaterThanOrEqual(1);
+    expect(allergyBadges[0]).toBeInTheDocument();
+  });
+
+  // TEST 39 — EVO-R34-002: renders Cuidados especiais badge when pet has specialNeeds
+  it("39. renders Cuidados especiais badge when booking pet has non-empty specialNeeds", async () => {
+    (apiClientReact.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 101, name: "Rex", tutorId: 1, tutorName: "Carlos Tutor", photoUrl: "/rex.jpg", isCheckedIn: false, specialNeeds: "Cadeirante / reabilitação" },
+          { id: 102, name: "Luna", tutorId: 2, tutorName: "Ana Tutora", photoUrl: "/luna.jpg", isCheckedIn: true },
+          { id: 103, name: "Thor", tutorId: 3, tutorName: "Marcos Tutor", photoUrl: null, isCheckedIn: true },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    const specialNeedsBadges = await screen.findAllByText("Cuidados especiais");
+    expect(specialNeedsBadges.length).toBeGreaterThanOrEqual(1);
+    expect(specialNeedsBadges[0]).toBeInTheDocument();
+  });
+
+  // TEST 40 — EVO-R34-002: renders both badges in presentation order when pet has both fields
+  it("40. renders both Alergia and Cuidados especiais badges when booking pet has both fields", async () => {
+    (apiClientReact.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 101, name: "Rex", tutorId: 1, tutorName: "Carlos Tutor", photoUrl: "/rex.jpg", isCheckedIn: false, allergies: "Glúten", specialNeeds: "Medo de trovão" },
+          { id: 102, name: "Luna", tutorId: 2, tutorName: "Ana Tutora", photoUrl: "/luna.jpg", isCheckedIn: true },
+          { id: 103, name: "Thor", tutorId: 3, tutorName: "Marcos Tutor", photoUrl: null, isCheckedIn: true },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    const allergyBadges = await screen.findAllByText("Alergia");
+    const specialNeedsBadges = await screen.findAllByText("Cuidados especiais");
+    expect(allergyBadges.length).toBeGreaterThanOrEqual(1);
+    expect(specialNeedsBadges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // TEST 41 — EVO-R34-002: does not render badges when fields are null or whitespace only
+  it("41. does not render medical attention badges when pet medical fields are empty or whitespace", async () => {
+    (apiClientReact.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 101, name: "Rex", tutorId: 1, tutorName: "Carlos Tutor", photoUrl: "/rex.jpg", isCheckedIn: false, allergies: "   ", specialNeeds: "" },
+          { id: 102, name: "Luna", tutorId: 2, tutorName: "Ana Tutora", photoUrl: "/luna.jpg", isCheckedIn: true, allergies: null, specialNeeds: null },
+          { id: 103, name: "Thor", tutorId: 3, tutorName: "Marcos Tutor", photoUrl: null, isCheckedIn: true },
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<Bookings />);
+
+    expect(screen.queryByText("Alergia")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cuidados especiais")).not.toBeInTheDocument();
+  });
 });

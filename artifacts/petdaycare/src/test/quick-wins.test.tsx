@@ -8,6 +8,8 @@ import { FeedTab } from "@/components/feed-tab";
 import FinancialDashboard from "@/pages/financial/index";
 import TutorFinancial from "@/pages/tutor/financial";
 import Chat from "@/pages/chat/index";
+import Dashboard from "@/pages/dashboard";
+import StaffTasks from "@/pages/staff/index";
 import * as authModule from "@/hooks/use-auth";
 import * as toastModule from "@/hooks/use-toast";
 import * as apiClientModule from "@workspace/api-client-react";
@@ -47,6 +49,12 @@ vi.mock("qrcode", () => ({
 vi.mock("@workspace/api-client-react", () => ({
   useListPets: vi.fn(() => ({ data: { items: [] }, isLoading: false })),
   useCreateBooking: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useListBookings: vi.fn(() => ({ data: [], isLoading: false })),
+  useListTasks: vi.fn(() => ({ data: [], isLoading: false })),
+  useGetCrecheStats: vi.fn(() => ({ data: {}, isLoading: false })),
+  useListCrecheStaff: vi.fn(() => ({ data: [], isLoading: false })),
+  useCompleteTask: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useAddFeedPost: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useListFeed: vi.fn(() => ({
     data: [
       {
@@ -395,5 +403,168 @@ describe("R33D.B2 Residual Quick Wins Accessibility & Error Handling Tests", () 
 
     // Verify button resets and is enabled
     expect(loadOlderButton).not.toBeDisabled();
+  });
+});
+
+describe("R34.B1 Operational & Financial Visibility Suite", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Admin User", role: "creche_admin", crecheId: 1 },
+      isLoading: false,
+    });
+  });
+
+  // EVO-R34-001: Creche Dashboard financial attention banner
+  it("renders financial attention alert on CrecheDashboard when awaiting PIX receipts count > 0", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/financial/invoices/awaiting-count")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ count: 3 }),
+        });
+      }
+      if (url.includes("/feed")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ posts: [], nextCursor: null }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    renderWithProviders(<Dashboard />);
+
+    const alertText = await screen.findByText(/3 comprovantes aguardando validação/i);
+    expect(alertText).toBeInTheDocument();
+
+    const link = screen.getByRole("alert").closest("a");
+    expect(link).toHaveAttribute("href", "/financial?tab=receipts");
+
+    global.fetch = originalFetch;
+  });
+
+  it("does not render financial attention alert on CrecheDashboard when awaiting count is 0", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/financial/invoices/awaiting-count")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ count: 0 }),
+        });
+      }
+      if (url.includes("/feed")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ posts: [], nextCursor: null }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    renderWithProviders(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/comprovante.*aguardando validação/i)).not.toBeInTheDocument();
+    });
+
+    global.fetch = originalFetch;
+  });
+
+  it("does not render financial attention alert on CrecheDashboard when query fails", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/financial/invoices/awaiting-count")) {
+        return Promise.reject(new Error("Network failure"));
+      }
+      if (url.includes("/feed")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ posts: [], nextCursor: null }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) });
+    });
+
+    renderWithProviders(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/comprovante.*aguardando validação/i)).not.toBeInTheDocument();
+    });
+
+    global.fetch = originalFetch;
+  });
+
+  // EVO-R34-002: Staff Tasks medical attention badges
+  it("renders Alergia and Cuidados especiais badges on StaffTasks for pets with medical flags", async () => {
+    (apiClientModule.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 10, name: "Bob", tutorId: 1, isCheckedIn: true, allergies: "Frango", specialNeeds: "Medicação pós-cirúrgica" },
+          { id: 20, name: "Mel", tutorId: 2, isCheckedIn: true, allergies: null, specialNeeds: null },
+        ],
+      },
+      isLoading: false,
+    });
+
+    (apiClientModule.useListTasks as any).mockReturnValue({
+      data: [
+        {
+          id: 1,
+          petId: 10,
+          petName: "Bob",
+          title: "Alimentação especial",
+          type: "feeding",
+          priority: "high",
+          scheduledFor: "2026-08-26T12:00:00.000Z",
+          status: "pending",
+          tutorId: 1,
+          tutorName: "Maria Tutora",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<StaffTasks />);
+
+    const allergyBadge = await screen.findByText("Alergia");
+    const specialNeedsBadge = await screen.findByText("Cuidados especiais");
+
+    expect(allergyBadge).toBeInTheDocument();
+    expect(specialNeedsBadge).toBeInTheDocument();
+  });
+
+  it("does not render medical badges on StaffTasks when pet has no allergies or specialNeeds", async () => {
+    (apiClientModule.useListPets as any).mockReturnValue({
+      data: {
+        items: [
+          { id: 20, name: "Mel", tutorId: 2, allergies: "  ", specialNeeds: null },
+        ],
+      },
+      isLoading: false,
+    });
+
+    (apiClientModule.useListTasks as any).mockReturnValue({
+      data: [
+        {
+          id: 2,
+          petId: 20,
+          petName: "Mel",
+          title: "Passeio da tarde",
+          type: "walk",
+          priority: "medium",
+          scheduledFor: "2026-08-26T15:00:00.000Z",
+          status: "pending",
+          tutorId: 2,
+          tutorName: "João Tutor",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<StaffTasks />);
+
+    expect(screen.queryByText("Alergia")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cuidados especiais")).not.toBeInTheDocument();
   });
 });

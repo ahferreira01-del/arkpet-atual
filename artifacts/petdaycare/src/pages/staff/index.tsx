@@ -674,7 +674,12 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="pt-2 pb-4 space-y-3">
-                    {group.tasks.map(task => (
+                    {group.tasks.map(task => {
+                      const petsList = Array.isArray(pets) ? pets : (pets as any)?.items || [];
+                      const taskPet = petsList.find((p: any) => p.id === task.petId);
+                      const hasAllergy = Boolean(taskPet?.allergies && taskPet.allergies.trim().length > 0);
+                      const hasSpecialNeeds = Boolean(taskPet?.specialNeeds && taskPet.specialNeeds.trim().length > 0);
+                      return (
                       <div
                         key={task.id}
                         id={`task-${task.id}`}
@@ -695,6 +700,16 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                             {task.priority && (
                               <Badge variant={task.priority === "high" ? "destructive" : "secondary"} className="text-xs">
                                 {priorityLabel[task.priority] || task.priority}
+                              </Badge>
+                            )}
+                            {hasAllergy && (
+                              <Badge variant="destructive" className="text-xs">
+                                Alergia
+                              </Badge>
+                            )}
+                            {hasSpecialNeeds && (
+                              <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                                Cuidados especiais
                               </Badge>
                             )}
                           </div>
@@ -730,7 +745,8 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                           </Button>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                   </AccordionContent>
                 </AccordionItem>
               ))}
