@@ -952,4 +952,94 @@ describe("Catalogue & StockHistoryModal Dedicated Characterization Tests (R33F.B
     expect(screen.queryByRole("button", { name: /Ordenar por/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /Ordem/i })).not.toBeInTheDocument();
   });
+
+  // Strict Integer Input Characterization Tests (R33M.B1 - FORM-R33M-001)
+  it("rejects decimal and scientific notation for stockQuantity and reorderThreshold with modal error", () => {
+    renderWithProviders(<FinancialDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Novo Item/i }));
+
+    fireEvent.change(screen.getByPlaceholderText("Ex: Ração Premium 10kg"), { target: { value: "Ração Teste" } });
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "100.00" } });
+    fireEvent.change(screen.getByPlaceholderText("Quantidade atual"), { target: { value: "1.9" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Item" }));
+
+    expect(screen.getByText("Quantidade em estoque deve ser um número inteiro maior ou igual a zero.")).toBeInTheDocument();
+    expect(mockCreateMutate).not.toHaveBeenCalled();
+
+    // Test scientific notation 1e2
+    fireEvent.change(screen.getByPlaceholderText("Quantidade atual"), { target: { value: "1e2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Item" }));
+    expect(screen.getByText("Quantidade em estoque deve ser um número inteiro maior ou igual a zero.")).toBeInTheDocument();
+    expect(mockCreateMutate).not.toHaveBeenCalled();
+
+    // Test reorderThreshold decimal
+    fireEvent.change(screen.getByPlaceholderText("Quantidade atual"), { target: { value: "10" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex: 5"), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Item" }));
+    expect(screen.getByText("Limite para reposição deve ser um número inteiro maior ou igual a zero.")).toBeInTheDocument();
+    expect(mockCreateMutate).not.toHaveBeenCalled();
+  });
+
+  it("rejects decimal and scientific notation for package creditsAmount", () => {
+    renderWithProviders(<FinancialDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Novo Item/i }));
+
+    // Switch to package
+    const typeSelect = screen.getByRole("combobox");
+    fireEvent.change(typeSelect, { target: { value: "package" } });
+
+    fireEvent.change(screen.getByPlaceholderText("Ex: Ração Premium 10kg"), { target: { value: "Pacote Mensal" } });
+    fireEvent.change(screen.getByPlaceholderText("0,00"), { target: { value: "500.00" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex: 20"), { target: { value: "1.9" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Item" }));
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Erro",
+        description: "Informe a quantidade de diárias (créditos) do pacote",
+        variant: "destructive",
+      })
+    );
+    expect(mockCreateMutate).not.toHaveBeenCalled();
+
+    // Test scientific notation 1e2
+    fireEvent.change(screen.getByPlaceholderText("Ex: 20"), { target: { value: "1e2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar Item" }));
+    expect(mockCreateMutate).not.toHaveBeenCalled();
+  });
+
+  it("rejects decimal and scientific notation in stock adjustment delta", async () => {
+    renderWithProviders(<FinancialDashboard />);
+
+    openCardDropdown(0);
+    const historyMenuItem = await screen.findByText("Histórico");
+    fireEvent.click(historyMenuItem);
+
+    const deltaInput = screen.getByPlaceholderText("ex: -3");
+    const reasonInput = screen.getByPlaceholderText("ex: Quebra, recontagem...");
+
+    // Test decimal 1.9
+    fireEvent.change(deltaInput, { target: { value: "1.9" } });
+    fireEvent.change(reasonInput, { target: { value: "Ajuste decimal" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Erro",
+        description: "Informe um delta diferente de zero.",
+        variant: "destructive",
+      })
+    );
+    expect(mockAdjustMutate).not.toHaveBeenCalled();
+
+    // Test scientific notation 1e2
+    fireEvent.change(deltaInput, { target: { value: "1e2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    expect(mockAdjustMutate).not.toHaveBeenCalled();
+  });
 });

@@ -31,7 +31,7 @@ import {
 } from "@/hooks/use-financial";
 import { formatCentsToBRL, parseReaisInputToCents } from "@/lib/money";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
-import { uploadFileDirect } from "@/lib/utils";
+import { uploadFileDirect, parseStrictInteger } from "@/lib/utils";
 import { CatalogueSmartIndicators } from "@/components/financial/smart-indicators";
 
 function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: number; itemId: number; itemName: string; onClose: () => void }) {
@@ -44,8 +44,8 @@ function StockHistoryModal({ crecheId, itemId, itemName, onClose }: { crecheId: 
   const [adjReason, setAdjReason] = useState("");
 
   const handleAdjust = () => {
-    const delta = parseInt(adjDelta);
-    if (!adjDelta || isNaN(delta) || delta === 0) {
+    const delta = parseStrictInteger(adjDelta, { allowNegative: true });
+    if (delta === null || delta === 0) {
       toast({ title: "Erro", description: "Informe um delta diferente de zero.", variant: "destructive" });
       return;
     }
@@ -319,9 +319,41 @@ export function CatalogueTab({ crecheId }: { crecheId: number }) {
         }
       }
     }
-    if (form.type === "package" && (!form.creditsAmount || parseInt(form.creditsAmount) <= 0)) {
-      toast({ title: "Erro", description: "Informe a quantidade de diárias (créditos) do pacote", variant: "destructive" });
-      return;
+    let stockQuantityNum: number | null = null;
+    if (form.type === "product" && form.stockQuantity && form.stockQuantity.trim() !== "") {
+      stockQuantityNum = parseStrictInteger(form.stockQuantity, { min: 0 });
+      if (stockQuantityNum === null) {
+        setModalError("Quantidade em estoque deve ser um número inteiro maior ou igual a zero.");
+        return;
+      }
+    }
+
+    let reorderThresholdNum: number | null = null;
+    if (form.type === "product" && form.reorderThreshold && form.reorderThreshold.trim() !== "") {
+      reorderThresholdNum = parseStrictInteger(form.reorderThreshold, { min: 0 });
+      if (reorderThresholdNum === null) {
+        setModalError("Limite para reposição deve ser um número inteiro maior ou igual a zero.");
+        return;
+      }
+    }
+
+    let creditsAmountNum: number | null = null;
+    if (form.type === "package") {
+      creditsAmountNum = parseStrictInteger(form.creditsAmount, { min: 1 });
+      if (creditsAmountNum === null) {
+        toast({ title: "Erro", description: "Informe a quantidade de diárias (créditos) do pacote", variant: "destructive" });
+        return;
+      }
+    }
+
+    let maxPetsPerDayNum = 1;
+    if (form.type === "package" && form.maxPetsPerDay && form.maxPetsPerDay.trim() !== "") {
+      const parsedMax = parseStrictInteger(form.maxPetsPerDay, { min: 1 });
+      if (parsedMax === null) {
+        toast({ title: "Erro", description: "Limite de pets por dia deve ser um número inteiro maior ou igual a 1.", variant: "destructive" });
+        return;
+      }
+      maxPetsPerDayNum = parsedMax;
     }
 
     const payload = {
@@ -329,10 +361,10 @@ export function CatalogueTab({ crecheId }: { crecheId: number }) {
       type: form.type,
       description: form.description,
       price: priceCents,
-      stockQuantity: form.type === "product" && form.stockQuantity ? parseInt(form.stockQuantity) : null,
-      reorderThreshold: form.type === "product" && form.reorderThreshold !== "" ? parseInt(form.reorderThreshold) : null,
-      creditsAmount: form.type === "package" && form.creditsAmount ? parseInt(form.creditsAmount) : null,
-      maxPetsPerDay: form.type === "package" && form.maxPetsPerDay ? parseInt(form.maxPetsPerDay) : 1,
+      stockQuantity: form.type === "product" ? stockQuantityNum : null,
+      reorderThreshold: form.type === "product" ? reorderThresholdNum : null,
+      creditsAmount: form.type === "package" ? creditsAmountNum : null,
+      maxPetsPerDay: form.type === "package" ? maxPetsPerDayNum : 1,
       pricingBySize: (form.type === "service" || form.type === "day_use") ? {
         small: priceSmallCents !== null ? priceSmallCents : priceCents,
         medium: priceMediumCents !== null ? priceMediumCents : priceCents,

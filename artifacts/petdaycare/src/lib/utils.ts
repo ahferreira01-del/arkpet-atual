@@ -190,3 +190,31 @@ export function getInitials(name: string) {
     .toUpperCase()
     .substring(0, 2);
 }
+
+/**
+ * Strictly parses an integer input string without prefix-truncating non-digit suffixes.
+ * Rejects decimals (e.g. "1.5", "1,9"), scientific notation (e.g. "1e2"), and arbitrary text.
+ *
+ * @param value The value from an input or prompt.
+ * @param options Configuration for allowed signs and range bounds.
+ * @returns A safe integer number, or null if the input is invalid, empty, or out-of-bounds.
+ */
+export function parseStrictInteger(
+  value: string | number | undefined | null,
+  options?: { min?: number; max?: number; allowNegative?: boolean }
+): number | null {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (str === "") return null;
+
+  const isValid = options?.allowNegative ? /^-?\d+$/.test(str) : /^\d+$/.test(str);
+  if (!isValid) return null;
+
+  const num = Number(str);
+  if (!Number.isSafeInteger(num)) return null;
+
+  if (options?.min !== undefined && num < options.min) return null;
+  if (options?.max !== undefined && num > options.max) return null;
+
+  return num;
+}

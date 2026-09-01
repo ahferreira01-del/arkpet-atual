@@ -211,9 +211,17 @@ export default function NewBooking() {
     // Primary catalogue item ID (null for virtual package entries id < 0)
     const primaryCatalogueItemId = selectedService.id > 0 ? selectedService.id : null;
 
+    const attemptedPetIds = [...selectedPetIds];
+    if (attemptedPetIds.length === 0) return;
+
+    const getPetName = (id: number) => {
+      const found = pets?.find((p: any) => p.id === id);
+      return found?.name || `Pet #${id}`;
+    };
+
     try {
-      await Promise.all(
-        selectedPetIds.map((petId) => {
+      const results = await Promise.allSettled(
+        attemptedPetIds.map((petId) => {
           const { price } = getPetPrice(petId);
           return createMutation.mutateAsync({
             crecheId,
@@ -233,23 +241,57 @@ export default function NewBooking() {
         }),
       );
 
-      if (crecheId) {
+      const successfulPetIds: number[] = [];
+      const failedPetIds: number[] = [];
+
+      results.forEach((res, index) => {
+        const petId = attemptedPetIds[index];
+        if (res.status === "fulfilled") {
+          successfulPetIds.push(petId);
+        } else {
+          failedPetIds.push(petId);
+        }
+      });
+
+      if (successfulPetIds.length > 0 && crecheId) {
         queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
         queryClient.invalidateQueries({ queryKey: getGetCrecheStatsQueryKey(crecheId) });
         queryClient.invalidateQueries({ queryKey: ["service-credits", crecheId] });
         queryClient.invalidateQueries({ queryKey: ["packages-balance", crecheId] });
       }
-      toast({
-        title: "Reserva Efetuada",
-        description:
-          selectedPetIds.length > 1
-            ? `Criadas ${selectedPetIds.length} reservas com sucesso.`
-            : "Reserva criada com sucesso.",
-      });
-      setLocation("/bookings");
+
+      if (failedPetIds.length === 0) {
+        toast({
+          title: "Reserva Efetuada",
+          description:
+            attemptedPetIds.length > 1
+              ? `Criadas ${attemptedPetIds.length} reservas com sucesso.`
+              : "Reserva criada com sucesso.",
+        });
+        setLocation("/bookings");
+      } else if (successfulPetIds.length > 0) {
+        setSelectedPetIds(failedPetIds);
+        const successNames = successfulPetIds.map(getPetName).join(", ");
+        const failNames = failedPetIds.map(getPetName).join(", ");
+        toast({
+          title: "Reserva parcial criada",
+          description: `Reservas criadas para: ${successNames}. Não foi possível criar para: ${failNames}.`,
+          variant: "default",
+        });
+      } else {
+        const firstReason = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+        const raw: string = firstReason?.reason?.message ?? "";
+        const isHtmlError =
+          raw.includes("<!DOCTYPE") || raw.includes("<html") || raw.includes("text/html");
+        toast({
+          title: "Erro ao criar reserva",
+          description: isHtmlError
+            ? "Não foi possível conectar ao servidor. Aguarde alguns segundos e tente novamente."
+            : raw || "Ocorreu um erro inesperado.",
+          variant: "destructive",
+        });
+      }
     } catch (err: any) {
-      // Se o servidor retornou HTML (ex: proxy 404 durante reinício),
-      // mostramos uma mensagem amigável em vez do HTML bruto.
       const raw: string = err?.message ?? "";
       const isHtmlError =
         raw.includes("<!DOCTYPE") || raw.includes("<html") || raw.includes("text/html");

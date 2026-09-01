@@ -607,4 +607,30 @@ describe("Receivables & InvoiceERPView Dedicated Characterization Tests (R33F.B6
     const cancelButtons = screen.getAllByText("Cancelar");
     expect(cancelButtons[0]).toBeDisabled();
   });
+
+  // TEST 23 — STRICT INTEGER REFUND VALIDATION (R33M.B1 - FORM-R33M-001)
+  it("rejects decimal and scientific notation for refund quantity without invoking mutation", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    const promptSpy = vi.spyOn(window, "prompt");
+
+    renderWithProviders(<FinancialDashboard />);
+
+    const detailsButtons = screen.getAllByText("Detalhes");
+    fireEvent.click(detailsButtons[0]);
+
+    const itemRefundButtons = screen.getAllByText("Estornar");
+    const modalItemRefundBtn = itemRefundButtons[itemRefundButtons.length - 1];
+
+    // Decimal "1.9"
+    promptSpy.mockReturnValue("1.9");
+    fireEvent.click(modalItemRefundBtn);
+    expect(alertSpy).toHaveBeenCalledWith("Quantidade inválida.");
+    expect(mockRefundItemMutate).not.toHaveBeenCalled();
+
+    // Scientific "1e2"
+    promptSpy.mockReturnValue("1e2");
+    fireEvent.click(modalItemRefundBtn);
+    expect(alertSpy).toHaveBeenCalledWith("Quantidade inválida.");
+    expect(mockRefundItemMutate).not.toHaveBeenCalled();
+  });
 });

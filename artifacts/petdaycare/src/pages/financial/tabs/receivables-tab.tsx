@@ -16,6 +16,7 @@ import {
 } from "@/hooks/use-financial";
 import { useFinancialContext } from "@/components/financial/financial-context";
 import { buildMediaSrc, getMediaToken } from "@/features/feed/utils/media.utils";
+import { parseStrictInteger } from "@/lib/utils";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -215,8 +216,8 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                         onClick={() => {
                           const refundQtyStr = prompt(`Quantos itens deseja estornar? (Máximo: ${qty})`, "1");
                           if (!refundQtyStr) return;
-                          const refundQty = parseInt(refundQtyStr);
-                          if (isNaN(refundQty) || refundQty < 1 || refundQty > qty) {
+                          const refundQty = parseStrictInteger(refundQtyStr, { min: 1, max: qty });
+                          if (refundQty === null) {
                             alert("Quantidade inválida.");
                             return;
                           }

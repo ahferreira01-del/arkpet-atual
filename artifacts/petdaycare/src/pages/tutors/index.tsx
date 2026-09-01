@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { resolvePhotoUrl } from "@/lib/utils";
+import { resolvePhotoUrl, parseStrictInteger } from "@/lib/utils";
 import { PetAvatar } from "@/components/pet-avatar";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -251,9 +251,19 @@ export default function TutorsPage() {
     e.preventDefault();
     if (!crecheId || !form.name.trim() || !form.email.trim()) return;
     try {
+      let mensalidadeDiaNum: number | undefined = undefined;
+      if (form.mensalidadeDia && form.mensalidadeDia.trim() !== "") {
+        const parsed = parseStrictInteger(form.mensalidadeDia, { min: 1, max: 31 });
+        if (parsed === null) {
+          toast({ title: "Erro", description: "Dia de vencimento da mensalidade deve ser um número inteiro entre 1 e 31.", variant: "destructive" });
+          return;
+        }
+        mensalidadeDiaNum = parsed;
+      }
+
       const payload = {
         ...form,
-        mensalidadeDia: form.mensalidadeDia ? parseInt(form.mensalidadeDia) : undefined,
+        mensalidadeDia: mensalidadeDiaNum,
         cpf: form.cpf.trim() || undefined,
       };
       const created = await createMutation.mutateAsync(payload);
