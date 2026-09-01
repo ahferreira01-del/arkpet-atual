@@ -10,12 +10,34 @@ import { useLocation } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useCheckIn,
+  useListTasks,
   getListBookingsQueryKey,
   getListPetsQueryKey,
   getGetCrecheStatsQueryKey,
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
+import { todayBrazil } from "@/lib/date-utils";
 import jsQR from "jsqr";
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  feeding: "Alimentação",
+  medication: "Medicação",
+  grooming: "Banho/Tosa",
+  walk: "Passeio",
+  play: "Brincadeira",
+  health_check: "Checagem de saúde",
+  other: "Outro",
+};
+
+const TASK_TYPE_ORDER = [
+  "feeding",
+  "medication",
+  "walk",
+  "grooming",
+  "play",
+  "health_check",
+  "other",
+];
 
 type ScanState = "idle" | "scanning" | "found" | "checking_in" | "checked_in" | "error";
 
@@ -36,6 +58,25 @@ export default function QrScanner() {
   const [cameraError, setCameraError] = useState<string>("");
 
   const checkInMutation = useCheckIn();
+
+  const today = todayBrazil();
+  const { data: tasks, isLoading: tasksLoading, isError: tasksError } = useListTasks(
+    crecheId,
+    { status: "pending", date: today }
+  );
+
+  const petTasks = petInfo && tasks && !tasksLoading && !tasksError
+    ? tasks.filter((t: any) => t.petId === petInfo.id)
+    : null;
+
+  const groupedPetTasks = petTasks && petTasks.length > 0
+    ? TASK_TYPE_ORDER
+        .map((type) => {
+          const count = petTasks.filter((t: any) => t.type === type).length;
+          return count > 0 ? { type, label: TASK_TYPE_LABELS[type] || type, count } : null;
+        })
+        .filter(Boolean) as { type: string; label: string; count: number }[]
+    : [];
 
   const stopCamera = useCallback(() => {
     cancelAnimationFrame(animRef.current);
@@ -255,6 +296,27 @@ export default function QrScanner() {
                     <Badge variant="destructive">Sem Reserva</Badge>
                   )}
                 </div>
+
+                {petTasks !== null && (
+                  <div className="pt-2 border-t border-zinc-800/80 mt-2 space-y-1.5">
+                    <p className="text-xs font-medium text-zinc-400">Tarefas pendentes hoje</p>
+                    {petTasks.length > 0 ? (
+                      <div className="flex gap-1.5 justify-center flex-wrap">
+                        {groupedPetTasks.map((item) => (
+                          <Badge
+                            key={item.type}
+                            variant="secondary"
+                            className="bg-zinc-800/90 text-zinc-200 border-zinc-700 text-xs px-2 py-0.5"
+                          >
+                            {item.count}x {item.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-400">Nenhuma tarefa pendente para hoje</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -277,6 +339,27 @@ export default function QrScanner() {
                   <h2 className="text-xl font-display font-bold text-white">{petInfo.name}</h2>
                   <p className="text-sm font-medium text-emerald-400 mt-1">Check-in Concluído</p>
                 </div>
+
+                {petTasks !== null && (
+                  <div className="pt-2 border-t border-zinc-800/80 mt-2 space-y-1.5">
+                    <p className="text-xs font-medium text-zinc-400">Tarefas pendentes hoje</p>
+                    {petTasks.length > 0 ? (
+                      <div className="flex gap-1.5 justify-center flex-wrap">
+                        {groupedPetTasks.map((item) => (
+                          <Badge
+                            key={item.type}
+                            variant="secondary"
+                            className="bg-zinc-800/90 text-zinc-200 border-zinc-700 text-xs px-2 py-0.5"
+                          >
+                            {item.count}x {item.label}
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-zinc-400">Nenhuma tarefa pendente para hoje</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
