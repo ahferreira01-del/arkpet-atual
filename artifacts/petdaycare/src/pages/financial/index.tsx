@@ -8,7 +8,7 @@ import { useSearch, useLocation } from "wouter";
 import { useState } from "react";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { POSSaleModal } from "@/components/financial/pos-sale-modal";
-import { ExecutiveDashboardTab, SalesDashboardTab, ReportsCentralTab } from "./dashboards";
+import { ReportsCentralTab } from "./dashboards";
 import { CashFlowTab } from "./tabs/cash-flow-tab";
 import { AuditTab } from "./tabs/audit-tab";
 import { ReceiptsTab } from "./tabs/receipts-tab";

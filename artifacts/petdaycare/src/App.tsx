@@ -25,7 +25,6 @@ const PetsDirectory = React.lazy(() => import("./pages/pets/index"));
 const PetDetail = React.lazy(() => import("./pages/pets/detail"));
 const Bookings = React.lazy(() => import("./pages/bookings/index"));
 const NewBooking = React.lazy(() => import("./pages/bookings/new"));
-const StaffDashboard = React.lazy(() => import("./pages/staff/index"));
 const AdminDashboard = React.lazy(() => import("./pages/admin/index"));
 const AdminCreches = React.lazy(() => import("./pages/admin/creches"));
 const Chat = React.lazy(() => import("./pages/chat/index"));
