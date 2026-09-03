@@ -5,6 +5,7 @@ import PetsDirectory from "@/pages/pets/index";
 import PetDetail from "@/pages/pets/detail";
 import * as authModule from "@/hooks/use-auth";
 import * as apiClientModule from "@workspace/api-client-react";
+import { todayBrazil } from "@/lib/date-utils";
 
 // Mock ResizeObserver
 global.ResizeObserver = class {
@@ -24,6 +25,11 @@ vi.mock("@/hooks/use-toast", () => ({
 
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-medical", () => ({
+  usePetIncidents: vi.fn(() => ({ data: [], isLoading: false })),
+  useCreateIncident: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 vi.mock("@/hooks/use-financial", () => ({
@@ -107,6 +113,12 @@ vi.mock("@workspace/api-client-react", () => ({
   })),
   getGetCrecheStatsQueryKey: vi.fn((crecheId) => ["stats", crecheId]),
   getListUsersQueryKey: vi.fn(() => ["users"]),
+  useListVaccines: vi.fn(() => ({ data: [], isLoading: false })),
+  useListMedications: vi.fn(() => ({ data: [], isLoading: false })),
+  useAddVaccine: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useAddMedication: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  getListVaccinesQueryKey: vi.fn((crecheId, petId) => ["vaccines", crecheId, petId]),
+  getListMedicationsQueryKey: vi.fn((crecheId, petId) => ["medications", crecheId, petId]),
 }));
 
 describe("PetsDirectory (/pets) — Characterization Suite", () => {
@@ -502,5 +514,205 @@ describe("PetDetail (/pets/:id) — EVO-R35-002 Direct Tutor Chat Shortcut Suite
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Mensagem/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Mensagem/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("PetDetail (/pets/:id) — EVO-R35-003 Vaccine Expiry & Overview Gap Characterization Suite", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Admin Test", role: "creche_admin", crecheId: 10 },
+      isLoading: false,
+    });
+    (apiClientModule.useGetPet as any).mockImplementation((_crecheId: number, id: number) => {
+      const p = mockPets.find((pet) => pet.id === id);
+      return { data: p ?? null, isLoading: false };
+    });
+    (apiClientModule.useListBookings as any).mockReturnValue({
+      data: { items: [] },
+      isLoading: false,
+    });
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+  });
+
+  it("17. EVO-R35-003 Case 1: no vaccines — Saúde shows no Vencida, Overview shows no Vacina vencida", async () => {
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Overview baseline: no Vacina vencida warning
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Saúde contract: switch to Saúde tab, empty state displayed and no Vencida badge
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("Sem vacinas")).toBeInTheDocument();
+    expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
+  });
+
+  it("18. EVO-R35-003 Case 2: future-due vaccine — Saúde shows no Vencida, Overview shows no Vacina vencida", async () => {
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [
+        {
+          id: 10,
+          petId: 1,
+          crecheId: 10,
+          name: "V8/V10",
+          appliedDate: "2025-01-01",
+          nextDueDate: "2099-12-31",
+          veterinarian: "Dra. Paula",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Overview baseline: no Vacina vencida warning
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Saúde contract: switch to Saúde tab, vaccine visible, no Vencida badge
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("V8/V10")).toBeInTheDocument();
+    expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
+  });
+
+  it("19. EVO-R35-003 Case 3: due-today vaccine (boundary) — Saúde shows no Vencida, Overview shows no Vacina vencida", async () => {
+    const today = todayBrazil();
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [
+        {
+          id: 11,
+          petId: 1,
+          crecheId: 10,
+          name: "Antirrábica",
+          appliedDate: "2025-09-03",
+          nextDueDate: today,
+          veterinarian: "Dr. Marcos",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Overview baseline: no Vacina vencida warning (today is still valid)
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Saúde contract: switch to Saúde tab, due today is NOT expired under existing dueDateStr < today rule
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("Antirrábica")).toBeInTheDocument();
+    expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
+  });
+
+  it("20. EVO-R35-003 Case 4: past-due vaccine — Saúde shows Vencida, Overview currently has NO Vacina vencida (pre-feature gap)", async () => {
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [
+        {
+          id: 12,
+          petId: 1,
+          crecheId: 10,
+          name: "Gripe Canina",
+          appliedDate: "2019-01-01",
+          nextDueDate: "2020-01-01",
+          veterinarian: "Dra. Carla",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Pre-feature Overview gap: Overview does NOT surface Vacina vencida yet
+    // [TRANSITION ANCHOR: will change to toBeInTheDocument() in R35.E implementation]
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Existing Saúde contract: past-due vaccine correctly displays Vencida badge
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("Gripe Canina")).toBeInTheDocument();
+    expect(screen.getByText("Vencida")).toBeInTheDocument();
+  });
+
+  it("21. EVO-R35-003 Case 5: multiple vaccines with one past-due — Saúde classifies expired record as Vencida, Overview currently has NO Vacina vencida (pre-feature gap)", async () => {
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [
+        {
+          id: 13,
+          petId: 1,
+          crecheId: 10,
+          name: "V8/V10",
+          appliedDate: "2025-01-01",
+          nextDueDate: "2099-12-31",
+          veterinarian: "Dra. Paula",
+        },
+        {
+          id: 14,
+          petId: 1,
+          crecheId: 10,
+          name: "Giárdia",
+          appliedDate: "2019-06-01",
+          nextDueDate: "2020-06-01",
+          veterinarian: "Dr. Carlos",
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Pre-feature Overview gap: Overview does NOT surface Vacina vencida yet
+    // [TRANSITION ANCHOR: will change to toBeInTheDocument() in R35.E implementation]
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Existing Saúde contract: expired record is classified as Vencida, valid record is not
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("Giárdia")).toBeInTheDocument();
+    expect(screen.getByText("Vencida")).toBeInTheDocument();
+  });
+
+  it("22. EVO-R35-003 Case 6: missing/null nextDueDate — Saúde shows no Vencida, Overview shows no Vacina vencida", async () => {
+    (apiClientModule.useListVaccines as any).mockReturnValue({
+      data: [
+        {
+          id: 15,
+          petId: 1,
+          crecheId: 10,
+          name: "Vacina Sem Data Próxima",
+          appliedDate: "2025-01-01",
+          nextDueDate: null,
+          veterinarian: null,
+        },
+      ],
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+
+    // Overview baseline: null nextDueDate is NOT overdue
+    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+
+    // Saúde contract: switch to Saúde tab, vaccine visible without nextDueDate or Vencida badge
+    const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
+    fireEvent.click(saudeTab);
+    expect(await screen.findByText("Vacina Sem Data Próxima")).toBeInTheDocument();
+    expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
   });
 });
