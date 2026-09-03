@@ -386,7 +386,7 @@ describe("PetsDirectory (/pets) — Characterization Suite", () => {
   });
 });
 
-describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-R35-002)", () => {
+describe("PetDetail (/pets/:id) — EVO-R35-002 Direct Tutor Chat Shortcut Suite", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -412,7 +412,7 @@ describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-
     expect(screen.getAllByText("João Silva").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("13. characterizes PetDetail action baseline: currently renders existing actions (QR Code, Editar Perfil) and has NO Mensagem shortcut", async () => {
+  it("13. EVO-R35-002: renders Mensagem action pointing to /chat?tutor=101 for creche_admin", async () => {
     renderWithProviders(<PetDetail id={1} />);
 
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
@@ -420,13 +420,16 @@ describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-
     expect(screen.getAllByRole("button", { name: /QR Code/i }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: /Editar Perfil/i }).length).toBeGreaterThanOrEqual(1);
 
-    // Pre-feature baseline: zero Mensagem / Conversar action buttons or links
-    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /^Mensagem$/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Conversar$/i })).not.toBeInTheDocument();
+    // Mensagem action rendered with accessible name, exact link href /chat?tutor=101, and no nested button
+    const messageLinks = screen.getAllByRole("link", { name: /Mensagem/i });
+    expect(messageLinks.length).toBeGreaterThanOrEqual(1);
+    for (const link of messageLinks) {
+      expect(link).toHaveAttribute("href", "/chat?tutor=101");
+      expect(link.querySelector("button")).toBeNull();
+    }
   });
 
-  it("14. characterizes PetDetail role baseline: staff and creche_admin see operational actions but no tutor chat button yet", async () => {
+  it("14. EVO-R35-002: renders Mensagem action for staff role, but hides Mensagem for tutor role", async () => {
     // Test for staff
     (authModule.useAuth as any).mockReturnValue({
       user: { id: 2, name: "Staff User", role: "staff", crecheId: 10 },
@@ -435,10 +438,12 @@ describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-
 
     const { unmount } = renderWithProviders(<PetDetail id={1} />);
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    const staffLinks = screen.getAllByRole("link", { name: /Mensagem/i });
+    expect(staffLinks.length).toBeGreaterThanOrEqual(1);
+    expect(staffLinks[0]).toHaveAttribute("href", "/chat?tutor=101");
     unmount();
 
-    // Test for tutor viewing own pet
+    // Test for tutor viewing own pet -> Mensagem must be HIDDEN
     (authModule.useAuth as any).mockReturnValue({
       user: { id: 101, name: "João Silva", role: "tutor", crecheId: 10 },
       isLoading: false,
@@ -446,10 +451,11 @@ describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-
 
     renderWithProviders(<PetDetail id={1} />);
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Mensagem/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mensagem/i })).not.toBeInTheDocument();
   });
 
-  it("15. characterizes PetDetail missing tutor baseline: pet without tutorId handles missing tutor gracefully", async () => {
+  it("15. EVO-R35-002: hides Mensagem action when pet has no tutorId", async () => {
     (apiClientModule.useGetPet as any).mockReturnValue({
       data: {
         id: 99,
@@ -468,19 +474,33 @@ describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-
 
     expect(await screen.findByRole("heading", { name: "SemTutorPet", level: 1 })).toBeInTheDocument();
     expect(screen.getAllByText("Sem tutor").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Mensagem/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mensagem/i })).not.toBeInTheDocument();
   });
 
-  it("16. characterizes PetDetail master_admin contextual baseline: master_admin sees pet details without Mensagem button in current baseline", async () => {
+  it("16. EVO-R35-002: master_admin context rule — shows Mensagem with active creche context, hides Mensagem without creche context", async () => {
+    // Positive case: master_admin with active creche context (crecheId: 10)
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 999, name: "Master Admin", role: "master_admin", crecheId: 10 },
+      isLoading: false,
+    });
+
+    const { unmount } = renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    const maLinks = screen.getAllByRole("link", { name: /Mensagem/i });
+    expect(maLinks.length).toBeGreaterThanOrEqual(1);
+    expect(maLinks[0]).toHaveAttribute("href", "/chat?tutor=101");
+    unmount();
+
+    // Negative case: master_admin without active creche context (crecheId: null) -> MUST HIDE
     (authModule.useAuth as any).mockReturnValue({
       user: { id: 999, name: "Master Admin", role: "master_admin", crecheId: null },
       isLoading: false,
     });
 
     renderWithProviders(<PetDetail id={1} />);
-
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
-    expect(screen.getAllByText("João Silva").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Mensagem/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mensagem/i })).not.toBeInTheDocument();
   });
 });

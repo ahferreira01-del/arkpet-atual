@@ -9,17 +9,18 @@ import {
   getListBookingsQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
+import { resolvePhotoUrl, uploadFileDirect, cn } from "@/lib/utils";
 import { PetAvatar } from "@/components/pet-avatar";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { useTutorInvoices } from "@/hooks/use-financial";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { Dog, Syringe, Activity, Clock, AlertCircle, LogIn, Camera, QrCode, UtensilsCrossed, Navigation, Car } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, AlertCircle, LogIn, Camera, QrCode, UtensilsCrossed, Navigation, Car, MessageSquare } from "lucide-react";
+import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 
 import { OverviewTab } from "./components/overview-tab";
@@ -33,7 +34,7 @@ const temperamentMap: Record<string, string> = { calm: "Calmo", playful: "Brinca
 
 export default function PetDetail({ id }: { id: number }) {
   const { user } = useAuth();
-  const crecheId = user?.role === "master_admin" ? null : (user?.crecheId ?? null);
+  const crecheId = user?.crecheId ?? null;
   const queryClient = useQueryClient();
 
   const { data: pet, isLoading } = useGetPet(crecheId ?? 0, id);
@@ -144,6 +145,11 @@ export default function PetDetail({ id }: { id: number }) {
     ? bookings
     : (bookings as any)?.data ?? (bookings as any)?.bookings ?? [];
   const confirmedBooking = safeBookings.find((b: any) => b.petId === id && b.status === "confirmed");
+  const canMessageTutor =
+    (user?.role === "staff" ||
+      user?.role === "creche_admin" ||
+      (user?.role === "master_admin" && !!crecheId)) &&
+    !!pet.tutorId;
 
   return (
     <div className="space-y-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -240,6 +246,15 @@ export default function PetDetail({ id }: { id: number }) {
         </div>
 
         <div className="hidden md:flex gap-2 z-10 w-auto flex-wrap justify-end ml-auto">
+          {canMessageTutor && (
+            <Link
+              href={`/chat?tutor=${pet.tutorId}`}
+              className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "gap-2 min-h-10")}
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span>Mensagem</span>
+            </Link>
+          )}
           <Button variant="secondary" size="sm" onClick={() => setQrModalOpen(true)} className="gap-2 min-h-10">
             <QrCode className="h-4 w-4" />
             <span>QR Code</span>
@@ -409,6 +424,15 @@ export default function PetDetail({ id }: { id: number }) {
 
       {/* Mobile Sticky Action Bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 pb-nav-safe bg-background/90 backdrop-blur-xl border-t border-border z-50 flex gap-2 overflow-x-auto scrollbar-hide shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        {canMessageTutor && (
+          <Link
+            href={`/chat?tutor=${pet.tutorId}`}
+            className={cn(buttonVariants({ variant: "secondary" }), "gap-2 flex-1 whitespace-nowrap min-h-[44px]")}
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span>Mensagem</span>
+          </Link>
+        )}
         <Button variant="secondary" onClick={() => setQrModalOpen(true)} className="gap-2 flex-1 whitespace-nowrap min-h-[44px]">
           <QrCode className="h-4 w-4" />
           <span>QR Code</span>
