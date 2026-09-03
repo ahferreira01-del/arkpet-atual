@@ -22,7 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DateFilterPopover } from "@/components/ui/date-filter-popover";
-import { resolvePhotoUrl, formatCurrency } from "@/lib/utils";
+import { resolvePhotoUrl } from "@/lib/utils";
 import { SearchInput } from "@/components/ui/search-input";
 import { FilterSelect } from "@/components/ui/filter-controls";
 import { Modal } from "@/components/ui/modal";

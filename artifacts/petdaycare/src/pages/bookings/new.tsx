@@ -10,6 +10,7 @@ import {
   getListTasksQueryKey,
 } from "@workspace/api-client-react";
 import { useListCatalogue, usePackagesBalance, useServiceCredits } from "@/hooks/use-financial";
+import { formatCentsToBRL } from "@/lib/money";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -532,10 +533,7 @@ export default function NewBooking() {
                           ) : (
                             <div>
                               <p className="text-2xl font-bold text-emerald-400">
-                                {(service.price / 100).toLocaleString("pt-BR", {
-                                  style: "currency",
-                                  currency: "BRL",
-                                })}
+                                {formatCentsToBRL(service.price)}
                                 {service.pricingBySize && (
                                   <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
                                     *Variável por porte
@@ -617,7 +615,7 @@ export default function NewBooking() {
                               if (pet?.size === "small" && addon.priceSmall) price = Number(addon.priceSmall);
                               else if (pet?.size === "medium" && addon.priceMedium) price = Number(addon.priceMedium);
                               else if (pet?.size === "large" && addon.priceLarge) price = Number(addon.priceLarge);
-                              return `+ ${(price / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`;
+                              return `+ ${formatCentsToBRL(price)}`;
                             })()}
                           </p>
                         </div>
@@ -898,7 +896,7 @@ export default function NewBooking() {
                           <p>
                             Você possui <strong>{packagesData?.availableCredits || 0} diárias</strong>, mas esta reserva consumirá <strong>{totalDaysRequested} diárias</strong> no total (calculado por pet). 
                             {fallbackDayUseService ? (
-                              <span> Será gerada uma fatura referente a <strong>{excessDays} diária(s) excedente(s)</strong> no valor aproximado de <strong>{(totalCost / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong>.</span>
+                              <span> Será gerada uma fatura referente a <strong>{excessDays} diária(s) excedente(s)</strong> no valor aproximado de <strong>{formatCentsToBRL(totalCost)}</strong>.</span>
                             ) : (
                               <span> <strong>Atenção:</strong> O serviço de diária não foi encontrado no catálogo da creche. Este agendamento poderá ser bloqueado ou não faturado.</span>
                             )}
@@ -949,8 +947,8 @@ export default function NewBooking() {
                                   </div>
                                   <span className={`font-semibold ${fullyByCredit ? "text-primary" : "text-foreground"}`}>
                                     {isPackage ? "--" : fullyByCredit
-                                      ? (0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-                                      : (petCost / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                                      ? formatCentsToBRL(0)
+                                      : formatCentsToBRL(petCost)
                                     }
                                   </span>
                                 </div>
@@ -968,10 +966,7 @@ export default function NewBooking() {
                                     </p>
                                   </div>
                                   <span className="font-semibold text-primary">
-                                    - {(discountCost / 100).toLocaleString("pt-BR", {
-                                      style: "currency",
-                                      currency: "BRL",
-                                    })}
+                                    - {formatCentsToBRL(discountCost)}
                                   </span>
                                 </div>
                             )}
@@ -982,10 +977,7 @@ export default function NewBooking() {
                               {isPackage && excessDays > 0 ? "Fatura (Excedente Estimado)" : "Total Estimado"}
                             </span>
                             <span className="text-3xl font-bold text-emerald-400">
-                              {(totalCost / 100).toLocaleString("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              })}
+                              {formatCentsToBRL(totalCost)}
                             </span>
                           </div>
                         </CardContent>
