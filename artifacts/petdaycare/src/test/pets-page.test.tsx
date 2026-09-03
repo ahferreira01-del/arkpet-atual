@@ -2,6 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders, screen, fireEvent, waitFor, within } from "./utils";
 import PetsDirectory from "@/pages/pets/index";
+import PetDetail from "@/pages/pets/detail";
 import * as authModule from "@/hooks/use-auth";
 import * as apiClientModule from "@workspace/api-client-react";
 
@@ -23,6 +24,12 @@ vi.mock("@/hooks/use-toast", () => ({
 
 vi.mock("@/hooks/use-auth", () => ({
   useAuth: vi.fn(),
+}));
+
+vi.mock("@/hooks/use-financial", () => ({
+  useTutorInvoices: vi.fn(() => ({ data: [], isLoading: false })),
+  useBookingConsumables: vi.fn(() => ({ data: [], isLoading: false })),
+  useDeleteBookingConsumable: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }));
 
 const mockPets = [
@@ -78,6 +85,17 @@ vi.mock("@workspace/api-client-react", () => ({
     data: { items: mockPets, total: mockPets.length },
     isLoading: false,
   })),
+  useGetPet: vi.fn((_crecheId, petId) => {
+    const p = mockPets.find((pet) => pet.id === petId);
+    return { data: p ?? null, isLoading: false };
+  }),
+  useUpdatePet: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  useListBookings: vi.fn(() => ({ data: { items: [] }, isLoading: false })),
+  useCheckIn: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+  getGetPetQueryKey: vi.fn((crecheId, petId) => ["pet", crecheId, petId]),
+  getListPetsQueryKey: vi.fn((crecheId) => ["pets", crecheId]),
+  getListBookingsQueryKey: vi.fn((crecheId) => ["bookings", crecheId]),
+  useListWalks: vi.fn(() => ({ data: [], isLoading: false })),
   useCreatePet: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
   useGetBillingSubscription: vi.fn(() => ({
     data: { plan: { petLimit: 100 }, status: "active" },
@@ -87,7 +105,6 @@ vi.mock("@workspace/api-client-react", () => ({
     data: { totalPets: 3, checkedInPets: 2 },
     isLoading: false,
   })),
-  getListPetsQueryKey: vi.fn((crecheId) => ["pets", crecheId]),
   getGetCrecheStatsQueryKey: vi.fn((crecheId) => ["stats", crecheId]),
   getListUsersQueryKey: vi.fn(() => ["users"]),
 }));
@@ -366,5 +383,104 @@ describe("PetsDirectory (/pets) — Characterization Suite", () => {
 
     // Raw text check
     expect(screen.queryByText(/Ração renal/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("PetDetail (/pets/:id) — Baseline Action Characterization Suite (EVO-R35-002)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Admin Test", role: "creche_admin", crecheId: 10 },
+      isLoading: false,
+    });
+    (apiClientModule.useGetPet as any).mockImplementation((_crecheId: number, id: number) => {
+      const p = mockPets.find((pet) => pet.id === id);
+      return { data: p ?? null, isLoading: false };
+    });
+    (apiClientModule.useListBookings as any).mockReturnValue({
+      data: { items: [] },
+      isLoading: false,
+    });
+  });
+
+  it("12. characterizes PetDetail data baseline: pet.tutorId and pet.tutorName are present in loaded pet data", async () => {
+    renderWithProviders(<PetDetail id={1} />);
+
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText("João Silva").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("13. characterizes PetDetail action baseline: currently renders existing actions (QR Code, Editar Perfil) and has NO Mensagem shortcut", async () => {
+    renderWithProviders(<PetDetail id={1} />);
+
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    // Existing actions
+    expect(screen.getAllByRole("button", { name: /QR Code/i }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("button", { name: /Editar Perfil/i }).length).toBeGreaterThanOrEqual(1);
+
+    // Pre-feature baseline: zero Mensagem / Conversar action buttons or links
+    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Conversar$/i })).not.toBeInTheDocument();
+  });
+
+  it("14. characterizes PetDetail role baseline: staff and creche_admin see operational actions but no tutor chat button yet", async () => {
+    // Test for staff
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 2, name: "Staff User", role: "staff", crecheId: 10 },
+      isLoading: false,
+    });
+
+    const { unmount } = renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+    unmount();
+
+    // Test for tutor viewing own pet
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 101, name: "João Silva", role: "tutor", crecheId: 10 },
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+  });
+
+  it("15. characterizes PetDetail missing tutor baseline: pet without tutorId handles missing tutor gracefully", async () => {
+    (apiClientModule.useGetPet as any).mockReturnValue({
+      data: {
+        id: 99,
+        name: "SemTutorPet",
+        species: "dog",
+        breed: "SRD",
+        gender: "male",
+        tutorId: null,
+        tutorName: null,
+        status: "active",
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={99} />);
+
+    expect(await screen.findByRole("heading", { name: "SemTutorPet", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText("Sem tutor").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
+  });
+
+  it("16. characterizes PetDetail master_admin contextual baseline: master_admin sees pet details without Mensagem button in current baseline", async () => {
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 999, name: "Master Admin", role: "master_admin", crecheId: null },
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetDetail id={1} />);
+
+    expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
+    expect(screen.getAllByText("João Silva").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("button", { name: /^Mensagem$/i })).not.toBeInTheDocument();
   });
 });

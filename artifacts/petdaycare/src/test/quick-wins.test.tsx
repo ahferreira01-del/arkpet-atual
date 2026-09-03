@@ -568,3 +568,109 @@ describe("R34.B1 Operational & Financial Visibility Suite", () => {
     expect(screen.queryByText("Cuidados especiais")).not.toBeInTheDocument();
   });
 });
+
+describe("EVO-R35-002 Chat Deep-Link Contract Characterization Suite", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 1, name: "Admin User", role: "creche_admin", crecheId: 1 },
+      isLoading: false,
+    });
+    (apiClientModule.useListConversations as any).mockReturnValue({
+      data: [
+        {
+          tutorId: 2,
+          tutorName: "Carlos Tutor",
+          tutorPhone: "11999999999",
+          lastMessage: "Olá!",
+          lastMessageTime: "2026-08-26T10:00:00.000Z",
+          unreadCount: 0,
+          pets: [{ id: 1, name: "Rex" }],
+        },
+      ],
+      isLoading: false,
+    });
+    (apiClientModule.useListMessages as any).mockReturnValue({
+      data: [
+        {
+          id: 1,
+          senderId: 2,
+          senderName: "Carlos Tutor",
+          content: "Olá equipe!",
+          createdAt: "2026-08-26T10:00:00.000Z",
+          tutorId: 2,
+        },
+      ],
+      isLoading: false,
+    });
+  });
+
+  it("characterizes /chat?tutor=2 contract: automatically opens conversation with selected tutor", async () => {
+    window.history.pushState({}, "", "/chat?tutor=2");
+    renderWithProviders(<Chat />);
+
+    expect((await screen.findAllByText("Carlos Tutor")).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("Olá equipe!")).toBeInTheDocument();
+  });
+
+  it("characterizes /chat?tutor=invalid contract: falls back safely without selecting invalid tutor", async () => {
+    window.history.pushState({}, "", "/chat?tutor=invalid");
+    renderWithProviders(<Chat />);
+
+    expect(await screen.findByPlaceholderText("Buscar tutor ou pet...")).toBeInTheDocument();
+    expect(screen.getByText("Carlos Tutor")).toBeInTheDocument();
+  });
+
+  it("characterizes /chat without query parameters: displays conversation list for operational roles", async () => {
+    window.history.pushState({}, "", "/chat");
+    renderWithProviders(<Chat />);
+
+    expect(await screen.findByPlaceholderText("Buscar tutor ou pet...")).toBeInTheDocument();
+    expect(screen.getByText("Carlos Tutor")).toBeInTheDocument();
+  });
+
+  it("characterizes /chat for tutor role: automatically opens tutor's own conversation thread regardless of query", async () => {
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 2, name: "Carlos Tutor", role: "tutor", crecheId: 1 },
+      isLoading: false,
+    });
+    window.history.pushState({}, "", "/chat");
+    renderWithProviders(<Chat />);
+
+    expect((await screen.findAllByText("Carlos Tutor")).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("Olá equipe!")).toBeInTheDocument();
+  });
+
+  it("characterizes /chat?tutor=2 contract for master_admin with active creche context: opens conversation successfully", async () => {
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 999, name: "Master Admin", role: "master_admin", crecheId: null },
+      isLoading: false,
+    });
+    window.history.pushState({}, "", "/chat?tutor=2");
+    renderWithProviders(<Chat />);
+
+    expect((await screen.findAllByText("Carlos Tutor")).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("Olá equipe!")).toBeInTheDocument();
+  });
+
+  it("characterizes /chat?tutor=2 for master_admin when creche context is missing / empty: displays safe empty state", async () => {
+    (authModule.useAuth as any).mockReturnValue({
+      user: { id: 999, name: "Master Admin", role: "master_admin", crecheId: null },
+      isLoading: false,
+    });
+    (apiClientModule.useListConversations as any).mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+    (apiClientModule.useListMessages as any).mockReturnValue({
+      data: [],
+      isLoading: false,
+    });
+
+    window.history.pushState({}, "", "/chat?tutor=2");
+    renderWithProviders(<Chat />);
+
+    expect(await screen.findByText("Nenhuma mensagem ainda")).toBeInTheDocument();
+    expect(screen.getByText("Inicie a conversa.")).toBeInTheDocument();
+  });
+});
