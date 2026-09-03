@@ -618,7 +618,7 @@ describe("PetDetail (/pets/:id) — EVO-R35-003 Vaccine Expiry & Overview Gap Ch
     expect(screen.queryByText("Vencida")).not.toBeInTheDocument();
   });
 
-  it("20. EVO-R35-003 Case 4: past-due vaccine — Saúde shows Vencida, Overview currently has NO Vacina vencida (pre-feature gap)", async () => {
+  it("20. EVO-R35-003 Case 4: past-due vaccine — Saúde shows Vencida, Overview surfaces Vacina vencida warning", async () => {
     (apiClientModule.useListVaccines as any).mockReturnValue({
       data: [
         {
@@ -637,9 +637,10 @@ describe("PetDetail (/pets/:id) — EVO-R35-003 Vaccine Expiry & Overview Gap Ch
     renderWithProviders(<PetDetail id={1} />);
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
 
-    // Pre-feature Overview gap: Overview does NOT surface Vacina vencida yet
-    // [TRANSITION ANCHOR: will change to toBeInTheDocument() in R35.E implementation]
-    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+    // EVO-R35-003: Overview surfaces Vacina vencida warning
+    const warnings = screen.getAllByText("Vacina vencida");
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(warnings[0]).toBeInTheDocument();
 
     // Existing Saúde contract: past-due vaccine correctly displays Vencida badge
     const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];
@@ -648,7 +649,7 @@ describe("PetDetail (/pets/:id) — EVO-R35-003 Vaccine Expiry & Overview Gap Ch
     expect(screen.getByText("Vencida")).toBeInTheDocument();
   });
 
-  it("21. EVO-R35-003 Case 5: multiple vaccines with one past-due — Saúde classifies expired record as Vencida, Overview currently has NO Vacina vencida (pre-feature gap)", async () => {
+  it("21. EVO-R35-003 Case 5: multiple vaccines with one past-due — Saúde classifies expired record as Vencida, Overview surfaces Vacina vencida warning", async () => {
     (apiClientModule.useListVaccines as any).mockReturnValue({
       data: [
         {
@@ -676,9 +677,10 @@ describe("PetDetail (/pets/:id) — EVO-R35-003 Vaccine Expiry & Overview Gap Ch
     renderWithProviders(<PetDetail id={1} />);
     expect(await screen.findByRole("heading", { name: "Rex", level: 1 })).toBeInTheDocument();
 
-    // Pre-feature Overview gap: Overview does NOT surface Vacina vencida yet
-    // [TRANSITION ANCHOR: will change to toBeInTheDocument() in R35.E implementation]
-    expect(screen.queryByText("Vacina vencida")).not.toBeInTheDocument();
+    // EVO-R35-003: Overview surfaces Vacina vencida warning
+    const warnings = screen.getAllByText("Vacina vencida");
+    expect(warnings.length).toBeGreaterThanOrEqual(1);
+    expect(warnings[0]).toBeInTheDocument();
 
     // Existing Saúde contract: expired record is classified as Vencida, valid record is not
     const saudeTab = screen.getAllByRole("button", { name: /Saúde/i })[0];

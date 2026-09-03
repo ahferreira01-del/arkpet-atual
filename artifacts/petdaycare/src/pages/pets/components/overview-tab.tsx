@@ -1,13 +1,12 @@
 import React from "react";
-import { useListWalks } from "@workspace/api-client-react";
+import { useListWalks, useListBookings, useListVaccines } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, Footprints, Trash2, Receipt } from "lucide-react";
+import { Package, Footprints, Trash2, Receipt, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
-import { useListBookings } from "@workspace/api-client-react";
 import { useBookingConsumables, useDeleteBookingConsumable } from "@/hooks/use-financial";
-import { parseLocalDate } from "@/lib/date-utils";
+import { parseLocalDate, todayBrazil } from "@/lib/date-utils";
 import { ptBR } from "date-fns/locale";
 import { resolvePhotoUrl } from "@/lib/utils";
 
@@ -16,8 +15,16 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
   const { user } = useAuth();
   const { data: walks } = useListWalks(crecheId, petId);
   const { data: bookingsResponse } = useListBookings(crecheId);
+  const { data: vaccines } = useListVaccines(crecheId, petId);
   const bookings = (bookingsResponse as any)?.items;
   const recentWalks = walks?.slice(0, 4) ?? [];
+
+  const hasOverdueVaccine =
+    vaccines?.some((vaccine) => {
+      if (!vaccine.nextDueDate) return false;
+      const dueDateStr = String(vaccine.nextDueDate).split("T")[0];
+      return dueDateStr < todayBrazil();
+    }) ?? false;
 
   const safeBookings = Array.isArray(bookings)
     ? bookings
@@ -50,6 +57,12 @@ export function OverviewTab({ pet, crecheId, petId }: { pet: any; crecheId: numb
               <p className="font-medium text-white capitalize">{statusMap[pet.status] || pet.status}</p>
             </div>
           </div>
+          {hasOverdueVaccine && (
+            <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span className="text-sm font-medium">Vacina vencida</span>
+            </div>
+          )}
           {pet.allergies && (
             <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20">
               <p className="text-sm font-medium text-red-400 mb-1">⚠ Alergias</p>
