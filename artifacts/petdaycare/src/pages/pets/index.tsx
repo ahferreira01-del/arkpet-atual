@@ -337,6 +337,26 @@ export default function PetsDirectory() {
                       <p className="text-sm text-muted-foreground capitalize mt-1 truncate">
                         {pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}
                       </p>
+                      {(Boolean(pet.allergies && pet.allergies.trim()) || Boolean(pet.specialNeeds && pet.specialNeeds.trim())) && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {Boolean(pet.allergies && pet.allergies.trim()) && (
+                            <Badge
+                              variant="destructive"
+                              className="h-4 px-1.5 text-[9px] font-medium leading-none"
+                            >
+                              Alergia
+                            </Badge>
+                          )}
+                          {Boolean(pet.specialNeeds && pet.specialNeeds.trim()) && (
+                            <Badge
+                              variant="secondary"
+                              className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                            >
+                              Cuidados especiais
+                            </Badge>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <Link href={`/pets/${pet.id}`} className="shrink-0">
                       <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
@@ -361,9 +381,29 @@ export default function PetsDirectory() {
                 </div>
               ) : (
                 <div className="flex-1 flex flex-row items-center gap-4 sm:gap-6 ml-4 min-w-0">
-                  <div className="min-w-0 flex-1 truncate">
+                  <div className="min-w-0 flex-1">
                     <h3 className="text-base font-semibold text-foreground group-hover:text-primary transition-colors truncate">{pet.name}</h3>
                     <p className="text-xs text-muted-foreground capitalize mt-0.5 truncate">{pet.breed || pet.species} • {genderLabel[pet.gender] || pet.gender}</p>
+                    {(Boolean(pet.allergies && pet.allergies.trim()) || Boolean(pet.specialNeeds && pet.specialNeeds.trim())) && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {Boolean(pet.allergies && pet.allergies.trim()) && (
+                          <Badge
+                            variant="destructive"
+                            className="h-4 px-1.5 text-[9px] font-medium leading-none"
+                          >
+                            Alergia
+                          </Badge>
+                        )}
+                        {Boolean(pet.specialNeeds && pet.specialNeeds.trim()) && (
+                          <Badge
+                            variant="secondary"
+                            className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                          >
+                            Cuidados especiais
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="min-w-[120px] hidden md:block truncate">
                     <p className="text-[10px] font-bold tracking-wider text-muted-foreground/70 mb-0.5">TUTOR</p>

@@ -268,18 +268,103 @@ describe("PetsDirectory (/pets) — Characterization Suite", () => {
     expect(document.querySelector('input[name="name"]')).toBeInTheDocument();
   });
 
-  it("10. GAP CHARACTERIZATION: verifies current /pets card does NOT yet render medical attention badges (Alergia / Cuidados especiais)", async () => {
+  it("10. EVO-R35-001: renders Alergia and Cuidados especiais badges in Grid view without exposing raw medical text", async () => {
     // Rex has allergies="Frango, Conservantes" and specialNeeds="Medicamento diário às 14h"
-    // Luna has allergies="Pólen"
+    // Luna has allergies="Pólen" and specialNeeds=null
+    // Thor has allergies=null and specialNeeds=null
     renderWithProviders(<PetsDirectory />);
 
-    // In current pre-refactor state:
-    // Standard cards are rendered
-    expect(screen.getByRole("heading", { name: "Rex" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Luna" })).toBeInTheDocument();
+    // Rex card: renders BOTH "Alergia" and "Cuidados especiais"
+    const rexHeading = screen.getByRole("heading", { name: "Rex" });
+    const rexCard = rexHeading.closest(".group")!;
+    expect(within(rexCard as HTMLElement).getByText(/^Alergia$/)).toBeInTheDocument();
+    expect(within(rexCard as HTMLElement).getByText(/^Cuidados especiais$/)).toBeInTheDocument();
 
-    // But NO medical attention badge elements for "Alergia" or "Cuidados especiais" exist on the page
-    expect(screen.queryByText(/^Alergia$/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Cuidados especiais$/i)).not.toBeInTheDocument();
+    // Luna card: renders "Alergia" only, does NOT render "Cuidados especiais"
+    const lunaHeading = screen.getByRole("heading", { name: "Luna" });
+    const lunaCard = lunaHeading.closest(".group")!;
+    expect(within(lunaCard as HTMLElement).getByText(/^Alergia$/)).toBeInTheDocument();
+    expect(within(lunaCard as HTMLElement).queryByText(/^Cuidados especiais$/)).not.toBeInTheDocument();
+
+    // Thor card: renders NEITHER badge
+    const thorHeading = screen.getByRole("heading", { name: "Thor" });
+    const thorCard = thorHeading.closest(".group")!;
+    expect(within(thorCard as HTMLElement).queryByText(/^Alergia$/)).not.toBeInTheDocument();
+    expect(within(thorCard as HTMLElement).queryByText(/^Cuidados especiais$/)).not.toBeInTheDocument();
+
+    // Totals on page: exactly 2 "Alergia" badges and 1 "Cuidados especiais" badge
+    expect(screen.getAllByText(/^Alergia$/).length).toBe(2);
+    expect(screen.getAllByText(/^Cuidados especiais$/).length).toBe(1);
+
+    // Raw medical free text must NOT be rendered in the DOM
+    expect(screen.queryByText(/Frango, Conservantes/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Medicamento diário às 14h/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pólen/i)).not.toBeInTheDocument();
+
+    // No unapproved "Medicação" badge
+    expect(screen.queryByText(/^Medicação$/i)).not.toBeInTheDocument();
+  });
+
+  it("11. EVO-R35-001: renders badges in List view and handles special-care-only and whitespace-only edge cases", async () => {
+    const customPets = [
+      {
+        id: 10,
+        name: "Max",
+        species: "dog",
+        breed: "Beagle",
+        gender: "male",
+        tutorId: 101,
+        tutorName: "João Silva",
+        allergies: "   ", // whitespace only -> no allergy badge
+        specialNeeds: "Ração renal", // special care only -> Cuidados especiais badge
+        temperament: "calmo",
+        isCheckedIn: true,
+        photoUrl: null,
+        status: "active",
+      },
+      {
+        id: 11,
+        name: "Bella",
+        species: "dog",
+        breed: "Golden",
+        gender: "female",
+        tutorId: 102,
+        tutorName: "Maria Santos",
+        allergies: "", // empty string -> no allergy badge
+        specialNeeds: "   ", // whitespace only -> no special care badge
+        temperament: "dócil",
+        isCheckedIn: false,
+        photoUrl: null,
+        status: "active",
+      },
+    ];
+
+    (apiClientModule.useListPets as any).mockReturnValue({
+      data: { items: customPets, total: customPets.length },
+      isLoading: false,
+    });
+
+    renderWithProviders(<PetsDirectory />);
+
+    // Switch to List view
+    const buttons = screen.getAllByRole("button");
+    const listBtn = buttons.find((b) => b.querySelector("svg.lucide-list"));
+    expect(listBtn).toBeDefined();
+    fireEvent.click(listBtn!);
+
+    // Max row in List view: renders "Cuidados especiais" only (whitespace allergies ignored)
+    const maxHeading = screen.getByRole("heading", { name: "Max" });
+    const maxCard = maxHeading.closest(".group")!;
+    expect(within(maxCard as HTMLElement).getByText(/^Cuidados especiais$/)).toBeInTheDocument();
+    expect(within(maxCard as HTMLElement).queryByText(/^Alergia$/)).not.toBeInTheDocument();
+
+    // Bella row in List view: renders NEITHER badge (both are empty/whitespace)
+    const bellaHeading = screen.getByRole("heading", { name: "Bella" });
+    const bellaCard = bellaHeading.closest(".group")!;
+    expect(within(bellaCard as HTMLElement).queryByText(/^Alergia$/)).not.toBeInTheDocument();
+    expect(within(bellaCard as HTMLElement).queryByText(/^Cuidados especiais$/)).not.toBeInTheDocument();
+
+    // Raw text check
+    expect(screen.queryByText(/Ração renal/i)).not.toBeInTheDocument();
   });
 });
