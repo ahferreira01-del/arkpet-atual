@@ -53,6 +53,40 @@ describe("Commercial Audit Writer Unit Tests (R36.C)", () => {
     expect(mockInsertedRows.length).toBe(0);
   });
 
+  it("fails closed: unknown or future privileged Master Admin mutation cannot silently bypass reason requirement", async () => {
+    // Unrecognized / newly introduced action string
+    await expect(
+      logCommercialAudit(
+        {
+          targetCrecheId: 1,
+          actorType: "user",
+          actorRole: "master_admin",
+          actorId: 42,
+          actorEmail: "admin@arkpet.com",
+          action: "future_unrecognized_custom_discount_mutation",
+          reason: "",
+        },
+        mockDb,
+      ),
+    ).rejects.toThrow(CommercialAuditError);
+
+    // With valid reason, it succeeds
+    const success = await logCommercialAudit(
+      {
+        targetCrecheId: 1,
+        actorType: "user",
+        actorRole: "master_admin",
+        actorId: 42,
+        actorEmail: "admin@arkpet.com",
+        action: "future_unrecognized_custom_discount_mutation",
+        reason: "Authorized enterprise special contract terms",
+      },
+      mockDb,
+    );
+    expect(success.action).toBe("future_unrecognized_custom_discount_mutation");
+    expect(success.reason).toBe("Authorized enterprise special contract terms");
+  });
+
   it("accepts creche_admin self-service proposal acceptance without requiring a business reason", async () => {
     const result = await logCommercialAudit(
       {

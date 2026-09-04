@@ -15,5 +15,9 @@ export default defineConfig({
     // or API server.
     include: ["src/__tests__/**/*.unit.test.ts"],
     reporters: ["verbose"],
+    env: {
+      // Deliberately non-connectable sentinel endpoint for safe offline unit tests (R36.D Correction 12)
+      DATABASE_URL: process.env.DATABASE_URL || "postgresql://sentinel-do-not-connect:0/unreachable_db",
+    },
   },
 });

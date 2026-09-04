@@ -29,6 +29,57 @@ export class InvalidPricingOverrideError extends Error {
   }
 }
 
+export class CommercialConditionIntegrityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CommercialConditionIntegrityError";
+  }
+}
+
+/**
+ * Resolves the active commercial condition for a creche given its subscription pointer.
+ *
+ * Invariants (Correction 5):
+ * - Catalog fallback is valid ONLY when subscriptions.activeConditionId IS NULL.
+ * - If activeConditionId is non-null but missing, belongs to another creche, or is not active,
+ *   it throws CommercialConditionIntegrityError rather than silently falling back.
+ */
+export async function resolveActiveCommercialCondition(
+  crecheId: number,
+  activeConditionId: number | null | undefined,
+  dbOrTx: any = db,
+): Promise<CustomerCommercialCondition | null> {
+  if (!activeConditionId) {
+    return null;
+  }
+
+  const [condition] = await dbOrTx
+    .select()
+    .from(customerCommercialConditionsTable)
+    .where(eq(customerCommercialConditionsTable.id, activeConditionId))
+    .limit(1);
+
+  if (!condition) {
+    throw new CommercialConditionIntegrityError(
+      `Active commercial condition integrity error: condition #${activeConditionId} referenced by subscription does not exist.`,
+    );
+  }
+
+  if (condition.crecheId !== crecheId) {
+    throw new CommercialConditionIntegrityError(
+      `Active commercial condition integrity error: condition #${activeConditionId} belongs to creche #${condition.crecheId}, expected creche #${crecheId}.`,
+    );
+  }
+
+  if (condition.status !== "active") {
+    throw new CommercialConditionIntegrityError(
+      `Active commercial condition integrity error: condition #${activeConditionId} has status '${condition.status}', expected 'active'.`,
+    );
+  }
+
+  return condition;
+}
+
 /**
  * Cross-tenant pointer guard.
  * Strictly guarantees that a subscription from Creche A can NEVER point to

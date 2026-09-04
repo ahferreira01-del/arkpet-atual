@@ -24,6 +24,15 @@ export const pricingOverrideTypeValues = [
 ] as const;
 export type PricingOverrideType = (typeof pricingOverrideTypeValues)[number];
 
+export const commercialConditionSyncStatusValues = [
+  "not_started",
+  "sync_pending",
+  "synced",
+  "sync_failed",
+  "divergent",
+] as const;
+export type CommercialConditionSyncStatus = (typeof commercialConditionSyncStatusValues)[number];
+
 export const commercialAgreementStatusValues = [
   "draft",
   "sent",
@@ -66,7 +75,10 @@ export const customerCommercialConditionsTable = pgTable(
     agreementId: integer("agreement_id"),
     reason: text("reason"),
     executionRequirement: varchar("execution_requirement", { length: 50 }).default("none"),
-    syncStatus: varchar("sync_status", { length: 50 }).notNull().default("synced"),
+    syncStatus: varchar("sync_status", { length: 50 }).notNull().default("not_started"),
+    idempotencyKey: varchar("idempotency_key", { length: 100 }),
+    idempotencyOperation: varchar("idempotency_operation", { length: 50 }),
+    requestFingerprint: text("request_fingerprint"),
     stripePriceId: text("stripe_price_id"), // custom recurring Stripe Price created for this condition
     lastSyncError: text("last_sync_error"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -77,6 +89,9 @@ export const customerCommercialConditionsTable = pgTable(
     singleActiveIdx: uniqueIndex("customer_commercial_conditions_single_active_idx")
       .on(table.crecheId)
       .where(sql`${table.status} = 'active'`),
+    idempotencyIdx: uniqueIndex("customer_commercial_conditions_idempotency_idx")
+      .on(table.crecheId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} IS NOT NULL`),
     crecheStatusIdx: index("customer_commercial_conditions_creche_status_idx").on(
       table.crecheId,
       table.status,

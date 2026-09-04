@@ -415,4 +415,49 @@ describe("Gateway Events Safety, Replay & Recovery Unit Tests (R36.C1)", () => {
     expect(finalState?.status).toBe("failed_final");
     expect(finalState?.errorMessage).toBe("Persistent payment failure");
   });
+
+  it("reclaims and processes an event in 'received' initial status without prior lease (R36.D Correction 14)", async () => {
+    const receivedEvent: GatewayEvent = {
+      id: 20,
+      gateway: "stripe",
+      eventId: "evt_received_init",
+      eventType: "customer.subscription.updated",
+      eventCreated: new Date(),
+      status: "received",
+      retryCount: 0,
+      errorMessage: null,
+      receivedAt: new Date(),
+      processingStartedAt: null,
+      leaseExpiresAt: null,
+      processedAt: null,
+      payload: {
+        id: "evt_received_init",
+        type: "customer.subscription.updated",
+        data: { object: { id: "sub_rec_1" } },
+      },
+    };
+    mockStore.set("stripe:evt_received_init", receivedEvent);
+
+    mockDb.select = vi.fn().mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([receivedEvent]),
+        }),
+      }),
+    });
+
+    const dispatched: any[] = [];
+    const dispatcher = async (event: any) => {
+      dispatched.push(event);
+    };
+
+    const result = await recoverAndProcessStaleGatewayEvents(dispatcher, "stripe", mockDb);
+    expect(result.recoveredCount).toBe(1);
+    expect(result.successCount).toBe(1);
+    expect(dispatched.length).toBe(1);
+    expect(dispatched[0].id).toBe("evt_received_init");
+
+    const finalState = mockStore.get("stripe:evt_received_init");
+    expect(finalState?.status).toBe("processed");
+  });
 });

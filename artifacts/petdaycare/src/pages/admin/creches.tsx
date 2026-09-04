@@ -8,11 +8,12 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Building2, Plus, MapPin, Phone, Users, Mail,
-  Pencil, ToggleLeft, ToggleRight, Trash2,
+  Pencil, ToggleLeft, ToggleRight, Trash2, CreditCard,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { CommercialSupportModal } from "./commercial-support-modal";
 
 export default function AdminCreches() {
   const queryClient = useQueryClient();
@@ -23,6 +24,7 @@ export default function AdminCreches() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editCreche, setEditCreche] = useState<any | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [supportCreche, setSupportCreche] = useState<any | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   // Edit form state
@@ -211,6 +213,15 @@ export default function AdminCreches() {
                       {creche.status === "active"
                         ? <><ToggleRight className="h-3.5 w-3.5 mr-1" /> Desativar</>
                         : <><ToggleLeft className="h-3.5 w-3.5 mr-1" /> Ativar</>}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-primary/40 text-primary hover:bg-primary/10 text-xs px-2.5"
+                      onClick={() => setSupportCreche(creche)}
+                      aria-label={`Gerenciar suporte para ${creche.name}`}
+                    >
+                      <CreditCard className="h-3.5 w-3.5 mr-1" /> Suporte
                     </Button>
                     <Button
                       size="sm"
@@ -406,6 +417,15 @@ export default function AdminCreches() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* ── Commercial Support & Overrides Console Modal (R36.D) ── */}
+      {supportCreche && (
+        <CommercialSupportModal
+          isOpen={Boolean(supportCreche)}
+          onClose={() => setSupportCreche(null)}
+          creche={supportCreche}
+        />
       )}
     </div>
   );

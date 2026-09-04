@@ -20,6 +20,7 @@ import financialReportsRouter from "./financial-reports.js";
 import medicalRouter from "./medical.js";
 import ordersRouter from "./orders.js";
 import logsRouter from "./logs.js";
+import { commercialRouter } from "./commercial.js";
 import { authenticate } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
@@ -42,6 +43,7 @@ router.use("/auth", authRouter);
 router.use("/creches/:crecheId", authenticate, requireActiveSubscription);
 
 router.use("/creches", crechesRouter);
+router.use("/creches/:crecheId/commercial", commercialRouter);
 router.use("/creches/:crecheId/pets", petsRouter);
 router.use("/creches/:crecheId/bookings", bookingsRouter);
 router.use("/creches/:crecheId/tasks", tasksRouter);

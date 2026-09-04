@@ -444,6 +444,7 @@ export async function recoverAndProcessStaleGatewayEvents(
       and(
         eq(gatewayEventsTable.gateway, gateway),
         or(
+          eq(gatewayEventsTable.status, "received"),
           and(
             eq(gatewayEventsTable.status, "processing"),
             lte(gatewayEventsTable.leaseExpiresAt, now),
@@ -476,6 +477,7 @@ export async function recoverAndProcessStaleGatewayEvents(
           eq(gatewayEventsTable.id, candidate.id),
           eq(gatewayEventsTable.status, candidate.status),
           or(
+            eq(gatewayEventsTable.status, "received"),
             lte(gatewayEventsTable.leaseExpiresAt, now),
             eq(gatewayEventsTable.status, "failed_retryable"),
           ),
