@@ -481,7 +481,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
               )}
             </div>
 
-            {/* 5. STRIPE (Correction 9: read-only connection indicators) */}
+            {/* 5. STRIPE (Section 11: read-only connection indicators) */}
             <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-2">
               <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase flex items-center gap-1.5">
                 <ExternalLink className="h-3.5 w-3.5" /> Gateway Stripe (Leitura)
@@ -500,6 +500,9 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   </span>
                 </div>
               </div>
+              <p className="text-[11px] text-muted-foreground pt-1 border-t border-border/40">
+                Identificadores de infraestrutura Stripe. Preços recorrentes personalizados permanecem como rascunho até a ativação comercial do gateway (Slice 3).
+              </p>
             </div>
 
             {/* Customization Subview */}

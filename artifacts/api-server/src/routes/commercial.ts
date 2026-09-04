@@ -23,6 +23,12 @@ import {
 } from "../services/commercialConditions.js";
 import { logCommercialAudit, CommercialAuditError } from "../services/commercialAudit.js";
 
+export const COMMERCIAL_OPERATIONS = {
+  PET_LIMIT_OVERRIDE: "PET_LIMIT_OVERRIDE",
+  DRAFT_PRICE_CONDITION: "DRAFT_PRICE_CONDITION",
+} as const;
+export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateIdempotencyKey(rawKey: unknown): string {
@@ -95,9 +101,10 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
 
   // Active pricing calculation
   let pricing = null;
+  const planPriceCents = plan ? ((plan as any).priceBrl ?? (plan as any).priceCents ?? 0) : 0;
   if (plan) {
     pricing = calculateEffectivePrice({
-      catalogPriceCents: plan.priceBrl,
+      catalogPriceCents: planPriceCents,
       pricingOverrideType: (activeCondition?.pricingOverrideType as any) ?? "none",
       pricingOverrideValue: activeCondition?.pricingOverrideValue ?? null,
       validFrom: activeCondition?.validFrom ?? null,
@@ -124,7 +131,7 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
   let draftPricing = null;
   if (latestDraft && plan) {
     draftPricing = calculateEffectivePrice({
-      catalogPriceCents: plan.priceBrl,
+      catalogPriceCents: planPriceCents,
       pricingOverrideType: (latestDraft.pricingOverrideType as any) ?? "none",
       pricingOverrideValue: latestDraft.pricingOverrideValue ?? null,
       validFrom: latestDraft.validFrom ?? null,
@@ -156,7 +163,7 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
       ? {
           id: plan.id,
           name: plan.name,
-          priceCents: plan.priceBrl,
+          priceCents: planPriceCents,
           petLimit: plan.petLimit,
         }
       : null,
@@ -211,8 +218,10 @@ commercialRouter.post("/preview-price", async (req: AuthRequest, res: Response):
   try {
     validatePricingOverride(pricingOverrideType, pricingOverrideValue);
 
+    const planPriceCents = (plan as any).priceBrl ?? (plan as any).priceCents ?? 0;
+
     const calculation = calculateEffectivePrice({
-      catalogPriceCents: plan.priceBrl,
+      catalogPriceCents: planPriceCents,
       pricingOverrideType: pricingOverrideType ?? "none",
       pricingOverrideValue: pricingOverrideValue ?? null,
     });
@@ -224,13 +233,13 @@ commercialRouter.post("/preview-price", async (req: AuthRequest, res: Response):
         : plan.petLimit;
 
     const discountPercentage =
-      plan.priceBrl > 0
-        ? Math.round((calculation.overrideDiscountCents / plan.priceBrl) * 10000) / 100
+      planPriceCents > 0
+        ? Math.round((calculation.overrideDiscountCents / planPriceCents) * 10000) / 100
         : 0;
 
     res.json({
-      catalogPriceCents: plan.priceBrl,
-      currentEffectivePriceCents: plan.priceBrl,
+      catalogPriceCents: planPriceCents,
+      currentEffectivePriceCents: planPriceCents,
       proposedEffectivePriceCents: calculation.finalEffectivePriceCents,
       absoluteDifferenceCents: calculation.overrideDiscountCents,
       discountPercentage,
@@ -294,20 +303,8 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
 
   const activePetCount = await countActivePetsForCreche(crecheId, db);
 
-  // Correction 13: Lowering limit safety check
-  if (entitlementPetLimit < activePetCount && confirmLowering !== true) {
-    res.status(409).json({
-      error: "active_pets_exceed_limit",
-      confirmationRequired: true,
-      activePetCount,
-      requestedLimit: entitlementPetLimit,
-      message: `O limite solicitado (${entitlementPetLimit}) é inferior ao total atual de pets ativos (${activePetCount}). Confirmação explícita necessária para prosseguir.`,
-    });
-    return;
-  }
-
-  // Idempotency check (Correction 3)
-  const operation = "pet_limit_override";
+  // Idempotency check (Section 1, 2, 3, 5)
+  const operation = COMMERCIAL_OPERATIONS.PET_LIMIT_OVERRIDE;
   const requestFingerprint = computeRequestFingerprint({
     crecheId,
     operation,
@@ -333,6 +330,7 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
     ) {
       res.status(409).json({
         error: "idempotency_conflict",
+        code: "IDEMPOTENCY_CONFLICT",
         message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
       });
       return;
@@ -343,6 +341,19 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
       replay: true,
       condition: existingIdempotent,
       message: "Operação idempotente reexecutada com sucesso.",
+    });
+    return;
+  }
+
+  // Not previously executed: validate lowering limit safety
+  // If confirmation is required, return HTTP 409 WITHOUT consuming the idempotency key (zero mutation)
+  if (entitlementPetLimit < activePetCount && confirmLowering !== true) {
+    res.status(409).json({
+      error: "active_pets_exceed_limit",
+      confirmationRequired: true,
+      activePetCount,
+      requestedLimit: entitlementPetLimit,
+      message: `O limite solicitado (${entitlementPetLimit}) é inferior ao total atual de pets ativos (${activePetCount}). Confirmação explícita necessária para prosseguir.`,
     });
     return;
   }
@@ -479,8 +490,8 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     return;
   }
 
-  // Idempotency check (Correction 3)
-  const operation = "draft_condition";
+  // Idempotency check (Section 1, 2, 3)
+  const operation = COMMERCIAL_OPERATIONS.DRAFT_PRICE_CONDITION;
   const requestFingerprint = computeRequestFingerprint({
     crecheId,
     operation,
@@ -509,6 +520,7 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     ) {
       res.status(409).json({
         error: "idempotency_conflict",
+        code: "IDEMPOTENCY_CONFLICT",
         message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
       });
       return;

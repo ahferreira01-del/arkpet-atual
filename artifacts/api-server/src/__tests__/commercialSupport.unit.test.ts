@@ -310,6 +310,15 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
 
+      // 4. Idempotency query (no existing record)
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
       // Requesting limit 20 < 30 active pets, without confirmLowering
       const res = await request(app)
         .post("/api/creches/1/commercial/pet-limit-override")
@@ -471,7 +480,6 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
       } as any);
 
       // 4. Idempotency query finds exact existing record
-      // Let's mock requestFingerprint calculation match
       const crypto = await import("crypto");
       const expectedFp = crypto
         .createHash("sha256")
@@ -480,13 +488,13 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
             {
               crecheId: 1,
               entitlementPetLimit: 45,
-              operation: "pet_limit_override",
+              operation: "PET_LIMIT_OVERRIDE",
               reason: "VIP expansion",
             },
             Object.keys({
               crecheId: 1,
               entitlementPetLimit: 45,
-              operation: "pet_limit_override",
+              operation: "PET_LIMIT_OVERRIDE",
               reason: "VIP expansion",
             }).sort(),
           ),
@@ -494,6 +502,7 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         .digest("hex");
 
       existingRecord.requestFingerprint = expectedFp;
+      existingRecord.idempotencyOperation = "PET_LIMIT_OVERRIDE";
 
       vi.mocked(db.select).mockReturnValueOnce({
         from: vi.fn().mockReturnValueOnce({
@@ -518,12 +527,12 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
       expect(db.insert).not.toHaveBeenCalled();
     });
 
-    it("returns HTTP 409 idempotency conflict when same key is reused with different payload (Correction 3)", async () => {
+    it("returns HTTP 409 idempotency conflict when same key is reused with different payload (Section 3)", async () => {
       const existingRecord = {
         id: 105,
         crecheId: 1,
         idempotencyKey: VALID_UUID,
-        idempotencyOperation: "pet_limit_override",
+        idempotencyOperation: "PET_LIMIT_OVERRIDE",
         requestFingerprint: "different_fingerprint_hash",
         status: "active",
       };
@@ -572,6 +581,363 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
 
       expect(res.status).toBe(409);
       expect(res.body.error).toBe("idempotency_conflict");
+      expect(res.body.code).toBe("IDEMPOTENCY_CONFLICT");
+    });
+
+    it("returns HTTP 409 idempotency conflict when same key is reused with different commercial operation (Section 3)", async () => {
+      const existingRecord = {
+        id: 105,
+        crecheId: 1,
+        idempotencyKey: VALID_UUID,
+        idempotencyOperation: "PET_LIMIT_OVERRIDE",
+        requestFingerprint: "any_hash",
+        status: "active",
+      };
+
+      // 1. Creche exists
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1" }]),
+          }),
+        }),
+      } as any);
+
+      // 2. Subscription
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1, planId: 1 }]),
+          }),
+        }),
+      } as any);
+
+      // 3. Idempotency query in draft-condition finds existing record from PET_LIMIT_OVERRIDE
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([existingRecord]),
+          }),
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post("/api/creches/1/commercial/draft-condition")
+        .set("X-Idempotency-Key", VALID_UUID)
+        .send({
+          planId: 1,
+          pricingOverrideType: "percentage",
+          pricingOverrideValue: 1000,
+          reason: "Different operation entirely",
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("idempotency_conflict");
+      expect(res.body.code).toBe("IDEMPOTENCY_CONFLICT");
+    });
+
+    it("rejects missing or malformed X-Idempotency-Key with HTTP 400 (Section 6)", async () => {
+      // 1. Missing header
+      const res1 = await request(app)
+        .post("/api/creches/1/commercial/pet-limit-override")
+        .send({
+          entitlementPetLimit: 40,
+          reason: "Sem chave",
+        });
+
+      expect(res1.status).toBe(400);
+      expect(res1.body.error).toBe("idempotency_key_invalid");
+
+      // 2. Malformed UUID
+      const res2 = await request(app)
+        .post("/api/creches/1/commercial/pet-limit-override")
+        .set("X-Idempotency-Key", "not-a-valid-uuid")
+        .send({
+          entitlementPetLimit: 40,
+          reason: "Chave malformada",
+        });
+
+      expect(res2.status).toBe(400);
+      expect(res2.body.error).toBe("idempotency_key_invalid");
+    });
+
+    it("returns HTTP 409 confirmationRequired when lowering limit without confirmLowering, and does NOT consume the idempotency key (Section 5)", async () => {
+      const KEY = "a1b2c3d4-e5f6-4a1b-8c2d-3e4f5a6b7c8d";
+
+      // Request 1: confirmLowering = false
+      // 1. Creche exists
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1" }]),
+          }),
+        }),
+      } as any);
+
+      // 2. Subscription
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1, planId: 1 }]),
+          }),
+        }),
+      } as any);
+
+      // 3. Active pets = 42
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([{ total: 42 }]),
+        }),
+      } as any);
+
+      // 4. Idempotency query: no existing record
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
+      const res1 = await request(app)
+        .post("/api/creches/1/commercial/pet-limit-override")
+        .set("X-Idempotency-Key", KEY)
+        .send({
+          entitlementPetLimit: 30, // 30 < 42
+          reason: "Reduzir baias para reforma",
+          confirmLowering: false,
+        });
+
+      expect(res1.status).toBe(409);
+      expect(res1.body.error).toBe("active_pets_exceed_limit");
+      expect(res1.body.confirmationRequired).toBe(true);
+      expect(res1.body.activePetCount).toBe(42);
+      expect(db.insert).not.toHaveBeenCalled();
+
+      // Request 2: SAME KEY, but confirmLowering = true -> Allowed to execute!
+      // 1. Creche exists
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1" }]),
+          }),
+        }),
+      } as any);
+
+      // 2. Subscription
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1, planId: 1 }]),
+          }),
+        }),
+      } as any);
+
+      // 3. Active pets = 42
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([{ total: 42 }]),
+        }),
+      } as any);
+
+      // 4. Idempotency query: still no existing record (because Request 1 didn't consume the key!)
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
+      // Transaction queries inside transitionActiveCondition:
+      // - fetch sub
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1 }]),
+          }),
+        }),
+      } as any);
+      // - fetch new condition
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([
+              {
+                id: 110,
+                crecheId: 1,
+                status: "draft",
+                validFrom: new Date(),
+                pricingOverrideType: "none",
+                entitlementPetLimit: 30,
+              },
+            ]),
+          }),
+        }),
+      } as any);
+      // - fetch current active
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+      // - insert returning
+      vi.mocked(db.insert).mockReturnValueOnce({
+        values: vi.fn().mockReturnValueOnce({
+          returning: vi.fn().mockResolvedValueOnce([
+            { id: 110, crecheId: 1, entitlementPetLimit: 30, status: "draft" },
+          ]),
+        }),
+      } as any);
+      // - update condition returning
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue({}),
+        }),
+      } as any);
+      // - fetch activated condition
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([
+              { id: 110, crecheId: 1, entitlementPetLimit: 30, status: "active" },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const res2 = await request(app)
+        .post("/api/creches/1/commercial/pet-limit-override")
+        .set("X-Idempotency-Key", KEY)
+        .send({
+          entitlementPetLimit: 30,
+          reason: "Reduzir baias para reforma",
+          confirmLowering: true,
+        });
+
+      expect(res2.status).toBe(201);
+      expect(res2.body.success).toBe(true);
+      expect(res2.body.condition.entitlementPetLimit).toBe(30);
+    });
+
+    it("verifies audit record is created with canonical actorType 'user' and actorRole 'master_admin' (Section 7)", async () => {
+      const KEY = "b2c3d4e5-f6a7-4b2c-9d3e-4f5a6b7c8d9e";
+      const { logCommercialAudit } = await import("../services/commercialAudit.js");
+
+      // 1. Creche exists
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1" }]),
+          }),
+        }),
+      } as any);
+
+      // 2. Subscription
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1, planId: 1 }]),
+          }),
+        }),
+      } as any);
+
+      // 3. Active pets = 10
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockResolvedValueOnce([{ total: 10 }]),
+        }),
+      } as any);
+
+      // 4. Idempotency query: no existing record
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
+      // Transaction queries inside transitionActiveCondition:
+      // - fetch sub
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([{ id: 1, crecheId: 1 }]),
+          }),
+        }),
+      } as any);
+      // - fetch new condition
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([
+              {
+                id: 115,
+                crecheId: 1,
+                status: "draft",
+                validFrom: new Date(),
+                pricingOverrideType: "none",
+                entitlementPetLimit: 50,
+              },
+            ]),
+          }),
+        }),
+      } as any);
+      // - fetch current active
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+      // - insert returning
+      vi.mocked(db.insert).mockReturnValueOnce({
+        values: vi.fn().mockReturnValueOnce({
+          returning: vi.fn().mockResolvedValueOnce([
+            { id: 115, crecheId: 1, entitlementPetLimit: 50, status: "draft" },
+          ]),
+        }),
+      } as any);
+      // - update condition returning
+      vi.mocked(db.update).mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue({}),
+        }),
+      } as any);
+      // - fetch activated condition
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([
+              { id: 115, crecheId: 1, entitlementPetLimit: 50, status: "active" },
+            ]),
+          }),
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post("/api/creches/1/commercial/pet-limit-override")
+        .set("X-Idempotency-Key", KEY)
+        .send({
+          entitlementPetLimit: 50,
+          reason: "Ampliação de baias VIP",
+        });
+
+      expect(res.status).toBe(201);
+      expect(logCommercialAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetCrecheId: 1,
+          actorType: "user",
+          actorRole: "master_admin",
+          action: "pet_limit_override",
+          reason: "Ampliação de baias VIP",
+        }),
+        expect.anything(),
+      );
     });
   });
 

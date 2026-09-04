@@ -368,4 +368,66 @@ describe("Master Admin Commercial Support & Overrides UI Tests (R36.D Correction
       expect(screen.queryByText(/Operação Concluída/i)).toBeNull();
     });
   });
+
+  it("9. pricing preview queries backend preview-price and renders authoritative backend calculation without independent frontend arithmetic (Section 9)", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        creche: mockCreche,
+        subscriptionState: "PROVISIONED",
+        subscription: { id: 10, status: "active" },
+        plan: { id: 1, name: "Plano Base", priceCents: 31990, petLimit: 20 },
+        pricing: { catalogPriceCents: 31990, finalEffectivePriceCents: 31990 },
+        limits: { activePetCount: 5, effectivePetLimit: 20 },
+      }),
+    } as any);
+
+    render(<CommercialSupportModal isOpen={true} onClose={vi.fn()} creche={mockCreche} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Personalizar Condição Comercial")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Personalizar Condição Comercial"));
+
+    // Select percentage discount
+    const select = screen.getByRole("combobox");
+    fireEvent.change(select, { target: { value: "percentage" } });
+
+    // Mock the preview-price response from backend pricingEngine
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        catalogPriceCents: 31990,
+        currentEffectivePriceCents: 31990,
+        proposedEffectivePriceCents: 27192,
+        absoluteDifferenceCents: 4798,
+        discountPercentage: 15,
+        appliedOverrideType: "percentage",
+        currentPetLimit: 20,
+        proposedPetLimit: 20,
+        activePetCount: 5,
+      }),
+    } as any);
+
+    // Enter 15%
+    const valueInput = screen.getByPlaceholderText("15");
+    fireEvent.change(valueInput, { target: { value: "15" } });
+
+    await waitFor(() => {
+      // Must call backend /preview-price with basis points (1500)
+      const previewCall = fetchSpy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].includes("preview-price"),
+      );
+      expect(previewCall).toBeDefined();
+      const body = JSON.parse(previewCall?.[1]?.body as string);
+      expect(body.pricingOverrideType).toBe("percentage");
+      expect(body.pricingOverrideValue).toBe(1500);
+
+      // Simulation card renders backend calculation
+      expect(screen.getByText("Simulação de Preço")).toBeInTheDocument();
+      expect(screen.getByText(/271,92\/mês/)).toBeInTheDocument();
+      expect(screen.getByText("-15%")).toBeInTheDocument();
+    });
+  });
 });
