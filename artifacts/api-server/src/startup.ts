@@ -562,6 +562,12 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS execution_requirement VARCHAR(50) DEFAULT 'none';
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS sync_status VARCHAR(50) NOT NULL DEFAULT 'synced';
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS stripe_price_id TEXT;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(100);
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS idempotency_operation VARCHAR(50);
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS request_fingerprint TEXT;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS snapshot_billing_interval VARCHAR(20);
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS snapshot_base_price_cents INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS last_synchronized_amount_cents INTEGER;
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS last_sync_error TEXT;
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
     ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
@@ -570,6 +576,10 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS customer_commercial_conditions_single_active_idx
       ON customer_commercial_conditions (creche_id)
       WHERE status = 'active';
+
+    CREATE UNIQUE INDEX IF NOT EXISTS customer_commercial_conditions_idempotency_idx
+      ON customer_commercial_conditions (creche_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
 
     CREATE INDEX IF NOT EXISTS customer_commercial_conditions_creche_status_idx
       ON customer_commercial_conditions (creche_id, status);
@@ -682,7 +692,54 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS gateway_events_status_lease_idx
       ON gateway_events (status, lease_expires_at);
 
-    -- 5. Additive columns on existing tables
+    -- 5. commercial_operation_requests (Phase R36.E1.1 durable idempotency ledger)
+    CREATE TABLE IF NOT EXISTS commercial_operation_requests (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL,
+      operation VARCHAR(64) NOT NULL,
+      idempotency_key VARCHAR(255) NOT NULL,
+      request_fingerprint VARCHAR(64) NOT NULL,
+      resource_type VARCHAR(64),
+      resource_id INTEGER,
+      status VARCHAR(32) NOT NULL DEFAULT 'PROCESSING',
+      attempt_count INTEGER NOT NULL DEFAULT 1,
+      status_code INTEGER,
+      response_payload JSONB,
+      error_code VARCHAR(64),
+      error_message TEXT,
+      processing_started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      lease_expires_at TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMP
+    );
+
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS operation VARCHAR(64);
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255);
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS request_fingerprint VARCHAR(64);
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS resource_type VARCHAR(64);
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS resource_id INTEGER;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'PROCESSING';
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 1;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS status_code INTEGER;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS response_payload JSONB;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS error_code VARCHAR(64);
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS error_message TEXT;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMP;
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS commercial_operation_requests_creche_idempotency_unique
+      ON commercial_operation_requests (creche_id, idempotency_key);
+
+    CREATE INDEX IF NOT EXISTS commercial_operation_requests_creche_operation_idx
+      ON commercial_operation_requests (creche_id, operation);
+
+    CREATE INDEX IF NOT EXISTS commercial_operation_requests_status_lease_idx
+      ON commercial_operation_requests (status, lease_expires_at);
+
+    -- 6. Additive columns on existing tables
     ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_product_id TEXT;
     ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS active_condition_id INTEGER;
   `);

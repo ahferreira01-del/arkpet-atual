@@ -82,6 +82,7 @@ export const customerCommercialConditionsTable = pgTable(
     stripePriceId: text("stripe_price_id"), // custom recurring Stripe Price created for this condition
     snapshotBillingInterval: varchar("snapshot_billing_interval", { length: 20 }),
     snapshotBasePriceCents: integer("snapshot_base_price_cents"),
+    lastSynchronizedAmountCents: integer("last_synchronized_amount_cents"),
     lastSyncError: text("last_sync_error"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -211,3 +212,58 @@ export const insertGatewayEventSchema = createInsertSchema(gatewayEventsTable).o
 });
 export type InsertGatewayEvent = z.infer<typeof insertGatewayEventSchema>;
 export type GatewayEvent = typeof gatewayEventsTable.$inferSelect;
+
+// 5. Commercial Operation Requests
+// Durable idempotency ledger for privileged commercial lifecycle operations.
+// Supports atomic lease claim, concurrency containment, multi-command historical replay,
+// and safe failure categorization.
+export const commercialOperationStatusValues = [
+  "PROCESSING",
+  "SUCCEEDED",
+  "FAILED_RETRYABLE",
+  "FAILED_FINAL",
+] as const;
+export type CommercialOperationStatus = (typeof commercialOperationStatusValues)[number];
+
+export const commercialOperationRequestsTable = pgTable(
+  "commercial_operation_requests",
+  {
+    id: serial("id").primaryKey(),
+    crecheId: integer("creche_id").notNull().references(() => crechesTable.id),
+    operation: varchar("operation", { length: 64 }).notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+    requestFingerprint: varchar("request_fingerprint", { length: 64 }).notNull(),
+    resourceType: varchar("resource_type", { length: 64 }),
+    resourceId: integer("resource_id"),
+    status: varchar("status", { length: 32 }).notNull().default("PROCESSING"),
+    attemptCount: integer("attempt_count").notNull().default(1),
+    statusCode: integer("status_code"),
+    responsePayload: jsonb("response_payload"),
+    errorCode: varchar("error_code", { length: 64 }),
+    errorMessage: text("error_message"),
+    processingStartedAt: timestamp("processing_started_at").notNull().defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => ({
+    crecheIdempotencyIdx: uniqueIndex("commercial_operation_requests_creche_idempotency_unique").on(
+      table.crecheId,
+      table.idempotencyKey,
+    ),
+    crecheOperationIdx: index("commercial_operation_requests_creche_operation_idx").on(
+      table.crecheId,
+      table.operation,
+    ),
+    statusLeaseIdx: index("commercial_operation_requests_status_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt,
+    ),
+  }),
+);
+
+export const insertCommercialOperationRequestSchema = createInsertSchema(
+  commercialOperationRequestsTable,
+).omit({ id: true, createdAt: true });
+export type InsertCommercialOperationRequest = z.infer<typeof insertCommercialOperationRequestSchema>;
+export type CommercialOperationRequest = typeof commercialOperationRequestsTable.$inferSelect;

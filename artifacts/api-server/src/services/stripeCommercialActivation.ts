@@ -499,13 +499,14 @@ export async function executePercentageReprice(params: {
     { idempotencyKey: subItemStepKey },
   );
 
-  // Update condition row: store new stripePriceId, restore syncStatus: 'synced', update snapshotBasePriceCents
+  // Update condition row: store new stripePriceId, restore syncStatus: 'synced', record lastSynchronizedAmountCents
+  // Crucial: preserve snapshotBasePriceCents as the historical baseline from draft creation time
   const [updatedCondition] = await dbClient
     .update(customerCommercialConditionsTable)
     .set({
       stripePriceId: newPrice.id,
       syncStatus: "synced",
-      snapshotBasePriceCents: resolvedCatalog.catalogPriceCents,
+      lastSynchronizedAmountCents: expectedEffectivePriceCents,
       lastSyncError: null,
       updatedAt: new Date(),
     })
@@ -847,6 +848,7 @@ export async function executeStripeCommercialActivation(params: {
         predecessorId: currentActive?.id ?? condition.predecessorId ?? null,
         snapshotBillingInterval: interval,
         snapshotBasePriceCents: resolvedCatalog.catalogPriceCents,
+        lastSynchronizedAmountCents: effectivePriceCents,
         lastSyncError: null,
         validFrom: now,
         updatedAt: now,

@@ -396,6 +396,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            "X-Idempotency-Key": generateUUID(),
           },
           body: JSON.stringify({
             reason: abandonReason.trim(),
@@ -433,6 +434,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
+            "X-Idempotency-Key": generateUUID(),
           },
           body: JSON.stringify({
             reason: repriceReason.trim(),
@@ -832,7 +834,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   </p>
                   <div className="grid grid-cols-2 gap-2 bg-background/50 rounded p-2 text-[11px]">
                     <div>
-                      <span className="text-muted-foreground block">Valor Cobrado Atual:</span>
+                      <span className="text-muted-foreground block">Último valor sincronizado:</span>
                       <span className="font-semibold text-foreground">
                         {formatCentsToBRL(data.percentageRepriceNotice.actualStripeAmountCents)}{currentIntervalSuffix}
                       </span>

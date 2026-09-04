@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 import { commercialRouter } from "../routes/commercial.js";
 import { db } from "@workspace/db";
+import { customerCommercialConditionsTable } from "@workspace/db/schema";
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@workspace/db")>();
@@ -45,6 +46,11 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(db.update).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue({}),
+      }),
+    } as any);
     app = express();
     app.use(express.json());
     app.use("/api/creches/:crecheId/commercial", commercialRouter);
@@ -436,13 +442,22 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
       // - insert returning
-      vi.mocked(db.insert).mockReturnValueOnce({
-        values: vi.fn().mockReturnValueOnce({
-          returning: vi.fn().mockResolvedValueOnce([
-            { id: 105, crecheId: 1, entitlementPetLimit: 20, status: "draft" },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert).mockImplementation(((table: any) => {
+        if (table === customerCommercialConditionsTable) {
+          return {
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                { id: 105, crecheId: 1, entitlementPetLimit: 20, status: "draft" },
+              ]),
+            }),
+          };
+        }
+        return {
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        };
+      }) as any);
       // - update condition returning
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -476,13 +491,18 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
 
     it("replays identical idempotent request with zero new business mutation (Correction 3)", async () => {
       const existingRecord = {
-        id: 105,
+        id: 1,
         crecheId: 1,
+        operation: "PET_LIMIT_OVERRIDE",
         idempotencyKey: VALID_UUID,
-        idempotencyOperation: "pet_limit_override",
         requestFingerprint: "mocked_fp",
-        status: "active",
-        entitlementPetLimit: 45,
+        status: "SUCCEEDED",
+        statusCode: 200,
+        responsePayload: {
+          success: true,
+          condition: { id: 105, crecheId: 1, entitlementPetLimit: 45, status: "active" },
+          message: "Limite de pets ajustado para 45 com sucesso.",
+        },
       };
 
       // 1. Creche exists
@@ -533,7 +553,7 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         .digest("hex");
 
       existingRecord.requestFingerprint = expectedFp;
-      existingRecord.idempotencyOperation = "PET_LIMIT_OVERRIDE";
+      existingRecord.operation = "PET_LIMIT_OVERRIDE";
 
       vi.mocked(db.select).mockReturnValueOnce({
         from: vi.fn().mockReturnValueOnce({
@@ -721,15 +741,6 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
 
-      // 4. Idempotency query: no existing record
-      vi.mocked(db.select).mockReturnValueOnce({
-        from: vi.fn().mockReturnValueOnce({
-          where: vi.fn().mockReturnValueOnce({
-            limit: vi.fn().mockResolvedValueOnce([]),
-          }),
-        }),
-      } as any);
-
       const res1 = await request(app)
         .post("/api/creches/1/commercial/pet-limit-override")
         .set("X-Idempotency-Key", KEY)
@@ -815,13 +826,22 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
       // - insert returning
-      vi.mocked(db.insert).mockReturnValueOnce({
-        values: vi.fn().mockReturnValueOnce({
-          returning: vi.fn().mockResolvedValueOnce([
-            { id: 110, crecheId: 1, entitlementPetLimit: 30, status: "draft" },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert).mockImplementation(((table: any) => {
+        if (table === customerCommercialConditionsTable) {
+          return {
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                { id: 110, crecheId: 1, entitlementPetLimit: 30, status: "draft" },
+              ]),
+            }),
+          };
+        }
+        return {
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        };
+      }) as any);
       // - update condition returning
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -926,13 +946,22 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
       // - insert returning
-      vi.mocked(db.insert).mockReturnValueOnce({
-        values: vi.fn().mockReturnValueOnce({
-          returning: vi.fn().mockResolvedValueOnce([
-            { id: 115, crecheId: 1, entitlementPetLimit: 50, status: "draft" },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert).mockImplementation(((table: any) => {
+        if (table === customerCommercialConditionsTable) {
+          return {
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                { id: 115, crecheId: 1, entitlementPetLimit: 50, status: "draft" },
+              ]),
+            }),
+          };
+        }
+        return {
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        };
+      }) as any);
       // - update condition returning
       vi.mocked(db.update).mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -1024,23 +1053,32 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
       } as any);
 
       // 4. Insert returning
-      vi.mocked(db.insert).mockReturnValueOnce({
-        values: vi.fn().mockReturnValueOnce({
-          returning: vi.fn().mockResolvedValueOnce([
-            {
-              id: 201,
-              crecheId: 1,
-              status: "draft",
-              syncStatus: "not_started",
-              executionRequirement: "STRIPE_REQUIRED",
-              pricingOverrideType: "percentage",
-              pricingOverrideValue: 2000, // 20%
-              snapshotBillingInterval: "month",
-              snapshotBasePriceCents: 31990,
-            },
-          ]),
-        }),
-      } as any);
+      vi.mocked(db.insert).mockImplementation(((table: any) => {
+        if (table === customerCommercialConditionsTable) {
+          return {
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 201,
+                  crecheId: 1,
+                  status: "draft",
+                  syncStatus: "not_started",
+                  executionRequirement: "STRIPE_REQUIRED",
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: 2000, // 20%
+                  snapshotBillingInterval: "month",
+                  snapshotBasePriceCents: 31990,
+                },
+              ]),
+            }),
+          };
+        }
+        return {
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        };
+      }) as any);
 
       const res = await request(app)
         .post("/api/creches/1/commercial/draft-condition")

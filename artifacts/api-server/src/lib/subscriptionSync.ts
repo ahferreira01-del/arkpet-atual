@@ -273,7 +273,12 @@ export async function handleSubscriptionEvent(
       } else {
         await db
           .update(customerCommercialConditionsTable)
-          .set({ syncStatus: "synced", lastSyncError: null, updatedAt: new Date() })
+          .set({
+            syncStatus: "synced",
+            ...(typeof actualStripeAmountCents === "number" ? { lastSynchronizedAmountCents: actualStripeAmountCents } : {}),
+            lastSyncError: null,
+            updatedAt: new Date(),
+          })
           .where(
             and(
               eq(customerCommercialConditionsTable.id, resolved.conditionId),

@@ -37,6 +37,14 @@ import {
   executePercentageReprice,
   CommercialActivationError,
 } from "../services/stripeCommercialActivation.js";
+import {
+  withCommercialOperationIdempotency,
+  validateIdempotencyKey,
+  computeRequestFingerprint,
+  CommercialIdempotencyConflictError,
+  CommercialOperationInProgressError,
+  CommercialOperationFailedFinalError,
+} from "../services/commercialOperationRequests.js";
 
 export const COMMERCIAL_OPERATIONS = {
   PET_LIMIT_OVERRIDE: "PET_LIMIT_OVERRIDE",
@@ -47,20 +55,6 @@ export const COMMERCIAL_OPERATIONS = {
   REPRICE_PERCENTAGE_CONDITION: "REPRICE_PERCENTAGE_CONDITION",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function validateIdempotencyKey(rawKey: unknown): string {
-  if (typeof rawKey !== "string" || !UUID_REGEX.test(rawKey.trim())) {
-    throw new Error("O cabeçalho X-Idempotency-Key é obrigatório e deve ser um UUID válido.");
-  }
-  return rawKey.trim().toLowerCase();
-}
-
-function computeRequestFingerprint(payload: Record<string, unknown>): string {
-  const normalized = JSON.stringify(payload, Object.keys(payload).sort());
-  return crypto.createHash("sha256").update(normalized).digest("hex");
-}
 
 export const commercialRouter = Router({ mergeParams: true });
 
@@ -173,6 +167,7 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
     required: boolean;
     expectedEffectivePriceCents: number;
     actualStripeAmountCents: number;
+    lastSynchronizedAmountCents: number | null;
     message: string;
   } | null = null;
 
@@ -187,29 +182,29 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
       commercialStripeStatus = "SYNCHRONIZED";
     }
 
-    // Section 8: Check for percentage condition drift when catalog price changes
+    // Section 8 & R36.E1.1: Check for percentage condition drift against last known-good synchronized Stripe amount
     if (activeCondition && activeCondition.pricingOverrideType === "percentage" && resolvedCatalog && pricing) {
       const expectedAmount = pricing.finalEffectivePriceCents;
-      let initialAmount = expectedAmount;
-      if (
-        activeCondition.snapshotBasePriceCents &&
-        activeCondition.snapshotBasePriceCents !== resolvedCatalog.catalogPriceCents
-      ) {
-        const initialPricing = calculateEffectivePrice({
-          catalogPriceCents: activeCondition.snapshotBasePriceCents,
-          pricingOverrideType: "percentage",
-          pricingOverrideValue: activeCondition.pricingOverrideValue ?? 0,
-        });
-        initialAmount = initialPricing.finalEffectivePriceCents;
-      }
+      const lastSyncedAmount = activeCondition.lastSynchronizedAmountCents;
 
-      if (initialAmount !== expectedAmount || activeCondition.syncStatus === "divergent") {
+      if (lastSyncedAmount === null || lastSyncedAmount === undefined) {
+        // Unknown / unconfirmed sync state: mark divergent (no fallback to historical snapshot)
         commercialStripeStatus = "DIVERGENT";
         percentageRepriceNotice = {
           required: true,
           expectedEffectivePriceCents: expectedAmount,
-          actualStripeAmountCents: initialAmount,
-          message: "Valor Stripe desatualizado. O catálogo foi alterado após a ativação desta condição percentual.",
+          actualStripeAmountCents: expectedAmount,
+          lastSynchronizedAmountCents: null as any,
+          message: "Estado de sincronização Stripe indefinido ou não confirmado.",
+        };
+      } else if (lastSyncedAmount !== expectedAmount || activeCondition.syncStatus === "divergent") {
+        commercialStripeStatus = "DIVERGENT";
+        percentageRepriceNotice = {
+          required: true,
+          expectedEffectivePriceCents: expectedAmount,
+          actualStripeAmountCents: lastSyncedAmount,
+          lastSynchronizedAmountCents: lastSyncedAmount,
+          message: "Valor Stripe desatualizado. O catálogo foi alterado após a última sincronização desta condição percentual.",
         };
       }
     }
@@ -451,50 +446,8 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
 
   const activePetCount = await countActivePetsForCreche(crecheId, db);
 
-  // Idempotency check (Section 1, 2, 3, 5)
-  const operation = COMMERCIAL_OPERATIONS.PET_LIMIT_OVERRIDE;
-  const requestFingerprint = computeRequestFingerprint({
-    crecheId,
-    operation,
-    entitlementPetLimit,
-    reason: reason.trim(),
-  });
-
-  const [existingIdempotent] = await db
-    .select()
-    .from(customerCommercialConditionsTable)
-    .where(
-      and(
-        eq(customerCommercialConditionsTable.crecheId, crecheId),
-        eq(customerCommercialConditionsTable.idempotencyKey, idempotencyKey),
-      ),
-    )
-    .limit(1);
-
-  if (existingIdempotent) {
-    if (
-      existingIdempotent.idempotencyOperation !== operation ||
-      existingIdempotent.requestFingerprint !== requestFingerprint
-    ) {
-      res.status(409).json({
-        error: "idempotency_conflict",
-        code: "IDEMPOTENCY_CONFLICT",
-        message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
-      });
-      return;
-    }
-
-    // Exact match: replay result without repeating mutation or audit
-    res.json({
-      replay: true,
-      condition: existingIdempotent,
-      message: "Operação idempotente reexecutada com sucesso.",
-    });
-    return;
-  }
-
-  // Not previously executed: validate lowering limit safety
-  // If confirmation is required, return HTTP 409 WITHOUT consuming the idempotency key (zero mutation)
+  // Pre-claim confirmation check (Correction #5 & #6):
+  // If confirmation is required, return HTTP 409 WITHOUT claiming commercial_operation_requests (zero mutation)
   if (entitlementPetLimit < activePetCount && confirmLowering !== true) {
     res.status(409).json({
       error: "active_pets_exceed_limit",
@@ -506,93 +459,130 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
     return;
   }
 
-  // Fetch current active condition (if any) to create full successor snapshot
-  let currentActive = null;
-  if (sub?.activeConditionId) {
-    currentActive = await resolveActiveCommercialCondition(crecheId, sub.activeConditionId, db);
-  }
-
-  const successorPlanId = currentActive?.planId ?? sub?.planId ?? null;
-  const currentInterval: BillingInterval =
-    sub?.billingInterval && BILLING_INTERVALS.includes(sub.billingInterval as BillingInterval)
-      ? (sub.billingInterval as BillingInterval)
-      : "month";
-
-  const snapshotBillingInterval = currentActive?.snapshotBillingInterval ?? currentInterval;
-  const snapshotBasePriceCents = currentActive?.snapshotBasePriceCents ?? null;
-
-  const successorSnapshot = {
+  const operation = COMMERCIAL_OPERATIONS.PET_LIMIT_OVERRIDE;
+  const payload = {
     crecheId,
-    planId: successorPlanId,
-    pricingOverrideType: currentActive?.pricingOverrideType ?? "none",
-    pricingOverrideValue: currentActive?.pricingOverrideValue ?? null,
+    operation,
     entitlementPetLimit,
-    snapshotBillingInterval: currentInterval,
-    snapshotBasePriceCents,
-    validFrom: new Date(),
-    validUntil: currentActive?.validUntil ?? null,
-    status: "draft", // created as draft, then atomically activated
-    executionRequirement: "ARKPET_ONLY",
-    syncStatus: "synced", // ARKPET_ONLY changes require zero Stripe calls
     reason: reason.trim(),
-    idempotencyKey,
-    idempotencyOperation: operation,
-    requestFingerprint,
   };
 
-  assertConditionFullSnapshot(successorSnapshot as any);
+  try {
+    const result = await withCommercialOperationIdempotency({
+      crecheId,
+      operation,
+      idempotencyKey,
+      payload,
+      resourceType: "customer_commercial_condition",
+      isDbOnly: true,
+      execute: async (tx) => {
+        // Fetch current active condition (if any) to create full successor snapshot
+        let currentActive = null;
+        if (sub?.activeConditionId) {
+          currentActive = await resolveActiveCommercialCondition(crecheId, sub.activeConditionId, tx);
+        }
 
-  const result = await db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(customerCommercialConditionsTable)
-      .values(successorSnapshot as any)
-      .returning();
+        const successorPlanId = currentActive?.planId ?? sub?.planId ?? null;
+        const currentInterval: BillingInterval =
+          sub?.billingInterval && BILLING_INTERVALS.includes(sub.billingInterval as BillingInterval)
+            ? (sub.billingInterval as BillingInterval)
+            : "month";
 
-    const transitionResult = await transitionActiveCondition(crecheId, inserted.id, tx);
+        const snapshotBillingInterval = currentActive?.snapshotBillingInterval ?? currentInterval;
+        const snapshotBasePriceCents = currentActive?.snapshotBasePriceCents ?? null;
 
-    const [activatedCondition] = await tx
-      .select()
-      .from(customerCommercialConditionsTable)
-      .where(eq(customerCommercialConditionsTable.id, inserted.id))
-      .limit(1);
+        const successorSnapshot = {
+          crecheId,
+          planId: successorPlanId,
+          pricingOverrideType: currentActive?.pricingOverrideType ?? "none",
+          pricingOverrideValue: currentActive?.pricingOverrideValue ?? null,
+          entitlementPetLimit,
+          snapshotBillingInterval: currentInterval,
+          snapshotBasePriceCents,
+          lastSynchronizedAmountCents: currentActive?.lastSynchronizedAmountCents ?? null,
+          validFrom: new Date(),
+          validUntil: currentActive?.validUntil ?? null,
+          status: "draft", // created as draft, then atomically activated
+          executionRequirement: "ARKPET_ONLY",
+          syncStatus: "synced", // ARKPET_ONLY changes require zero Stripe calls
+          reason: reason.trim(),
+          idempotencyKey,
+          idempotencyOperation: operation,
+          requestFingerprint: computeRequestFingerprint(payload),
+        };
 
-    await logCommercialAudit(
-      {
-        targetCrecheId: crecheId,
-        actorType: "user",
-        actorId: req.user?.id,
-        actorRole: req.user?.role,
-        actorEmail: req.user?.email,
-        action: "pet_limit_override",
-        reason: reason.trim(),
-        requiresReason: true,
-        beforeState: {
-          petLimit: currentActive?.entitlementPetLimit ?? null,
-          conditionId: currentActive?.id ?? null,
-        },
-        afterState: {
-          petLimit: entitlementPetLimit,
-          conditionId: inserted.id,
-        },
-        executionRequirement: "ARKPET_ONLY",
-        executionStatus: "SUCCESS",
-        relatedConditionId: inserted.id,
+        assertConditionFullSnapshot(successorSnapshot as any);
+
+        const [inserted] = await tx
+          .insert(customerCommercialConditionsTable)
+          .values(successorSnapshot as any)
+          .returning();
+
+        const transitionResult = await transitionActiveCondition(crecheId, inserted.id, tx);
+
+        const [activatedCondition] = await tx
+          .select()
+          .from(customerCommercialConditionsTable)
+          .where(eq(customerCommercialConditionsTable.id, inserted.id))
+          .limit(1);
+
+        await logCommercialAudit(
+          {
+            targetCrecheId: crecheId,
+            actorType: "user",
+            actorId: req.user?.id,
+            actorRole: req.user?.role,
+            actorEmail: req.user?.email,
+            action: "pet_limit_override",
+            reason: reason.trim(),
+            requiresReason: true,
+            beforeState: {
+              petLimit: currentActive?.entitlementPetLimit ?? null,
+              conditionId: currentActive?.id ?? null,
+            },
+            afterState: {
+              petLimit: entitlementPetLimit,
+              conditionId: inserted.id,
+            },
+            executionRequirement: "ARKPET_ONLY",
+            executionStatus: "SUCCESS",
+            relatedConditionId: inserted.id,
+          },
+          tx,
+        );
+
+        return {
+          statusCode: 201,
+          data: {
+            success: true,
+            condition: activatedCondition,
+            previousConditionId: transitionResult.previousConditionId,
+            message: `Limite de pets ajustado para ${entitlementPetLimit} com sucesso.`,
+          },
+          resourceId: activatedCondition.id,
+        };
       },
-      tx,
-    );
+    });
 
-    return {
-      condition: activatedCondition,
-      previousConditionId: transitionResult.previousConditionId,
-    };
-  });
-
-  res.status(201).json({
-    success: true,
-    condition: result.condition,
-    previousConditionId: result.previousConditionId,
-    message: "Limite de pets personalizado aplicado com sucesso.",
-  });
+    res.status(result.statusCode).json({
+      ...result.data,
+      ...(result.replayed ? { replay: true } : {}),
+    });
+  } catch (err: any) {
+    if (
+      err instanceof CommercialIdempotencyConflictError ||
+      err instanceof CommercialOperationInProgressError ||
+      err instanceof CommercialOperationFailedFinalError
+    ) {
+      res.status(err.statusCode).json({
+        error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+        code: err.code,
+        message: err.message,
+      });
+      return;
+    }
+    res.status(500).json({ error: "INTERNAL_ERROR", message: err.message || "Erro interno." });
+  }
 });
 
 /**
@@ -667,9 +657,8 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     }
   }
 
-  // Idempotency check (Section 1, 2, 3) - Must execute before catalog resolution and mutations
   const operation = COMMERCIAL_OPERATIONS.DRAFT_PRICE_CONDITION;
-  const requestFingerprint = computeRequestFingerprint({
+  const payload = {
     crecheId,
     operation,
     targetPlanId,
@@ -678,118 +667,114 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     entitlementPetLimit: entitlementPetLimit ?? null,
     reason: reason.trim(),
     ...(rawInterval ? { billingInterval: rawInterval } : {}),
-  });
+  };
 
-  const [existingIdempotent] = await db
-    .select()
-    .from(customerCommercialConditionsTable)
-    .where(
-      and(
-        eq(customerCommercialConditionsTable.crecheId, crecheId),
-        eq(customerCommercialConditionsTable.idempotencyKey, idempotencyKey),
-      ),
-    )
-    .limit(1);
+  try {
+    const result = await withCommercialOperationIdempotency({
+      crecheId,
+      operation,
+      idempotencyKey,
+      payload,
+      resourceType: "customer_commercial_condition",
+      isDbOnly: true,
+      execute: async (tx) => {
+        // Resolve authoritative catalog price for snapshotting
+        let resolvedCatalog: ResolvedCatalogPlanPrice | null = null;
+        if (targetPlanId) {
+          resolvedCatalog = await resolveCatalogPlanPrice(targetPlanId, draftInterval, tx);
+        }
 
-  if (existingIdempotent) {
+        // Determine executionRequirement: if pricing override is set, Stripe synchronization is required
+        const hasPricingOverride = pricingOverrideType && pricingOverrideType !== "none";
+        const executionRequirement = hasPricingOverride ? "STRIPE_REQUIRED" : "ARKPET_ONLY";
+        const syncStatus = hasPricingOverride ? "not_started" : "synced";
+
+        const draftCondition = {
+          crecheId,
+          planId: targetPlanId,
+          pricingOverrideType: pricingOverrideType ?? "none",
+          pricingOverrideValue: pricingOverrideValue ?? null,
+          entitlementPetLimit: entitlementPetLimit ?? null,
+          snapshotBillingInterval: draftInterval,
+          snapshotBasePriceCents: resolvedCatalog?.catalogPriceCents ?? null,
+          lastSynchronizedAmountCents: null,
+          validFrom: new Date(),
+          status: "draft",
+          executionRequirement,
+          syncStatus,
+          reason: reason.trim(),
+          idempotencyKey,
+          idempotencyOperation: operation,
+          requestFingerprint: computeRequestFingerprint(payload),
+        };
+
+        assertConditionFullSnapshot(draftCondition as any);
+
+        const [row] = await tx
+          .insert(customerCommercialConditionsTable)
+          .values(draftCondition as any)
+          .returning();
+
+        await logCommercialAudit(
+          {
+            targetCrecheId: crecheId,
+            actorType: "user",
+            actorId: req.user?.id,
+            actorRole: req.user?.role,
+            actorEmail: req.user?.email,
+            action: "commercial_condition_draft_created",
+            reason: reason.trim(),
+            requiresReason: true,
+            afterState: {
+              conditionId: row.id,
+              pricingOverrideType: row.pricingOverrideType,
+              pricingOverrideValue: row.pricingOverrideValue,
+              entitlementPetLimit: row.entitlementPetLimit,
+              status: "draft",
+            },
+            executionRequirement,
+            executionStatus: "SUCCESS",
+            relatedConditionId: row.id,
+          },
+          tx,
+        );
+
+        return {
+          statusCode: 201,
+          data: {
+            success: true,
+            condition: row,
+            message:
+              "Rascunho comercial salvo com sucesso. A alteração de cobrança será aplicada após a etapa de sincronização com o Stripe.",
+          },
+          resourceId: row.id,
+        };
+      },
+    });
+
+    res.status(result.statusCode).json({
+      ...result.data,
+      ...(result.replayed ? { replay: true } : {}),
+    });
+  } catch (err: any) {
     if (
-      existingIdempotent.idempotencyOperation !== operation ||
-      existingIdempotent.requestFingerprint !== requestFingerprint
+      err instanceof CommercialIdempotencyConflictError ||
+      err instanceof CommercialOperationInProgressError ||
+      err instanceof CommercialOperationFailedFinalError
     ) {
-      res.status(409).json({
-        error: "idempotency_conflict",
-        code: "IDEMPOTENCY_CONFLICT",
-        message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
+      res.status(err.statusCode).json({
+        error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+        code: err.code,
+        message: err.message,
       });
       return;
     }
-
-    res.json({
-      replay: true,
-      condition: existingIdempotent,
-      message: "Operação idempotente reexecutada com sucesso.",
-    });
-    return;
-  }
-
-  // Resolve authoritative catalog price for snapshotting
-  let resolvedCatalog: ResolvedCatalogPlanPrice | null = null;
-  if (targetPlanId) {
-    try {
-      resolvedCatalog = await resolveCatalogPlanPrice(targetPlanId, draftInterval, db);
-    } catch (err: any) {
-      if (err instanceof CatalogPriceResolutionError) {
-        res.status(422).json({ error: "catalog_price_missing", message: err.message });
-        return;
-      }
-      throw err;
+    if (err instanceof CatalogPriceResolutionError) {
+      res.status(422).json({ error: "catalog_price_missing", message: err.message });
+      return;
     }
+    res.status(500).json({ error: "INTERNAL_ERROR", message: err.message || "Erro interno." });
   }
-
-  // Determine executionRequirement: if pricing override is set, Stripe synchronization is required
-  const hasPricingOverride = pricingOverrideType && pricingOverrideType !== "none";
-  const executionRequirement = hasPricingOverride ? "STRIPE_REQUIRED" : "ARKPET_ONLY";
-  const syncStatus = hasPricingOverride ? "not_started" : "synced"; // Correction 4
-
-  const draftCondition = {
-    crecheId,
-    planId: targetPlanId,
-    pricingOverrideType: pricingOverrideType ?? "none",
-    pricingOverrideValue: pricingOverrideValue ?? null,
-    entitlementPetLimit: entitlementPetLimit ?? null,
-    snapshotBillingInterval: draftInterval,
-    snapshotBasePriceCents: resolvedCatalog?.catalogPriceCents ?? null,
-    validFrom: new Date(),
-    status: "draft",
-    executionRequirement,
-    syncStatus,
-    reason: reason.trim(),
-    idempotencyKey,
-    idempotencyOperation: operation,
-    requestFingerprint,
-  };
-
-  assertConditionFullSnapshot(draftCondition as any);
-
-  const [inserted] = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(customerCommercialConditionsTable)
-      .values(draftCondition as any)
-      .returning();
-
-    await logCommercialAudit(
-      {
-        targetCrecheId: crecheId,
-        actorType: "user",
-        actorId: req.user?.id,
-        actorRole: req.user?.role,
-        actorEmail: req.user?.email,
-        action: "commercial_condition_draft_created",
-        reason: reason.trim(),
-        requiresReason: true,
-        afterState: {
-          conditionId: row.id,
-          pricingOverrideType: row.pricingOverrideType,
-          pricingOverrideValue: row.pricingOverrideValue,
-          entitlementPetLimit: row.entitlementPetLimit,
-          status: "draft",
-        },
-        executionRequirement,
-        executionStatus: "SUCCESS",
-        relatedConditionId: row.id,
-      },
-      tx,
-    );
-
-    return [row];
-  });
-
-  res.status(201).json({
-    success: true,
-    condition: inserted,
-    message:
-      "Rascunho comercial salvo com sucesso. A alteração de cobrança será aplicada após a etapa de sincronização com o Stripe.",
-  });
 });
 
 /**
@@ -839,61 +824,59 @@ commercialRouter.post("/activate-condition", async (req: AuthRequest, res: Respo
   }
 
   const operation = COMMERCIAL_OPERATIONS.ACTIVATE_PRICE_CONDITION;
-  const requestFingerprint = computeRequestFingerprint({
+  const payload = {
     crecheId,
     operation,
     conditionId: parsedConditionId,
     prorationMode: selectedProrationMode,
     reason: reason.trim(),
-  });
+  };
 
-  // Check operation-scoped idempotency
-  const [existingIdempotent] = await db
-    .select()
-    .from(customerCommercialConditionsTable)
-    .where(
-      and(
-        eq(customerCommercialConditionsTable.crecheId, crecheId),
-        eq(customerCommercialConditionsTable.idempotencyKey, idempotencyKey),
-      ),
-    )
-    .limit(1);
+  try {
+    const result = await withCommercialOperationIdempotency({
+      crecheId,
+      operation,
+      idempotencyKey,
+      payload,
+      resourceType: "customer_commercial_condition",
+      resourceId: parsedConditionId,
+      isDbOnly: false,
+      execute: async () => {
+        const activationResult = await executeStripeCommercialActivation({
+          crecheId,
+          conditionId: parsedConditionId,
+          prorationMode: selectedProrationMode,
+          reason: reason.trim(),
+          idempotencyKey,
+          requestFingerprint: computeRequestFingerprint(payload),
+          actorId: req.user?.id,
+          actorEmail: req.user?.email,
+        });
+        return {
+          statusCode: 200,
+          data: activationResult,
+          resourceId: parsedConditionId,
+        };
+      },
+    });
 
-  if (existingIdempotent) {
+    res.status(result.statusCode).json({
+      ...result.data,
+      ...(result.replayed ? { replay: true } : {}),
+    });
+  } catch (err: any) {
     if (
-      existingIdempotent.idempotencyOperation !== operation ||
-      existingIdempotent.requestFingerprint !== requestFingerprint
+      err instanceof CommercialIdempotencyConflictError ||
+      err instanceof CommercialOperationInProgressError ||
+      err instanceof CommercialOperationFailedFinalError
     ) {
-      res.status(409).json({
-        error: "idempotency_conflict",
-        code: "IDEMPOTENCY_CONFLICT",
-        message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
+      res.status(err.statusCode).json({
+        error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+        code: err.code,
+        message: err.message,
       });
       return;
     }
-
-    res.json({
-      replay: true,
-      condition: existingIdempotent,
-      message: "Operação idempotente reexecutada com sucesso.",
-    });
-    return;
-  }
-
-  try {
-    const result = await executeStripeCommercialActivation({
-      crecheId,
-      conditionId: parsedConditionId,
-      prorationMode: selectedProrationMode,
-      reason: reason.trim(),
-      idempotencyKey,
-      requestFingerprint,
-      actorId: req.user?.id,
-      actorEmail: req.user?.email,
-    });
-
-    res.status(200).json(result);
-  } catch (err: any) {
     if (err instanceof CommercialActivationError) {
       res.status(err.statusCode).json({
         error: err.code,
@@ -947,18 +930,59 @@ commercialRouter.post(
     const selectedProrationMode: ActivationTimingMode =
       prorationMode ?? ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_PRORATE;
 
+    const operation = COMMERCIAL_OPERATIONS.RETRY_PRICE_ACTIVATION;
+    const payload = {
+      crecheId,
+      operation,
+      conditionId,
+      prorationMode: selectedProrationMode,
+      reason: reason.trim(),
+    };
+
     try {
-      const result = await retryStripeCommercialActivation({
+      const result = await withCommercialOperationIdempotency({
         crecheId,
-        conditionId,
-        reason: reason.trim(),
+        operation,
         idempotencyKey,
-        prorationMode: selectedProrationMode,
-        actorId: req.user?.id,
-        actorEmail: req.user?.email,
+        payload,
+        resourceType: "customer_commercial_condition",
+        resourceId: conditionId,
+        isDbOnly: false,
+        execute: async () => {
+          const retryRes = await retryStripeCommercialActivation({
+            crecheId,
+            conditionId,
+            reason: reason.trim(),
+            idempotencyKey,
+            prorationMode: selectedProrationMode,
+            actorId: req.user?.id,
+            actorEmail: req.user?.email,
+          });
+          return {
+            statusCode: 200,
+            data: retryRes,
+            resourceId: conditionId,
+          };
+        },
       });
-      res.status(200).json(result);
+
+      res.status(result.statusCode).json({
+        ...result.data,
+        ...(result.replayed ? { replay: true } : {}),
+      });
     } catch (err: any) {
+      if (
+        err instanceof CommercialIdempotencyConflictError ||
+        err instanceof CommercialOperationInProgressError ||
+        err instanceof CommercialOperationFailedFinalError
+      ) {
+        res.status(err.statusCode).json({
+          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
       if (err instanceof CommercialActivationError) {
         res.status(err.statusCode).json({
           error: err.code,
@@ -986,6 +1010,14 @@ commercialRouter.post(
     const conditionId = Number(req.params.conditionId);
     const { reason } = req.body;
 
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+    } catch (err: any) {
+      res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+      return;
+    }
+
     if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
       res.status(400).json({
         error: "reason_required",
@@ -1002,16 +1034,57 @@ commercialRouter.post(
       return;
     }
 
+    const operation = COMMERCIAL_OPERATIONS.ABANDON_PRICE_CONDITION;
+    const payload = {
+      crecheId,
+      operation,
+      conditionId,
+      reason: reason.trim(),
+    };
+
     try {
-      const result = await abandonCommercialCondition({
+      const result = await withCommercialOperationIdempotency({
         crecheId,
-        conditionId,
-        reason: reason.trim(),
-        actorId: req.user?.id,
-        actorEmail: req.user?.email,
+        operation,
+        idempotencyKey,
+        payload,
+        resourceType: "customer_commercial_condition",
+        resourceId: conditionId,
+        isDbOnly: true,
+        execute: async (tx) => {
+          const abandonRes = await abandonCommercialCondition({
+            crecheId,
+            conditionId,
+            reason: reason.trim(),
+            actorId: req.user?.id,
+            actorEmail: req.user?.email,
+            dbClient: tx,
+          });
+          return {
+            statusCode: 200,
+            data: abandonRes,
+            resourceId: conditionId,
+          };
+        },
       });
-      res.status(200).json(result);
+
+      res.status(result.statusCode).json({
+        ...result.data,
+        ...(result.replayed ? { replay: true } : {}),
+      });
     } catch (err: any) {
+      if (
+        err instanceof CommercialIdempotencyConflictError ||
+        err instanceof CommercialOperationInProgressError ||
+        err instanceof CommercialOperationFailedFinalError
+      ) {
+        res.status(err.statusCode).json({
+          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
       if (err instanceof CommercialActivationError) {
         res.status(err.statusCode).json({
           error: err.code,
@@ -1039,6 +1112,14 @@ commercialRouter.post(
     const conditionId = Number(req.params.conditionId);
     const { reason } = req.body;
 
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+    } catch (err: any) {
+      res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+      return;
+    }
+
     if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
       res.status(400).json({
         error: "reason_required",
@@ -1055,19 +1136,59 @@ commercialRouter.post(
       return;
     }
 
+    const operation = COMMERCIAL_OPERATIONS.REPRICE_PERCENTAGE_CONDITION;
+    const payload = {
+      crecheId,
+      operation,
+      conditionId,
+      reason: reason.trim(),
+    };
+
     try {
-      const result = await executePercentageReprice({
+      const result = await withCommercialOperationIdempotency({
         crecheId,
-        conditionId,
-        reason: reason.trim(),
-        actorId: req.user?.id,
-        actorEmail: req.user?.email,
+        operation,
+        idempotencyKey,
+        payload,
+        resourceType: "customer_commercial_condition",
+        resourceId: conditionId,
+        isDbOnly: false,
+        execute: async () => {
+          const repriceRes = await executePercentageReprice({
+            crecheId,
+            conditionId,
+            reason: reason.trim(),
+            actorId: req.user?.id,
+            actorEmail: req.user?.email,
+          });
+          return {
+            statusCode: 200,
+            data: repriceRes,
+            resourceId: conditionId,
+          };
+        },
       });
-      res.status(200).json(result);
+
+      res.status(result.statusCode).json({
+        ...result.data,
+        ...(result.replayed ? { replay: true } : {}),
+      });
     } catch (err: any) {
+      if (
+        err instanceof CommercialIdempotencyConflictError ||
+        err instanceof CommercialOperationInProgressError ||
+        err instanceof CommercialOperationFailedFinalError
+      ) {
+        res.status(err.statusCode).json({
+          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
       if (err instanceof CommercialActivationError) {
         res.status(err.statusCode).json({
-          error: err.code,
+          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
           code: err.code,
           message: err.message,
         });

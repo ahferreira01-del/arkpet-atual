@@ -9,6 +9,7 @@ import {
 } from "../services/catalogPricing.js";
 import { computeIntervalPrice, BILLING_INTERVALS, type BillingInterval } from "@workspace/db";
 import { db } from "@workspace/db";
+import { customerCommercialConditionsTable } from "@workspace/db/schema";
 import { calculateEffectivePrice } from "../services/pricingEngine.js";
 
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -550,19 +551,28 @@ describe("R36.D2 — Catalog Price Source & Billing Interval Lock Unit Tests", (
 
       // - insert returning
       let insertedSnapshot: any = null;
-      vi.mocked(db.insert).mockReturnValueOnce({
-        values: vi.fn().mockImplementationOnce((vals: any) => {
-          insertedSnapshot = vals;
+      vi.mocked(db.insert).mockImplementation(((table: any) => {
+        if (table === customerCommercialConditionsTable) {
           return {
-            returning: vi.fn().mockResolvedValueOnce([
-              {
-                id: 51,
-                ...vals,
-              },
-            ]),
+            values: vi.fn().mockImplementation((vals: any) => {
+              insertedSnapshot = vals;
+              return {
+                returning: vi.fn().mockResolvedValue([
+                  {
+                    id: 51,
+                    ...vals,
+                  },
+                ]),
+              };
+            }),
           };
-        }),
-      } as any);
+        }
+        return {
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        };
+      }) as any);
 
       // - update condition returning
       vi.mocked(db.update).mockReturnValue({
