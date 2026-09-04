@@ -44,6 +44,7 @@ import {
   CommercialIdempotencyConflictError,
   CommercialOperationInProgressError,
   CommercialOperationFailedFinalError,
+  CommercialOperationFencingLostError,
 } from "../services/commercialOperationRequests.js";
 
 export const COMMERCIAL_OPERATIONS = {
@@ -166,47 +167,74 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
   let percentageRepriceNotice: {
     required: boolean;
     expectedEffectivePriceCents: number;
-    actualStripeAmountCents: number;
     lastSynchronizedAmountCents: number | null;
     message: string;
   } | null = null;
 
   if (sub?.stripeSubscriptionId) {
-    if (activeCondition?.syncStatus === "divergent" || latestDraft?.syncStatus === "divergent") {
-      commercialStripeStatus = "DIVERGENT";
-    } else if (latestDraft?.status === "pending_activation" || latestDraft?.syncStatus === "sync_pending") {
+    const isPending =
+      latestDraft?.syncStatus === "sync_pending" ||
+      latestDraft?.status === "pending_activation" ||
+      activeCondition?.syncStatus === "sync_pending";
+
+    const isFailed =
+      latestDraft?.syncStatus === "sync_failed" ||
+      latestDraft?.status === "activation_failed" ||
+      activeCondition?.syncStatus === "sync_failed";
+
+    const isDivergent =
+      activeCondition?.syncStatus === "divergent" ||
+      latestDraft?.syncStatus === "divergent";
+
+    if (isPending) {
+      // 1. sync_pending -> PENDING (Precedence 1)
       commercialStripeStatus = "PENDING";
-    } else if (latestDraft?.status === "activation_failed" || latestDraft?.syncStatus === "sync_failed") {
+    } else if (isFailed) {
+      // 2. sync_failed -> FAILED (Precedence 2)
       commercialStripeStatus = "FAILED";
-    } else {
-      commercialStripeStatus = "SYNCHRONIZED";
-    }
-
-    // Section 8 & R36.E1.1: Check for percentage condition drift against last known-good synchronized Stripe amount
-    if (activeCondition && activeCondition.pricingOverrideType === "percentage" && resolvedCatalog && pricing) {
-      const expectedAmount = pricing.finalEffectivePriceCents;
-      const lastSyncedAmount = activeCondition.lastSynchronizedAmountCents;
-
-      if (lastSyncedAmount === null || lastSyncedAmount === undefined) {
-        // Unknown / unconfirmed sync state: mark divergent (no fallback to historical snapshot)
-        commercialStripeStatus = "DIVERGENT";
+    } else if (isDivergent) {
+      // 3. divergent -> DIVERGENT (Precedence 3)
+      // Amount equality must NOT hide identity/cadence divergence (Section 6)
+      commercialStripeStatus = "DIVERGENT";
+      if (activeCondition && activeCondition.pricingOverrideType === "percentage" && pricing) {
         percentageRepriceNotice = {
           required: true,
-          expectedEffectivePriceCents: expectedAmount,
-          actualStripeAmountCents: expectedAmount,
-          lastSynchronizedAmountCents: null as any,
-          message: "Estado de sincronização Stripe indefinido ou não confirmado.",
-        };
-      } else if (lastSyncedAmount !== expectedAmount || activeCondition.syncStatus === "divergent") {
-        commercialStripeStatus = "DIVERGENT";
-        percentageRepriceNotice = {
-          required: true,
-          expectedEffectivePriceCents: expectedAmount,
-          actualStripeAmountCents: lastSyncedAmount,
-          lastSynchronizedAmountCents: lastSyncedAmount,
-          message: "Valor Stripe desatualizado. O catálogo foi alterado após a última sincronização desta condição percentual.",
+          expectedEffectivePriceCents: pricing.finalEffectivePriceCents,
+          lastSynchronizedAmountCents: activeCondition.lastSynchronizedAmountCents ?? null,
+          message: "Cobrança Stripe divergente em relação à condição comercial ativa.",
         };
       }
+    } else if (activeCondition?.syncStatus === "synced") {
+      // 4. synced -> evaluate known-good synchronized amount (Precedence 4)
+      const expectedAmount = pricing ? pricing.finalEffectivePriceCents : null;
+      const lastSyncedAmount = activeCondition.lastSynchronizedAmountCents;
+
+      if (activeCondition.pricingOverrideType === "percentage") {
+        if (lastSyncedAmount != null && expectedAmount != null && lastSyncedAmount === expectedAmount) {
+          commercialStripeStatus = "SYNCHRONIZED";
+        } else {
+          commercialStripeStatus = "DIVERGENT";
+          percentageRepriceNotice = {
+            required: true,
+            expectedEffectivePriceCents: expectedAmount ?? 0,
+            lastSynchronizedAmountCents: lastSyncedAmount ?? null,
+            message:
+              lastSyncedAmount == null
+                ? "Estado de sincronização Stripe indefinido ou não confirmado."
+                : "Valor Stripe desatualizado. O catálogo foi alterado após a última sincronização desta condição percentual.",
+          };
+        }
+      } else {
+        if (lastSyncedAmount != null && expectedAmount != null && lastSyncedAmount === expectedAmount) {
+          commercialStripeStatus = "SYNCHRONIZED";
+        } else {
+          commercialStripeStatus = "DIVERGENT";
+        }
+      }
+    } else if (!activeCondition) {
+      commercialStripeStatus = "SYNCHRONIZED";
+    } else {
+      commercialStripeStatus = "DIVERGENT";
     }
   }
   const canActivateStripe = Boolean(sub?.stripeSubscriptionId);
@@ -572,7 +600,8 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
     if (
       err instanceof CommercialIdempotencyConflictError ||
       err instanceof CommercialOperationInProgressError ||
-      err instanceof CommercialOperationFailedFinalError
+      err instanceof CommercialOperationFailedFinalError ||
+      err instanceof CommercialOperationFencingLostError
     ) {
       res.status(err.statusCode).json({
         error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -760,7 +789,8 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     if (
       err instanceof CommercialIdempotencyConflictError ||
       err instanceof CommercialOperationInProgressError ||
-      err instanceof CommercialOperationFailedFinalError
+      err instanceof CommercialOperationFailedFinalError ||
+      err instanceof CommercialOperationFencingLostError
     ) {
       res.status(err.statusCode).json({
         error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -841,7 +871,7 @@ commercialRouter.post("/activate-condition", async (req: AuthRequest, res: Respo
       resourceType: "customer_commercial_condition",
       resourceId: parsedConditionId,
       isDbOnly: false,
-      execute: async () => {
+      execute: async (_client, fencingToken) => {
         const activationResult = await executeStripeCommercialActivation({
           crecheId,
           conditionId: parsedConditionId,
@@ -851,6 +881,7 @@ commercialRouter.post("/activate-condition", async (req: AuthRequest, res: Respo
           requestFingerprint: computeRequestFingerprint(payload),
           actorId: req.user?.id,
           actorEmail: req.user?.email,
+          fencingToken,
         });
         return {
           statusCode: 200,
@@ -868,7 +899,8 @@ commercialRouter.post("/activate-condition", async (req: AuthRequest, res: Respo
     if (
       err instanceof CommercialIdempotencyConflictError ||
       err instanceof CommercialOperationInProgressError ||
-      err instanceof CommercialOperationFailedFinalError
+      err instanceof CommercialOperationFailedFinalError ||
+      err instanceof CommercialOperationFencingLostError
     ) {
       res.status(err.statusCode).json({
         error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -948,7 +980,7 @@ commercialRouter.post(
         resourceType: "customer_commercial_condition",
         resourceId: conditionId,
         isDbOnly: false,
-        execute: async () => {
+        execute: async (_client, fencingToken) => {
           const retryRes = await retryStripeCommercialActivation({
             crecheId,
             conditionId,
@@ -957,6 +989,7 @@ commercialRouter.post(
             prorationMode: selectedProrationMode,
             actorId: req.user?.id,
             actorEmail: req.user?.email,
+            fencingToken,
           });
           return {
             statusCode: 200,
@@ -974,7 +1007,8 @@ commercialRouter.post(
       if (
         err instanceof CommercialIdempotencyConflictError ||
         err instanceof CommercialOperationInProgressError ||
-        err instanceof CommercialOperationFailedFinalError
+        err instanceof CommercialOperationFailedFinalError ||
+        err instanceof CommercialOperationFencingLostError
       ) {
         res.status(err.statusCode).json({
           error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -1076,7 +1110,8 @@ commercialRouter.post(
       if (
         err instanceof CommercialIdempotencyConflictError ||
         err instanceof CommercialOperationInProgressError ||
-        err instanceof CommercialOperationFailedFinalError
+        err instanceof CommercialOperationFailedFinalError ||
+        err instanceof CommercialOperationFencingLostError
       ) {
         res.status(err.statusCode).json({
           error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -1153,13 +1188,14 @@ commercialRouter.post(
         resourceType: "customer_commercial_condition",
         resourceId: conditionId,
         isDbOnly: false,
-        execute: async () => {
+        execute: async (_client, fencingToken) => {
           const repriceRes = await executePercentageReprice({
             crecheId,
             conditionId,
             reason: reason.trim(),
             actorId: req.user?.id,
             actorEmail: req.user?.email,
+            fencingToken,
           });
           return {
             statusCode: 200,
@@ -1177,7 +1213,8 @@ commercialRouter.post(
       if (
         err instanceof CommercialIdempotencyConflictError ||
         err instanceof CommercialOperationInProgressError ||
-        err instanceof CommercialOperationFailedFinalError
+        err instanceof CommercialOperationFailedFinalError ||
+        err instanceof CommercialOperationFencingLostError
       ) {
         res.status(err.statusCode).json({
           error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
@@ -1188,7 +1225,7 @@ commercialRouter.post(
       }
       if (err instanceof CommercialActivationError) {
         res.status(err.statusCode).json({
-          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+          error: err.code,
           code: err.code,
           message: err.message,
         });

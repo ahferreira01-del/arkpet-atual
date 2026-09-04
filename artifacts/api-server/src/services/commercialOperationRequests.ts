@@ -34,6 +34,22 @@ export class CommercialOperationFailedFinalError extends Error {
   }
 }
 
+export class CommercialOperationFencingLostError extends Error {
+  readonly code = "OPERATION_FENCING_LOST";
+  readonly statusCode = 409;
+  constructor(
+    message = "A posse do lease desta operação foi perdida para outra tentativa ou expirou. Finalização cancelada.",
+  ) {
+    super(message);
+    this.name = "CommercialOperationFencingLostError";
+  }
+}
+
+export interface CommercialFencingToken {
+  operationRequestId: number;
+  claimedAttemptCount: number;
+}
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function validateIdempotencyKey(rawKey: unknown): string {
@@ -69,7 +85,7 @@ export interface WithCommercialIdempotencyParams<T> {
   resourceId?: number;
   isDbOnly?: boolean;
   dbClient?: any;
-  execute: (client: any) => Promise<CommercialOperationExecutionResult<T>>;
+  execute: (client: any, fencingToken: CommercialFencingToken) => Promise<CommercialOperationExecutionResult<T>>;
 }
 
 /**
@@ -140,6 +156,9 @@ export async function withCommercialOperationIdempotency<T>(
     )
     .limit(1);
 
+  let operationRequestId!: number;
+  let claimedAttemptCount = 1;
+
   if (existing) {
     // Conflict check
     if (existing.operation !== params.operation || existing.requestFingerprint !== fingerprint) {
@@ -176,7 +195,7 @@ export async function withCommercialOperationIdempotency<T>(
     }
 
     // Existing is either FAILED_RETRYABLE or PROCESSING with expired lease -> reclaim
-    const [reclaimed] = await rootDb
+    const reclaimWhere = rootDb
       .update(commercialOperationRequestsTable)
       .set({
         status: "PROCESSING",
@@ -192,29 +211,66 @@ export async function withCommercialOperationIdempotency<T>(
           eq(commercialOperationRequestsTable.id, existing.id),
           eq(commercialOperationRequestsTable.status, existing.status),
         ),
-      )
-      .returning();
+      );
+
+    const reclaimRes =
+      typeof reclaimWhere?.returning === "function" ? await reclaimWhere.returning() : await reclaimWhere;
+    const reclaimed = Array.isArray(reclaimRes) ? reclaimRes[0] : reclaimRes;
 
     if (!reclaimed) {
       throw new CommercialOperationInProgressError(
         "Operação com esta chave de idempotência foi retomada concorrentemente. Aguarde a conclusão.",
       );
     }
+    operationRequestId = reclaimed.id ?? existing.id;
+    claimedAttemptCount = reclaimed.attemptCount ?? (existing.attemptCount ?? 1) + 1;
   } else {
     // Try to insert fresh claim
     try {
-      await rootDb.insert(commercialOperationRequestsTable).values({
-        crecheId: params.crecheId,
-        operation: params.operation,
-        idempotencyKey: validKey,
-        requestFingerprint: fingerprint,
-        resourceType: params.resourceType,
-        resourceId: params.resourceId,
-        status: "PROCESSING",
-        attemptCount: 1,
-        processingStartedAt: now,
-        leaseExpiresAt,
-      });
+      const valuesRes = rootDb
+        .insert(commercialOperationRequestsTable)
+        .values({
+          crecheId: params.crecheId,
+          operation: params.operation,
+          idempotencyKey: validKey,
+          requestFingerprint: fingerprint,
+          resourceType: params.resourceType,
+          resourceId: params.resourceId,
+          status: "PROCESSING",
+          attemptCount: 1,
+          processingStartedAt: now,
+          leaseExpiresAt,
+        });
+
+      const insertRes =
+        typeof valuesRes?.returning === "function" ? await valuesRes.returning() : await valuesRes;
+      const inserted = Array.isArray(insertRes) ? insertRes[0] : insertRes;
+      operationRequestId = inserted?.id ?? 1;
+      claimedAttemptCount = inserted?.attemptCount ?? 1;
+
+      if (!inserted?.id) {
+        try {
+          const [fetched] = await rootDb
+            .select({
+              id: commercialOperationRequestsTable.id,
+              attemptCount: commercialOperationRequestsTable.attemptCount,
+            })
+            .from(commercialOperationRequestsTable)
+            .where(
+              and(
+                eq(commercialOperationRequestsTable.crecheId, params.crecheId),
+                eq(commercialOperationRequestsTable.idempotencyKey, validKey),
+              ),
+            )
+            .limit(1);
+          if (fetched) {
+            operationRequestId = fetched.id;
+            claimedAttemptCount = fetched.attemptCount ?? 1;
+          }
+        } catch {
+          // Keep default if select chain mock is not wired
+        }
+      }
     } catch (insertErr: any) {
       // Check if unique collision occurred due to concurrent insert race
       const [raceRecord] = await rootDb
@@ -241,22 +297,71 @@ export async function withCommercialOperationIdempotency<T>(
             replayed: true,
           };
         }
-        throw new CommercialOperationInProgressError(
-          "Operação com esta chave de idempotência já está em processamento concorrente.",
-        );
+        if (raceRecord.status === "FAILED_FINAL") {
+          throw new CommercialOperationFailedFinalError(
+            raceRecord.errorMessage ?? "Operação falhou anteriormente de forma definitiva.",
+            raceRecord.statusCode ?? 422,
+            raceRecord.errorCode ?? "OPERATION_FAILED_FINAL",
+          );
+        }
+        const leaseValid =
+          raceRecord.status === "PROCESSING" &&
+          raceRecord.leaseExpiresAt &&
+          new Date(raceRecord.leaseExpiresAt).getTime() > Date.now();
+        if (leaseValid) {
+          throw new CommercialOperationInProgressError(
+            "Operação com esta chave de idempotência já está em processamento concorrente.",
+          );
+        }
+
+        const raceWhere = rootDb
+          .update(commercialOperationRequestsTable)
+          .set({
+            status: "PROCESSING",
+            attemptCount: (raceRecord.attemptCount ?? 1) + 1,
+            processingStartedAt: now,
+            leaseExpiresAt,
+            errorCode: null,
+            errorMessage: null,
+            completedAt: null,
+          })
+          .where(
+            and(
+              eq(commercialOperationRequestsTable.id, raceRecord.id),
+              eq(commercialOperationRequestsTable.status, raceRecord.status),
+            ),
+          );
+
+        const raceRes =
+          typeof raceWhere?.returning === "function" ? await raceWhere.returning() : await raceWhere;
+        const reclaimedRace = Array.isArray(raceRes) ? raceRes[0] : raceRes;
+
+        if (!reclaimedRace) {
+          throw new CommercialOperationInProgressError(
+            "Operação com esta chave de idempotência foi retomada concorrentemente. Aguarde a conclusão.",
+          );
+        }
+        operationRequestId = reclaimedRace.id ?? raceRecord.id;
+        claimedAttemptCount = reclaimedRace.attemptCount ?? (raceRecord.attemptCount ?? 1) + 1;
+      } else {
+        throw insertErr;
       }
-      throw insertErr;
     }
   }
+
+  const fencingToken: CommercialFencingToken = {
+    operationRequestId,
+    claimedAttemptCount,
+  };
 
   // 2. Execute operation
   if (params.isDbOnly && typeof rootDb.transaction === "function") {
     try {
       return await rootDb.transaction(async (tx: any) => {
-        const result = await params.execute(tx);
+        const result = await params.execute(tx, fencingToken);
         const safePayload = sanitizeResponsePayload(result.data);
 
-        await tx
+        const updateWhere = tx
           .update(commercialOperationRequestsTable)
           .set({
             status: "SUCCEEDED",
@@ -267,10 +372,20 @@ export async function withCommercialOperationIdempotency<T>(
           })
           .where(
             and(
-              eq(commercialOperationRequestsTable.crecheId, params.crecheId),
-              eq(commercialOperationRequestsTable.idempotencyKey, validKey),
+              eq(commercialOperationRequestsTable.id, operationRequestId),
+              eq(commercialOperationRequestsTable.status, "PROCESSING"),
+              eq(commercialOperationRequestsTable.attemptCount, claimedAttemptCount),
             ),
           );
+
+        const updated =
+          typeof updateWhere?.returning === "function" ? await updateWhere.returning() : await updateWhere;
+
+        if (Array.isArray(updated) && updated.length === 0) {
+          throw new CommercialOperationFencingLostError(
+            "Propriedade do lease perdida ao finalizar operação. Tentativa mais recente assumiu a execução.",
+          );
+        }
 
         return {
           statusCode: result.statusCode,
@@ -279,6 +394,9 @@ export async function withCommercialOperationIdempotency<T>(
         };
       });
     } catch (err: any) {
+      if (err instanceof CommercialOperationFencingLostError) {
+        throw err;
+      }
       const retryable = isErrorRetryable(err);
       await rootDb
         .update(commercialOperationRequestsTable)
@@ -291,18 +409,19 @@ export async function withCommercialOperationIdempotency<T>(
         })
         .where(
           and(
-            eq(commercialOperationRequestsTable.crecheId, params.crecheId),
-            eq(commercialOperationRequestsTable.idempotencyKey, validKey),
+            eq(commercialOperationRequestsTable.id, operationRequestId),
+            eq(commercialOperationRequestsTable.status, "PROCESSING"),
+            eq(commercialOperationRequestsTable.attemptCount, claimedAttemptCount),
           ),
         );
       throw err;
     }
   } else {
     try {
-      const result = await params.execute(rootDb);
+      const result = await params.execute(rootDb, fencingToken);
       const safePayload = sanitizeResponsePayload(result.data);
 
-      await rootDb
+      const updateWhere = rootDb
         .update(commercialOperationRequestsTable)
         .set({
           status: "SUCCEEDED",
@@ -313,10 +432,20 @@ export async function withCommercialOperationIdempotency<T>(
         })
         .where(
           and(
-            eq(commercialOperationRequestsTable.crecheId, params.crecheId),
-            eq(commercialOperationRequestsTable.idempotencyKey, validKey),
+            eq(commercialOperationRequestsTable.id, operationRequestId),
+            eq(commercialOperationRequestsTable.status, "PROCESSING"),
+            eq(commercialOperationRequestsTable.attemptCount, claimedAttemptCount),
           ),
         );
+
+      const updated =
+        typeof updateWhere?.returning === "function" ? await updateWhere.returning() : await updateWhere;
+
+      if (Array.isArray(updated) && updated.length === 0) {
+        throw new CommercialOperationFencingLostError(
+          "Propriedade do lease perdida ao finalizar operação. Tentativa mais recente assumiu a execução.",
+        );
+      }
 
       return {
         statusCode: result.statusCode,
@@ -324,6 +453,9 @@ export async function withCommercialOperationIdempotency<T>(
         replayed: false,
       };
     } catch (err: any) {
+      if (err instanceof CommercialOperationFencingLostError) {
+        throw err;
+      }
       const retryable = isErrorRetryable(err);
       await rootDb
         .update(commercialOperationRequestsTable)
@@ -336,11 +468,41 @@ export async function withCommercialOperationIdempotency<T>(
         })
         .where(
           and(
-            eq(commercialOperationRequestsTable.crecheId, params.crecheId),
-            eq(commercialOperationRequestsTable.idempotencyKey, validKey),
+            eq(commercialOperationRequestsTable.id, operationRequestId),
+            eq(commercialOperationRequestsTable.status, "PROCESSING"),
+            eq(commercialOperationRequestsTable.attemptCount, claimedAttemptCount),
           ),
         );
       throw err;
     }
   }
+}
+
+/**
+ * Renews the operation lease duration immediately before a long external Stripe call,
+ * strictly guarded by the current attemptCount fencing token.
+ */
+export async function renewCommercialOperationLease(
+  fencingToken: CommercialFencingToken,
+  dbClient: any = db,
+  durationMs: number = LEASE_DURATION_MS,
+): Promise<boolean> {
+  const newExpiry = new Date(Date.now() + durationMs);
+  const updateWhere = dbClient
+    .update(commercialOperationRequestsTable)
+    .set({
+      leaseExpiresAt: newExpiry,
+    })
+    .where(
+      and(
+        eq(commercialOperationRequestsTable.id, fencingToken.operationRequestId),
+        eq(commercialOperationRequestsTable.status, "PROCESSING"),
+        eq(commercialOperationRequestsTable.attemptCount, fencingToken.claimedAttemptCount),
+      ),
+    );
+
+  const updated =
+    typeof updateWhere?.returning === "function" ? await updateWhere.returning() : await updateWhere;
+
+  return Boolean(updated && (!Array.isArray(updated) || updated.length > 0));
 }

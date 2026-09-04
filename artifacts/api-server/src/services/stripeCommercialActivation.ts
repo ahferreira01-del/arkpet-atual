@@ -5,6 +5,7 @@ import {
   subscriptionsTable,
   plansTable,
   planPricesTable,
+  commercialOperationRequestsTable,
   type CustomerCommercialCondition,
   type Subscription,
   type Plan,
@@ -14,6 +15,11 @@ import { calculateEffectivePrice } from "./pricingEngine.js";
 import { resolveCatalogPlanPrice, normalizeBillingInterval, CatalogPriceResolutionError } from "./catalogPricing.js";
 import { logCommercialAudit } from "./commercialAudit.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
+import {
+  CommercialOperationFencingLostError,
+  renewCommercialOperationLease,
+  type CommercialFencingToken,
+} from "./commercialOperationRequests.js";
 
 export const ACTIVATION_TIMING_MODES = {
   EFFECTIVE_NOW_PRORATE: "EFFECTIVE_NOW_PRORATE",
@@ -340,6 +346,7 @@ export async function executePercentageReprice(params: {
   actorEmail?: string;
   dbClient?: any;
   stripeClient?: Stripe;
+  fencingToken?: CommercialFencingToken;
 }): Promise<{
   success: boolean;
   condition: CustomerCommercialCondition;
@@ -449,6 +456,11 @@ export async function executePercentageReprice(params: {
   const priceStepKey = `commercial:${condition.id}:reprice:${expectedEffectivePriceCents}`;
   const subItemStepKey = `commercial:${condition.id}:reprice-sub-item:${expectedEffectivePriceCents}`;
 
+  // Optional lease renewal before external Stripe step (Section 3)
+  if (params.fencingToken) {
+    await renewCommercialOperationLease(params.fencingToken, dbClient);
+  }
+
   // Create new custom Stripe price for the updated amount
   const newPrice = await stripe.prices.create(
     {
@@ -498,6 +510,27 @@ export async function executePercentageReprice(params: {
     },
     { idempotencyKey: subItemStepKey },
   );
+
+  // Business finalization fencing check (Section 2)
+  if (params.fencingToken) {
+    const [fenced] = await dbClient
+      .select({ id: commercialOperationRequestsTable.id })
+      .from(commercialOperationRequestsTable)
+      .where(
+        and(
+          eq(commercialOperationRequestsTable.id, params.fencingToken.operationRequestId),
+          eq(commercialOperationRequestsTable.status, "PROCESSING"),
+          eq(commercialOperationRequestsTable.attemptCount, params.fencingToken.claimedAttemptCount),
+        ),
+      )
+      .limit(1);
+
+    if (!fenced) {
+      throw new CommercialOperationFencingLostError(
+        "A posse do lease desta operação foi perdida antes da finalização no banco de dados.",
+      );
+    }
+  }
 
   // Update condition row: store new stripePriceId, restore syncStatus: 'synced', record lastSynchronizedAmountCents
   // Crucial: preserve snapshotBasePriceCents as the historical baseline from draft creation time
@@ -575,6 +608,7 @@ export async function executeStripeCommercialActivation(params: {
   actorEmail?: string;
   dbClient?: any;
   stripeClient?: Stripe;
+  fencingToken?: CommercialFencingToken;
 }): Promise<CommercialActivationResult> {
   const dbClient = params.dbClient ?? db;
   const stripe = params.stripeClient ?? (await getUncachableStripeClient());
@@ -607,6 +641,60 @@ export async function executeStripeCommercialActivation(params: {
       `Proposta comercial #${params.conditionId} para a creche #${params.crecheId} não encontrada.`,
       404,
     );
+  }
+
+  // Cross-Command Replay Check (Section 10):
+  // If target condition was already successfully activated and synchronized (e.g. by a subsequent retry key),
+  // replaying an earlier key recognizes the already-applied target and performs zero duplicate business execution.
+  if (condition.status === "active" && condition.syncStatus === "synced" && condition.stripePriceId) {
+    const [sub] = await dbClient
+      .select()
+      .from(subscriptionsTable)
+      .where(eq(subscriptionsTable.crecheId, params.crecheId))
+      .limit(1);
+
+    const targetPlanId = condition.planId ?? sub?.planId;
+    let targetPlan: Plan | undefined;
+    if (targetPlanId) {
+      const [tp] = await dbClient
+        .select()
+        .from(plansTable)
+        .where(eq(plansTable.id, targetPlanId))
+        .limit(1);
+      targetPlan = tp;
+    }
+
+    const interval: BillingInterval =
+      (condition.snapshotBillingInterval ? normalizeBillingInterval(condition.snapshotBillingInterval) : null) ??
+      (sub?.billingInterval ? normalizeBillingInterval(sub.billingInterval) : null) ??
+      "month";
+
+    let resolvedCatalog: any = { catalogPriceCents: condition.snapshotBasePriceCents ?? 0, stripePriceId: condition.stripePriceId };
+    if (targetPlan) {
+      try {
+        resolvedCatalog = await resolveCatalogPlanPrice(targetPlan, interval, dbClient);
+      } catch {
+        // Use condition snapshot
+      }
+    }
+
+    const calculation = calculateEffectivePrice({
+      catalogPriceCents: resolvedCatalog.catalogPriceCents,
+      pricingOverrideType: (condition.pricingOverrideType as any) ?? "none",
+      pricingOverrideValue: condition.pricingOverrideValue ?? null,
+    });
+
+    return {
+      success: true,
+      replay: true,
+      condition,
+      subscription: sub!,
+      stripePriceId: condition.stripePriceId,
+      isCustomPrice: condition.stripePriceId !== resolvedCatalog.stripePriceId,
+      effectivePriceCents: calculation.finalEffectivePriceCents,
+      catalogPriceCents: resolvedCatalog.catalogPriceCents,
+      message: "Condição comercial já se encontra ativada e sincronizada com sucesso.",
+    };
   }
 
   // Eligibility checks (Section 6)
@@ -727,6 +815,10 @@ export async function executeStripeCommercialActivation(params: {
   // --------------------------------------------------------------------------
   // External Stripe Execution
   // --------------------------------------------------------------------------
+  if (params.fencingToken) {
+    await renewCommercialOperationLease(params.fencingToken, dbClient);
+  }
+
   let stripePriceResult: { stripePriceId: string; isCustom: boolean };
   try {
     stripePriceResult = await resolveOrCreateStripePrice({
@@ -817,6 +909,29 @@ export async function executeStripeCommercialActivation(params: {
   let updatedSubscription: Subscription;
 
   await dbClient.transaction(async (tx: any) => {
+    // 0. Business finalization fencing check (Section 2):
+    // Prove that the operation claimant still owns the current attempt generation
+    // before applying condition state, subscription pointer, audit, and lastSynchronizedAmount.
+    if (params.fencingToken) {
+      const [fenced] = await tx
+        .select({ id: commercialOperationRequestsTable.id })
+        .from(commercialOperationRequestsTable)
+        .where(
+          and(
+            eq(commercialOperationRequestsTable.id, params.fencingToken.operationRequestId),
+            eq(commercialOperationRequestsTable.status, "PROCESSING"),
+            eq(commercialOperationRequestsTable.attemptCount, params.fencingToken.claimedAttemptCount),
+          ),
+        )
+        .limit(1);
+
+      if (!fenced) {
+        throw new CommercialOperationFencingLostError(
+          "A posse do lease desta operação foi perdida antes da finalização dos registros de ativação no banco de dados.",
+        );
+      }
+    }
+
     // 1. Find and supersede previous active condition
     const [currentActive] = await tx
       .select()
@@ -921,6 +1036,7 @@ export async function retryStripeCommercialActivation(params: {
   actorEmail?: string;
   dbClient?: any;
   stripeClient?: Stripe;
+  fencingToken?: CommercialFencingToken;
 }): Promise<CommercialActivationResult> {
   const mode = params.prorationMode ?? ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_PRORATE;
   return executeStripeCommercialActivation({

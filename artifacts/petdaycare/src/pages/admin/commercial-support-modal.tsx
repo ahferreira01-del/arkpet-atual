@@ -836,7 +836,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     <div>
                       <span className="text-muted-foreground block">Último valor sincronizado:</span>
                       <span className="font-semibold text-foreground">
-                        {formatCentsToBRL(data.percentageRepriceNotice.actualStripeAmountCents)}{currentIntervalSuffix}
+                        {formatCentsToBRL(data.percentageRepriceNotice.lastSynchronizedAmountCents ?? 0)}{currentIntervalSuffix}
                       </span>
                     </div>
                     <div>
@@ -889,9 +889,9 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                 <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-2">
                   <div className="flex justify-between items-center text-sm">
                     <div>
-                      <span className="text-muted-foreground text-xs block">Valor Cobrado Atual</span>
+                      <span className="text-muted-foreground text-xs block">Último valor sincronizado</span>
                       <span className="font-medium text-foreground">
-                        {formatCentsToBRL(data?.percentageRepriceNotice?.actualStripeAmountCents || 0)}{currentIntervalSuffix}
+                        {formatCentsToBRL(data?.percentageRepriceNotice?.lastSynchronizedAmountCents || 0)}{currentIntervalSuffix}
                       </span>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />

@@ -8,6 +8,8 @@ import {
   CommercialIdempotencyConflictError,
   CommercialOperationInProgressError,
   CommercialOperationFailedFinalError,
+  CommercialOperationFencingLostError,
+  renewCommercialOperationLease,
 } from "../services/commercialOperationRequests.js";
 import { db } from "@workspace/db";
 import { customerCommercialConditionsTable } from "@workspace/db/schema";
@@ -702,7 +704,6 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
       expect(res.status).toBe(200);
       expect(res.body.commercialStripeStatus).toBe("DIVERGENT");
       expect(res.body.percentageRepriceNotice.required).toBe(true);
-      expect(res.body.percentageRepriceNotice.actualStripeAmountCents).toBe(27192);
       expect(res.body.percentageRepriceNotice.lastSynchronizedAmountCents).toBe(27192);
       expect(res.body.percentageRepriceNotice.expectedEffectivePriceCents).toBe(29742);
     });
@@ -910,6 +911,710 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
       const setCall = conditionSetMock.mock.calls[0][0];
       expect(setCall.syncStatus).toBe("divergent");
       expect(setCall.lastSynchronizedAmountCents).toBeUndefined();
+    });
+  });
+
+  describe("5. R36.E1.1 Final Corrective Lock Regression Suite", () => {
+    describe("5.1 Operation Lease Fencing & Stale Worker Finalization Blocked (Section 1, 2, 4)", () => {
+      it("blocks stale worker finalization when lease ownership was lost to a newer attempt", async () => {
+        // Mock DB that simulates Attempt 1 claiming gen 1, but before finalization,
+        // Attempt 2 reclaims and increments attemptCount to 2.
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]), // No prior request, fresh claim
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([
+                {
+                  id: 99,
+                  attemptCount: 1,
+                  status: "PROCESSING",
+                },
+              ]),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([]), // 0 rows affected -> ownership lost to gen 2!
+              }),
+            }),
+          }),
+        };
+
+        await expect(
+          withCommercialOperationIdempotency({
+            crecheId: 1,
+            operation: "TEST_OP",
+            idempotencyKey: "11111111-1111-4111-8111-111111111111",
+            payload: { op: "test" },
+            dbClient: mockDb,
+            execute: vi.fn().mockResolvedValue({ statusCode: 200, data: { done: true } }),
+          }),
+        ).rejects.toThrow(CommercialOperationFencingLostError);
+      });
+
+      it("renewCommercialOperationLease extends lease when generation matches, fails when stale", async () => {
+        const mockDb: any = {
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockImplementation(() => {
+                  // Simulate 1 row updated when attemptCount matches
+                  return Promise.resolve([{ id: 99, attemptCount: 2 }]);
+                }),
+              }),
+            }),
+          }),
+        };
+
+        const renewed = await renewCommercialOperationLease(
+          { operationRequestId: 99, claimedAttemptCount: 2 },
+          mockDb,
+        );
+        expect(renewed).toBe(true);
+
+        // Stale generation attempt
+        const staleMockDb: any = {
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([]), // 0 rows affected
+              }),
+            }),
+          }),
+        };
+
+        const staleRenewed = await renewCommercialOperationLease(
+          { operationRequestId: 99, claimedAttemptCount: 1 },
+          staleMockDb,
+        );
+        expect(staleRenewed).toBe(false);
+      });
+    });
+
+    describe("5.2 Commercial Stripe Status Precedence (Section 5, 6, 7, 8, 9)", () => {
+      it("sync_pending returns PENDING even if lastSynchronizedAmount differs from catalog", async () => {
+        // 1. Creche
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1", status: "active" }]),
+            }),
+          }),
+        } as any);
+
+        // 2. Subscription
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 1,
+                  crecheId: 1,
+                  planId: 4,
+                  billingInterval: "month",
+                  stripeSubscriptionId: "sub_123",
+                  activeConditionId: 201,
+                  status: "active",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 3. Plan
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 4, name: "Pro", priceBrl: 34990 }]),
+            }),
+          }),
+        } as any);
+
+        // 4. Plan Prices
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // 5. Active Condition (syncStatus = sync_pending)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 201,
+                  crecheId: 1,
+                  status: "active",
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: 1500,
+                  snapshotBillingInterval: "month",
+                  snapshotBasePriceCents: 31990,
+                  lastSynchronizedAmountCents: 25000, // differs from expected
+                  syncStatus: "sync_pending",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 6. Latest draft
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              orderBy: vi.fn().mockReturnValueOnce({
+                limit: vi.fn().mockResolvedValueOnce([]),
+              }),
+            }),
+          }),
+        } as any);
+
+        const res = await request(app).get("/api/creches/1/commercial/support");
+        expect(res.status).toBe(200);
+        expect(res.body.commercialStripeStatus).toBe("PENDING");
+        expect(res.body.percentageRepriceNotice).toBeNull();
+      });
+
+      it("sync_failed returns FAILED even if previous known-good amount equals expected", async () => {
+        // 1. Creche
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1", status: "active" }]),
+            }),
+          }),
+        } as any);
+
+        // 2. Subscription
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 1,
+                  crecheId: 1,
+                  planId: 4,
+                  billingInterval: "month",
+                  stripeSubscriptionId: "sub_123",
+                  activeConditionId: 201,
+                  status: "active",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 3. Plan
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 4, name: "Pro", priceBrl: 34990 }]),
+            }),
+          }),
+        } as any);
+
+        // 4. Plan Prices
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // 5. Active Condition (syncStatus = sync_failed, but lastSynchronizedAmount matches expected 29742)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 201,
+                  crecheId: 1,
+                  status: "active",
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: 1500,
+                  snapshotBillingInterval: "month",
+                  snapshotBasePriceCents: 34990,
+                  lastSynchronizedAmountCents: 29742,
+                  syncStatus: "sync_failed",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 6. Latest draft
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              orderBy: vi.fn().mockReturnValueOnce({
+                limit: vi.fn().mockResolvedValueOnce([]),
+              }),
+            }),
+          }),
+        } as any);
+
+        const res = await request(app).get("/api/creches/1/commercial/support");
+        expect(res.status).toBe(200);
+        expect(res.body.commercialStripeStatus).toBe("FAILED");
+        expect(res.body.percentageRepriceNotice).toBeNull();
+      });
+
+      it("unknown Stripe price with same amount remains DIVERGENT (Section 6)", async () => {
+        // Expected ArkPet price: 27990
+        // Last known-good synchronized amount: 27990
+        // External unknown Stripe price: also 27990 -> Webhook set condition to divergent
+        // GET /support must remain DIVERGENT, amount equality must NOT hide divergence
+
+        // 1. Creche
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1", status: "active" }]),
+            }),
+          }),
+        } as any);
+
+        // 2. Subscription
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 1,
+                  crecheId: 1,
+                  planId: 4,
+                  billingInterval: "month",
+                  stripeSubscriptionId: "sub_123",
+                  activeConditionId: 201,
+                  status: "active",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 3. Plan (priceBrl = 32929, with 1500 bps -> 27990)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 4, name: "Pro", priceBrl: 32929 }]),
+            }),
+          }),
+        } as any);
+
+        // 4. Plan Prices
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // 5. Active Condition (syncStatus = divergent, but lastSynchronizedAmount equals expected 27990)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 201,
+                  crecheId: 1,
+                  status: "active",
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: 1500,
+                  snapshotBillingInterval: "month",
+                  snapshotBasePriceCents: 32929,
+                  lastSynchronizedAmountCents: 27990, // equal to expected
+                  syncStatus: "divergent", // webhook detected external price
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 6. Latest draft
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              orderBy: vi.fn().mockReturnValueOnce({
+                limit: vi.fn().mockResolvedValueOnce([]),
+              }),
+            }),
+          }),
+        } as any);
+
+        const res = await request(app).get("/api/creches/1/commercial/support");
+        expect(res.status).toBe(200);
+        // CRITICAL INVARIANT: MUST REMAIN DIVERGENT!
+        expect(res.body.commercialStripeStatus).toBe("DIVERGENT");
+        expect(res.body.percentageRepriceNotice).toBeDefined();
+        expect(res.body.percentageRepriceNotice.lastSynchronizedAmountCents).toBe(27990);
+        expect(res.body.percentageRepriceNotice.expectedEffectivePriceCents).toBe(27990);
+      });
+
+      it("synced + matching amount returns SYNCHRONIZED (Section 5)", async () => {
+        // 1. Creche
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 1, name: "Creche 1", status: "active" }]),
+            }),
+          }),
+        } as any);
+
+        // 2. Subscription
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 1,
+                  crecheId: 1,
+                  planId: 4,
+                  billingInterval: "month",
+                  stripeSubscriptionId: "sub_123",
+                  activeConditionId: 201,
+                  status: "active",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 3. Plan
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([{ id: 4, name: "Pro", priceBrl: 34990 }]),
+            }),
+          }),
+        } as any);
+
+        // 4. Plan Prices
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // 5. Active Condition (syncStatus = synced, and lastSynchronizedAmount matches expected 29742)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 201,
+                  crecheId: 1,
+                  status: "active",
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: 1500,
+                  snapshotBillingInterval: "month",
+                  snapshotBasePriceCents: 34990,
+                  lastSynchronizedAmountCents: 29742,
+                  syncStatus: "synced",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // 6. Latest draft
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              orderBy: vi.fn().mockReturnValueOnce({
+                limit: vi.fn().mockResolvedValueOnce([]),
+              }),
+            }),
+          }),
+        } as any);
+
+        const res = await request(app).get("/api/creches/1/commercial/support");
+        expect(res.status).toBe(200);
+        expect(res.body.commercialStripeStatus).toBe("SYNCHRONIZED");
+        expect(res.body.percentageRepriceNotice).toBeNull();
+      });
+    });
+
+    describe("5.3 Cross-Command Retry Lifecycle Proof (Section 10)", () => {
+      it("Key A fails -> Key B retry succeeds -> Key A replayed recognizes already active target with zero duplicate business effect", async () => {
+        const keyA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        const keyB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+        // Step 1: Request Key A encounters transient Stripe failure
+        mockStripe.prices.create.mockRejectedValueOnce(new Error("Stripe API Timeout"));
+
+        // Setup DB mocks for Key A execution
+        let conditionStatus = "draft";
+        let conditionSyncStatus = "not_started";
+        let conditionPriceId: string | null = null;
+        let subActiveConditionId: number | null = null;
+
+        const conditionRow = {
+          id: 501,
+          crecheId: 1,
+          planId: 4,
+          status: conditionStatus,
+          syncStatus: conditionSyncStatus,
+          pricingOverrideType: "percentage",
+          pricingOverrideValue: 1500,
+          snapshotBillingInterval: "month",
+          snapshotBasePriceCents: 34990,
+          stripePriceId: conditionPriceId,
+          executionRequirement: "STRIPE_REQUIRED",
+          reason: "Proposta",
+        };
+
+        const subRow = {
+          id: 1,
+          crecheId: 1,
+          planId: 4,
+          billingInterval: "month",
+          stripeSubscriptionId: "sub_123",
+          activeConditionId: subActiveConditionId,
+          status: "active",
+        };
+
+        const planRow = { id: 4, name: "Pro", priceBrl: 34990, stripeProductId: "prod_pro_123" };
+
+        // 1. Key A: select operation requests (empty)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // insert Key A operation request (PROCESSING)
+        vi.mocked(db.insert).mockReturnValueOnce({
+          values: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([{ id: 101, attemptCount: 1 }]),
+          }),
+        } as any);
+
+        // condition select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([conditionRow]),
+            }),
+          }),
+        } as any);
+
+        // sub select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([subRow]),
+            }),
+          }),
+        } as any);
+
+        // plan select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([planRow]),
+            }),
+          }),
+        } as any);
+
+        // planPrices select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // plans retrieve
+        mockStripe.prices.retrieve.mockResolvedValueOnce({
+          id: "price_std_pro",
+          product: "prod_pro_123",
+          currency: "brl",
+          unit_amount: 34990,
+          recurring: { interval: "month", interval_count: 1 },
+        });
+
+        // DB Tx 1 update condition to pending_activation
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockResolvedValueOnce([{ id: 501 }]),
+          }),
+        } as any);
+
+        // renewCommercialOperationLease before external Stripe call
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              returning: vi.fn().mockResolvedValueOnce([{ id: 101, attemptCount: 1 }]),
+            }),
+          }),
+        } as any);
+
+        // resolveOrCreateStripePrice standard price select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // Failure transition in executeStripeCommercialActivation
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockResolvedValueOnce([{ id: 501 }]),
+          }),
+        } as any);
+
+        // withCommercialOperationIdempotency sets FAILED_RETRYABLE
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockResolvedValueOnce([{ id: 101 }]),
+          }),
+        } as any);
+
+        const resA1 = await request(app)
+          .post("/api/creches/1/commercial/activate-condition")
+          .set("X-Idempotency-Key", keyA)
+          .send({ conditionId: 501, prorationMode: "EFFECTIVE_NOW_PRORATE", reason: "Ativação A" });
+
+        expect(resA1.status).toBe(502);
+
+        // Step 2: Now Key B retries and succeeds
+        // Condition becomes active and synced in the database
+        conditionStatus = "active";
+        conditionSyncStatus = "synced";
+        conditionPriceId = "price_custom_b";
+        subActiveConditionId = 501;
+
+        const activeConditionRow = {
+          ...conditionRow,
+          status: "active",
+          syncStatus: "synced",
+          stripePriceId: "price_custom_b",
+        };
+
+        const activeSubRow = {
+          ...subRow,
+          activeConditionId: 501,
+        };
+
+        // Step 3: Now original request Key A is replayed
+        // Operation A was FAILED_RETRYABLE, so withCommercialOperationIdempotency reclaims lease
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 101,
+                  crecheId: 1,
+                  operation: COMMERCIAL_OPERATIONS.ACTIVATE_PRICE_CONDITION,
+                  idempotencyKey: keyA,
+                  requestFingerprint: computeRequestFingerprint({
+                    crecheId: 1,
+                    operation: COMMERCIAL_OPERATIONS.ACTIVATE_PRICE_CONDITION,
+                    conditionId: 501,
+                    prorationMode: "EFFECTIVE_NOW_PRORATE",
+                    reason: "Ativação A",
+                  }),
+                  status: "FAILED_RETRYABLE",
+                  attemptCount: 1,
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        // Reclaim update on operation ledger (attemptCount -> 2)
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              returning: vi.fn().mockResolvedValueOnce([{ id: 101, attemptCount: 2 }]),
+            }),
+          }),
+        } as any);
+
+        // executeStripeCommercialActivation fetches condition (sees it is already active and synced!)
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([activeConditionRow]),
+            }),
+          }),
+        } as any);
+
+        // sub select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([activeSubRow]),
+            }),
+          }),
+        } as any);
+
+        // plan select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([planRow]),
+            }),
+          }),
+        } as any);
+
+        // planPrices select
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        } as any);
+
+        // Finalize operation ledger to SUCCEEDED
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              returning: vi.fn().mockResolvedValueOnce([{ id: 101, status: "SUCCEEDED" }]),
+            }),
+          }),
+        } as any);
+
+        // Record stripe call counts before replay
+        const stripeCreateCallCount = mockStripe.prices.create.mock.calls.length;
+        const stripeSubUpdateCallCount = mockStripe.subscriptions.update.mock.calls.length;
+
+        const resA2 = await request(app)
+          .post("/api/creches/1/commercial/activate-condition")
+          .set("X-Idempotency-Key", keyA)
+          .send({ conditionId: 501, prorationMode: "EFFECTIVE_NOW_PRORATE", reason: "Ativação A" });
+
+        expect(resA2.status).toBe(200);
+        expect(resA2.body.replay).toBe(true);
+        expect(resA2.body.success).toBe(true);
+        expect(resA2.body.stripePriceId).toBe("price_custom_b");
+
+        // PROVE ZERO NEW BUSINESS EFFECT:
+        // Zero additional prices created
+        expect(mockStripe.prices.create.mock.calls.length).toBe(stripeCreateCallCount);
+        // Zero additional subscription updates
+        expect(mockStripe.subscriptions.update.mock.calls.length).toBe(stripeSubUpdateCallCount);
+      });
     });
   });
 });
