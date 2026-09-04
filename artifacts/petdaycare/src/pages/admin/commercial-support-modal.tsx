@@ -89,6 +89,10 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
   const [abandonReason, setAbandonReason] = useState<string>("");
   const [abandoningLoading, setAbandoningLoading] = useState(false);
 
+  const [isRepricing, setIsRepricing] = useState(false);
+  const [repriceReason, setRepriceReason] = useState<string>("");
+  const [repricingLoading, setRepricingLoading] = useState(false);
+
   const fetchSupportData = useCallback(async () => {
     if (!creche) return;
     setLoading(true);
@@ -409,6 +413,43 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
       setActivationError(err.message || "Erro ao abandonar proposta.");
     } finally {
       setAbandoningLoading(false);
+    }
+  };
+
+  const handleConfirmReprice = async () => {
+    if (!creche || !data?.activeCondition?.id) return;
+    if (!repriceReason.trim()) {
+      setActivationError("Justificativa obrigatória para reconciliar cobrança.");
+      return;
+    }
+    setRepricingLoading(true);
+    setActivationError(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(
+        `${import.meta.env.BASE_URL}api/creches/${creche.id}/commercial/conditions/${data.activeCondition.id}/reprice-percentage`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            reason: repriceReason.trim(),
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Erro HTTP ${res.status}`);
+      }
+      setSuccessNotice("Cobrança no Stripe reconciliada com sucesso!");
+      setIsRepricing(false);
+      fetchSupportData();
+    } catch (err: any) {
+      setActivationError(err.message || "Erro ao reconciliar cobrança.");
+    } finally {
+      setRepricingLoading(false);
     }
   };
 
@@ -778,7 +819,123 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   </span>
                 </div>
               </div>
+
+              {/* Bounded Percentage Reprice Warning & Action */}
+              {data?.percentageRepriceNotice?.required && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 font-semibold text-amber-400">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span>Valor Stripe desatualizado</span>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed">
+                    O preço do catálogo para este plano foi alterado após a ativação. O valor cobrado no Stripe difere do percentual recalculado sobre a tabela vigente.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 bg-background/50 rounded p-2 text-[11px]">
+                    <div>
+                      <span className="text-muted-foreground block">Valor Cobrado Atual:</span>
+                      <span className="font-semibold text-foreground">
+                        {formatCentsToBRL(data.percentageRepriceNotice.actualStripeAmountCents)}{currentIntervalSuffix}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block">Valor Esperado (Catálogo):</span>
+                      <span className="font-semibold text-emerald-400">
+                        {formatCentsToBRL(data.percentageRepriceNotice.expectedEffectivePriceCents)}{currentIntervalSuffix}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="pt-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsRepricing(true);
+                        setRepriceReason("Reconciliação de precificação percentual após alteração da tabela de catálogo.");
+                        setActivationError(null);
+                        setIsActivating(false);
+                        setIsRetrying(false);
+                        setIsAbandoning(false);
+                        setIsCustomizing(false);
+                      }}
+                      className="h-8 text-xs font-semibold border-amber-500/40 text-amber-300 hover:bg-amber-500/20"
+                    >
+                      Reconciliar cobrança
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Subviews: Repricing */}
+            {isRepricing && (
+              <div className="rounded-xl border border-amber-500/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h4 className="font-semibold text-base text-foreground flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-amber-400" /> Reconciliar cobrança percentual no Stripe
+                  </h4>
+                  <Button size="sm" variant="ghost" onClick={() => setIsRepricing(false)} className="text-xs">
+                    Cancelar
+                  </Button>
+                </div>
+
+                {activationError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-destructive text-xs">
+                    {activationError}
+                  </div>
+                )}
+
+                <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs block">Valor Cobrado Atual</span>
+                      <span className="font-medium text-foreground">
+                        {formatCentsToBRL(data?.percentageRepriceNotice?.actualStripeAmountCents || 0)}{currentIntervalSuffix}
+                      </span>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <span className="text-muted-foreground text-xs block">Novo Valor Reconciliado</span>
+                      <span className="font-bold text-emerald-400">
+                        {formatCentsToBRL(data?.percentageRepriceNotice?.expectedEffectivePriceCents || 0)}{currentIntervalSuffix}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Justificativa para Reconciliação <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    rows={2}
+                    value={repriceReason}
+                    onChange={(e) => setRepriceReason(e.target.value)}
+                    placeholder="Descreva o motivo da reconciliação (ex: Atualização de tabela de preços do catálogo)"
+                    className="text-base md:text-sm"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsRepricing(false)}
+                    className="flex-1 h-11 text-xs"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleConfirmReprice}
+                    disabled={repricingLoading || !repriceReason.trim()}
+                    isLoading={repricingLoading}
+                    className="flex-1 h-11 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    Confirmar Reconciliação
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Subviews: Activating | Retrying | Abandoning | Customizing */}
             {isActivating ? (

@@ -8,6 +8,9 @@ import { BILLING_INTERVALS, INTERVAL_MONTHS, type BillingInterval } from "@works
 import { subscriptionsTable, plansTable, planPricesTable, customerCommercialConditionsTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
 import { logCommercialAudit } from "../services/commercialAudit.js";
+import { getUncachableStripeClient } from "./stripeClient.js";
+import { resolveCatalogPlanPrice } from "../services/catalogPricing.js";
+import { calculateEffectivePrice } from "../services/pricingEngine.js";
 
 // Shared downgrade detection: returns true if planId is cheaper than the
 // creche's currently active plan and the current paid period has not yet ended.
@@ -172,7 +175,12 @@ async function commit(appSub: AppSub, eventCreatedMs: number, updates: Record<st
     );
 }
 
-async function handleSubscriptionEvent(type: string, sub: any, eventCreatedMs: number): Promise<void> {
+export async function handleSubscriptionEvent(
+  type: string,
+  sub: any,
+  eventCreatedMs: number,
+  stripeClient?: any,
+): Promise<void> {
   const crecheId = Number(sub?.metadata?.crecheId) || undefined;
   const customerId = typeof sub?.customer === "string" ? sub.customer : sub?.customer?.id;
   const appSub = await findAppSubscription({
@@ -182,34 +190,100 @@ async function handleSubscriptionEvent(type: string, sub: any, eventCreatedMs: n
   });
   if (!appSub) return;
 
+  // Section 13: Treat webhook as reconciliation trigger.
+  // Retrieve CURRENT Stripe Subscription state using the Stripe READ client
+  // so stale out-of-order event snapshots cannot roll back or diverge state.
+  let currentSub = sub;
+  const subId = sub?.id ?? appSub.stripeSubscriptionId;
+  const activeStripe = stripeClient ?? (await getUncachableStripeClient().catch(() => null));
+  if (subId && activeStripe?.subscriptions?.retrieve) {
+    try {
+      const liveSub = await activeStripe.subscriptions.retrieve(subId, {
+        expand: ["items.data.price"],
+      });
+      if (liveSub) {
+        currentSub = liveSub;
+      }
+    } catch (err: any) {
+      // Graceful fallback to event payload if Stripe read fails
+    }
+  }
+
   const status: AppStatus | null =
-    type === "customer.subscription.deleted" ? "cancelled" : mapStripeSubStatus(sub?.status);
+    type === "customer.subscription.deleted" ? "cancelled" : mapStripeSubStatus(currentSub?.status ?? sub?.status);
   if (!status) return;
 
   const updates: Record<string, unknown> = {
     status,
-    stripeSubscriptionId: sub?.id ?? appSub.stripeSubscriptionId,
+    stripeSubscriptionId: currentSub?.id ?? sub?.id ?? appSub.stripeSubscriptionId,
     stripeCustomerId: customerId ?? appSub.stripeCustomerId,
   };
 
-  const incomingPriceId = sub?.items?.data?.[0]?.price?.id;
+  const currentItem = currentSub?.items?.data?.[0];
+  const incomingPriceId = currentItem?.price?.id;
+  const actualStripeAmountCents = currentItem?.price?.unit_amount;
+
   const resolved = await resolvePlanByPrice(incomingPriceId);
   if (resolved) {
     updates.planId = resolved.planId;
     updates.billingInterval = resolved.interval;
     if (resolved.isCustom && resolved.conditionId) {
-      await db
-        .update(customerCommercialConditionsTable)
-        .set({ syncStatus: "synced", lastSyncError: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(customerCommercialConditionsTable.id, resolved.conditionId),
-            or(
-              eq(customerCommercialConditionsTable.syncStatus, "sync_pending"),
-              eq(customerCommercialConditionsTable.syncStatus, "divergent"),
+      // Section 8: Check if active percentage condition has drifted from current catalog price
+      let shouldMarkDivergent = false;
+      if (appSub.activeConditionId && appSub.activeConditionId === resolved.conditionId) {
+        const [activeCond] = await db
+          .select()
+          .from(customerCommercialConditionsTable)
+          .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId))
+          .limit(1);
+
+        if (activeCond && activeCond.pricingOverrideType === "percentage") {
+          const [planRow] = await db
+            .select()
+            .from(plansTable)
+            .where(eq(plansTable.id, resolved.planId))
+            .limit(1);
+
+          if (planRow) {
+            try {
+              const currentCatalog = await resolveCatalogPlanPrice(planRow, resolved.interval, db);
+              const expectedPricing = calculateEffectivePrice({
+                catalogPriceCents: currentCatalog.catalogPriceCents,
+                pricingOverrideType: "percentage",
+                pricingOverrideValue: activeCond.pricingOverrideValue ?? 0,
+              });
+              if (
+                typeof actualStripeAmountCents === "number" &&
+                actualStripeAmountCents !== expectedPricing.finalEffectivePriceCents
+              ) {
+                shouldMarkDivergent = true;
+              }
+            } catch {
+              // Ignore catalog resolution error in webhook
+            }
+          }
+        }
+      }
+
+      if (shouldMarkDivergent) {
+        await db
+          .update(customerCommercialConditionsTable)
+          .set({ syncStatus: "divergent", updatedAt: new Date() })
+          .where(eq(customerCommercialConditionsTable.id, resolved.conditionId));
+      } else {
+        await db
+          .update(customerCommercialConditionsTable)
+          .set({ syncStatus: "synced", lastSyncError: null, updatedAt: new Date() })
+          .where(
+            and(
+              eq(customerCommercialConditionsTable.id, resolved.conditionId),
+              or(
+                eq(customerCommercialConditionsTable.syncStatus, "sync_pending"),
+                eq(customerCommercialConditionsTable.syncStatus, "divergent"),
+              ),
             ),
-          ),
-        );
+          );
+      }
     }
   } else if (incomingPriceId) {
     // Unknown price detected from external Stripe modification (Section 27)
@@ -234,7 +308,7 @@ async function handleSubscriptionEvent(type: string, sub: any, eventCreatedMs: n
     }
   }
 
-  const periodEnd = readPeriodEnd(sub);
+  const periodEnd = readPeriodEnd(currentSub ?? sub);
   if (periodEnd) updates.currentPeriodEnd = periodEnd;
 
   if (status === "past_due") {
@@ -339,14 +413,14 @@ async function handlePaymentIntentSucceeded(pi: any, eventCreatedMs: number): Pr
 // Applies a single (already signature-verified) Stripe event to the app's
 // subscription state. Idempotent and order-safe. Throws on DB failure so the
 // webhook returns non-2xx and Stripe retries.
-export async function applyStripeEvent(event: any): Promise<void> {
+export async function applyStripeEvent(event: any, stripeClient?: any): Promise<void> {
   const type: string = event?.type ?? "";
   const obj = event?.data?.object;
   if (!obj) return;
   const eventCreatedMs = typeof event?.created === "number" ? event.created * 1000 : 0;
 
   if (type.startsWith("customer.subscription.")) {
-    await handleSubscriptionEvent(type, obj, eventCreatedMs);
+    await handleSubscriptionEvent(type, obj, eventCreatedMs, stripeClient);
   } else if (type === "invoice.payment_failed") {
     await handleInvoiceFailed(obj, eventCreatedMs);
   } else if (type === "invoice.paid" || type === "invoice.payment_succeeded") {

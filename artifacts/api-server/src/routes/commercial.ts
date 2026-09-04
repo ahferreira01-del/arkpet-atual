@@ -34,6 +34,7 @@ import {
   executeStripeCommercialActivation,
   retryStripeCommercialActivation,
   abandonCommercialCondition,
+  executePercentageReprice,
   CommercialActivationError,
 } from "../services/stripeCommercialActivation.js";
 
@@ -43,6 +44,7 @@ export const COMMERCIAL_OPERATIONS = {
   ACTIVATE_PRICE_CONDITION: "ACTIVATE_PRICE_CONDITION",
   RETRY_PRICE_ACTIVATION: "RETRY_PRICE_ACTIVATION",
   ABANDON_PRICE_CONDITION: "ABANDON_PRICE_CONDITION",
+  REPRICE_PERCENTAGE_CONDITION: "REPRICE_PERCENTAGE_CONDITION",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
 
@@ -167,6 +169,13 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
     .limit(1);
 
   let commercialStripeStatus: "SYNCHRONIZED" | "PENDING" | "FAILED" | "DIVERGENT" | null = null;
+  let percentageRepriceNotice: {
+    required: boolean;
+    expectedEffectivePriceCents: number;
+    actualStripeAmountCents: number;
+    message: string;
+  } | null = null;
+
   if (sub?.stripeSubscriptionId) {
     if (activeCondition?.syncStatus === "divergent" || latestDraft?.syncStatus === "divergent") {
       commercialStripeStatus = "DIVERGENT";
@@ -176,6 +185,33 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
       commercialStripeStatus = "FAILED";
     } else {
       commercialStripeStatus = "SYNCHRONIZED";
+    }
+
+    // Section 8: Check for percentage condition drift when catalog price changes
+    if (activeCondition && activeCondition.pricingOverrideType === "percentage" && resolvedCatalog && pricing) {
+      const expectedAmount = pricing.finalEffectivePriceCents;
+      let initialAmount = expectedAmount;
+      if (
+        activeCondition.snapshotBasePriceCents &&
+        activeCondition.snapshotBasePriceCents !== resolvedCatalog.catalogPriceCents
+      ) {
+        const initialPricing = calculateEffectivePrice({
+          catalogPriceCents: activeCondition.snapshotBasePriceCents,
+          pricingOverrideType: "percentage",
+          pricingOverrideValue: activeCondition.pricingOverrideValue ?? 0,
+        });
+        initialAmount = initialPricing.finalEffectivePriceCents;
+      }
+
+      if (initialAmount !== expectedAmount || activeCondition.syncStatus === "divergent") {
+        commercialStripeStatus = "DIVERGENT";
+        percentageRepriceNotice = {
+          required: true,
+          expectedEffectivePriceCents: expectedAmount,
+          actualStripeAmountCents: initialAmount,
+          message: "Valor Stripe desatualizado. O catálogo foi alterado após a ativação desta condição percentual.",
+        };
+      }
     }
   }
   const canActivateStripe = Boolean(sub?.stripeSubscriptionId);
@@ -260,6 +296,7 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
         }
       : null,
     commercialStripeStatus,
+    percentageRepriceNotice,
     canActivateStripe,
   });
 });
@@ -986,6 +1023,59 @@ commercialRouter.post(
       res.status(500).json({
         error: "ABANDON_CONDITION_ERROR",
         message: err.message || "Erro ao abandonar proposta comercial.",
+      });
+    }
+  },
+);
+
+/**
+ * POST /api/creches/:crecheId/commercial/conditions/:conditionId/reprice-percentage
+ * Bounded Master Admin percentage repricing action when current catalog price drifts.
+ */
+commercialRouter.post(
+  "/conditions/:conditionId/reprice-percentage",
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const crecheId = Number(req.params.crecheId);
+    const conditionId = Number(req.params.conditionId);
+    const { reason } = req.body;
+
+    if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+      res.status(400).json({
+        error: "reason_required",
+        message: "Justificativa obrigatória para reconciliação/reprecificação do Stripe.",
+      });
+      return;
+    }
+
+    if (!conditionId || !Number.isInteger(conditionId) || conditionId <= 0) {
+      res.status(400).json({
+        error: "invalid_condition_id",
+        message: "ID da condição comercial inválido.",
+      });
+      return;
+    }
+
+    try {
+      const result = await executePercentageReprice({
+        crecheId,
+        conditionId,
+        reason: reason.trim(),
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+      });
+      res.status(200).json(result);
+    } catch (err: any) {
+      if (err instanceof CommercialActivationError) {
+        res.status(err.statusCode).json({
+          error: err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
+      res.status(500).json({
+        error: "REPRICE_PERCENTAGE_ERROR",
+        message: err.message || "Erro ao reconciliar cobrança percentual no Stripe.",
       });
     }
   },
