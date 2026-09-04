@@ -8,12 +8,21 @@ import { plansTable } from "./plans";
 // Status enums as string literals / varchar for maximum robustness and zero-migration runtime safety
 export const commercialConditionStatusValues = [
   "draft",
-  "pending_acceptance",
+  "pending_activation",
   "active",
+  "activation_failed",
   "superseded",
   "cancelled",
+  "abandoned",
 ] as const;
 export type CommercialConditionStatus = (typeof commercialConditionStatusValues)[number];
+
+export const pricingOverrideTypeValues = [
+  "none",
+  "fixed_amount",
+  "percentage",
+] as const;
+export type PricingOverrideType = (typeof pricingOverrideTypeValues)[number];
 
 export const commercialAgreementStatusValues = [
   "draft",

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { WebhookHandlers } from "../lib/webhookHandlers.js";
+import { WebhookHandlers, dispatchWebhookBusinessLogic } from "../lib/webhookHandlers.js";
 import * as gatewayService from "../services/gatewayEvents.js";
 import * as subSync from "../lib/subscriptionSync.js";
 import * as finSync from "../lib/financialSync.js";
 import * as stripeClient from "../lib/stripeClient.js";
+import type { GatewayEvent } from "@workspace/db/schema";
 
-describe("WebhookHandlers Gateway Integration Regression Tests (R36.C)", () => {
+describe("WebhookHandlers Gateway Integration Regression Tests (R36.C1)", () => {
   let claimSpy: any;
   let finalizeSpy: any;
   let applyStripeEventSpy: any;
@@ -23,7 +24,7 @@ describe("WebhookHandlers Gateway Integration Regression Tests (R36.C)", () => {
     applyFinancialStripeEventSpy = vi.spyOn(finSync, "applyFinancialStripeEvent").mockResolvedValue();
   });
 
-  it("normal first delivery claims lease, executes synchronization, and finalizes as processed", async () => {
+  it("normal first delivery claims lease, executes canonical dispatcher, and finalizes as processed", async () => {
     const rawEvent = {
       id: "evt_normal_1",
       type: "customer.subscription.updated",
@@ -138,5 +139,72 @@ describe("WebhookHandlers Gateway Integration Regression Tests (R36.C)", () => {
 
     expect(applyStripeEventSpy).not.toHaveBeenCalled();
     expect(finalizeSpy).not.toHaveBeenCalled();
+  });
+
+  it("proves that an event reconstructed from the persisted recovery representation executes through canonical dispatchWebhookBusinessLogic successfully (Section 6 Replay Test)", async () => {
+    // 1. A persisted event record in gateway_events
+    const persistedRecord: GatewayEvent = {
+      id: 99,
+      gateway: "stripe",
+      eventId: "evt_replay_test_99",
+      eventType: "customer.subscription.updated",
+      eventCreated: new Date(1725450000 * 1000),
+      status: "failed_retryable",
+      retryCount: 1,
+      errorMessage: "Previous transient timeout",
+      receivedAt: new Date(),
+      processingStartedAt: new Date(),
+      leaseExpiresAt: new Date(),
+      processedAt: null,
+      payload: {
+        id: "evt_replay_test_99",
+        type: "customer.subscription.updated",
+        created: 1725450000,
+        livemode: false,
+        data: {
+          object: {
+            id: "sub_replay_1",
+            customer: "cus_replay_1",
+            status: "active",
+            items: {
+              data: [
+                {
+                  id: "si_replay_1",
+                  price: { id: "price_pro_month" },
+                  current_period_end: 1728000000,
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
+
+    // 2. Reconstruct event from record
+    const reconstructedEvent = gatewayService.reconstructReplayEvent(persistedRecord);
+    expect(reconstructedEvent.id).toBe("evt_replay_test_99");
+    expect(reconstructedEvent.data.object.id).toBe("sub_replay_1");
+
+    // 3. Dispatch through canonical business dispatcher
+    await dispatchWebhookBusinessLogic(reconstructedEvent);
+
+    // 4. Verify canonical handlers were invoked with the reconstructed event shape
+    expect(applyStripeEventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "evt_replay_test_99",
+        type: "customer.subscription.updated",
+        data: expect.objectContaining({
+          object: expect.objectContaining({
+            id: "sub_replay_1",
+            customer: "cus_replay_1",
+          }),
+        }),
+      }),
+    );
+    expect(applyFinancialStripeEventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "evt_replay_test_99",
+      }),
+    );
   });
 });

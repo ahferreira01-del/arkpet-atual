@@ -7,7 +7,8 @@ import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
 import { cancelOrder } from "../services/orders.js";
-import { recoverStaleGatewayEvents } from "../services/gatewayEvents.js";
+import { recoverStaleGatewayEvents, recoverAndProcessStaleGatewayEvents } from "../services/gatewayEvents.js";
+import { dispatchWebhookBusinessLogic } from "./webhookHandlers.js";
 
 export const SAO_PAULO_TZ = "America/Sao_Paulo";
 export const DAILY_TASK_GENERATION_LOCK_KEY = 999_100_001;
@@ -1035,9 +1036,11 @@ export async function processGatewayEventRecovery(): Promise<void> {
   if (gatewayRecoveryRunning) return;
   gatewayRecoveryRunning = true;
   try {
-    const recovered = await recoverStaleGatewayEvents("stripe");
-    if (recovered > 0) {
-      console.log(`[scheduler] Gateway event recovery: ${recovered} stale event(s) marked for retry.`);
+    const result = await recoverAndProcessStaleGatewayEvents(dispatchWebhookBusinessLogic, "stripe");
+    if (result.recoveredCount > 0) {
+      console.log(
+        `[scheduler] Gateway event recovery: ${result.recoveredCount} event(s) claimed, ${result.successCount} succeeded, ${result.failedCount} failed.`,
+      );
     }
   } catch (err) {
     console.error("[scheduler] Error during gateway event recovery:", err);

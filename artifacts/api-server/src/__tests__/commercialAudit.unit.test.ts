@@ -20,12 +20,13 @@ describe("Commercial Audit Writer Unit Tests (R36.C)", () => {
     };
   });
 
-  it("requires a reason when actorType is 'user'", async () => {
+  it("requires a reason when master_admin executes a privileged administrative mutation", async () => {
     await expect(
       logCommercialAudit(
         {
           targetCrecheId: 1,
           actorType: "user",
+          actorRole: "master_admin",
           actorId: 42,
           actorEmail: "admin@arkpet.com",
           action: "override_pricing",
@@ -40,8 +41,9 @@ describe("Commercial Audit Writer Unit Tests (R36.C)", () => {
         {
           targetCrecheId: 1,
           actorType: "user",
+          actorRole: "master_admin",
           actorId: 42,
-          action: "override_pricing",
+          action: "override_pet_limit",
           reason: "   ",
         },
         mockDb,
@@ -49,6 +51,26 @@ describe("Commercial Audit Writer Unit Tests (R36.C)", () => {
     ).rejects.toThrow(CommercialAuditError);
 
     expect(mockInsertedRows.length).toBe(0);
+  });
+
+  it("accepts creche_admin self-service proposal acceptance without requiring a business reason", async () => {
+    const result = await logCommercialAudit(
+      {
+        targetCrecheId: 1,
+        actorType: "user",
+        actorRole: "creche_admin",
+        actorId: 88,
+        actorEmail: "tutor@creche.com",
+        action: "proposal_acceptance",
+        relatedAgreementId: 5,
+      },
+      mockDb,
+    );
+
+    expect(result.actorRole).toBe("creche_admin");
+    expect(result.action).toBe("proposal_acceptance");
+    expect(result.reason).toBeNull();
+    expect(mockInsertedRows.length).toBe(1);
   });
 
   it("persists audit successfully when actorType is 'user' and valid reason is provided", async () => {

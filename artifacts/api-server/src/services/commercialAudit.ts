@@ -16,6 +16,7 @@ export interface LogCommercialAuditParams {
   actorEmail?: string | null;
   action: string;
   reason?: string | null;
+  requiresReason?: boolean;
   beforeState?: Record<string, unknown> | null;
   afterState?: Record<string, unknown> | null;
   executionRequirement?: string | null;
@@ -25,13 +26,40 @@ export interface LogCommercialAuditParams {
 }
 
 const VALID_ACTOR_TYPES: CommercialAuditActorType[] = ["user", "system", "gateway"];
+const PRIVILEGED_ROLES = ["master_admin"];
+const SELF_SERVICE_ACTIONS = [
+  "proposal_acceptance",
+  "proposal_decline",
+  "opt_in_promotion",
+  "customer_acceptance",
+  "customer_decline",
+];
+
+/**
+ * Determines whether a commercial action is a privileged administrative mutation
+ * requiring a mandatory human justification reason.
+ */
+export function isPrivilegedCommercialMutation(entry: LogCommercialAuditParams): boolean {
+  if (entry.requiresReason !== undefined) {
+    return entry.requiresReason;
+  }
+  if (entry.actorType !== "user") {
+    return false;
+  }
+  if (entry.actorRole && PRIVILEGED_ROLES.includes(entry.actorRole)) {
+    return !SELF_SERVICE_ACTIONS.includes(entry.action);
+  }
+  return false;
+}
 
 /**
  * Appends a durable commercial audit entry.
  * Invariants:
  * - actorType must be 'user', 'system', or 'gateway'.
- * - When actorType === 'user', reason is strictly required and non-empty.
- * - SYSTEM and GATEWAY actors do not require a human reason.
+ * - Privileged administrative mutations (e.g. master_admin price/plan overrides)
+ *   strictly require a justification reason.
+ * - Customer self-service events (e.g. creche_admin proposal acceptance) and
+ *   SYSTEM / GATEWAY events do NOT require a human reason.
  * - Supports executing inside an optional transaction (caller handles tx boundary).
  * - Never swallows database errors.
  */
@@ -45,10 +73,10 @@ export async function logCommercialAudit(
     );
   }
 
-  if (entry.actorType === "user") {
+  if (isPrivilegedCommercialMutation(entry)) {
     if (!entry.reason || entry.reason.trim().length === 0) {
       throw new CommercialAuditError(
-        "Commercial audit error: privileged USER mutations strictly require a justification reason.",
+        `Commercial audit error: privileged administrative mutation (${entry.action}) by ${entry.actorRole || "user"} strictly requires a justification reason.`,
       );
     }
   }

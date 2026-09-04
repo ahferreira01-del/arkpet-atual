@@ -2,7 +2,9 @@ import { db } from "@workspace/db";
 import {
   customerCommercialConditionsTable,
   subscriptionsTable,
+  commercialConditionStatusValues,
   type CustomerCommercialCondition,
+  type CommercialConditionStatus,
 } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -17,6 +19,13 @@ export class InvalidConditionSnapshotError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InvalidConditionSnapshotError";
+  }
+}
+
+export class InvalidPricingOverrideError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidPricingOverrideError";
   }
 }
 
@@ -37,6 +46,54 @@ export function assertConditionTenantMatch(
 }
 
 /**
+ * Validates pricing override combination according to canonical R36 rules:
+ * - 'none': value must be null, undefined, or 0.
+ * - 'fixed_amount': value must be an integer >= 0 representing amount in centavos.
+ * - 'percentage': value must be an integer between 0 and 10000 representing basis points (e.g. 15% = 1500).
+ */
+export function validatePricingOverride(
+  type: string | null | undefined,
+  value: number | null | undefined,
+): void {
+  if (!type || type === "none") {
+    if (value !== null && value !== undefined && value !== 0) {
+      throw new InvalidPricingOverrideError(
+        `Pricing override type 'none' cannot have a non-zero value (received ${value}).`,
+      );
+    }
+    return;
+  }
+
+  if (type === "fixed_amount") {
+    if (value === null || value === undefined || !Number.isInteger(value) || value < 0) {
+      throw new InvalidPricingOverrideError(
+        `Pricing override 'fixed_amount' requires a non-negative integer amount in centavos (received ${value}).`,
+      );
+    }
+    return;
+  }
+
+  if (type === "percentage") {
+    if (
+      value === null ||
+      value === undefined ||
+      !Number.isInteger(value) ||
+      value < 0 ||
+      value > 10000
+    ) {
+      throw new InvalidPricingOverrideError(
+        `Pricing override 'percentage' requires an integer in basis points between 0 and 10000 (0%..100%, e.g. 15% = 1500; received ${value}).`,
+      );
+    }
+    return;
+  }
+
+  throw new InvalidPricingOverrideError(
+    `Unsupported pricing override type '${type}'. Allowed types: 'none', 'fixed_amount', 'percentage'.`,
+  );
+}
+
+/**
  * Validates that a commercial condition is a complete, self-contained snapshot
  * rather than a sparse patch.
  */
@@ -49,23 +106,41 @@ export function assertConditionFullSnapshot(
   if (!condition.status) {
     throw new InvalidConditionSnapshotError("Condition snapshot missing required status.");
   }
+  if (!commercialConditionStatusValues.includes(condition.status as CommercialConditionStatus)) {
+    throw new InvalidConditionSnapshotError(
+      `Invalid condition status '${condition.status}'. Canonical lifecycle states: ${commercialConditionStatusValues.join(", ")}`,
+    );
+  }
   if (!condition.validFrom) {
     throw new InvalidConditionSnapshotError("Condition snapshot missing required validFrom timestamp.");
   }
-  // Pricing override type must be explicitly specified (e.g. 'none' if no override)
+
+  // Pricing override must declare canonical override type and valid value
   if (condition.pricingOverrideType === undefined || condition.pricingOverrideType === null) {
     throw new InvalidConditionSnapshotError(
       "Condition snapshot missing pricingOverrideType. Full snapshot must declare override type (use 'none' for baseline).",
     );
   }
+  validatePricingOverride(condition.pricingOverrideType, condition.pricingOverrideValue);
+
   // petLimit is the only approved entitlement override in ArkPet
   if (
     condition.entitlementPetLimit !== undefined &&
     condition.entitlementPetLimit !== null &&
-    condition.entitlementPetLimit <= 0
+    (!Number.isInteger(condition.entitlementPetLimit) || condition.entitlementPetLimit <= 0)
   ) {
     throw new InvalidConditionSnapshotError("entitlementPetLimit must be a positive integer when specified.");
   }
+}
+
+/**
+ * Validates that a condition is complete and eligible before it can transition to
+ * pending_activation or active.
+ */
+export function assertConditionCanActivate(
+  condition: Partial<CustomerCommercialCondition>,
+): void {
+  assertConditionFullSnapshot(condition);
 }
 
 /**
@@ -111,7 +186,7 @@ export async function transitionActiveCondition(
     if (sub) {
       assertConditionTenantMatch(sub.crecheId, newCond.crecheId);
     }
-    assertConditionFullSnapshot(newCond);
+    assertConditionCanActivate(newCond);
 
     // 2. Find any currently active condition
     const [currentActive] = await tx

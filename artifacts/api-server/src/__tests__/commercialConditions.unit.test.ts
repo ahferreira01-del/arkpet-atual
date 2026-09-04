@@ -2,12 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   assertConditionTenantMatch,
   assertConditionFullSnapshot,
+  assertConditionCanActivate,
+  validatePricingOverride,
   transitionActiveCondition,
   CrossTenantConditionError,
   InvalidConditionSnapshotError,
+  InvalidPricingOverrideError,
 } from "../services/commercialConditions.js";
 
-describe("Commercial Conditions & Tenant Pointer Safety Unit Tests (R36.C)", () => {
+describe("Commercial Conditions & Tenant Pointer Safety Unit Tests (R36.C1)", () => {
   describe("assertConditionTenantMatch (Cross-Tenant Pointer Guard)", () => {
     it("passes when subscription crecheId matches condition crecheId", () => {
       expect(() => assertConditionTenantMatch(42, 42)).not.toThrow();
@@ -21,18 +24,97 @@ describe("Commercial Conditions & Tenant Pointer Safety Unit Tests (R36.C)", () 
     });
   });
 
-  describe("assertConditionFullSnapshot (Full-Snapshot Invariant)", () => {
-    it("accepts a complete, valid condition snapshot", () => {
+  describe("validatePricingOverride (Pricing Override Contract Alignment)", () => {
+    it("accepts 'none' with null, undefined, or 0", () => {
+      expect(() => validatePricingOverride("none", null)).not.toThrow();
+      expect(() => validatePricingOverride("none", undefined)).not.toThrow();
+      expect(() => validatePricingOverride("none", 0)).not.toThrow();
+      expect(() => validatePricingOverride(null, null)).not.toThrow();
+    });
+
+    it("rejects 'none' with non-zero value", () => {
+      expect(() => validatePricingOverride("none", 1500)).toThrow(InvalidPricingOverrideError);
+    });
+
+    it("accepts 'fixed_amount' with non-negative integer centavos", () => {
+      expect(() => validatePricingOverride("fixed_amount", 19990)).not.toThrow();
+      expect(() => validatePricingOverride("fixed_amount", 0)).not.toThrow();
+    });
+
+    it("rejects 'fixed_amount' with negative values, floating points, or null", () => {
+      expect(() => validatePricingOverride("fixed_amount", -100)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("fixed_amount", 199.9)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("fixed_amount", null)).toThrow(InvalidPricingOverrideError);
+    });
+
+    it("accepts 'percentage' with integer basis points in range 0..10000", () => {
+      // 0% = 0 bps, 7.5% = 750 bps, 15% = 1500 bps, 100% = 10000 bps
+      expect(() => validatePricingOverride("percentage", 0)).not.toThrow();
+      expect(() => validatePricingOverride("percentage", 750)).not.toThrow();
+      expect(() => validatePricingOverride("percentage", 1500)).not.toThrow();
+      expect(() => validatePricingOverride("percentage", 10000)).not.toThrow();
+    });
+
+    it("rejects 'percentage' exceeding 10000 bps, negative values, or floats", () => {
+      expect(() => validatePricingOverride("percentage", 10001)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("percentage", -50)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("percentage", 15.5)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("percentage", null)).toThrow(InvalidPricingOverrideError);
+    });
+
+    it("rejects unsupported override types", () => {
+      expect(() => validatePricingOverride("fixed_price", 100)).toThrow(InvalidPricingOverrideError);
+      expect(() => validatePricingOverride("custom_discount_pct", 15)).toThrow(InvalidPricingOverrideError);
+    });
+  });
+
+  describe("assertConditionFullSnapshot (Full-Snapshot Invariant & Lifecycle Alignment)", () => {
+    it("accepts a complete, valid condition snapshot with fixed_amount", () => {
       expect(() =>
         assertConditionFullSnapshot({
           crecheId: 5,
           status: "draft",
           validFrom: new Date(),
-          pricingOverrideType: "fixed_price",
+          pricingOverrideType: "fixed_amount",
           pricingOverrideValue: 15000,
           entitlementPetLimit: 25,
         }),
       ).not.toThrow();
+    });
+
+    it("accepts valid canonical lifecycle states: pending_activation, active, activation_failed, superseded, cancelled, abandoned", () => {
+      const statuses = [
+        "draft",
+        "pending_activation",
+        "active",
+        "activation_failed",
+        "superseded",
+        "cancelled",
+        "abandoned",
+      ] as const;
+
+      for (const status of statuses) {
+        expect(() =>
+          assertConditionFullSnapshot({
+            crecheId: 5,
+            status,
+            validFrom: new Date(),
+            pricingOverrideType: "percentage",
+            pricingOverrideValue: 1500, // 15% in basis points
+          }),
+        ).not.toThrow();
+      }
+    });
+
+    it("rejects obsolete pending_acceptance condition status", () => {
+      expect(() =>
+        assertConditionFullSnapshot({
+          crecheId: 5,
+          status: "pending_acceptance" as any,
+          validFrom: new Date(),
+          pricingOverrideType: "none",
+        }),
+      ).toThrow(/Invalid condition status 'pending_acceptance'/);
     });
 
     it("accepts baseline snapshot with pricingOverrideType 'none'", () => {
@@ -110,117 +192,7 @@ describe("Commercial Conditions & Tenant Pointer Safety Unit Tests (R36.C)", () 
   });
 
   describe("transitionActiveCondition (Atomic Transition Order Invariant)", () => {
-    let mockTxState: {
-      conditions: Map<number, any>;
-      subscriptions: Map<number, any>;
-      updateLog: string[];
-    };
-
-    beforeEach(() => {
-      mockTxState = {
-        conditions: new Map([
-          [
-            1,
-            {
-              id: 1,
-              crecheId: 10,
-              status: "active",
-              validFrom: new Date(),
-              pricingOverrideType: "none",
-            },
-          ],
-          [
-            2,
-            {
-              id: 2,
-              crecheId: 10,
-              status: "draft",
-              validFrom: new Date(),
-              pricingOverrideType: "fixed_price",
-              pricingOverrideValue: 20000,
-            },
-          ],
-          [
-            3,
-            {
-              id: 3,
-              crecheId: 99, // Creche 99 (cross-tenant condition)
-              status: "draft",
-              validFrom: new Date(),
-              pricingOverrideType: "none",
-            },
-          ],
-        ]),
-        subscriptions: new Map([
-          [
-            100,
-            {
-              id: 100,
-              crecheId: 10,
-              planId: 2,
-              activeConditionId: null, // Legacy subscription starts with null
-            },
-          ],
-        ]),
-        updateLog: [],
-      };
-    });
-
-    function createMockTxDb() {
-      const tx = {
-        select: vi.fn().mockImplementation((fields) => ({
-          from: vi.fn().mockImplementation((table) => ({
-            where: vi.fn().mockImplementation((condition) => ({
-              limit: vi.fn().mockImplementation(() => {
-                // Return appropriate mock data based on query
-                const tableName = (table as any)?._?.name ?? "";
-                if (tableName === "subscriptions") {
-                  for (const sub of mockTxState.subscriptions.values()) {
-                    return Promise.resolve([sub]);
-                  }
-                }
-                // Conditions table
-                return Promise.resolve([]);
-              }),
-            })),
-          })),
-        })),
-        update: vi.fn().mockImplementation((table) => ({
-          set: vi.fn().mockImplementation((updates) => ({
-            where: vi.fn().mockImplementation(() => {
-              const tableName = (table as any)?._?.name ?? "";
-              if (updates.status === "superseded") {
-                mockTxState.updateLog.push("supersede_previous");
-              } else if (updates.status === "active") {
-                mockTxState.updateLog.push("activate_new");
-              } else if (updates.activeConditionId !== undefined) {
-                mockTxState.updateLog.push("update_subscription_pointer");
-              }
-              return Promise.resolve([{ rowCount: 1 }]);
-            }),
-          })),
-        })),
-        transaction: vi.fn().mockImplementation(async (callback) => {
-          return await callback(tx);
-        }),
-      };
-
-      // Custom mock for transitionActiveCondition queries
-      tx.select = vi.fn().mockImplementation(() => ({
-        from: vi.fn().mockImplementation((table) => ({
-          where: vi.fn().mockImplementation(() => ({
-            limit: vi.fn().mockImplementation(() => {
-              return Promise.resolve([]);
-            }),
-          })),
-        })),
-      }));
-
-      return tx;
-    }
-
     it("verifies transitionActiveCondition supersedes old before activating new", async () => {
-      // Setup dedicated mock database
       const actions: string[] = [];
 
       const tx: any = {
@@ -249,7 +221,8 @@ describe("Commercial Conditions & Tenant Pointer Safety Unit Tests (R36.C)", () 
                     crecheId: 10,
                     status: "draft",
                     validFrom: new Date(),
-                    pricingOverrideType: "fixed_price",
+                    pricingOverrideType: "fixed_amount",
+                    pricingOverrideValue: 20000,
                   },
                 ]),
             }),

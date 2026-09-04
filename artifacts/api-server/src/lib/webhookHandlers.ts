@@ -9,6 +9,16 @@ import { claimGatewayEvent, finalizeGatewayEvent } from "../services/gatewayEven
 
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
+/**
+ * Canonical dispatcher for verified Stripe events.
+ * Applies subscription lifecycle updates and financial payment processing.
+ * Reused identically by primary webhook ingestion and background recovery workers.
+ */
+export async function dispatchWebhookBusinessLogic(event: any): Promise<void> {
+  await applyStripeEvent(event);
+  await applyFinancialStripeEvent(event);
+}
+
 export class WebhookHandlers {
   static async processWebhook(payload: Buffer, signature: string): Promise<void> {
     if (!Buffer.isBuffer(payload)) {
@@ -66,8 +76,7 @@ export class WebhookHandlers {
     try {
       // Apply the lifecycle transition to the app subscription.
       // Errors propagate so the route returns non-2xx and Stripe retries.
-      await applyStripeEvent(event);
-      await applyFinancialStripeEvent(event);
+      await dispatchWebhookBusinessLogic(event);
       await finalizeGatewayEvent(event.id, "processed", undefined, "stripe");
     } catch (err: any) {
       const isRetryable = !(err instanceof SyntaxError || (err as any)?.code === "INVALID_EVENT");
