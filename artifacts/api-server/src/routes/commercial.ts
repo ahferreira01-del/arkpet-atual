@@ -1,6 +1,6 @@
 import { Router, type Response } from "express";
 import crypto from "crypto";
-import { db } from "@workspace/db";
+import { db, BILLING_INTERVALS, type BillingInterval } from "@workspace/db";
 import {
   crechesTable,
   subscriptionsTable,
@@ -22,6 +22,12 @@ import {
   CommercialConditionIntegrityError,
 } from "../services/commercialConditions.js";
 import { logCommercialAudit, CommercialAuditError } from "../services/commercialAudit.js";
+import {
+  resolveCatalogPlanPrice,
+  normalizeBillingInterval,
+  CatalogPriceResolutionError,
+  type ResolvedCatalogPlanPrice,
+} from "../services/catalogPricing.js";
 
 export const COMMERCIAL_OPERATIONS = {
   PET_LIMIT_OVERRIDE: "PET_LIMIT_OVERRIDE",
@@ -77,9 +83,27 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
     .limit(1);
 
   let plan = null;
+  let resolvedCatalog: ResolvedCatalogPlanPrice | null = null;
+  const interval: BillingInterval =
+    (sub?.billingInterval ? normalizeBillingInterval(sub.billingInterval) : null) ?? "month";
+
   if (sub?.planId) {
     const [p] = await db.select().from(plansTable).where(eq(plansTable.id, sub.planId)).limit(1);
     plan = p ?? null;
+    if (plan) {
+      try {
+        resolvedCatalog = await resolveCatalogPlanPrice(plan, interval, db);
+      } catch (err: any) {
+        if (err instanceof CatalogPriceResolutionError) {
+          res.status(422).json({
+            error: "catalog_price_missing",
+            message: err.message,
+          });
+          return;
+        }
+        throw err;
+      }
+    }
   }
 
   const activePetCount = await countActivePetsForCreche(crecheId, db);
@@ -101,10 +125,9 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
 
   // Active pricing calculation
   let pricing = null;
-  const planPriceCents = plan ? ((plan as any).priceBrl ?? (plan as any).priceCents ?? 0) : 0;
-  if (plan) {
+  if (resolvedCatalog) {
     pricing = calculateEffectivePrice({
-      catalogPriceCents: planPriceCents,
+      catalogPriceCents: resolvedCatalog.catalogPriceCents,
       pricingOverrideType: (activeCondition?.pricingOverrideType as any) ?? "none",
       pricingOverrideValue: activeCondition?.pricingOverrideValue ?? null,
       validFrom: activeCondition?.validFrom ?? null,
@@ -129,14 +152,28 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
     .limit(1);
 
   let draftPricing = null;
-  if (latestDraft && plan) {
-    draftPricing = calculateEffectivePrice({
-      catalogPriceCents: planPriceCents,
-      pricingOverrideType: (latestDraft.pricingOverrideType as any) ?? "none",
-      pricingOverrideValue: latestDraft.pricingOverrideValue ?? null,
-      validFrom: latestDraft.validFrom ?? null,
-      validUntil: latestDraft.validUntil ?? null,
-    });
+  if (latestDraft) {
+    const draftPlanId = latestDraft.planId ?? sub?.planId;
+    const draftInterval: BillingInterval =
+      (latestDraft.snapshotBillingInterval
+        ? normalizeBillingInterval(latestDraft.snapshotBillingInterval)
+        : null) ?? interval;
+
+    if (draftPlanId) {
+      try {
+        const draftTarget = plan && draftPlanId === plan.id ? plan : draftPlanId;
+        const draftResolved = await resolveCatalogPlanPrice(draftTarget, draftInterval, db);
+        draftPricing = calculateEffectivePrice({
+          catalogPriceCents: draftResolved.catalogPriceCents,
+          pricingOverrideType: (latestDraft.pricingOverrideType as any) ?? "none",
+          pricingOverrideValue: latestDraft.pricingOverrideValue ?? null,
+          validFrom: latestDraft.validFrom ?? null,
+          validUntil: latestDraft.validUntil ?? null,
+        });
+      } catch {
+        // If draft catalog resolution fails (e.g. unconfigured plan), draftPricing remains null
+      }
+    }
   }
 
   res.json({
@@ -152,19 +189,20 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
           id: sub.id,
           status: sub.status,
           planId: sub.planId,
-          billingInterval: sub.billingInterval ?? "monthly",
+          billingInterval: interval,
           currentPeriodEnd: sub.currentPeriodEnd,
           trialEndsAt: sub.trialEndsAt,
           hasStripeCustomer: Boolean(sub.stripeCustomerId),
           hasStripeSubscription: Boolean(sub.stripeSubscriptionId),
         }
       : null,
-    plan: plan
+    plan: plan && resolvedCatalog
       ? {
           id: plan.id,
           name: plan.name,
-          priceCents: planPriceCents,
+          priceCents: resolvedCatalog.catalogPriceCents,
           petLimit: plan.petLimit,
+          billingInterval: interval,
         }
       : null,
     activeCondition: activeCondition ?? null,
@@ -192,16 +230,37 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
  */
 commercialRouter.post("/preview-price", async (req: AuthRequest, res: Response): Promise<void> => {
   const crecheId = Number(req.params.crecheId);
-  const { planId, pricingOverrideType, pricingOverrideValue, entitlementPetLimit } = req.body;
+  const { planId, pricingOverrideType, pricingOverrideValue, entitlementPetLimit, billingInterval: rawInterval } = req.body;
 
   let targetPlanId = planId ? Number(planId) : null;
+  let interval: BillingInterval = "month";
+
+  if (rawInterval !== undefined && rawInterval !== null) {
+    const normalized = normalizeBillingInterval(rawInterval);
+    if (!normalized) {
+      res.status(400).json({
+        error: "invalid_billing_interval",
+        message: `Período de cobrança inválido '${rawInterval}'. Períodos suportados: ${BILLING_INTERVALS.join(", ")}.`,
+      });
+      return;
+    }
+    interval = normalized;
+  }
+
   if (!targetPlanId) {
     const [sub] = await db
-      .select({ planId: subscriptionsTable.planId })
+      .select({ planId: subscriptionsTable.planId, billingInterval: subscriptionsTable.billingInterval })
       .from(subscriptionsTable)
       .where(eq(subscriptionsTable.crecheId, crecheId))
       .limit(1);
+
     targetPlanId = sub?.planId ?? null;
+    if ((rawInterval === undefined || rawInterval === null) && sub?.billingInterval) {
+      const normalizedSub = normalizeBillingInterval(sub.billingInterval);
+      if (normalizedSub) {
+        interval = normalizedSub;
+      }
+    }
   }
 
   if (!targetPlanId) {
@@ -218,7 +277,18 @@ commercialRouter.post("/preview-price", async (req: AuthRequest, res: Response):
   try {
     validatePricingOverride(pricingOverrideType, pricingOverrideValue);
 
-    const planPriceCents = (plan as any).priceBrl ?? (plan as any).priceCents ?? 0;
+    let resolvedCatalog: ResolvedCatalogPlanPrice;
+    try {
+      resolvedCatalog = await resolveCatalogPlanPrice(plan, interval, db);
+    } catch (err: any) {
+      if (err instanceof CatalogPriceResolutionError) {
+        res.status(422).json({ error: "catalog_price_missing", message: err.message });
+        return;
+      }
+      throw err;
+    }
+
+    const planPriceCents = resolvedCatalog.catalogPriceCents;
 
     const calculation = calculateEffectivePrice({
       catalogPriceCents: planPriceCents,
@@ -238,6 +308,7 @@ commercialRouter.post("/preview-price", async (req: AuthRequest, res: Response):
         : 0;
 
     res.json({
+      billingInterval: interval,
       catalogPriceCents: planPriceCents,
       currentEffectivePriceCents: planPriceCents,
       proposedEffectivePriceCents: calculation.finalEffectivePriceCents,
@@ -364,12 +435,23 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
     currentActive = await resolveActiveCommercialCondition(crecheId, sub.activeConditionId, db);
   }
 
+  const successorPlanId = currentActive?.planId ?? sub?.planId ?? null;
+  const currentInterval: BillingInterval =
+    sub?.billingInterval && BILLING_INTERVALS.includes(sub.billingInterval as BillingInterval)
+      ? (sub.billingInterval as BillingInterval)
+      : "month";
+
+  const snapshotBillingInterval = currentActive?.snapshotBillingInterval ?? currentInterval;
+  const snapshotBasePriceCents = currentActive?.snapshotBasePriceCents ?? null;
+
   const successorSnapshot = {
     crecheId,
-    planId: currentActive?.planId ?? sub?.planId ?? null,
+    planId: successorPlanId,
     pricingOverrideType: currentActive?.pricingOverrideType ?? "none",
     pricingOverrideValue: currentActive?.pricingOverrideValue ?? null,
     entitlementPetLimit,
+    snapshotBillingInterval: currentInterval,
+    snapshotBasePriceCents,
     validFrom: new Date(),
     validUntil: currentActive?.validUntil ?? null,
     status: "draft", // created as draft, then atomically activated
@@ -442,7 +524,7 @@ commercialRouter.post("/pet-limit-override", async (req: AuthRequest, res: Respo
  */
 commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response): Promise<void> => {
   const crecheId = Number(req.params.crecheId);
-  const { planId, pricingOverrideType, pricingOverrideValue, entitlementPetLimit, reason } = req.body;
+  const { planId, pricingOverrideType, pricingOverrideValue, entitlementPetLimit, reason, billingInterval: rawInterval } = req.body;
 
   let idempotencyKey: string;
   try {
@@ -490,7 +572,25 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     return;
   }
 
-  // Idempotency check (Section 1, 2, 3)
+  let draftInterval: BillingInterval = "month";
+  if (rawInterval !== undefined && rawInterval !== null) {
+    const normalized = normalizeBillingInterval(rawInterval);
+    if (!normalized) {
+      res.status(400).json({
+        error: "invalid_billing_interval",
+        message: `Período de cobrança inválido '${rawInterval}'. Períodos suportados: ${BILLING_INTERVALS.join(", ")}.`,
+      });
+      return;
+    }
+    draftInterval = normalized;
+  } else if (sub?.billingInterval) {
+    const normalizedSub = normalizeBillingInterval(sub.billingInterval);
+    if (normalizedSub) {
+      draftInterval = normalizedSub;
+    }
+  }
+
+  // Idempotency check (Section 1, 2, 3) - Must execute before catalog resolution and mutations
   const operation = COMMERCIAL_OPERATIONS.DRAFT_PRICE_CONDITION;
   const requestFingerprint = computeRequestFingerprint({
     crecheId,
@@ -500,6 +600,7 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     pricingOverrideValue,
     entitlementPetLimit: entitlementPetLimit ?? null,
     reason: reason.trim(),
+    ...(rawInterval ? { billingInterval: rawInterval } : {}),
   });
 
   const [existingIdempotent] = await db
@@ -534,6 +635,20 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     return;
   }
 
+  // Resolve authoritative catalog price for snapshotting
+  let resolvedCatalog: ResolvedCatalogPlanPrice | null = null;
+  if (targetPlanId) {
+    try {
+      resolvedCatalog = await resolveCatalogPlanPrice(targetPlanId, draftInterval, db);
+    } catch (err: any) {
+      if (err instanceof CatalogPriceResolutionError) {
+        res.status(422).json({ error: "catalog_price_missing", message: err.message });
+        return;
+      }
+      throw err;
+    }
+  }
+
   // Determine executionRequirement: if pricing override is set, Stripe synchronization is required
   const hasPricingOverride = pricingOverrideType && pricingOverrideType !== "none";
   const executionRequirement = hasPricingOverride ? "STRIPE_REQUIRED" : "ARKPET_ONLY";
@@ -545,6 +660,8 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
     pricingOverrideType: pricingOverrideType ?? "none",
     pricingOverrideValue: pricingOverrideValue ?? null,
     entitlementPetLimit: entitlementPetLimit ?? null,
+    snapshotBillingInterval: draftInterval,
+    snapshotBasePriceCents: resolvedCatalog?.catalogPriceCents ?? null,
     validFrom: new Date(),
     status: "draft",
     executionRequirement,

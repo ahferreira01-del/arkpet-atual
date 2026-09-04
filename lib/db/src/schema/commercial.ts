@@ -80,6 +80,8 @@ export const customerCommercialConditionsTable = pgTable(
     idempotencyOperation: varchar("idempotency_operation", { length: 50 }),
     requestFingerprint: text("request_fingerprint"),
     stripePriceId: text("stripe_price_id"), // custom recurring Stripe Price created for this condition
+    snapshotBillingInterval: varchar("snapshot_billing_interval", { length: 20 }),
+    snapshotBasePriceCents: integer("snapshot_base_price_cents"),
     lastSyncError: text("last_sync_error"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

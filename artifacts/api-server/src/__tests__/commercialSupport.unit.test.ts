@@ -4,14 +4,18 @@ import request from "supertest";
 import { commercialRouter } from "../routes/commercial.js";
 import { db } from "@workspace/db";
 
-vi.mock("@workspace/db", () => {
+vi.mock("@workspace/db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@workspace/db")>();
   const mDb: any = {
     select: vi.fn(),
     insert: vi.fn(),
     update: vi.fn(),
     transaction: vi.fn((cb) => cb(mDb)),
   };
-  return { db: mDb };
+  return {
+    ...actual,
+    db: mDb,
+  };
 });
 
 vi.mock("../middlewares/authenticate.js", () => ({
@@ -40,7 +44,7 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
   let app: express.Express;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     app = express();
     app.use(express.json());
     app.use("/api/creches/:crecheId/commercial", commercialRouter);
@@ -153,8 +157,17 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         from: vi.fn().mockReturnValueOnce({
           where: vi.fn().mockReturnValueOnce({
             limit: vi.fn().mockResolvedValueOnce([
-              { id: 2, name: "Plano Pro", slug: "pro", priceCents: 31990, petLimit: 30 },
+              { id: 2, name: "Plano Pro", slug: "pro", priceBrl: 31990, petLimit: 30 },
             ]),
+          }),
+        }),
+      } as any);
+
+      // 3b. Plan Prices query for active plan
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
           }),
         }),
       } as any);
@@ -203,6 +216,15 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
 
+      // 6b. Plan Prices query for draft condition
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
       const res = await request(app).get("/api/creches/1/commercial/support");
       expect(res.status).toBe(200);
       expect(res.body.subscriptionState).toBe("PROVISIONED");
@@ -229,8 +251,17 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         from: vi.fn().mockReturnValueOnce({
           where: vi.fn().mockReturnValueOnce({
             limit: vi.fn().mockResolvedValueOnce([
-              { id: 1, name: "Plano Base", priceCents: 31990, petLimit: 20 },
+              { id: 1, name: "Plano Base", priceBrl: 31990, petLimit: 20 },
             ]),
+          }),
+        }),
+      } as any);
+
+      // Plan prices query (for interval)
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
           }),
         }),
       } as any);
@@ -972,6 +1003,26 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
         }),
       } as any);
 
+      // 3b. Plan query for draft snapshot resolution
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([
+              { id: 2, name: "Plano Pro", priceBrl: 31990, petLimit: 30 },
+            ]),
+          }),
+        }),
+      } as any);
+
+      // 3c. Plan prices query for draft snapshot resolution
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          where: vi.fn().mockReturnValueOnce({
+            limit: vi.fn().mockResolvedValueOnce([]),
+          }),
+        }),
+      } as any);
+
       // 4. Insert returning
       vi.mocked(db.insert).mockReturnValueOnce({
         values: vi.fn().mockReturnValueOnce({
@@ -984,6 +1035,8 @@ describe("Commercial Support Console & Overrides Unit Tests (R36.D)", () => {
               executionRequirement: "STRIPE_REQUIRED",
               pricingOverrideType: "percentage",
               pricingOverrideValue: 2000, // 20%
+              snapshotBillingInterval: "month",
+              snapshotBasePriceCents: 31990,
             },
           ]),
         }),

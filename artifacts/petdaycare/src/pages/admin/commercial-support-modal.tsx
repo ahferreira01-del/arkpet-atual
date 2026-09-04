@@ -155,6 +155,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
           },
           body: JSON.stringify({
             planId: data.plan.id,
+            billingInterval: data?.subscription?.billingInterval ?? "month",
             pricingOverrideType: pricingTypeInput,
             pricingOverrideValue: parsedOverrideValue,
             entitlementPetLimit: !isNaN(parsedPetLimit) && parsedPetLimit > 0 ? parsedPetLimit : undefined,
@@ -225,6 +226,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
           },
           body: JSON.stringify({
             planId: data?.plan?.id,
+            billingInterval: data?.subscription?.billingInterval ?? "month",
             pricingOverrideType: pricingTypeInput,
             pricingOverrideValue: parsedValue,
             entitlementPetLimit: !isNaN(requestedPetLimitNum) && requestedPetLimitNum > 0 ? requestedPetLimitNum : undefined,
@@ -282,6 +284,26 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
       setSubmitting(false);
     }
   };
+
+  const intervalLabels: Record<string, string> = {
+    month: "Mensal",
+    quarter: "Trimestral",
+    semester: "Semestral",
+    year: "Anual",
+  };
+  const intervalSuffixMap: Record<string, string> = {
+    month: "/mês",
+    quarter: "/trimestre",
+    semester: "/semestre",
+    year: "/ano",
+  };
+  const currentInterval = data?.subscription?.billingInterval || "month";
+  const currentIntervalSuffix = intervalSuffixMap[currentInterval] || "/mês";
+  const currentIntervalLabel = intervalLabels[currentInterval] || "Mensal";
+  const draftInterval = data?.draftCondition?.condition?.snapshotBillingInterval || currentInterval;
+  const draftIntervalSuffix = intervalSuffixMap[draftInterval] || "/mês";
+  const previewInterval = preview?.billingInterval || currentInterval;
+  const previewIntervalSuffix = intervalSuffixMap[previewInterval] || "/mês";
 
   return (
     <Modal
@@ -375,21 +397,25 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   Esta unidade foi cadastrada sem uma assinatura vinculada. Serviços operacionais requerem provisionamento prévio.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                   <div>
                     <span className="text-muted-foreground text-xs block">Plano Atual</span>
                     <span className="font-semibold text-foreground">{data?.plan?.name || "Padrão"}</span>
                   </div>
                   <div>
+                    <span className="text-muted-foreground text-xs block">Periodicidade</span>
+                    <span className="font-semibold text-foreground">{currentIntervalLabel}</span>
+                  </div>
+                  <div>
                     <span className="text-muted-foreground text-xs block">Preço Catálogo</span>
-                    <span className="font-medium text-muted-foreground">{formatCentsToBRL(data?.pricing?.catalogPriceCents)}/mês</span>
+                    <span className="font-medium text-muted-foreground">{formatCentsToBRL(data?.pricing?.catalogPriceCents)}{currentIntervalSuffix}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground text-xs block">Preço Efetivo Atual</span>
-                    <span className="font-semibold text-emerald-400">{formatCentsToBRL(data?.pricing?.finalEffectivePriceCents)}/mês</span>
+                    <span className="font-semibold text-emerald-400">{formatCentsToBRL(data?.pricing?.finalEffectivePriceCents)}{currentIntervalSuffix}</span>
                   </div>
                   {data?.subscription?.currentPeriodEnd && (
-                    <div className="col-span-2 sm:col-span-3 text-xs text-muted-foreground pt-1 flex items-center gap-1">
+                    <div className="col-span-2 sm:col-span-4 text-xs text-muted-foreground pt-1 flex items-center gap-1">
                       <Clock className="h-3 w-3" /> Fim do período atual:{" "}
                       {format(new Date(data.subscription.currentPeriodEnd), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                     </div>
@@ -473,7 +499,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   <p className="text-foreground">
                     Preço proposto:{" "}
                     <span className="font-bold">
-                      {formatCentsToBRL(data.draftCondition.proposedPricing?.finalEffectivePriceCents)}/mês
+                      {formatCentsToBRL(data.draftCondition.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
                     </span>
                   </p>
                   <p className="text-muted-foreground italic">{data.draftCondition.statusNotice}</p>
@@ -621,7 +647,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                       </span>
                       <ArrowRight className="h-3 w-3 text-muted-foreground" />
                       <span className="font-bold text-emerald-400">
-                        {formatCentsToBRL(preview.proposedEffectivePriceCents)}/mês
+                        {formatCentsToBRL(preview.proposedEffectivePriceCents)}{previewIntervalSuffix}
                       </span>
                       {preview.discountPercentage > 0 && (
                         <Badge variant="secondary" className="text-[10px] ml-1">
