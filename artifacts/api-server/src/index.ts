@@ -12,6 +12,7 @@ import {
   startExpiredOrderCanceller,
   startOutboxWorker,
   startTrialExpirationJob,
+  startGatewayEventRecoveryWorker,
   stopAllSchedulers,
 } from "./lib/scheduler.js";
 
@@ -108,6 +109,7 @@ if (process.env.NODE_ENV !== "test") {
         startReceiptCleanupJob();
         startExpiredOrderCanceller();
         startOutboxWorker();
+        startGatewayEventRecoveryWorker();
         // Stripe init runs after DB so price seeding has the schema ready.
         initStripe().catch((err) => {
           console.error("[startup] Stripe init error (non-fatal):", err);

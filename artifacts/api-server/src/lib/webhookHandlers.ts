@@ -5,6 +5,7 @@ import Stripe from "stripe";
 import { getStripeSync, getStripeSecretKey } from "./stripeClient.js";
 import { applyStripeEvent } from "./subscriptionSync.js";
 import { applyFinancialStripeEvent } from "./financialSync.js";
+import { claimGatewayEvent, finalizeGatewayEvent } from "../services/gatewayEvents.js";
 
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -55,9 +56,28 @@ export class WebhookHandlers {
       }
     }
 
-    // Apply the lifecycle transition to the app subscription.
-    // Errors propagate so the route returns non-2xx and Stripe retries.
-    await applyStripeEvent(event);
-    await applyFinancialStripeEvent(event);
+    // Phase R36.C: Gateway Event Deduplication & Safety Claim
+    const claim = await claimGatewayEvent(event, "stripe");
+    if (!claim.shouldProcess) {
+      console.log(`[webhook] Gateway event ${event?.id} (${event?.type}) skipped: ${claim.reason}`);
+      return;
+    }
+
+    try {
+      // Apply the lifecycle transition to the app subscription.
+      // Errors propagate so the route returns non-2xx and Stripe retries.
+      await applyStripeEvent(event);
+      await applyFinancialStripeEvent(event);
+      await finalizeGatewayEvent(event.id, "processed", undefined, "stripe");
+    } catch (err: any) {
+      const isRetryable = !(err instanceof SyntaxError || (err as any)?.code === "INVALID_EVENT");
+      await finalizeGatewayEvent(
+        event.id,
+        isRetryable ? "failed_retryable" : "failed_final",
+        err instanceof Error ? err.message : String(err),
+        "stripe",
+      );
+      throw err;
+    }
   }
 }

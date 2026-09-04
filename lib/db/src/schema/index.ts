@@ -12,3 +12,4 @@ export * from "./plans";
 export * from "./subscriptions";
 export * from "./passwordResetTokens";
 export * from "./financial";
+export * from "./commercial";

@@ -7,6 +7,7 @@ import { medicationsTable } from "@workspace/db/schema";
 import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
 import { cancelOrder } from "../services/orders.js";
+import { recoverStaleGatewayEvents } from "../services/gatewayEvents.js";
 
 export const SAO_PAULO_TZ = "America/Sao_Paulo";
 export const DAILY_TASK_GENERATION_LOCK_KEY = 999_100_001;
@@ -1028,3 +1029,26 @@ export function startOutboxWorker(): void {
   console.log("[scheduler] Outbox worker started.");
 }
 
+let gatewayRecoveryRunning = false;
+
+export async function processGatewayEventRecovery(): Promise<void> {
+  if (gatewayRecoveryRunning) return;
+  gatewayRecoveryRunning = true;
+  try {
+    const recovered = await recoverStaleGatewayEvents("stripe");
+    if (recovered > 0) {
+      console.log(`[scheduler] Gateway event recovery: ${recovered} stale event(s) marked for retry.`);
+    }
+  } catch (err) {
+    console.error("[scheduler] Error during gateway event recovery:", err);
+  } finally {
+    gatewayRecoveryRunning = false;
+  }
+}
+
+export function startGatewayEventRecoveryWorker(): void {
+  registerCronTask(
+    cron.schedule("*/5 * * * *", processGatewayEventRecovery, { timezone: SAO_PAULO_TZ })
+  );
+  console.log("[scheduler] Gateway event recovery worker started (every 5 minutes).");
+}

@@ -17,6 +17,7 @@ export const plansTable = pgTable("plans", {
   // intervals are derived. Kept for backward compatibility and base display.
   priceBrl: integer("price_brl").notNull(),
   stripePriceId: text("stripe_price_id"),
+  stripeProductId: text("stripe_product_id"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),

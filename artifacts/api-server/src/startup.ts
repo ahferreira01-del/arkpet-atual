@@ -519,6 +519,176 @@ async function ensureTasksSchema(): Promise<void> {
   console.log("[startup] tasks: schema verificado (idempotente).");
 }
 
+/**
+ * Phase R36.C Slice 1: ensures commercial platform foundation tables, columns,
+ * and partial unique indexes exist in all environments.
+ * Idempotent — safe to run on every startup.
+ */
+async function ensureCommercialFoundationSchema(): Promise<void> {
+  await (db as any).execute(`
+    -- 1. customer_commercial_conditions (full-snapshot model)
+    CREATE TABLE IF NOT EXISTS customer_commercial_conditions (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL,
+      plan_id INTEGER,
+      pricing_override_type VARCHAR(50) DEFAULT 'none',
+      pricing_override_value INTEGER,
+      entitlement_pet_limit INTEGER,
+      valid_from TIMESTAMP NOT NULL DEFAULT NOW(),
+      valid_until TIMESTAMP,
+      status VARCHAR(30) NOT NULL DEFAULT 'draft',
+      predecessor_id INTEGER,
+      agreement_id INTEGER,
+      reason TEXT,
+      execution_requirement VARCHAR(50) DEFAULT 'none',
+      sync_status VARCHAR(50) NOT NULL DEFAULT 'synced',
+      stripe_price_id TEXT,
+      last_sync_error TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS plan_id INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS pricing_override_type VARCHAR(50) DEFAULT 'none';
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS pricing_override_value INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS entitlement_pet_limit INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS valid_from TIMESTAMP NOT NULL DEFAULT NOW();
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS valid_until TIMESTAMP;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'draft';
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS predecessor_id INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS agreement_id INTEGER;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS execution_requirement VARCHAR(50) DEFAULT 'none';
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS sync_status VARCHAR(50) NOT NULL DEFAULT 'synced';
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS stripe_price_id TEXT;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS last_sync_error TEXT;
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+    ALTER TABLE customer_commercial_conditions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    -- Enforces at most ONE ACTIVE condition per creche
+    CREATE UNIQUE INDEX IF NOT EXISTS customer_commercial_conditions_single_active_idx
+      ON customer_commercial_conditions (creche_id)
+      WHERE status = 'active';
+
+    CREATE INDEX IF NOT EXISTS customer_commercial_conditions_creche_status_idx
+      ON customer_commercial_conditions (creche_id, status);
+
+    -- 2. commercial_agreements
+    CREATE TABLE IF NOT EXISTS commercial_agreements (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL,
+      type VARCHAR(50) NOT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'draft',
+      snapshot_json JSONB,
+      sent_at TIMESTAMP,
+      accepted_at TIMESTAMP,
+      accepted_by_user_id INTEGER,
+      valid_until TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS type VARCHAR(50);
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'draft';
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS snapshot_json JSONB;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_by_user_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS valid_until TIMESTAMP;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS commercial_agreements_creche_type_idx
+      ON commercial_agreements (creche_id, type);
+
+    CREATE INDEX IF NOT EXISTS commercial_agreements_creche_status_idx
+      ON commercial_agreements (creche_id, status);
+
+    -- 3. commercial_audit_ledger
+    CREATE TABLE IF NOT EXISTS commercial_audit_ledger (
+      id SERIAL PRIMARY KEY,
+      target_creche_id INTEGER NOT NULL,
+      actor_type VARCHAR(20) NOT NULL,
+      actor_id INTEGER,
+      actor_role VARCHAR(50),
+      actor_email TEXT,
+      action VARCHAR(100) NOT NULL,
+      reason TEXT,
+      before_state JSONB,
+      after_state JSONB,
+      execution_requirement VARCHAR(50),
+      execution_status VARCHAR(50),
+      related_agreement_id INTEGER,
+      related_condition_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS target_creche_id INTEGER;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS actor_type VARCHAR(20);
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS actor_id INTEGER;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS actor_role VARCHAR(50);
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS actor_email TEXT;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS action VARCHAR(100);
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS before_state JSONB;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS after_state JSONB;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS execution_requirement VARCHAR(50);
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS execution_status VARCHAR(50);
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS related_agreement_id INTEGER;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS related_condition_id INTEGER;
+    ALTER TABLE commercial_audit_ledger ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS commercial_audit_ledger_creche_created_idx
+      ON commercial_audit_ledger (target_creche_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS commercial_audit_ledger_actor_type_idx
+      ON commercial_audit_ledger (actor_type);
+
+    -- 4. gateway_events
+    CREATE TABLE IF NOT EXISTS gateway_events (
+      id SERIAL PRIMARY KEY,
+      gateway VARCHAR(30) NOT NULL DEFAULT 'stripe',
+      event_id VARCHAR(255) NOT NULL UNIQUE,
+      event_type VARCHAR(100) NOT NULL,
+      event_created TIMESTAMP,
+      status VARCHAR(30) NOT NULL DEFAULT 'received',
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      processing_started_at TIMESTAMP,
+      lease_expires_at TIMESTAMP,
+      processed_at TIMESTAMP,
+      payload JSONB
+    );
+
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS gateway VARCHAR(30) NOT NULL DEFAULT 'stripe';
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS event_id VARCHAR(255);
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS event_type VARCHAR(100);
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS event_created TIMESTAMP;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'received';
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS retry_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS error_message TEXT;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMP NOT NULL DEFAULT NOW();
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMP;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP;
+    ALTER TABLE gateway_events ADD COLUMN IF NOT EXISTS payload JSONB;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS gateway_events_gateway_event_id_unique
+      ON gateway_events (gateway, event_id);
+
+    CREATE INDEX IF NOT EXISTS gateway_events_status_lease_idx
+      ON gateway_events (status, lease_expires_at);
+
+    -- 5. Additive columns on existing tables
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_product_id TEXT;
+    ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS active_condition_id INTEGER;
+  `);
+  console.log("[startup] commercial foundation: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -530,6 +700,8 @@ export async function initializeDatabase() {
   await ensureCrechesAndCreditsSchema();
   // Phase R30B: idempotent tasks reminder_sent_at schema creation (runs in all environments)
   await ensureTasksSchema();
+  // Phase R36.C Slice 1: idempotent commercial foundation schema (runs in all environments)
+  await ensureCommercialFoundationSchema();
 
   await seedPlans();
 
