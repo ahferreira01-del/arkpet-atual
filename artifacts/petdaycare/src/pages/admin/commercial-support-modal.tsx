@@ -70,10 +70,24 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
   const [preview, setPreview] = useState<any | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Mutation state
   const [submitting, setSubmitting] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  // Stripe Activation subviews & state
+  const [isActivating, setIsActivating] = useState(false);
+  const [activationProrationMode, setActivationProrationMode] = useState<"EFFECTIVE_NOW_PRORATE" | "EFFECTIVE_NOW_NO_PRORATION">("EFFECTIVE_NOW_PRORATE");
+  const [activationReason, setActivationReason] = useState<string>("");
+  const [activatingLoading, setActivatingLoading] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
+
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryReason, setRetryReason] = useState<string>("");
+  const [retryingLoading, setRetryingLoading] = useState(false);
+
+  const [isAbandoning, setIsAbandoning] = useState(false);
+  const [abandonReason, setAbandonReason] = useState<string>("");
+  const [abandoningLoading, setAbandoningLoading] = useState(false);
 
   const fetchSupportData = useCallback(async () => {
     if (!creche) return;
@@ -285,6 +299,119 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
     }
   };
 
+  const handleConfirmActivation = async () => {
+    if (!creche || !data?.draftCondition?.condition?.id) return;
+    if (!activationReason.trim()) {
+      setActivationError("Justificativa obrigatória para ativação no Stripe.");
+      return;
+    }
+    setActivatingLoading(true);
+    setActivationError(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${import.meta.env.BASE_URL}api/creches/${creche.id}/commercial/activate-condition`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": generateUUID(),
+        },
+        body: JSON.stringify({
+          conditionId: data.draftCondition.condition.id,
+          prorationMode: activationProrationMode,
+          reason: activationReason.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Erro HTTP ${res.status}`);
+      }
+      setSuccessNotice("Condição comercial ativada no Stripe com sucesso!");
+      setIsActivating(false);
+      fetchSupportData();
+    } catch (err: any) {
+      setActivationError(err.message || "Erro ao ativar condição no Stripe.");
+    } finally {
+      setActivatingLoading(false);
+    }
+  };
+
+  const handleConfirmRetry = async () => {
+    if (!creche || !data?.draftCondition?.condition?.id) return;
+    if (!retryReason.trim()) {
+      setActivationError("Justificativa obrigatória para retentativa.");
+      return;
+    }
+    setRetryingLoading(true);
+    setActivationError(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(
+        `${import.meta.env.BASE_URL}api/creches/${creche.id}/commercial/conditions/${data.draftCondition.condition.id}/retry-activation`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "X-Idempotency-Key": generateUUID(),
+          },
+          body: JSON.stringify({
+            reason: retryReason.trim(),
+            prorationMode: activationProrationMode,
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Erro HTTP ${res.status}`);
+      }
+      setSuccessNotice("Nova tentativa de ativação concluída com sucesso!");
+      setIsRetrying(false);
+      fetchSupportData();
+    } catch (err: any) {
+      setActivationError(err.message || "Erro ao tentar novamente ativação.");
+    } finally {
+      setRetryingLoading(false);
+    }
+  };
+
+  const handleConfirmAbandon = async () => {
+    if (!creche || !data?.draftCondition?.condition?.id) return;
+    if (!abandonReason.trim()) {
+      setActivationError("Justificativa obrigatória para abandonar proposta.");
+      return;
+    }
+    setAbandoningLoading(true);
+    setActivationError(null);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(
+        `${import.meta.env.BASE_URL}api/creches/${creche.id}/commercial/conditions/${data.draftCondition.condition.id}/abandon`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            reason: abandonReason.trim(),
+          }),
+        },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.message || json?.error || `Erro HTTP ${res.status}`);
+      }
+      setSuccessNotice("Proposta comercial abandonada.");
+      setIsAbandoning(false);
+      fetchSupportData();
+    } catch (err: any) {
+      setActivationError(err.message || "Erro ao abandonar proposta.");
+    } finally {
+      setAbandoningLoading(false);
+    }
+  };
+
   const intervalLabels: Record<string, string> = {
     month: "Mensal",
     quarter: "Trimestral",
@@ -487,31 +614,156 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                 </p>
               )}
 
-              {/* Draft condition notice (Correction 8) */}
+              {/* Draft / Proposal condition card */}
               {data?.draftCondition && (
-                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs space-y-1">
+                <div className="rounded-lg border border-primary/30 bg-primary/5 p-3.5 text-xs space-y-2.5">
                   <div className="flex items-center justify-between font-semibold text-primary">
-                    <span>Proposta em Rascunho</span>
-                    <Badge variant="outline" className="text-[10px] uppercase border-primary/40">
-                      Rascunho
+                    <span className="text-sm">
+                      {data.draftCondition.condition.status === "activation_failed"
+                        ? "Falha na Ativação Stripe"
+                        : data.draftCondition.condition.status === "pending_activation"
+                        ? "Ativação em Andamento"
+                        : "Proposta em Rascunho"}
+                    </span>
+                    <Badge
+                      variant={
+                        data.draftCondition.condition.status === "activation_failed"
+                          ? "destructive"
+                          : data.draftCondition.condition.status === "pending_activation"
+                          ? "secondary"
+                          : "outline"
+                      }
+                      className="text-[10px] uppercase"
+                    >
+                      {data.draftCondition.condition.status === "activation_failed"
+                        ? "Falha"
+                        : data.draftCondition.condition.status === "pending_activation"
+                        ? "Processando"
+                        : "Rascunho"}
                     </Badge>
                   </div>
-                  <p className="text-foreground">
-                    Preço proposto:{" "}
-                    <span className="font-bold">
-                      {formatCentsToBRL(data.draftCondition.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
-                    </span>
-                  </p>
-                  <p className="text-muted-foreground italic">{data.draftCondition.statusNotice}</p>
+
+                  <div className="grid grid-cols-2 gap-2 text-foreground">
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Tipo de Preço Proposto</span>
+                      <span className="font-medium capitalize">
+                        {data.draftCondition.condition.pricingOverrideType === "percentage"
+                          ? `${(data.draftCondition.condition.pricingOverrideValue ?? 0) / 100}% de desconto`
+                          : data.draftCondition.condition.pricingOverrideType === "fixed_amount"
+                          ? `Valor Fixo ${formatCentsToBRL(data.draftCondition.condition.pricingOverrideValue)}`
+                          : "Catálogo Padrão"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block text-[11px]">Preço Efetivo Proposto</span>
+                      <span className="font-bold text-emerald-400 text-sm">
+                        {formatCentsToBRL(data.draftCondition.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-muted-foreground italic text-[11px]">{data.draftCondition.statusNotice}</p>
+
+                  {/* Status: draft -> Activation action */}
+                  {data.draftCondition.condition.status === "draft" && (
+                    <div className="pt-2 border-t border-border/40 space-y-2">
+                      <Button
+                        size="sm"
+                        disabled={!data.subscription?.hasStripeSubscription}
+                        onClick={() => {
+                          setActivationReason(data.draftCondition.condition.reason || "");
+                          setActivationError(null);
+                          setIsActivating(true);
+                          setIsCustomizing(false);
+                          setIsRetrying(false);
+                          setIsAbandoning(false);
+                        }}
+                        className="w-full h-10 text-xs font-semibold"
+                      >
+                        Ativar no Stripe
+                      </Button>
+                      {!data.subscription?.hasStripeSubscription && (
+                        <p className="text-[11px] text-amber-400/90 leading-tight">
+                          Esta conta não possui uma assinatura recorrente Stripe vinculada e não pode receber ativação automática de preço neste momento.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Status: activation_failed -> Retry or Abandon */}
+                  {data.draftCondition.condition.status === "activation_failed" && (
+                    <div className="pt-2 border-t border-destructive/30 space-y-2">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setRetryReason(data.draftCondition.condition.reason || "");
+                            setActivationError(null);
+                            setIsRetrying(true);
+                            setIsActivating(false);
+                            setIsCustomizing(false);
+                            setIsAbandoning(false);
+                          }}
+                          className="flex-1 h-9 text-xs"
+                        >
+                          Tentar Novamente
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => {
+                            setAbandonReason(data.draftCondition.condition.reason || "");
+                            setActivationError(null);
+                            setIsAbandoning(true);
+                            setIsActivating(false);
+                            setIsCustomizing(false);
+                            setIsRetrying(false);
+                          }}
+                          className="flex-1 h-9 text-xs"
+                        >
+                          Abandonar Proposta
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* 5. STRIPE (Section 11: read-only connection indicators) */}
+            {/* 5. STRIPE */}
             <div className="rounded-xl border border-border p-4 bg-muted/20 space-y-2">
-              <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase flex items-center gap-1.5">
-                <ExternalLink className="h-3.5 w-3.5" /> Gateway Stripe (Leitura)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wider uppercase flex items-center gap-1.5">
+                  <ExternalLink className="h-3.5 w-3.5" /> Gateway Stripe (Leitura)
+                </span>
+                {data?.commercialStripeStatus && (
+                  <Badge
+                    variant={
+                      data.commercialStripeStatus === "SYNCHRONIZED"
+                        ? "default"
+                        : data.commercialStripeStatus === "PENDING"
+                        ? "secondary"
+                        : "destructive"
+                    }
+                    className={
+                      data.commercialStripeStatus === "SYNCHRONIZED"
+                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]"
+                        : data.commercialStripeStatus === "PENDING"
+                        ? "bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]"
+                        : "bg-destructive/20 text-destructive border-destructive/30 text-[10px]"
+                    }
+                  >
+                    {data.commercialStripeStatus === "SYNCHRONIZED"
+                      ? "Sincronizado"
+                      : data.commercialStripeStatus === "PENDING"
+                      ? "Pendente"
+                      : data.commercialStripeStatus === "FAILED"
+                      ? "Falha na Sincronização"
+                      : "Divergente"}
+                  </Badge>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                 <div>
                   <span className="text-muted-foreground block">Stripe Customer:</span>
@@ -526,13 +778,214 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   </span>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground pt-1 border-t border-border/40">
-                Identificadores de infraestrutura Stripe. Preços recorrentes personalizados permanecem como rascunho até a ativação comercial do gateway (Slice 3).
-              </p>
             </div>
 
-            {/* Customization Subview */}
-            {isCustomizing ? (
+            {/* Subviews: Activating | Retrying | Abandoning | Customizing */}
+            {isActivating ? (
+              <div className="rounded-xl border border-primary/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h4 className="font-semibold text-base text-foreground flex items-center gap-2">
+                    <ExternalLink className="h-4 w-4 text-primary" /> Confirmar Ativação no Stripe
+                  </h4>
+                  <Button size="sm" variant="ghost" onClick={() => setIsActivating(false)} className="text-xs">
+                    Cancelar
+                  </Button>
+                </div>
+
+                {activationError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-destructive text-xs">
+                    {activationError}
+                  </div>
+                )}
+
+                {/* Price Diff Card */}
+                <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-2">
+                  <div className="flex justify-between items-center text-sm">
+                    <div>
+                      <span className="text-muted-foreground text-xs block">Preço Atual</span>
+                      <span className="font-medium text-foreground">
+                        {formatCentsToBRL(data?.pricing?.finalEffectivePriceCents)}{currentIntervalSuffix}
+                      </span>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-right">
+                      <span className="text-muted-foreground text-xs block">Novo Preço Recorrente</span>
+                      <span className="font-bold text-emerald-400 text-base">
+                        {formatCentsToBRL(data?.draftCondition?.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground border-t border-border/40 pt-1.5 flex justify-between">
+                    <span>Periodicidade da Assinatura:</span>
+                    <span className="font-semibold text-foreground">{intervalLabels[draftInterval] || draftInterval}</span>
+                  </div>
+                </div>
+
+                {/* Proration Selector */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Modo de Cobrança / Rateio Proporcional</label>
+                  <select
+                    value={activationProrationMode}
+                    onChange={(e) => setActivationProrationMode(e.target.value as any)}
+                    className="h-11 w-full rounded-md border border-input bg-background px-3 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="EFFECTIVE_NOW_PRORATE">
+                      Aplicar agora com rateio proporcional (fatura imediata)
+                    </option>
+                    <option value="EFFECTIVE_NOW_NO_PRORATION">
+                      Aplicar agora sem rateio (cobrança no próximo ciclo)
+                    </option>
+                  </select>
+                </div>
+
+                {/* Explicit Legal / Operational Notices */}
+                <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-amber-300 text-xs space-y-1">
+                  <p className="font-medium text-foreground">Avisos Operacionais:</p>
+                  <ul className="list-disc list-inside text-[11px] text-muted-foreground space-y-0.5">
+                    <li>Esta alteração será aplicada somente a esta empresa.</li>
+                    <li>A assinatura recorrente vinculada no Stripe será atualizada.</li>
+                    <li>O plano padrão dos demais clientes não será alterado.</li>
+                  </ul>
+                </div>
+
+                {/* Mandatory Justification */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Justificativa da Ativação <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    rows={2}
+                    value={activationReason}
+                    onChange={(e) => setActivationReason(e.target.value)}
+                    placeholder="Descreva a justificativa comercial para a ativação deste preço no Stripe..."
+                    className="text-base md:text-sm"
+                  />
+                </div>
+
+                {/* Submit Action */}
+                <div className="pt-2 flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsActivating(false)}
+                    disabled={activatingLoading}
+                    className="flex-1 h-11 text-xs"
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    onClick={handleConfirmActivation}
+                    disabled={activatingLoading || !activationReason.trim()}
+                    isLoading={activatingLoading}
+                    className="flex-1 h-11 text-xs font-semibold"
+                  >
+                    Confirmar Ativação no Stripe
+                  </Button>
+                </div>
+              </div>
+            ) : isRetrying ? (
+              <div className="rounded-xl border border-destructive/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h4 className="font-semibold text-base text-foreground flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-primary" /> Tentar Novamente Ativação no Stripe
+                  </h4>
+                  <Button size="sm" variant="ghost" onClick={() => setIsRetrying(false)} className="text-xs">
+                    Cancelar
+                  </Button>
+                </div>
+
+                {activationError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-destructive text-xs">
+                    {activationError}
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Justificativa da Nova Tentativa <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    rows={2}
+                    value={retryReason}
+                    onChange={(e) => setRetryReason(e.target.value)}
+                    placeholder="Justifique a nova tentativa de ativação..."
+                    className="text-base md:text-sm"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsRetrying(false)}
+                    disabled={retryingLoading}
+                    className="flex-1 h-11 text-xs"
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    onClick={handleConfirmRetry}
+                    disabled={retryingLoading || !retryReason.trim()}
+                    isLoading={retryingLoading}
+                    className="flex-1 h-11 text-xs font-semibold"
+                  >
+                    Confirmar Nova Tentativa
+                  </Button>
+                </div>
+              </div>
+            ) : isAbandoning ? (
+              <div className="rounded-xl border border-destructive/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-border">
+                  <h4 className="font-semibold text-base text-foreground flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-destructive" /> Abandonar Proposta Comercial
+                  </h4>
+                  <Button size="sm" variant="ghost" onClick={() => setIsAbandoning(false)} className="text-xs">
+                    Cancelar
+                  </Button>
+                </div>
+
+                {activationError && (
+                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-destructive text-xs">
+                    {activationError}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  A proposta com falha será arquivada e não poderá mais ser ativada. A condição comercial ativa anterior permanecerá em vigor.
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">
+                    Motivo do Abandono <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    rows={2}
+                    value={abandonReason}
+                    onChange={(e) => setAbandonReason(e.target.value)}
+                    placeholder="Justifique o motivo do abandono da proposta..."
+                    className="text-base md:text-sm"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsAbandoning(false)}
+                    disabled={abandoningLoading}
+                    className="flex-1 h-11 text-xs"
+                  >
+                    Voltar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleConfirmAbandon}
+                    disabled={abandoningLoading || !abandonReason.trim()}
+                    isLoading={abandoningLoading}
+                    className="flex-1 h-11 text-xs font-semibold"
+                  >
+                    Confirmar Abandono
+                  </Button>
+                </div>
+              </div>
+            ) : isCustomizing ? (
               <div className="rounded-xl border border-primary/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
                 <div className="flex items-center justify-between pb-2 border-b border-border">
                   <h4 className="font-semibold text-base text-foreground flex items-center gap-2">

@@ -5,8 +5,9 @@
 // remains the source of truth for those transitions.
 import { db } from "@workspace/db";
 import { BILLING_INTERVALS, INTERVAL_MONTHS, type BillingInterval } from "@workspace/db";
-import { subscriptionsTable, plansTable, planPricesTable } from "@workspace/db/schema";
+import { subscriptionsTable, plansTable, planPricesTable, customerCommercialConditionsTable } from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
+import { logCommercialAudit } from "../services/commercialAudit.js";
 
 // Shared downgrade detection: returns true if planId is cheaper than the
 // creche's currently active plan and the current paid period has not yet ended.
@@ -98,11 +99,11 @@ async function findAppSubscription(opts: {
 }
 
 // Resolves a Stripe price id to the app plan + billing interval it represents.
-// Prefers plan_prices (multi-interval); falls back to the legacy monthly price
-// stored on plans for older subscriptions.
+// Prefers plan_prices (multi-interval); falls back to legacy monthly price on plans,
+// and then to R36 customer commercial conditions for agreement-scoped custom Prices.
 export async function resolvePlanByPrice(
   priceId?: string | null,
-): Promise<{ planId: number; interval: BillingInterval } | null> {
+): Promise<{ planId: number; interval: BillingInterval; isCustom?: boolean; conditionId?: number } | null> {
   if (!priceId) return null;
   const [pp] = await db
     .select({ planId: planPricesTable.planId, interval: planPricesTable.interval })
@@ -117,6 +118,26 @@ export async function resolvePlanByPrice(
     .where(eq(plansTable.stripePriceId, priceId))
     .limit(1);
   if (plan) return { planId: plan.id, interval: "month" };
+
+  // R36 agreement-scoped custom commercial condition check (Section 25, 26)
+  const [customCond] = await db
+    .select()
+    .from(customerCommercialConditionsTable)
+    .where(eq(customerCommercialConditionsTable.stripePriceId, priceId))
+    .limit(1);
+  if (customCond && customCond.planId) {
+    const interval: BillingInterval =
+      (customCond.snapshotBillingInterval
+        ? (customCond.snapshotBillingInterval as BillingInterval)
+        : null) ?? "month";
+    return {
+      planId: customCond.planId,
+      interval,
+      isCustom: true,
+      conditionId: customCond.id,
+    };
+  }
+
   return null;
 }
 
@@ -171,10 +192,46 @@ async function handleSubscriptionEvent(type: string, sub: any, eventCreatedMs: n
     stripeCustomerId: customerId ?? appSub.stripeCustomerId,
   };
 
-  const resolved = await resolvePlanByPrice(sub?.items?.data?.[0]?.price?.id);
+  const incomingPriceId = sub?.items?.data?.[0]?.price?.id;
+  const resolved = await resolvePlanByPrice(incomingPriceId);
   if (resolved) {
     updates.planId = resolved.planId;
     updates.billingInterval = resolved.interval;
+    if (resolved.isCustom && resolved.conditionId) {
+      await db
+        .update(customerCommercialConditionsTable)
+        .set({ syncStatus: "synced", lastSyncError: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(customerCommercialConditionsTable.id, resolved.conditionId),
+            or(
+              eq(customerCommercialConditionsTable.syncStatus, "sync_pending"),
+              eq(customerCommercialConditionsTable.syncStatus, "divergent"),
+            ),
+          ),
+        );
+    }
+  } else if (incomingPriceId) {
+    // Unknown price detected from external Stripe modification (Section 27)
+    if (appSub.activeConditionId) {
+      await db
+        .update(customerCommercialConditionsTable)
+        .set({ syncStatus: "divergent", updatedAt: new Date() })
+        .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId));
+
+      await logCommercialAudit({
+        targetCrecheId: appSub.crecheId,
+        actorType: "gateway",
+        action: "commercial_stripe_divergence_detected",
+        executionStatus: "divergent",
+        relatedConditionId: appSub.activeConditionId,
+        reason: `Preço desconhecido no Stripe ('${incomingPriceId}') não corresponde ao catálogo nem a nenhuma condição comercial aprovada.`,
+        afterState: {
+          divergentPriceId: incomingPriceId,
+          syncStatus: "divergent",
+        },
+      });
+    }
   }
 
   const periodEnd = readPeriodEnd(sub);

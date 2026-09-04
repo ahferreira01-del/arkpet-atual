@@ -7,7 +7,7 @@ import {
   plansTable,
   customerCommercialConditionsTable,
 } from "@workspace/db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, or, desc } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { countActivePetsForCreche } from "../middlewares/checkPetLimit.js";
 import {
@@ -28,10 +28,21 @@ import {
   CatalogPriceResolutionError,
   type ResolvedCatalogPlanPrice,
 } from "../services/catalogPricing.js";
+import {
+  ACTIVATION_TIMING_MODES,
+  type ActivationTimingMode,
+  executeStripeCommercialActivation,
+  retryStripeCommercialActivation,
+  abandonCommercialCondition,
+  CommercialActivationError,
+} from "../services/stripeCommercialActivation.js";
 
 export const COMMERCIAL_OPERATIONS = {
   PET_LIMIT_OVERRIDE: "PET_LIMIT_OVERRIDE",
   DRAFT_PRICE_CONDITION: "DRAFT_PRICE_CONDITION",
+  ACTIVATE_PRICE_CONDITION: "ACTIVATE_PRICE_CONDITION",
+  RETRY_PRICE_ACTIVATION: "RETRY_PRICE_ACTIVATION",
+  ABANDON_PRICE_CONDITION: "ABANDON_PRICE_CONDITION",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
 
@@ -138,21 +149,48 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
   // Effective pet limit calculation
   const effectivePetLimit = activeCondition?.entitlementPetLimit ?? plan?.petLimit ?? null;
 
-  // Query latest draft condition (if any)
+  // Query latest proposal condition (draft, pending_activation, or activation_failed)
   const [latestDraft] = await db
     .select()
     .from(customerCommercialConditionsTable)
     .where(
       and(
         eq(customerCommercialConditionsTable.crecheId, crecheId),
-        eq(customerCommercialConditionsTable.status, "draft"),
+        or(
+          eq(customerCommercialConditionsTable.status, "draft"),
+          eq(customerCommercialConditionsTable.status, "pending_activation"),
+          eq(customerCommercialConditionsTable.status, "activation_failed"),
+        ),
       ),
     )
     .orderBy(desc(customerCommercialConditionsTable.createdAt))
     .limit(1);
 
+  let commercialStripeStatus: "SYNCHRONIZED" | "PENDING" | "FAILED" | "DIVERGENT" | null = null;
+  if (sub?.stripeSubscriptionId) {
+    if (activeCondition?.syncStatus === "divergent" || latestDraft?.syncStatus === "divergent") {
+      commercialStripeStatus = "DIVERGENT";
+    } else if (latestDraft?.status === "pending_activation" || latestDraft?.syncStatus === "sync_pending") {
+      commercialStripeStatus = "PENDING";
+    } else if (latestDraft?.status === "activation_failed" || latestDraft?.syncStatus === "sync_failed") {
+      commercialStripeStatus = "FAILED";
+    } else {
+      commercialStripeStatus = "SYNCHRONIZED";
+    }
+  }
+  const canActivateStripe = Boolean(sub?.stripeSubscriptionId);
+
   let draftPricing = null;
+  let statusNotice = "Ainda não aplicado / aguardando etapa Stripe";
   if (latestDraft) {
+    if (latestDraft.status === "activation_failed") {
+      statusNotice = latestDraft.lastSyncError
+        ? `Falha na ativação: ${latestDraft.lastSyncError}`
+        : "Falha na ativação junto ao gateway Stripe / aguardando nova tentativa ou abandono";
+    } else if (latestDraft.status === "pending_activation") {
+      statusNotice = "Ativação Stripe em processamento...";
+    }
+
     const draftPlanId = latestDraft.planId ?? sub?.planId;
     const draftInterval: BillingInterval =
       (latestDraft.snapshotBillingInterval
@@ -218,9 +256,11 @@ commercialRouter.get("/support", async (req: AuthRequest, res: Response): Promis
       ? {
           condition: latestDraft,
           proposedPricing: draftPricing,
-          statusNotice: "Ainda não aplicado / aguardando etapa Stripe",
+          statusNotice,
         }
       : null,
+    commercialStripeStatus,
+    canActivateStripe,
   });
 });
 
@@ -714,3 +754,239 @@ commercialRouter.post("/draft-condition", async (req: AuthRequest, res: Response
       "Rascunho comercial salvo com sucesso. A alteração de cobrança será aplicada após a etapa de sincronização com o Stripe.",
   });
 });
+
+/**
+ * POST /api/creches/:crecheId/commercial/activate-condition
+ * Two-phase commercial activation of a draft condition against Stripe.
+ */
+commercialRouter.post("/activate-condition", async (req: AuthRequest, res: Response): Promise<void> => {
+  const crecheId = Number(req.params.crecheId);
+  const { conditionId, prorationMode, reason } = req.body;
+
+  let idempotencyKey: string;
+  try {
+    idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
+
+  if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+    res.status(400).json({
+      error: "reason_required",
+      message: "Justificativa obrigatória para ativação comercial no Stripe.",
+    });
+    return;
+  }
+
+  const parsedConditionId = Number(conditionId);
+  if (!parsedConditionId || !Number.isInteger(parsedConditionId) || parsedConditionId <= 0) {
+    res.status(400).json({
+      error: "invalid_condition_id",
+      message: "ID da proposta comercial inválido.",
+    });
+    return;
+  }
+
+  const selectedProrationMode: ActivationTimingMode =
+    prorationMode ?? ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_PRORATE;
+  if (
+    selectedProrationMode !== ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_PRORATE &&
+    selectedProrationMode !== ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_NO_PRORATION
+  ) {
+    res.status(400).json({
+      error: "invalid_proration_mode",
+      message: `Modo de rateio '${prorationMode}' inválido. Modos suportados: ${Object.values(ACTIVATION_TIMING_MODES).join(", ")}.`,
+    });
+    return;
+  }
+
+  const operation = COMMERCIAL_OPERATIONS.ACTIVATE_PRICE_CONDITION;
+  const requestFingerprint = computeRequestFingerprint({
+    crecheId,
+    operation,
+    conditionId: parsedConditionId,
+    prorationMode: selectedProrationMode,
+    reason: reason.trim(),
+  });
+
+  // Check operation-scoped idempotency
+  const [existingIdempotent] = await db
+    .select()
+    .from(customerCommercialConditionsTable)
+    .where(
+      and(
+        eq(customerCommercialConditionsTable.crecheId, crecheId),
+        eq(customerCommercialConditionsTable.idempotencyKey, idempotencyKey),
+      ),
+    )
+    .limit(1);
+
+  if (existingIdempotent) {
+    if (
+      existingIdempotent.idempotencyOperation !== operation ||
+      existingIdempotent.requestFingerprint !== requestFingerprint
+    ) {
+      res.status(409).json({
+        error: "idempotency_conflict",
+        code: "IDEMPOTENCY_CONFLICT",
+        message: "A chave de idempotência fornecida já foi utilizada com operação ou parâmetros diferentes.",
+      });
+      return;
+    }
+
+    res.json({
+      replay: true,
+      condition: existingIdempotent,
+      message: "Operação idempotente reexecutada com sucesso.",
+    });
+    return;
+  }
+
+  try {
+    const result = await executeStripeCommercialActivation({
+      crecheId,
+      conditionId: parsedConditionId,
+      prorationMode: selectedProrationMode,
+      reason: reason.trim(),
+      idempotencyKey,
+      requestFingerprint,
+      actorId: req.user?.id,
+      actorEmail: req.user?.email,
+    });
+
+    res.status(200).json(result);
+  } catch (err: any) {
+    if (err instanceof CommercialActivationError) {
+      res.status(err.statusCode).json({
+        error: err.code,
+        code: err.code,
+        message: err.message,
+      });
+      return;
+    }
+    res.status(500).json({
+      error: "STRIPE_ACTIVATION_ERROR",
+      message: err.message || "Erro inesperado ao ativar condição comercial no Stripe.",
+    });
+  }
+});
+
+/**
+ * POST /api/creches/:crecheId/commercial/conditions/:conditionId/retry-activation
+ * Retries a failed Stripe activation using the same logical parameters.
+ */
+commercialRouter.post(
+  "/conditions/:conditionId/retry-activation",
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const crecheId = Number(req.params.crecheId);
+    const conditionId = Number(req.params.conditionId);
+    const { reason, prorationMode } = req.body;
+
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+    } catch (err: any) {
+      res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+      return;
+    }
+
+    if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+      res.status(400).json({
+        error: "reason_required",
+        message: "Justificativa obrigatória para nova tentativa de ativação comercial.",
+      });
+      return;
+    }
+
+    if (!conditionId || !Number.isInteger(conditionId) || conditionId <= 0) {
+      res.status(400).json({
+        error: "invalid_condition_id",
+        message: "ID da proposta comercial inválido.",
+      });
+      return;
+    }
+
+    const selectedProrationMode: ActivationTimingMode =
+      prorationMode ?? ACTIVATION_TIMING_MODES.EFFECTIVE_NOW_PRORATE;
+
+    try {
+      const result = await retryStripeCommercialActivation({
+        crecheId,
+        conditionId,
+        reason: reason.trim(),
+        idempotencyKey,
+        prorationMode: selectedProrationMode,
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+      });
+      res.status(200).json(result);
+    } catch (err: any) {
+      if (err instanceof CommercialActivationError) {
+        res.status(err.statusCode).json({
+          error: err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
+      res.status(500).json({
+        error: "RETRY_ACTIVATION_ERROR",
+        message: err.message || "Erro ao tentar novamente ativação comercial.",
+      });
+    }
+  },
+);
+
+/**
+ * POST /api/creches/:crecheId/commercial/conditions/:conditionId/abandon
+ * Administratively abandons a draft or activation_failed condition.
+ */
+commercialRouter.post(
+  "/conditions/:conditionId/abandon",
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const crecheId = Number(req.params.crecheId);
+    const conditionId = Number(req.params.conditionId);
+    const { reason } = req.body;
+
+    if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+      res.status(400).json({
+        error: "reason_required",
+        message: "Justificativa obrigatória para abandonar proposta comercial.",
+      });
+      return;
+    }
+
+    if (!conditionId || !Number.isInteger(conditionId) || conditionId <= 0) {
+      res.status(400).json({
+        error: "invalid_condition_id",
+        message: "ID da proposta comercial inválido.",
+      });
+      return;
+    }
+
+    try {
+      const result = await abandonCommercialCondition({
+        crecheId,
+        conditionId,
+        reason: reason.trim(),
+        actorId: req.user?.id,
+        actorEmail: req.user?.email,
+      });
+      res.status(200).json(result);
+    } catch (err: any) {
+      if (err instanceof CommercialActivationError) {
+        res.status(err.statusCode).json({
+          error: err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
+      res.status(500).json({
+        error: "ABANDON_CONDITION_ERROR",
+        message: err.message || "Erro ao abandonar proposta comercial.",
+      });
+    }
+  },
+);
