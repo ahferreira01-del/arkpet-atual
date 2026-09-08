@@ -16,6 +16,7 @@ import {
   commercialCampaignBenefitsTable,
   assignedCommercialBenefitsTable,
   customerCommercialConditionsTable,
+  commercialAuditLedgerTable,
   subscriptionsTable,
   plansTable,
   crechesTable,
@@ -590,13 +591,15 @@ describe("commercialCampaigns service", () => {
       await assignCampaignToCreche({
         campaignId: 1,
         crecheId: 100,
+        reason: "Acordo comercial customizado",
         dbClient: mockDb,
         stripeClient: mockStripe,
       });
 
-      // Assert entitlementPetLimit was preserved across snapshot and promo condition
+      // Assert entitlementPetLimit and human reason were preserved across snapshot and promo condition
       expect(insertedAssignedBenefit.entitlementPetLimit).toBe(75);
       expect(insertedPromoCondition.entitlementPetLimit).toBe(75);
+      expect(insertedPromoCondition.reason).toBe("Acordo comercial customizado");
     });
 
     it("verifies single activeConditionId pointer authority belongs strictly to subscriptionsTable and not crechesTable (R36.F1 Section 6)", async () => {
@@ -655,6 +658,164 @@ describe("commercialCampaigns service", () => {
       expect(result.activeConditionId).toBe(501);
       expect(subscriptionUpdatedWith).toEqual({ activeConditionId: 501 });
       expect(crecheUpdatedWith).toBeNull();
+    });
+
+    it("strictly rejects missing or blank assignment reason with 422 ASSIGNMENT_REASON_REQUIRED and zero mutations (R36.F1)", async () => {
+      const mockStripe: any = {
+        subscriptionSchedules: {
+          create: vi.fn(),
+          update: vi.fn(),
+        },
+      };
+      const mockDb: any = {
+        insert: vi.fn(),
+        transaction: vi.fn(),
+      };
+
+      // 1. Missing reason
+      await expect(
+        assignCampaignToCreche({
+          campaignId: 1,
+          crecheId: 100,
+          dbClient: mockDb,
+          stripeClient: mockStripe,
+        }),
+      ).rejects.toThrow(CommercialCampaignError);
+
+      try {
+        await assignCampaignToCreche({
+          campaignId: 1,
+          crecheId: 100,
+          dbClient: mockDb,
+          stripeClient: mockStripe,
+        });
+      } catch (err: any) {
+        expect(err.code).toBe("ASSIGNMENT_REASON_REQUIRED");
+        expect(err.statusCode).toBe(422);
+      }
+
+      // 2. Blank whitespace reason
+      try {
+        await assignCampaignToCreche({
+          campaignId: 1,
+          crecheId: 100,
+          reason: "   \t\n  ",
+          dbClient: mockDb,
+          stripeClient: mockStripe,
+        });
+      } catch (err: any) {
+        expect(err.code).toBe("ASSIGNMENT_REASON_REQUIRED");
+        expect(err.statusCode).toBe(422);
+      }
+
+      // Zero mutations executed
+      expect(mockStripe.subscriptionSchedules.create).not.toHaveBeenCalled();
+      expect(mockDb.insert).not.toHaveBeenCalled();
+    });
+
+    it("preserves exact trimmed human reason in promo condition and commercial_audit_ledger with zero fallback (R36.F1)", async () => {
+      const campaign = { id: 1, name: "Campanha Q3 2026", status: "active" };
+      const benefit = { id: 10, campaignId: 1, benefitType: "PERCENTAGE_DISCOUNT", benefitValue: 2000, billingCycles: 3 };
+      const creche = { id: 100, name: "Creche Pata Feliz" };
+      const sub = {
+        id: 50,
+        crecheId: 100,
+        stripeSubscriptionId: "sub_test123",
+        status: "active",
+        planId: 2,
+        billingInterval: "month",
+        currentPeriodEnd: new Date(),
+        activeConditionId: null,
+      };
+      const plan = { id: 2, name: "Profissional", priceBrl: 20000, stripeProductId: "prod_1" };
+
+      let insertedPromoCondition: any = null;
+      let insertedAudit: any = null;
+
+      const mockDb: any = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation((table) => ({
+            where: vi.fn().mockImplementation(() => ({
+              limit: vi.fn().mockImplementation(async () => {
+                if (table === commercialCampaignsTable) return [campaign];
+                if (table === commercialCampaignBenefitsTable) return [benefit];
+                if (table === crechesTable) return [creche];
+                if (table === subscriptionsTable) return [sub];
+                if (table === plansTable) return [plan];
+                return [];
+              }),
+            })),
+          })),
+        })),
+        insert: vi.fn().mockImplementation((table) => ({
+          values: vi.fn().mockImplementation((val) => {
+            if (table === customerCommercialConditionsTable) {
+              insertedPromoCondition = { id: 101, ...val };
+              return {
+                returning: vi.fn().mockResolvedValue([insertedPromoCondition]),
+              };
+            }
+            if (table === commercialAuditLedgerTable) {
+              insertedAudit = { id: 301, ...val };
+              return {
+                returning: vi.fn().mockResolvedValue([insertedAudit]),
+              };
+            }
+            return {
+              returning: vi.fn().mockResolvedValue([{ id: 1, ...val }]),
+            };
+          }),
+        })),
+        update: vi.fn().mockImplementation(() => ({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: 1 }]),
+          }),
+        })),
+        transaction: vi.fn(async (cb) => cb(mockDb)),
+      };
+
+      const mockStripe: any = {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue({
+            id: "sub_test123",
+            status: "active",
+            schedule: null,
+            items: { data: [{ price: { id: "price_current" } }] },
+          }),
+        },
+        prices: {
+          list: vi.fn().mockResolvedValue({ data: [] }),
+          create: vi.fn().mockImplementation((p) => Promise.resolve({ id: `price_${p.unit_amount}` })),
+        },
+        subscriptionSchedules: {
+          create: vi.fn().mockResolvedValue({
+            id: "sched_123",
+            phases: [{ start_date: 1000, end_date: 2000, items: [{ price: "price_current" }] }],
+          }),
+          update: vi.fn().mockResolvedValue({ id: "sched_123" }),
+        },
+      };
+
+      await assignCampaignToCreche({
+        campaignId: 1,
+        crecheId: 100,
+        reason: "  Parceria Comercial Exclusiva Q3  ",
+        assignedBy: "admin@arkpet.com",
+        dbClient: mockDb,
+        stripeClient: mockStripe,
+      });
+
+      // Reason must be exact trimmed human string, zero fallback action text
+      expect(insertedPromoCondition.reason).toBe("Parceria Comercial Exclusiva Q3");
+      expect(insertedAudit.reason).toBe("Parceria Comercial Exclusiva Q3");
+      expect(insertedAudit.actorRole).toBe("master_admin");
+      expect(insertedAudit.actorEmail).toBe("admin@arkpet.com");
+      expect(insertedAudit.action).toBe("commercial_campaign_assigned");
+    });
+
+    it("validates Stripe API version constant accepted by typecheck and pinned to Dahlia (R36.F1)", async () => {
+      const { STRIPE_API_VERSION } = await import("../lib/stripeClient.js");
+      expect(STRIPE_API_VERSION).toBe("2026-03-25.dahlia");
     });
   });
 });

@@ -1848,6 +1848,38 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         expect(resReplay.body.replay).toBe(true);
         expect(resReplay.body.campaign.status).toBe("paused");
       });
+
+      it("should reject same X-Idempotency-Key with different status as 409 idempotency_conflict (R36.F1)", async () => {
+        const idempotencyKey = "d5e59793-5ed7-6fa7-d3d9-c5c2a599a2c3";
+        const oldFingerprint = "old_fingerprint_for_paused_status";
+
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 3,
+                  operation: COMMERCIAL_OPERATIONS.CHANGE_COMMERCIAL_CAMPAIGN_STATUS,
+                  idempotencyKey,
+                  requestFingerprint: oldFingerprint,
+                  status: "SUCCEEDED",
+                  statusCode: 200,
+                  responsePayload: { campaign: { id: 99, status: "paused" } },
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        const resConflict = await request(app)
+          .patch("/api/commercial/campaigns/99")
+          .set("X-Idempotency-Key", idempotencyKey)
+          .send({ status: "active" });
+
+        expect(resConflict.status).toBe(409);
+        expect(resConflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
+        expect(resConflict.body.error).toBe("idempotency_conflict");
+      });
     });
   });
 });

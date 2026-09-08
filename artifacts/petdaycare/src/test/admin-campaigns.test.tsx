@@ -716,4 +716,118 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     expect(keyB).toMatch(UUID_REGEX);
     expect(keyB).not.toBe(keyA);
   });
+
+  it("10. Status mutation retry reuses UUID on network error, subsequent transition gets fresh UUID, and double-submit is contained (R36.F1)", async () => {
+    vi.stubGlobal("alert", vi.fn());
+    let currentStatus = "active";
+    const capturedStatusKeys: string[] = [];
+    let callCount = 0;
+    let resolveFirstCall: (() => void) | null = null;
+    const firstCallHoldPromise = new Promise<void>((resolve) => {
+      resolveFirstCall = resolve;
+    });
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any, options: any) => {
+      const urlStr = String(url);
+      if (options?.method === "PATCH" && urlStr.includes("/api/commercial/campaigns/1")) {
+        callCount++;
+        const key = options.headers?.["X-Idempotency-Key"];
+        if (key) capturedStatusKeys.push(key);
+
+        if (callCount === 1) {
+          // Wait to hold request in-flight to verify double-submit containment
+          await firstCallHoldPromise;
+          return {
+            ok: false,
+            status: 504,
+            json: async () => ({ error: "GATEWAY_TIMEOUT", message: "Timeout simulado no status" }),
+          } as any;
+        }
+
+        // Subsequent call succeeds -> transition status
+        currentStatus = JSON.parse(options.body).status;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ campaign: { id: 1, status: currentStatus } }),
+        } as any;
+      }
+
+      if (urlStr.includes("/commercial/campaigns")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            campaigns: [
+              {
+                ...mockCampaigns[0],
+                status: currentStatus,
+              },
+            ],
+          }),
+        } as any;
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as any;
+    });
+
+    renderWithProviders(<AdminCampaigns />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Campanha Q3 2026 - 20% OFF")).toBeInTheDocument();
+    });
+
+    // Initial status is 'active', so 'Pausar' button is displayed
+    const pauseBtn = screen.getByRole("button", { name: /Pausar/i });
+    expect(pauseBtn).not.toBeDisabled();
+
+    // 1. First click: initiates in-flight mutation
+    fireEvent.click(pauseBtn);
+
+    // Double-submit containment: button is disabled while in flight
+    await waitFor(() => {
+      expect(pauseBtn).toBeDisabled();
+    });
+
+    // Attempting a second click while in-flight MUST NOT dispatch a second request
+    fireEvent.click(pauseBtn);
+    expect(callCount).toBe(1);
+
+    // Release in-flight hold -> returns simulated 504
+    resolveFirstCall!();
+
+    await waitFor(() => {
+      expect(pauseBtn).not.toBeDisabled();
+    });
+
+    expect(capturedStatusKeys.length).toBe(1);
+    const keyA = capturedStatusKeys[0];
+    expect(keyA).toMatch(UUID_REGEX);
+
+    // 2. Retry of the EXACT SAME status mutation (active -> paused)
+    fireEvent.click(pauseBtn);
+
+    await waitFor(() => {
+      expect(capturedStatusKeys.length).toBe(2);
+    });
+
+    // Logical Idempotency: exact same key must be reused across retry
+    expect(capturedStatusKeys[1]).toBe(keyA);
+
+    // 3. Terminal success: campaign is now paused, rendering 'Ativar' button
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Ativar/i })).toBeInTheDocument();
+    });
+
+    // 4. Subsequent status transition (paused -> active) must generate a fresh key B
+    const activateBtn = screen.getByRole("button", { name: /Ativar/i });
+    fireEvent.click(activateBtn);
+
+    await waitFor(() => {
+      expect(capturedStatusKeys.length).toBe(3);
+    });
+
+    const keyB = capturedStatusKeys[2];
+    expect(keyB).toMatch(UUID_REGEX);
+    expect(keyB).not.toBe(keyA);
+  });
 });

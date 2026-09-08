@@ -1376,6 +1376,7 @@ commercialRouter.post("/campaigns", async (req: AuthRequest, res: Response): Pro
             benefitValue: Number(benefitValue),
             billingCycles: Number(billingCycles),
             createdBy: req.user?.email ?? "master_admin",
+            reason: req.body.reason ? String(req.body.reason).trim() : undefined,
           },
           tx,
         );
@@ -1504,6 +1505,7 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
     eligibleFrom,
     eligibleUntil,
     priority,
+    reason,
   } = req.body;
 
   const isStatusOnly =
@@ -1518,7 +1520,7 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
     ? COMMERCIAL_OPERATIONS.CHANGE_COMMERCIAL_CAMPAIGN_STATUS
     : COMMERCIAL_OPERATIONS.UPDATE_COMMERCIAL_CAMPAIGN;
 
-  const payload = {
+  const payload: Record<string, any> = {
     campaignId,
     operation,
     name: name !== undefined ? String(name).trim() : null,
@@ -1528,6 +1530,9 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
     eligibleUntil: eligibleUntil ?? null,
     priority: typeof priority === "number" ? priority : null,
   };
+  if (reason !== undefined) {
+    payload.reason = reason ? String(reason).trim() : null;
+  }
 
   try {
     const result = await withCommercialOperationIdempotency({
@@ -1548,6 +1553,7 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
             eligibleFrom: eligibleFrom !== undefined ? (eligibleFrom ? new Date(eligibleFrom) : null) : undefined,
             eligibleUntil: eligibleUntil !== undefined ? (eligibleUntil ? new Date(eligibleUntil) : null) : undefined,
             priority: typeof priority === "number" ? priority : undefined,
+            reason: reason ? String(reason).trim() : undefined,
           },
           tx,
         );

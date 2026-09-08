@@ -76,6 +76,7 @@ export interface CreateCampaignParams {
   benefitValue: number;
   billingCycles: number;
   createdBy?: string;
+  reason?: string;
 }
 
 export interface UpdateCampaignParams {
@@ -89,6 +90,7 @@ export interface UpdateCampaignParams {
   benefitValue?: number;
   billingCycles?: number;
   updatedBy?: string;
+  reason?: string;
 }
 
 /**
@@ -189,7 +191,7 @@ export async function createCampaign(
         targetCrecheId: 1, // Global campaign audit
         actorType: "user",
         action: "commercial_campaign_created",
-        reason: `Criação da campanha '${campaign.name}' com benefício ${benefit.benefitType}`,
+        reason: params.reason ? params.reason.trim() : null,
         executionStatus: "SUCCESS",
         afterState: {
           campaignId: campaign.id,
@@ -280,7 +282,7 @@ export async function updateCampaign(
         targetCrecheId: 1,
         actorType: "user",
         action: "commercial_campaign_updated",
-        reason: `Atualização da campanha #${campaignId}`,
+        reason: params.reason ? params.reason.trim() : null,
         executionStatus: "SUCCESS",
         beforeState: existing,
         afterState: updatedCampaign,
@@ -586,6 +588,15 @@ export async function assignCampaignToCreche(params: {
   stripeScheduleId: string;
   scheduledStartPeriod: Date;
 }> {
+  const trimmedReason = params.reason?.trim();
+  if (!trimmedReason) {
+    throw new CommercialCampaignError(
+      "Justificativa comercial obrigatória para atribuição de campanha.",
+      "ASSIGNMENT_REASON_REQUIRED",
+      422,
+    );
+  }
+
   const dbClient = params.dbClient ?? db;
   const stripe = params.stripeClient ?? (await getUncachableStripeClient());
 
@@ -682,7 +693,7 @@ export async function assignCampaignToCreche(params: {
       status: "pending_activation",
       executionRequirement: "STRIPE_REQUIRED",
       syncStatus: "sync_pending",
-      reason: `Benefício da campanha '${preview.campaign.name}' (${preview.benefit.billingCycles} ciclos)`,
+      reason: trimmedReason,
       assignedBenefitId: assignedBenefit.id,
     };
 
@@ -732,7 +743,7 @@ export async function assignCampaignToCreche(params: {
         actorRole: "master_admin",
         actorEmail: params.assignedBy ?? "master_admin",
         action: "commercial_campaign_assigned",
-        reason: params.reason ? params.reason.trim() : `Atribuição da campanha '${preview.campaign.name}' à creche #${params.crecheId}`,
+        reason: trimmedReason,
         executionRequirement: "STRIPE_REQUIRED",
         executionStatus: "SUCCESS",
         relatedConditionId: promoCondition.id,

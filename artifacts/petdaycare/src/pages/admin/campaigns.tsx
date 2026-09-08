@@ -155,13 +155,14 @@ export default function AdminCampaigns() {
   }, [fetchCampaigns]);
 
   const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+  const statusSubmission = useIdempotentSubmission();
 
   const handleStatusChange = async (campaignId: number, nextStatus: string) => {
     if (updatingStatusId === campaignId) return;
     setUpdatingStatusId(campaignId);
     try {
       const token = localStorage.getItem("auth_token");
-      const idempotencyKey = generateUUID();
+      const idempotencyKey = statusSubmission.getOrCreateKey({ campaignId, status: nextStatus });
       const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${campaignId}`, {
         method: "PATCH",
         headers: {
@@ -175,6 +176,7 @@ export default function AdminCampaigns() {
         const errJson = await res.json().catch(() => ({}));
         throw new Error(errJson?.message || `Erro ao atualizar status: ${res.status}`);
       }
+      statusSubmission.clearKey();
       await fetchCampaigns();
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar status da campanha.");
