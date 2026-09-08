@@ -524,7 +524,7 @@ async function ensureTasksSchema(): Promise<void> {
  * and partial unique indexes exist in all environments.
  * Idempotent — safe to run on every startup.
  */
-async function ensureCommercialFoundationSchema(): Promise<void> {
+export async function ensureCommercialFoundationSchema(): Promise<void> {
   await (db as any).execute(`
     -- 1. customer_commercial_conditions (full-snapshot model)
     CREATE TABLE IF NOT EXISTS customer_commercial_conditions (
@@ -695,7 +695,7 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     -- 5. commercial_operation_requests (Phase R36.E1.1 durable idempotency ledger)
     CREATE TABLE IF NOT EXISTS commercial_operation_requests (
       id SERIAL PRIMARY KEY,
-      creche_id INTEGER NOT NULL,
+      creche_id INTEGER,
       operation VARCHAR(64) NOT NULL,
       idempotency_key VARCHAR(255) NOT NULL,
       request_fingerprint VARCHAR(64) NOT NULL,
@@ -714,6 +714,7 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     );
 
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE commercial_operation_requests ALTER COLUMN creche_id DROP NOT NULL;
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS operation VARCHAR(64);
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(255);
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS request_fingerprint VARCHAR(64);
@@ -730,8 +731,25 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
     ALTER TABLE commercial_operation_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
 
+    -- Replace legacy unpredicated idempotency index with tenant-scoped and global-scoped indexes (R36.F1 Section 4)
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'commercial_operation_requests_creche_idempotency_unique'
+          AND indexdef NOT LIKE '%WHERE%'
+      ) THEN
+        DROP INDEX commercial_operation_requests_creche_idempotency_unique;
+      END IF;
+    END $$;
+
     CREATE UNIQUE INDEX IF NOT EXISTS commercial_operation_requests_creche_idempotency_unique
-      ON commercial_operation_requests (creche_id, idempotency_key);
+      ON commercial_operation_requests (creche_id, idempotency_key)
+      WHERE creche_id IS NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS commercial_operation_requests_global_idempotency_unique
+      ON commercial_operation_requests (idempotency_key)
+      WHERE creche_id IS NULL;
 
     CREATE INDEX IF NOT EXISTS commercial_operation_requests_creche_operation_idx
       ON commercial_operation_requests (creche_id, operation);
@@ -742,6 +760,167 @@ async function ensureCommercialFoundationSchema(): Promise<void> {
     -- 6. Additive columns on existing tables
     ALTER TABLE plans ADD COLUMN IF NOT EXISTS stripe_product_id TEXT;
     ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS active_condition_id INTEGER;
+
+    -- 7. Commercial Campaigns & Temporal Benefits (Phase R36.F / R36.F1)
+    CREATE TABLE IF NOT EXISTS commercial_campaigns (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      status VARCHAR(32) NOT NULL DEFAULT 'draft',
+      eligible_from TIMESTAMP,
+      eligible_until TIMESTAMP,
+      priority INTEGER NOT NULL DEFAULT 0,
+      assignment_mode VARCHAR(64) NOT NULL DEFAULT 'MASTER_ADMIN_SAFE_ASSIGNMENT',
+      created_by TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'draft';
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS eligible_from TIMESTAMP;
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS eligible_until TIMESTAMP;
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0;
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS assignment_mode VARCHAR(64) DEFAULT 'MASTER_ADMIN_SAFE_ASSIGNMENT';
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS created_by TEXT;
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_campaigns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS commercial_campaigns_status_idx ON commercial_campaigns (status);
+    CREATE INDEX IF NOT EXISTS commercial_campaigns_priority_idx ON commercial_campaigns (priority);
+
+    CREATE TABLE IF NOT EXISTS commercial_campaign_benefits (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL REFERENCES commercial_campaigns(id),
+      benefit_type VARCHAR(64) NOT NULL,
+      benefit_value INTEGER NOT NULL,
+      billing_cycles INTEGER NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_campaign_benefits ADD COLUMN IF NOT EXISTS campaign_id INTEGER;
+    ALTER TABLE commercial_campaign_benefits ADD COLUMN IF NOT EXISTS benefit_type VARCHAR(64);
+    ALTER TABLE commercial_campaign_benefits ADD COLUMN IF NOT EXISTS benefit_value INTEGER;
+    ALTER TABLE commercial_campaign_benefits ADD COLUMN IF NOT EXISTS billing_cycles INTEGER;
+    ALTER TABLE commercial_campaign_benefits ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
+    CREATE UNIQUE INDEX IF NOT EXISTS commercial_campaign_benefits_campaign_unique
+      ON commercial_campaign_benefits (campaign_id);
+
+    CREATE TABLE IF NOT EXISTS assigned_commercial_benefits (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL REFERENCES commercial_campaigns(id),
+      campaign_benefit_id INTEGER NOT NULL REFERENCES commercial_campaign_benefits(id),
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      status VARCHAR(32) NOT NULL DEFAULT 'scheduled',
+      campaign_name TEXT NOT NULL,
+      benefit_type VARCHAR(64) NOT NULL,
+      benefit_value INTEGER NOT NULL,
+      billing_cycles INTEGER NOT NULL,
+      target_plan_id INTEGER NOT NULL,
+      target_billing_interval VARCHAR(32) NOT NULL,
+      catalog_price_cents INTEGER NOT NULL,
+      predecessor_condition_id INTEGER REFERENCES customer_commercial_conditions(id),
+      predecessor_effective_price_cents INTEGER NOT NULL,
+      promotional_price_cents INTEGER NOT NULL,
+      restoration_price_cents INTEGER NOT NULL,
+      entitlement_pet_limit INTEGER,
+      commercial_condition_id INTEGER REFERENCES customer_commercial_conditions(id),
+      restoration_condition_id INTEGER REFERENCES customer_commercial_conditions(id),
+      stripe_subscription_id TEXT NOT NULL,
+      stripe_schedule_id TEXT,
+      promotional_stripe_price_id TEXT,
+      restoration_stripe_price_id TEXT,
+      scheduled_start_period TIMESTAMP,
+      first_consumed_period_start TIMESTAMP,
+      last_consumed_period_end TIMESTAMP,
+      assigned_by TEXT,
+      assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      completed_at TIMESTAMP,
+      failure_reason TEXT,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS campaign_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS campaign_benefit_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'scheduled';
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS campaign_name TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS benefit_type VARCHAR(64);
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS benefit_value INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS billing_cycles INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS target_plan_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS target_billing_interval VARCHAR(32);
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS catalog_price_cents INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS predecessor_condition_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS predecessor_effective_price_cents INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS promotional_price_cents INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS restoration_price_cents INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS entitlement_pet_limit INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS commercial_condition_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS restoration_condition_id INTEGER;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS stripe_subscription_id TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS stripe_schedule_id TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS promotional_stripe_price_id TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS restoration_stripe_price_id TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS scheduled_start_period TIMESTAMP;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS first_consumed_period_start TIMESTAMP;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS last_consumed_period_end TIMESTAMP;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS assigned_by TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS failure_reason TEXT;
+    ALTER TABLE assigned_commercial_benefits ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS assigned_commercial_benefits_creche_status_idx
+      ON assigned_commercial_benefits (creche_id, status);
+
+    CREATE INDEX IF NOT EXISTS assigned_commercial_benefits_campaign_creche_idx
+      ON assigned_commercial_benefits (campaign_id, creche_id);
+
+    -- Replace obsolete singleActiveCampaignIdx predicate if it misses restoration_review or pending_activation (R36.F1 Section 5)
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE indexname = 'assigned_commercial_benefits_single_active_idx'
+          AND (indexdef NOT LIKE '%restoration_review%' OR indexdef NOT LIKE '%pending_activation%')
+      ) THEN
+        DROP INDEX assigned_commercial_benefits_single_active_idx;
+      END IF;
+    END $$;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS assigned_commercial_benefits_single_active_idx
+      ON assigned_commercial_benefits (creche_id)
+      WHERE status IN ('pending', 'pending_activation', 'scheduled', 'active', 'restoration_review');
+
+    CREATE TABLE IF NOT EXISTS benefit_cycle_consumptions (
+      id SERIAL PRIMARY KEY,
+      assigned_benefit_id INTEGER NOT NULL REFERENCES assigned_commercial_benefits(id),
+      cycle_key TEXT NOT NULL,
+      contractual_period_start TIMESTAMP NOT NULL,
+      contractual_period_end TIMESTAMP NOT NULL,
+      cycle_number INTEGER NOT NULL,
+      source VARCHAR(64) NOT NULL DEFAULT 'stripe_subscription_cycle',
+      source_reference_id TEXT,
+      consumed_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS assigned_benefit_id INTEGER;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS cycle_key TEXT;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS contractual_period_start TIMESTAMP;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS contractual_period_end TIMESTAMP;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS cycle_number INTEGER;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS source VARCHAR(64) DEFAULT 'stripe_subscription_cycle';
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS source_reference_id TEXT;
+    ALTER TABLE benefit_cycle_consumptions ADD COLUMN IF NOT EXISTS consumed_at TIMESTAMP DEFAULT NOW();
+
+    CREATE UNIQUE INDEX IF NOT EXISTS benefit_cycle_consumptions_assigned_cycle_key_unique
+      ON benefit_cycle_consumptions (assigned_benefit_id, cycle_key);
+
+    CREATE INDEX IF NOT EXISTS benefit_cycle_consumptions_assigned_benefit_idx
+      ON benefit_cycle_consumptions (assigned_benefit_id);
   `);
   console.log("[startup] commercial foundation: schema verificado (idempotente).");
 }

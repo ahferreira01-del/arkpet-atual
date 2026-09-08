@@ -598,5 +598,63 @@ describe("commercialCampaigns service", () => {
       expect(insertedAssignedBenefit.entitlementPetLimit).toBe(75);
       expect(insertedPromoCondition.entitlementPetLimit).toBe(75);
     });
+
+    it("verifies single activeConditionId pointer authority belongs strictly to subscriptionsTable and not crechesTable (R36.F1 Section 6)", async () => {
+      // 1. Schema-level proof
+      expect(subscriptionsTable.activeConditionId).toBeDefined();
+      expect((crechesTable as any).activeConditionId).toBeUndefined();
+
+      // 2. Runtime update proof: transitionActiveCondition updates subscriptionsTable
+      let subscriptionUpdatedWith: any = null;
+      let crecheUpdatedWith: any = null;
+
+      const mockTx: any = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation((table) => ({
+            where: vi.fn().mockImplementation(() => ({
+              limit: vi.fn().mockImplementation(async () => {
+                if (table === customerCommercialConditionsTable) {
+                  return [
+                    {
+                      id: 501,
+                      crecheId: 100,
+                      status: "pending_activation",
+                      validFrom: new Date(),
+                      pricingOverrideType: "fixed_amount",
+                      pricingOverrideValue: 20000,
+                    },
+                  ];
+                }
+                if (table === subscriptionsTable) {
+                  return [{ id: 999, crecheId: 100, activeConditionId: 200 }];
+                }
+                return [];
+              }),
+            })),
+          })),
+        })),
+        update: vi.fn().mockImplementation((table) => ({
+          set: vi.fn().mockImplementation((values) => {
+            if (table === subscriptionsTable) {
+              subscriptionUpdatedWith = values;
+            }
+            if (table === crechesTable) {
+              crecheUpdatedWith = values;
+            }
+            return {
+              where: vi.fn().mockResolvedValue([{ id: 1 }]),
+            };
+          }),
+        })),
+        transaction: vi.fn(async (cb) => cb(mockTx)),
+      };
+
+      const { transitionActiveCondition } = await import("../services/commercialConditions.js");
+      const result = await transitionActiveCondition(100, 501, mockTx);
+
+      expect(result.activeConditionId).toBe(501);
+      expect(subscriptionUpdatedWith).toEqual({ activeConditionId: 501 });
+      expect(crecheUpdatedWith).toBeNull();
+    });
   });
 });

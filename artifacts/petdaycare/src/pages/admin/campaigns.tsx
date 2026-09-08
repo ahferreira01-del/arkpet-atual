@@ -27,6 +27,7 @@ import {
   PlayCircle,
   XCircle,
   Info,
+  Pencil,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -88,6 +89,8 @@ export default function AdminCampaigns() {
 
   // Assignment Modal
   const [selectedCampaignForAssign, setSelectedCampaignForAssign] = useState<CampaignItem | null>(null);
+  // Edit Modal
+  const [selectedCampaignForEdit, setSelectedCampaignForEdit] = useState<CampaignItem | null>(null);
   // Details Modal
   const [selectedCampaignForDetails, setSelectedCampaignForDetails] = useState<CampaignItem | null>(null);
 
@@ -212,6 +215,7 @@ export default function AdminCampaigns() {
                   key={camp.id}
                   campaign={camp}
                   onAssign={() => setSelectedCampaignForAssign(camp)}
+                  onEdit={() => setSelectedCampaignForEdit(camp)}
                   onViewDetails={() => setSelectedCampaignForDetails(camp)}
                   onStatusChange={(status) => handleStatusChange(camp.id, status)}
                 />
@@ -233,6 +237,18 @@ export default function AdminCampaigns() {
         />
       )}
 
+      {selectedCampaignForEdit && (
+        <EditCampaignModal
+          isOpen={!!selectedCampaignForEdit}
+          campaign={selectedCampaignForEdit}
+          onClose={() => setSelectedCampaignForEdit(null)}
+          onSuccess={() => {
+            setSelectedCampaignForEdit(null);
+            fetchCampaigns();
+          }}
+        />
+      )}
+
       {selectedCampaignForDetails && (
         <CampaignDetailsModal
           isOpen={!!selectedCampaignForDetails}
@@ -247,11 +263,13 @@ export default function AdminCampaigns() {
 function CampaignCard({
   campaign,
   onAssign,
+  onEdit,
   onViewDetails,
   onStatusChange,
 }: {
   campaign: CampaignItem;
   onAssign: () => void;
+  onEdit: () => void;
   onViewDetails: () => void;
   onStatusChange: (status: string) => void;
 }) {
@@ -326,6 +344,10 @@ function CampaignCard({
                 <PlayCircle className="h-3.5 w-3.5" /> Ativar
               </Button>
             ) : null}
+
+            <Button variant="outline" size="sm" onClick={onEdit} className="gap-1 text-xs">
+              <Pencil className="h-3.5 w-3.5" /> Editar
+            </Button>
 
             <Button variant="outline" size="sm" onClick={onViewDetails} className="gap-1 text-xs">
               <Info className="h-3.5 w-3.5" /> Detalhes ({campaign.stats.assignedCount})
@@ -905,6 +927,132 @@ function AssignCampaignModal({
           </Button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+function EditCampaignModal({
+  isOpen,
+  campaign,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  campaign: CampaignItem;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [name, setName] = useState(campaign.name);
+  const [description, setDescription] = useState(campaign.description || "");
+  const [priority, setPriority] = useState(String(campaign.priority ?? 0));
+  const [eligibleUntil, setEligibleUntil] = useState(
+    campaign.eligibleUntil ? campaign.eligibleUntil.slice(0, 10) : "",
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!name.trim()) {
+      setFormError("Nome da campanha é obrigatório.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const idempotencyKey = generateUUID();
+      const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${campaign.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          priority: Number(priority),
+          eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.message || `Erro ao atualizar campanha: ${res.status}`);
+      }
+
+      onSuccess();
+    } catch (err: any) {
+      setFormError(err.message || "Falha ao atualizar dados da campanha.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Editar Campanha: ${campaign.name}`}>
+      <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
+        {formError && (
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs">
+            {formError}
+          </div>
+        )}
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-foreground">Nome da Campanha *</label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="text-sm"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-foreground">Descrição Comercial</label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Prioridade</label>
+            <Input
+              type="number"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground">Fim da Elegibilidade</label>
+            <Input
+              type="date"
+              value={eligibleUntil}
+              onChange={(e) => setEligibleUntil(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-border">
+          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={submitting} className="gap-2">
+            {submitting && <RefreshCw className="h-4 w-4 animate-spin" />}
+            Salvar Alterações
+          </Button>
+        </div>
+      </form>
     </Modal>
   );
 }
