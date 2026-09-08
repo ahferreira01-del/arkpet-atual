@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useListCreches } from "@workspace/api-client-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -42,7 +42,7 @@ function formatCentsToBRL(cents: number | null | undefined): string {
     .replace(/\u00a0/g, " ");
 }
 
-function generateUUID(): string {
+export function generateUUID(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -51,6 +51,41 @@ function generateUUID(): string {
     const v = c === "x" ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
+}
+
+/**
+ * UI Idempotency Hook (R36.F1 Section 5, 6, 7).
+ * Ensures:
+ * 1 logical user mutation attempt = 1 X-Idempotency-Key.
+ * Retries of the same submitted payload reuse the SAME key.
+ * Material payload changes before submit generate a NEW key.
+ * Terminal success or cancel/close resets the key.
+ */
+export function useIdempotentSubmission() {
+  const keyRef = useRef<string | null>(null);
+  const fingerprintRef = useRef<string | null>(null);
+
+  const getOrCreateKey = useCallback((payload: unknown): string => {
+    const fingerprint = JSON.stringify(payload);
+    if (keyRef.current && fingerprintRef.current === fingerprint) {
+      return keyRef.current;
+    }
+    const newKey = generateUUID();
+    keyRef.current = newKey;
+    fingerprintRef.current = fingerprint;
+    return newKey;
+  }, []);
+
+  const clearKey = useCallback(() => {
+    keyRef.current = null;
+    fingerprintRef.current = null;
+  }, []);
+
+  return {
+    getOrCreateKey,
+    clearKey,
+    getCurrentKey: () => keyRef.current,
+  };
 }
 
 interface CampaignBenefit {
@@ -119,7 +154,11 @@ export default function AdminCampaigns() {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
+  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
+
   const handleStatusChange = async (campaignId: number, nextStatus: string) => {
+    if (updatingStatusId === campaignId) return;
+    setUpdatingStatusId(campaignId);
     try {
       const token = localStorage.getItem("auth_token");
       const idempotencyKey = generateUUID();
@@ -139,6 +178,8 @@ export default function AdminCampaigns() {
       await fetchCampaigns();
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar status da campanha.");
+    } finally {
+      setUpdatingStatusId(null);
     }
   };
 
@@ -218,6 +259,7 @@ export default function AdminCampaigns() {
                   onEdit={() => setSelectedCampaignForEdit(camp)}
                   onViewDetails={() => setSelectedCampaignForDetails(camp)}
                   onStatusChange={(status) => handleStatusChange(camp.id, status)}
+                  isUpdatingStatus={updatingStatusId === camp.id}
                 />
               ))}
             </div>
@@ -266,12 +308,14 @@ function CampaignCard({
   onEdit,
   onViewDetails,
   onStatusChange,
+  isUpdatingStatus = false,
 }: {
   campaign: CampaignItem;
   onAssign: () => void;
   onEdit: () => void;
   onViewDetails: () => void;
   onStatusChange: (status: string) => void;
+  isUpdatingStatus?: boolean;
 }) {
   const benefit = campaign.benefit;
 
@@ -330,6 +374,7 @@ function CampaignCard({
                 variant="outline"
                 size="sm"
                 onClick={() => onStatusChange("paused")}
+                disabled={isUpdatingStatus}
                 className="gap-1 text-xs"
               >
                 <PauseCircle className="h-3.5 w-3.5" /> Pausar
@@ -339,6 +384,7 @@ function CampaignCard({
                 variant="outline"
                 size="sm"
                 onClick={() => onStatusChange("active")}
+                disabled={isUpdatingStatus}
                 className="gap-1 text-xs text-success border-success/30 hover:bg-success/10"
               >
                 <PlayCircle className="h-3.5 w-3.5" /> Ativar
@@ -420,6 +466,7 @@ function CreateCampaignForm({
   onSuccess: () => void;
   onCancel: () => void;
 }) {
+  const { getOrCreateKey, clearKey } = useIdempotentSubmission();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"draft" | "active">("active");
@@ -434,8 +481,14 @@ function CreateCampaignForm({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const handleCancel = () => {
+    clearKey();
+    onCancel();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setFormError(null);
 
     if (!name.trim()) {
@@ -465,10 +518,23 @@ function CreateCampaignForm({
       return;
     }
 
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      status,
+      priority: Number(priority),
+      eligibleFrom: eligibleFrom ? new Date(eligibleFrom).toISOString() : null,
+      eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
+      benefitType,
+      benefitValue: rawValue,
+      billingCycles: Number(billingCycles),
+    };
+
+    const idempotencyKey = getOrCreateKey(payload);
+
     setSubmitting(true);
     try {
       const token = localStorage.getItem("auth_token");
-      const idempotencyKey = generateUUID();
       const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns`, {
         method: "POST",
         headers: {
@@ -476,17 +542,7 @@ function CreateCampaignForm({
           Authorization: `Bearer ${token}`,
           "X-Idempotency-Key": idempotencyKey,
         },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          status,
-          priority: Number(priority),
-          eligibleFrom: eligibleFrom ? new Date(eligibleFrom).toISOString() : null,
-          eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
-          benefitType,
-          benefitValue: rawValue,
-          billingCycles: Number(billingCycles),
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -494,6 +550,7 @@ function CreateCampaignForm({
         throw new Error(errJson?.message || `Erro ao criar campanha: ${res.status}`);
       }
 
+      clearKey();
       onSuccess();
     } catch (err: any) {
       setFormError(err.message || "Erro ao salvar campanha.");
@@ -658,7 +715,7 @@ function CreateCampaignForm({
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <Button type="button" variant="outline" onClick={onCancel} disabled={submitting}>
+            <Button type="button" variant="outline" onClick={handleCancel} disabled={submitting}>
               Cancelar
             </Button>
             <Button type="submit" disabled={submitting} className="gap-2">
@@ -683,6 +740,7 @@ function AssignCampaignModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { getOrCreateKey, clearKey } = useIdempotentSubmission();
   const { data: creches, isLoading: crechesLoading } = useListCreches();
   const [selectedCrecheId, setSelectedCrecheId] = useState<string>("");
   const [reason, setReason] = useState("");
@@ -691,6 +749,11 @@ function AssignCampaignModal({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleClose = () => {
+    clearKey();
+    onClose();
+  };
 
   const fetchPreview = async (crecheIdNum: number) => {
     setPreviewLoading(true);
@@ -708,12 +771,13 @@ function AssignCampaignModal({
       });
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson?.message || `Erro no preview: ${res.status}`);
+        throw new Error(errJson?.message || `Erro ao carregar preview: ${res.status}`);
       }
-      const json = await res.json();
-      setPreviewData(json.items?.[0] || null);
+      const data = await res.json();
+      const targetItem = data.items?.find((i: any) => i.crecheId === crecheIdNum) || data.items?.[0];
+      setPreviewData(targetItem || null);
     } catch (err: any) {
-      setPreviewError(err.message || "Erro ao consultar simulação da creche.");
+      setPreviewError(err.message || "Falha ao calcular preview de elegibilidade.");
     } finally {
       setPreviewLoading(false);
     }
@@ -732,18 +796,26 @@ function AssignCampaignModal({
   };
 
   const handleConfirmAssignment = async () => {
+    if (submitting) return;
     if (!selectedCrecheId) return;
     if (!reason.trim()) {
       setSubmitError("Justificativa obrigatória para atribuição de campanha.");
       return;
     }
 
+    const payload = {
+      campaignId: campaign.id,
+      crecheId: Number(selectedCrecheId),
+      reason: reason.trim(),
+    };
+
+    const idempotencyKey = getOrCreateKey(payload);
+
     setSubmitting(true);
     setSubmitError(null);
 
     try {
       const token = localStorage.getItem("auth_token");
-      const idempotencyKey = generateUUID();
 
       const res = await fetch(
         `${import.meta.env.BASE_URL}api/commercial/campaigns/${campaign.id}/assign/${selectedCrecheId}`,
@@ -763,6 +835,7 @@ function AssignCampaignModal({
         throw new Error(errJson?.message || `Erro ao atribuir campanha: ${res.status}`);
       }
 
+      clearKey();
       onSuccess();
     } catch (err: any) {
       setSubmitError(err.message || "Falha na atribuição da campanha.");
@@ -774,7 +847,7 @@ function AssignCampaignModal({
   const isEligible = previewData?.eligible === true;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Atribuir Campanha: ${campaign.name}`}>
+    <Modal isOpen={isOpen} onClose={handleClose} title={`Atribuir Campanha: ${campaign.name}`}>
       <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
         <div className="p-3 bg-secondary/30 rounded-xl text-xs space-y-1">
           <p className="font-semibold text-foreground">Campanha Selecionada:</p>
@@ -910,7 +983,7 @@ function AssignCampaignModal({
         )}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
+          <Button variant="outline" onClick={handleClose} disabled={submitting}>
             Cancelar
           </Button>
           <Button
@@ -942,6 +1015,7 @@ function EditCampaignModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { getOrCreateKey, clearKey } = useIdempotentSubmission();
   const [name, setName] = useState(campaign.name);
   const [description, setDescription] = useState(campaign.description || "");
   const [priority, setPriority] = useState(String(campaign.priority ?? 0));
@@ -951,8 +1025,14 @@ function EditCampaignModal({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const handleClose = () => {
+    clearKey();
+    onClose();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
     setFormError(null);
 
     if (!name.trim()) {
@@ -960,10 +1040,18 @@ function EditCampaignModal({
       return;
     }
 
+    const payload = {
+      name: name.trim(),
+      description: description.trim() || undefined,
+      priority: Number(priority),
+      eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
+    };
+
+    const idempotencyKey = getOrCreateKey(payload);
+
     setSubmitting(true);
     try {
       const token = localStorage.getItem("auth_token");
-      const idempotencyKey = generateUUID();
       const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${campaign.id}`, {
         method: "PATCH",
         headers: {
@@ -971,12 +1059,7 @@ function EditCampaignModal({
           Authorization: `Bearer ${token}`,
           "X-Idempotency-Key": idempotencyKey,
         },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          priority: Number(priority),
-          eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -984,6 +1067,7 @@ function EditCampaignModal({
         throw new Error(errJson?.message || `Erro ao atualizar campanha: ${res.status}`);
       }
 
+      clearKey();
       onSuccess();
     } catch (err: any) {
       setFormError(err.message || "Falha ao atualizar dados da campanha.");
@@ -993,7 +1077,7 @@ function EditCampaignModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Editar Campanha: ${campaign.name}`}>
+    <Modal isOpen={isOpen} onClose={handleClose} title={`Editar Campanha: ${campaign.name}`}>
       <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto pr-1">
         {formError && (
           <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs">
@@ -1044,7 +1128,7 @@ function EditCampaignModal({
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-border">
-          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+          <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
             Cancelar
           </Button>
           <Button type="submit" disabled={submitting} className="gap-2">

@@ -466,4 +466,254 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     expect(capturedRequest!.headers["X-Idempotency-Key"]).toMatch(UUID_REGEX);
     expect(capturedRequest!.body.reason).toBe("Adesão antecipada confirmada pelo diretor comercial");
   });
+
+  it("8. CREATE campaign UI idempotency: retry on network failure reuses same UUID key A; subsequent new campaign gets fresh key B", async () => {
+    const capturedKeys: string[] = [];
+    let shouldFailFirstCreate = true;
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any, options: any) => {
+      const urlStr = String(url);
+      if (options?.method === "POST" && urlStr.endsWith("/api/commercial/campaigns")) {
+        const key = options.headers?.["X-Idempotency-Key"];
+        if (key) capturedKeys.push(key);
+
+        if (shouldFailFirstCreate) {
+          shouldFailFirstCreate = false;
+          return {
+            ok: false,
+            status: 504,
+            json: async () => ({ message: "Gateway Timeout simulado" }),
+          } as any;
+        }
+
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            campaign: { id: 101, name: JSON.parse(options.body).name },
+          }),
+        } as any;
+      }
+      if (urlStr.includes("/commercial/campaigns")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ campaigns: mockCampaigns }),
+        } as any;
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as any;
+    });
+
+    renderWithProviders(<AdminCampaigns />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Campanha Q3 2026 - 20% OFF")).toBeInTheDocument();
+    });
+
+    // Switch to Nova Campanha tab
+    fireEvent.click(screen.getByRole("button", { name: /Nova Campanha/i }));
+
+    // Fill form for first campaign
+    const nameInput = screen.getByPlaceholderText("Ex: Incentivo de Expansão Q3");
+    fireEvent.change(nameInput, { target: { value: "Campanha Tentativa 1" } });
+
+    // Submit attempt 1 -> fails with 504
+    const submitBtn = screen.getByRole("button", { name: /Criar Campanha/i });
+    fireEvent.click(submitBtn);
+
+    // Wait for error feedback to appear
+    await waitFor(() => {
+      expect(screen.getByText("Gateway Timeout simulado")).toBeInTheDocument();
+    });
+    expect(capturedKeys.length).toBe(1);
+    const keyA = capturedKeys[0];
+    expect(keyA).toMatch(UUID_REGEX);
+
+    // Verify submit button is re-enabled for retry
+    expect(submitBtn).not.toBeDisabled();
+
+    // Submit attempt 2 (retry of exact same form without changes) -> succeeds
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(capturedKeys.length).toBe(2);
+    });
+
+    // Both attempts must use the EXACT SAME idempotency key A
+    expect(capturedKeys[1]).toBe(keyA);
+
+    // Now switch to Nova Campanha tab to create a brand new campaign
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Nova Campanha/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Nova Campanha/i }));
+
+    const newNameInput = screen.getByPlaceholderText("Ex: Incentivo de Expansão Q3");
+    fireEvent.change(newNameInput, { target: { value: "Campanha Independente 2" } });
+
+    const newSubmitBtn = screen.getByRole("button", { name: /Criar Campanha/i });
+    fireEvent.click(newSubmitBtn);
+
+    await waitFor(() => {
+      expect(capturedKeys.length).toBe(3);
+    });
+
+    const keyB = capturedKeys[2];
+    expect(keyB).toMatch(UUID_REGEX);
+    expect(keyB).not.toBe(keyA);
+  });
+
+  it("9. ASSIGN campaign UI idempotency: retry on network failure reuses same UUID key A; subsequent assignment gets fresh key B", async () => {
+    const capturedAssignKeys: string[] = [];
+    let shouldFailFirstAssign = true;
+
+    vi.spyOn(global, "fetch").mockImplementation(async (url: any, options: any) => {
+      const urlStr = String(url);
+      if (options?.method === "POST" && urlStr.includes("/assign/")) {
+        const key = options.headers?.["X-Idempotency-Key"];
+        if (key) capturedAssignKeys.push(key);
+
+        if (shouldFailFirstAssign) {
+          shouldFailFirstAssign = false;
+          return {
+            ok: false,
+            status: 504,
+            json: async () => ({ message: "Falha de rede simulada no assign" }),
+          } as any;
+        }
+
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            assignedBenefit: { id: 201, status: "scheduled" },
+          }),
+        } as any;
+      }
+      if (urlStr.includes("/preview")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            campaign: mockCampaigns[0],
+            benefit: mockCampaigns[0].benefit,
+            items: [
+              {
+                crecheId: 10,
+                crecheName: "Creche Pata Feliz",
+                targetPlanName: "Plano Intermediário",
+                billingInterval: "month",
+                catalogPriceCents: 31990,
+                currentEffectivePriceCents: 31990,
+                promotionalPriceCents: 25592,
+                restorationCommittedPriceCents: 31990,
+                eligible: true,
+              },
+              {
+                crecheId: 20,
+                crecheName: "Creche Amigo Fiel",
+                targetPlanName: "Plano Intermediário",
+                billingInterval: "month",
+                catalogPriceCents: 31990,
+                currentEffectivePriceCents: 31990,
+                promotionalPriceCents: 25592,
+                restorationCommittedPriceCents: 31990,
+                eligible: true,
+              },
+            ],
+          }),
+        } as any;
+      }
+      if (urlStr.includes("/commercial/campaigns")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ campaigns: mockCampaigns }),
+        } as any;
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as any;
+    });
+
+    renderWithProviders(<AdminCampaigns />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Campanha Q3 2026 - 20% OFF")).toBeInTheDocument();
+    });
+
+    // Open assign modal
+    const assignButtons = screen.getAllByRole("button", { name: /Atribuir Creche/i });
+    fireEvent.click(assignButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Atribuir Campanha: Campanha Q3 2026 - 20% OFF/i)).toBeInTheDocument();
+    });
+
+    // Select creche 10
+    fireEvent.change(screen.getByDisplayValue("Selecione uma creche..."), { target: { value: "10" } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Creche Elegível com Sucesso/i)).toBeInTheDocument();
+    });
+
+    // Enter reason
+    const reasonInput = screen.getByPlaceholderText(/Ex: Acordo comercial de renovação/i);
+    fireEvent.change(reasonInput, { target: { value: "Justificativa comercial da tentativa" } });
+
+    // Confirm attempt 1 -> fails with 504
+    const confirmBtn = screen.getByRole("button", { name: /Confirmar Atribuição Segura/i });
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Falha de rede simulada no assign")).toBeInTheDocument();
+    });
+
+    expect(capturedAssignKeys.length).toBe(1);
+    const keyA = capturedAssignKeys[0];
+    expect(keyA).toMatch(UUID_REGEX);
+
+    // Confirm attempt 2 (retry of exact same assignment) -> succeeds
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(capturedAssignKeys.length).toBe(2);
+    });
+
+    // Key must be reused
+    expect(capturedAssignKeys[1]).toBe(keyA);
+
+    // Modal closes on success
+    await waitFor(() => {
+      expect(screen.queryByText(/Atribuir Campanha: Campanha Q3 2026 - 20% OFF/i)).not.toBeInTheDocument();
+    });
+
+    // Open assign modal again for a second assignment (Creche 20)
+    const freshAssignButtons = screen.getAllByRole("button", { name: /Atribuir Creche/i });
+    fireEvent.click(freshAssignButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Atribuir Campanha: Campanha Q3 2026 - 20% OFF/i)).toBeInTheDocument();
+    });
+
+    // Select creche 20
+    fireEvent.change(screen.getByDisplayValue("Selecione uma creche..."), { target: { value: "20" } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Creche Elegível com Sucesso/i)).toBeInTheDocument();
+    });
+
+    const secondReasonInput = screen.getByPlaceholderText(/Ex: Acordo comercial de renovação/i);
+    fireEvent.change(secondReasonInput, { target: { value: "Nova justificativa para creche 20" } });
+
+    const secondConfirmBtn = screen.getByRole("button", { name: /Confirmar Atribuição Segura/i });
+    fireEvent.click(secondConfirmBtn);
+
+    await waitFor(() => {
+      expect(capturedAssignKeys.length).toBe(3);
+    });
+
+    const keyB = capturedAssignKeys[2];
+    expect(keyB).toMatch(UUID_REGEX);
+    expect(keyB).not.toBe(keyA);
+  });
 });

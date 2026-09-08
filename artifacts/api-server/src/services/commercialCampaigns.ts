@@ -732,7 +732,7 @@ export async function assignCampaignToCreche(params: {
         actorRole: "master_admin",
         actorEmail: params.assignedBy ?? "master_admin",
         action: "commercial_campaign_assigned",
-        reason: `Atribuição da campanha '${preview.campaign.name}' à creche #${params.crecheId}`,
+        reason: params.reason ? params.reason.trim() : `Atribuição da campanha '${preview.campaign.name}' à creche #${params.crecheId}`,
         executionRequirement: "STRIPE_REQUIRED",
         executionStatus: "SUCCESS",
         relatedConditionId: promoCondition.id,
