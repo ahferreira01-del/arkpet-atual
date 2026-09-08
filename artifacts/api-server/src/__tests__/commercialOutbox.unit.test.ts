@@ -548,18 +548,112 @@ describe("R36.H Commercial Communications & Durable Outbox Unit Tests", () => {
       expect(workerAResult).toBe(false); // Affects 0 rows, no overwrite
     });
 
-    it("escalates ambiguous email outcome to failed_final (dead-letter) when provider retention window (24h) is exceeded", async () => {
-      // Outbox item created 25 hours ago
-      const expiredOutboxRow: any = {
+    it("Regression A: allows first email attempt for outbox item created >24h ago when providerFirstAttemptAt is null", async () => {
+      // Outbox item created 48 hours ago, never attempted
+      const oldUnsentRow: any = {
         id: 501,
         crecheId: 10,
         recipientUserId: 12,
         channel: "email",
         eventType: "COMMERCIAL_PROPOSAL_SENT",
-        eventOccurrenceKey: "proposal-sent-501",
+        eventOccurrenceKey: "proposal-sent-501-old",
+        dedupKey: "old1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000), // 48 hours ago
+        providerFirstAttemptAt: null, // Never attempted before
+        providerPayloadJson: null,
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      const mockDb: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ email: "gestor@creche.com", name: "Gestor", isActive: true }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 501 }]),
+            }),
+          }),
+        }),
+      };
+
+      const emailClient = {
+        send: vi.fn().mockResolvedValue({ id: "resend-msg-old-ok" }),
+      };
+
+      const outcome = await dispatchOutboxEvent(oldUnsentRow, 1, mockDb, emailClient);
+      expect(outcome.success).toBe(true);
+      expect(outcome.status).toBe("delivered");
+      expect(emailClient.send).toHaveBeenCalledTimes(1);
+      expect(oldUnsentRow.providerFirstAttemptAt).toBeDefined();
+    });
+
+    it("Regression B: allows retry at T0 + 1h with same provider key", async () => {
+      const t0 = new Date(Date.now() - 1 * 60 * 60 * 1000); // 1 hour ago
+      const row: any = {
+        id: 502,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-502",
+        dedupKey: "t01h1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: t0,
+        providerFirstAttemptAt: t0, // First attempted 1 hour ago
+        providerPayloadJson: {
+          to: "gestor@creche.com",
+          subject: "Nova Proposta Comercial Recebida",
+          html: "<p>Detalhes da proposta...</p>",
+        },
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      let capturedKey: string | null = null;
+      const emailClient = {
+        send: vi.fn(async (params: any) => {
+          capturedKey = params.idempotencyKey;
+          return { id: "resend-msg-retry-ok" };
+        }),
+      };
+
+      const mockDb: any = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 502 }]),
+            }),
+          }),
+        }),
+      };
+
+      const outcome = await dispatchOutboxEvent(row, 2, mockDb, emailClient);
+      expect(outcome.success).toBe(true);
+      expect(outcome.status).toBe("delivered");
+      expect(capturedKey).toBe(`arkpet-commercial:${row.dedupKey}`);
+    });
+
+    it("Regression C: blocks retry at T0 + 25h and transitions to DEAD_LETTER without calling Resend", async () => {
+      const t0 = new Date(Date.now() - 25 * 60 * 60 * 1000); // 25 hours ago
+      const expiredRow: any = {
+        id: 503,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-503-expired",
         dedupKey: "exp1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
         category: "COMMERCIAL",
-        createdAt: new Date(Date.now() - (25 * 60 * 60 * 1000)), // 25 hours ago
+        createdAt: new Date(Date.now() - 30 * 60 * 60 * 1000),
+        providerFirstAttemptAt: t0, // Initial attempt was 25h ago (window expired)
+        providerPayloadJson: { to: "gestor@creche.com", subject: "S", html: "<p>B</p>" },
         factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
         audienceRole: "creche_admin",
       };
@@ -571,7 +665,7 @@ describe("R36.H Commercial Communications & Durable Outbox Unit Tests", () => {
             failedPayload = p;
             return {
               where: vi.fn().mockReturnValue({
-                returning: vi.fn().mockResolvedValue([{ id: 501, ...p }]),
+                returning: vi.fn().mockResolvedValue([{ id: 503, ...p }]),
               }),
             };
           }),
@@ -579,12 +673,68 @@ describe("R36.H Commercial Communications & Durable Outbox Unit Tests", () => {
       };
 
       const emailClient = { send: vi.fn() };
-      const outcome = await dispatchOutboxEvent(expiredOutboxRow, 3, mockDb, emailClient);
+      const outcome = await dispatchOutboxEvent(expiredRow, 3, mockDb, emailClient);
 
       expect(outcome.success).toBe(false);
       expect(outcome.status).toBe("failed_final");
-      expect(emailClient.send).not.toHaveBeenCalled(); // Blind send avoided
+      expect(emailClient.send).not.toHaveBeenCalled(); // Crucial: Resend call avoided
       expect(failedPayload.lastErrorCode).toBe("RESEND_IDEMPOTENCY_WINDOW_EXPIRED");
+    });
+
+    it("Regression E: preserves identical provider request payload across retries regardless of user changes", async () => {
+      const frozenPayload = {
+        to: "original-admin@creche.com",
+        subject: "Nova Proposta Comercial Recebida",
+        html: "<p>Conteudo congelado na primeira tentativa</p>",
+      };
+
+      const rowWithFrozenPayload: any = {
+        id: 504,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-504",
+        dedupKey: "freeze1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(Date.now() - 1000),
+        providerFirstAttemptAt: new Date(Date.now() - 1000),
+        providerPayloadJson: frozenPayload, // Frozen request payload
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      let sentPayload: any = null;
+      const emailClient = {
+        send: vi.fn(async (p: any) => {
+          sentPayload = p;
+          return { id: "resend-msg-payload-freeze-ok" };
+        }),
+      };
+
+      const mockDb: any = {
+        // Even if usersTable returned a completely different email:
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ email: "changed-admin@creche.com", name: "Admin", isActive: true }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 504 }]),
+            }),
+          }),
+        }),
+      };
+
+      const outcome = await dispatchOutboxEvent(rowWithFrozenPayload, 2, mockDb, emailClient);
+      expect(outcome.success).toBe(true);
+      expect(sentPayload.to).toBe("original-admin@creche.com"); // Payload stability preserved
+      expect(sentPayload.html).toBe(frozenPayload.html);
+      expect(sentPayload.subject).toBe(frozenPayload.subject);
     });
 
     it("classifies permanent email rejection (HTTP 4xx) as failed_final terminal error", async () => {

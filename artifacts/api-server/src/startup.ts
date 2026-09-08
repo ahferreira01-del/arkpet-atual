@@ -1032,6 +1032,8 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
       last_error_code VARCHAR(64),
       last_error_message TEXT,
       provider_message_id TEXT,
+      provider_first_attempt_at TIMESTAMP,
+      provider_payload_json JSONB,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
@@ -1058,6 +1060,8 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS last_error_code VARCHAR(64);
     ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS last_error_message TEXT;
     ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS provider_first_attempt_at TIMESTAMP;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS provider_payload_json JSONB;
     ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
     ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 

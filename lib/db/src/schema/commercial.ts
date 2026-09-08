@@ -562,6 +562,8 @@ export const commercialCommunicationOutboxTable = pgTable(
     lastErrorCode: varchar("last_error_code", { length: 64 }),
     lastErrorMessage: text("last_error_message"),
     providerMessageId: text("provider_message_id"),
+    providerFirstAttemptAt: timestamp("provider_first_attempt_at"),
+    providerPayloadJson: jsonb("provider_payload_json"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
