@@ -28,6 +28,7 @@ import {
   XCircle,
   Info,
   Pencil,
+  Archive,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -116,6 +117,11 @@ interface CampaignItem {
   };
 }
 
+export interface StatusChangeTarget {
+  campaign: CampaignItem;
+  nextStatus: "active" | "paused" | "closed" | "archived";
+}
+
 export default function AdminCampaigns() {
   const [activeTab, setActiveTab] = useState<"list" | "create">("list");
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
@@ -154,34 +160,13 @@ export default function AdminCampaigns() {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
-  const [updatingStatusId, setUpdatingStatusId] = useState<number | null>(null);
-  const statusSubmission = useIdempotentSubmission();
+  // Status Change Modal
+  const [statusChangeTarget, setStatusChangeTarget] = useState<StatusChangeTarget | null>(null);
 
-  const handleStatusChange = async (campaignId: number, nextStatus: string) => {
-    if (updatingStatusId === campaignId) return;
-    setUpdatingStatusId(campaignId);
-    try {
-      const token = localStorage.getItem("auth_token");
-      const idempotencyKey = statusSubmission.getOrCreateKey({ campaignId, status: nextStatus });
-      const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${campaignId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson?.message || `Erro ao atualizar status: ${res.status}`);
-      }
-      statusSubmission.clearKey();
-      await fetchCampaigns();
-    } catch (err: any) {
-      alert(err.message || "Erro ao atualizar status da campanha.");
-    } finally {
-      setUpdatingStatusId(null);
+  const handleStatusChange = (campaignId: number, nextStatus: string) => {
+    const camp = campaigns.find((c) => c.id === campaignId);
+    if (camp) {
+      setStatusChangeTarget({ campaign: camp, nextStatus: nextStatus as any });
     }
   };
 
@@ -260,13 +245,25 @@ export default function AdminCampaigns() {
                   onAssign={() => setSelectedCampaignForAssign(camp)}
                   onEdit={() => setSelectedCampaignForEdit(camp)}
                   onViewDetails={() => setSelectedCampaignForDetails(camp)}
-                  onStatusChange={(status) => handleStatusChange(camp.id, status)}
-                  isUpdatingStatus={updatingStatusId === camp.id}
+                  onStatusChange={(status) => setStatusChangeTarget({ campaign: camp, nextStatus: status })}
+                  isUpdatingStatus={statusChangeTarget?.campaign.id === camp.id}
                 />
               ))}
             </div>
           )}
         </div>
+      )}
+
+      {statusChangeTarget && (
+        <ChangeStatusModal
+          isOpen={!!statusChangeTarget}
+          target={statusChangeTarget}
+          onClose={() => setStatusChangeTarget(null)}
+          onSuccess={() => {
+            setStatusChangeTarget(null);
+            fetchCampaigns();
+          }}
+        />
       )}
 
       {selectedCampaignForAssign && (
@@ -316,7 +313,7 @@ function CampaignCard({
   onAssign: () => void;
   onEdit: () => void;
   onViewDetails: () => void;
-  onStatusChange: (status: string) => void;
+  onStatusChange: (status: "active" | "paused" | "closed" | "archived") => void;
   isUpdatingStatus?: boolean;
 }) {
   const benefit = campaign.benefit;
@@ -372,16 +369,48 @@ function CampaignCard({
 
           <div className="flex items-center gap-2 shrink-0">
             {campaign.status === "active" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onStatusChange("paused")}
-                disabled={isUpdatingStatus}
-                className="gap-1 text-xs"
-              >
-                <PauseCircle className="h-3.5 w-3.5" /> Pausar
-              </Button>
-            ) : campaign.status === "paused" || campaign.status === "draft" ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStatusChange("paused")}
+                  disabled={isUpdatingStatus}
+                  className="gap-1 text-xs"
+                >
+                  <PauseCircle className="h-3.5 w-3.5" /> Pausar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStatusChange("closed")}
+                  disabled={isUpdatingStatus}
+                  className="gap-1 text-xs text-destructive hover:bg-destructive/10"
+                >
+                  <XCircle className="h-3.5 w-3.5" /> Encerrar
+                </Button>
+              </>
+            ) : campaign.status === "paused" ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStatusChange("active")}
+                  disabled={isUpdatingStatus}
+                  className="gap-1 text-xs text-success border-success/30 hover:bg-success/10"
+                >
+                  <PlayCircle className="h-3.5 w-3.5" /> Ativar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStatusChange("archived")}
+                  disabled={isUpdatingStatus}
+                  className="gap-1 text-xs text-muted-foreground"
+                >
+                  <Archive className="h-3.5 w-3.5" /> Arquivar
+                </Button>
+              </>
+            ) : campaign.status === "draft" ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -471,7 +500,8 @@ function CreateCampaignForm({
   const { getOrCreateKey, clearKey } = useIdempotentSubmission();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<"draft" | "active">("active");
+  const [status, setStatus] = useState<"draft" | "active">("draft");
+  const [reason, setReason] = useState("");
   const [priority, setPriority] = useState<number>(10);
   const [eligibleFrom, setEligibleFrom] = useState("");
   const [eligibleUntil, setEligibleUntil] = useState("");
@@ -520,10 +550,16 @@ function CreateCampaignForm({
       return;
     }
 
+    if (status === "active" && !reason.trim()) {
+      setFormError("Justificativa comercial obrigatória para ativação imediata da campanha.");
+      return;
+    }
+
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
       status,
+      reason: reason.trim() || undefined,
       priority: Number(priority),
       eligibleFrom: eligibleFrom ? new Date(eligibleFrom).toISOString() : null,
       eligibleUntil: eligibleUntil ? new Date(eligibleUntil).toISOString() : null,
@@ -602,15 +638,15 @@ function CreateCampaignForm({
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
               >
-                <option value="active">Ativa (pronta para atribuições)</option>
                 <option value="draft">Rascunho (em revisão)</option>
+                <option value="active">Ativa (pronta para atribuições)</option>
               </select>
             </div>
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
-              Descrição / Justificativa Comercial
+              Descrição da Campanha
             </label>
             <Textarea
               placeholder="Descreva o propósito da campanha, regras comerciais ou restrições..."
@@ -619,6 +655,21 @@ function CreateCampaignForm({
               rows={2}
             />
           </div>
+
+          {status === "active" && (
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                Justificativa da Ativação Imediata *
+              </label>
+              <Textarea
+                placeholder="Informe a justificativa comercial para criar a campanha já ativada..."
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                required
+              />
+            </div>
+          )}
 
           <div className="p-4 rounded-xl bg-secondary/30 border border-border/80 space-y-4">
             <h4 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
@@ -728,6 +779,147 @@ function CreateCampaignForm({
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+export function ChangeStatusModal({
+  isOpen,
+  target,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean;
+  target: StatusChangeTarget;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { getOrCreateKey, clearKey } = useIdempotentSubmission();
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleClose = () => {
+    clearKey();
+    onClose();
+  };
+
+  const getStatusLabel = (s: string) => {
+    switch (s) {
+      case "active":
+        return "Ativar";
+      case "paused":
+        return "Pausar";
+      case "closed":
+        return "Encerrar";
+      case "archived":
+        return "Arquivar";
+      default:
+        return s;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (submitting) return;
+    setError(null);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setError("Justificativa comercial obrigatória para alteração de status.");
+      return;
+    }
+
+    const payload = {
+      campaignId: target.campaign.id,
+      status: target.nextStatus,
+      reason: trimmedReason,
+    };
+
+    const idempotencyKey = getOrCreateKey(payload);
+
+    setSubmitting(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${target.campaign.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          status: target.nextStatus,
+          reason: trimmedReason,
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.message || `Erro ao atualizar status: ${res.status}`);
+      }
+
+      clearKey();
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message || "Falha ao alterar status da campanha.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title={`${getStatusLabel(target.nextStatus)} Campanha: ${target.campaign.name}`}
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="p-3 bg-secondary/30 rounded-xl text-xs space-y-1">
+          <p className="text-muted-foreground">
+            Status atual: <span className="font-semibold text-foreground">{target.campaign.status}</span> &rarr; Novo status:{" "}
+            <span className="font-semibold text-foreground">{target.nextStatus}</span>
+          </p>
+          <p className="text-muted-foreground">
+            Uma justificativa comercial é estritamente necessária para registrar no log de auditoria.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-xs text-destructive flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+            Justificativa Comercial *
+          </label>
+          <Textarea
+            placeholder="Informe a justificativa comercial para esta alteração de status..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            required
+            autoFocus
+          />
+        </div>
+
+        <div className="flex justify-end gap-3 pt-3 border-t border-border">
+          <Button type="button" variant="outline" onClick={handleClose} disabled={submitting}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={submitting || !reason.trim()}
+            className="gap-2"
+          >
+            {submitting && <RefreshCw className="h-4 w-4 animate-spin" />}
+            Confirmar Alteração
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

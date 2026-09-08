@@ -323,7 +323,7 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     expect(capturedRequest!.body.name).toBe("Campanha Q3 2026 - Atualizada");
   });
 
-  it("6. CHANGE_COMMERCIAL_CAMPAIGN_STATUS UI mutation transmits valid UUID X-Idempotency-Key", async () => {
+  it("6. CHANGE_COMMERCIAL_CAMPAIGN_STATUS UI mutation opens modal, requires reason, and transmits valid UUID X-Idempotency-Key", async () => {
     let capturedRequest: { url: string; headers: any; body: any } | null = null;
 
     vi.spyOn(global, "fetch").mockImplementation(async (url: any, options: any) => {
@@ -360,13 +360,33 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     const pauseButton = screen.getByRole("button", { name: /Pausar/i });
     fireEvent.click(pauseButton);
 
+    // Modal opens to collect explicit human reason
+    await waitFor(() => {
+      expect(screen.getByText(/Pausar Campanha: Campanha Q3 2026 - 20% OFF/i)).toBeInTheDocument();
+    });
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirmar Alteração/i });
+    // Disabled while reason is empty
+    expect(confirmBtn).toBeDisabled();
+
+    // Enter valid human reason
+    const reasonInput = screen.getByPlaceholderText(/Informe a justificativa comercial/i);
+    fireEvent.change(reasonInput, { target: { value: "Ajuste operacional de meio de ano" } });
+    expect(confirmBtn).not.toBeDisabled();
+
+    // Confirm status change
+    fireEvent.click(confirmBtn);
+
     await waitFor(() => {
       expect(capturedRequest).not.null;
     });
 
     expect(capturedRequest!.headers["X-Idempotency-Key"]).toBeDefined();
     expect(capturedRequest!.headers["X-Idempotency-Key"]).toMatch(UUID_REGEX);
-    expect(capturedRequest!.body).toEqual({ status: "paused" });
+    expect(capturedRequest!.body).toEqual({
+      status: "paused",
+      reason: "Ajuste operacional de meio de ano",
+    });
   });
 
   it("7. ASSIGN_COMMERCIAL_CAMPAIGN UI mutation transmits valid UUID X-Idempotency-Key", async () => {
@@ -717,7 +737,7 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     expect(keyB).not.toBe(keyA);
   });
 
-  it("10. Status mutation retry reuses UUID on network error, subsequent transition gets fresh UUID, and double-submit is contained (R36.F1)", async () => {
+  it("10. Status mutation retry reuses UUID on network error, reason change generates fresh UUID, subsequent transition gets fresh UUID, and double-submit is contained (R36.F1)", async () => {
     vi.stubGlobal("alert", vi.fn());
     let currentStatus = "active";
     const capturedStatusKeys: string[] = [];
@@ -780,31 +800,45 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     const pauseBtn = screen.getByRole("button", { name: /Pausar/i });
     expect(pauseBtn).not.toBeDisabled();
 
-    // 1. First click: initiates in-flight mutation
+    // Click Pausar to open modal
     fireEvent.click(pauseBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Pausar Campanha: Campanha Q3 2026 - 20% OFF/i)).toBeInTheDocument();
+    });
+
+    // Enter reason
+    const reasonInput = screen.getByPlaceholderText(/Informe a justificativa comercial/i);
+    fireEvent.change(reasonInput, { target: { value: "Pausar para auditoria interna" } });
+
+    const confirmBtn = screen.getByRole("button", { name: /Confirmar Alteração/i });
+
+    // 1. First click: initiates in-flight mutation
+    fireEvent.click(confirmBtn);
 
     // Double-submit containment: button is disabled while in flight
     await waitFor(() => {
-      expect(pauseBtn).toBeDisabled();
+      expect(confirmBtn).toBeDisabled();
     });
 
     // Attempting a second click while in-flight MUST NOT dispatch a second request
-    fireEvent.click(pauseBtn);
+    fireEvent.click(confirmBtn);
     expect(callCount).toBe(1);
 
     // Release in-flight hold -> returns simulated 504
     resolveFirstCall!();
 
     await waitFor(() => {
-      expect(pauseBtn).not.toBeDisabled();
+      expect(confirmBtn).not.toBeDisabled();
+      expect(screen.getByText(/Timeout simulado no status/i)).toBeInTheDocument();
     });
 
     expect(capturedStatusKeys.length).toBe(1);
     const keyA = capturedStatusKeys[0];
     expect(keyA).toMatch(UUID_REGEX);
 
-    // 2. Retry of the EXACT SAME status mutation (active -> paused)
-    fireEvent.click(pauseBtn);
+    // 2. Retry of the EXACT SAME status mutation (same payload)
+    fireEvent.click(confirmBtn);
 
     await waitFor(() => {
       expect(capturedStatusKeys.length).toBe(2);
@@ -813,14 +847,25 @@ describe("Master Admin Campaigns Management UI Tests (R36.F)", () => {
     // Logical Idempotency: exact same key must be reused across retry
     expect(capturedStatusKeys[1]).toBe(keyA);
 
-    // 3. Terminal success: campaign is now paused, rendering 'Ativar' button
+    // 3. Terminal success: modal closes, campaign is now paused, rendering 'Ativar' button
     await waitFor(() => {
+      expect(screen.queryByText(/Pausar Campanha: Campanha Q3 2026 - 20% OFF/i)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Ativar/i })).toBeInTheDocument();
     });
 
     // 4. Subsequent status transition (paused -> active) must generate a fresh key B
     const activateBtn = screen.getByRole("button", { name: /Ativar/i });
     fireEvent.click(activateBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Ativar Campanha: Campanha Q3 2026 - 20% OFF/i)).toBeInTheDocument();
+    });
+
+    const activateReasonInput = screen.getByPlaceholderText(/Informe a justificativa comercial/i);
+    fireEvent.change(activateReasonInput, { target: { value: "Reativação pós auditoria" } });
+
+    const activateConfirmBtn = screen.getByRole("button", { name: /Confirmar Alteração/i });
+    fireEvent.click(activateConfirmBtn);
 
     await waitFor(() => {
       expect(capturedStatusKeys.length).toBe(3);

@@ -61,16 +61,14 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
   );
 }
 
-// Canonical Stripe API version pinned for outgoing SDK requests under stripe-node v22.
-export const STRIPE_API_VERSION = "2026-03-25.dahlia" as const;
+// Canonical Stripe API version pinned for outgoing SDK requests under stripe@22.2.0.
+export const STRIPE_API_VERSION = "2026-05-27.dahlia" as const;
 
 // Server-side operations (secret key). Never cache the returned client.
 export async function getUncachableStripeClient(): Promise<Stripe> {
   const { secretKey } = await getCredentials();
   return new Stripe(secretKey, {
-    // Narrowest safe SDK type: stripe@22.2.0 types LatestApiVersion as '2026-05-27.dahlia',
-    // while stripe-node v22 requests use the pinned Dahlia release '2026-03-25.dahlia'.
-    apiVersion: STRIPE_API_VERSION as unknown as NonNullable<ConstructorParameters<typeof Stripe>[1]>["apiVersion"],
+    apiVersion: STRIPE_API_VERSION,
   });
 }
 

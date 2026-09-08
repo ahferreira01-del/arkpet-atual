@@ -55,6 +55,7 @@ import {
   updateCampaign,
   previewCampaignAssignment,
   assignCampaignToCreche,
+  CommercialCampaignError,
   CommercialCampaignIntegrityError,
   CommercialCampaignFavorableOnlyError,
   CommercialCampaignConflictError,
@@ -1341,6 +1342,15 @@ commercialRouter.post("/campaigns", async (req: AuthRequest, res: Response): Pro
     return;
   }
 
+  if (status === "active" && (!req.body.reason || String(req.body.reason).trim().length === 0)) {
+    res.status(422).json({
+      error: "CAMPAIGN_STATUS_REASON_REQUIRED",
+      code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+      message: "Justificativa comercial obrigatória para ativação da campanha.",
+    });
+    return;
+  }
+
   const operation = COMMERCIAL_OPERATIONS.CREATE_COMMERCIAL_CAMPAIGN;
   const payload = {
     operation,
@@ -1404,6 +1414,10 @@ commercialRouter.post("/campaigns", async (req: AuthRequest, res: Response): Pro
         code: err.code,
         message: err.message,
       });
+      return;
+    }
+    if (err instanceof CommercialCampaignError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
       return;
     }
     if (err instanceof CommercialCampaignIntegrityError) {
@@ -1508,6 +1522,15 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
     reason,
   } = req.body;
 
+  if (status !== undefined && (!reason || String(reason).trim().length === 0)) {
+    res.status(422).json({
+      error: "CAMPAIGN_STATUS_REASON_REQUIRED",
+      code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+      message: "Justificativa comercial obrigatória para alteração de status da campanha.",
+    });
+    return;
+  }
+
   const isStatusOnly =
     status !== undefined &&
     name === undefined &&
@@ -1581,6 +1604,10 @@ commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response)
         code: err.code,
         message: err.message,
       });
+      return;
+    }
+    if (err instanceof CommercialCampaignError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
       return;
     }
     if (err instanceof CommercialCampaignIntegrityError) {
@@ -1713,6 +1740,10 @@ commercialRouter.post(
           code: err.code,
           message: err.message,
         });
+        return;
+      }
+      if (err instanceof CommercialCampaignError) {
+        res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
         return;
       }
       if (err instanceof CommercialCampaignIntegrityError || err instanceof CommercialCampaignNotActiveError) {

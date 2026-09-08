@@ -145,21 +145,122 @@ describe("commercialCampaigns service", () => {
       expect(res.benefit).toEqual(insertedBenefit);
       expect(mockTx.insert).toHaveBeenCalledTimes(3); // campaign, benefit, audit
     });
+
+    it("should allow creating draft campaign without reason (optional reason)", async () => {
+      const insertedCampaign = { id: 2, name: "Rascunho", status: "draft" };
+      const insertedBenefit = { id: 20, campaignId: 2, benefitType: "PERCENTAGE_DISCOUNT", benefitValue: 1000, billingCycles: 2 };
+      let capturedAudit: any = null;
+      const mockTx = {
+        insert: vi.fn().mockImplementation((table) => ({
+          values: vi.fn().mockImplementation((val) => {
+            if (table === commercialCampaignsTable) return { returning: vi.fn().mockResolvedValue([insertedCampaign]) };
+            if (table === commercialCampaignBenefitsTable) return { returning: vi.fn().mockResolvedValue([insertedBenefit]) };
+            capturedAudit = val;
+            return { returning: vi.fn().mockResolvedValue([{ id: 1 }]) };
+          }),
+        })),
+      };
+      const mockDb: any = { transaction: vi.fn(async (cb) => cb(mockTx)) };
+
+      const res = await createCampaign(
+        {
+          name: "Rascunho",
+          status: "draft",
+          benefitType: "PERCENTAGE_DISCOUNT",
+          benefitValue: 1000,
+          billingCycles: 2,
+        },
+        mockDb,
+      );
+
+      expect(res.campaign.status).toBe("draft");
+      expect(capturedAudit.reason).toBeNull();
+    });
+
+    it("should reject creating active campaign without reason (422 CAMPAIGN_STATUS_REASON_REQUIRED)", async () => {
+      const mockDb: any = {};
+      await expect(
+        createCampaign(
+          {
+            name: "Ativa Sem Justificativa",
+            status: "active",
+            benefitType: "PERCENTAGE_DISCOUNT",
+            benefitValue: 1000,
+            billingCycles: 2,
+          },
+          mockDb,
+        ),
+      ).rejects.toMatchObject({
+        code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+        statusCode: 422,
+      });
+
+      await expect(
+        createCampaign(
+          {
+            name: "Ativa Com Justificativa Vazia",
+            status: "active",
+            reason: "   ",
+            benefitType: "PERCENTAGE_DISCOUNT",
+            benefitValue: 1000,
+            billingCycles: 2,
+          },
+          mockDb,
+        ),
+      ).rejects.toMatchObject({
+        code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+        statusCode: 422,
+      });
+    });
+
+    it("should allow creating active campaign with valid reason, setting requiresReason: true", async () => {
+      const insertedCampaign = { id: 3, name: "Ativa", status: "active" };
+      const insertedBenefit = { id: 30, campaignId: 3, benefitType: "FIXED_DISCOUNT", benefitValue: 5000, billingCycles: 3 };
+      let capturedAudit: any = null;
+      const mockTx = {
+        insert: vi.fn().mockImplementation((table) => ({
+          values: vi.fn().mockImplementation((val) => {
+            if (table === commercialCampaignsTable) return { returning: vi.fn().mockResolvedValue([insertedCampaign]) };
+            if (table === commercialCampaignBenefitsTable) return { returning: vi.fn().mockResolvedValue([insertedBenefit]) };
+            capturedAudit = val;
+            return { returning: vi.fn().mockResolvedValue([{ id: 1 }]) };
+          }),
+        })),
+      };
+      const mockDb: any = { transaction: vi.fn(async (cb) => cb(mockTx)) };
+
+      const res = await createCampaign(
+        {
+          name: "Ativa",
+          status: "active",
+          reason: "  Aprovado pelo comitê comercial  ",
+          benefitType: "FIXED_DISCOUNT",
+          benefitValue: 5000,
+          billingCycles: 3,
+        },
+        mockDb,
+      );
+
+      expect(res.campaign.status).toBe("active");
+      expect(capturedAudit.reason).toBe("Aprovado pelo comitê comercial");
+      expect(capturedAudit.action).toBe("commercial_campaign_created");
+    });
   });
 
   describe("updateCampaign", () => {
-    it("should update campaign metadata", async () => {
+    it("should update campaign metadata only without requiring reason", async () => {
       const updatedCampaign = {
         id: 1,
         name: "Incentivo Q3 - Atualizado",
-        status: "active",
+        description: "Nova descrição comercial",
       };
+      let capturedAudit: any = null;
 
       const mockDb: any = {
         select: vi.fn().mockReturnValue({
           from: vi.fn().mockReturnValue({
             where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ id: 1, status: "draft", benefitType: "PERCENTAGE_DISCOUNT", benefitValue: 2000, billingCycles: 3 }]),
+              limit: vi.fn().mockResolvedValue([{ id: 1, status: "draft", name: "Incentivo Q3", description: "Velha desc" }]),
             }),
           }),
         }),
@@ -171,7 +272,8 @@ describe("commercialCampaigns service", () => {
           }),
         }),
         insert: vi.fn().mockReturnValue({
-          values: vi.fn().mockImplementation(() => {
+          values: vi.fn().mockImplementation((val) => {
+            capturedAudit = val;
             const p: any = Promise.resolve([{ id: 1 }]);
             p.returning = vi.fn().mockResolvedValue([{ id: 1 }]);
             return p;
@@ -180,8 +282,76 @@ describe("commercialCampaigns service", () => {
         transaction: vi.fn(async (cb) => cb(mockDb)),
       };
 
-      const res = await updateCampaign(1, { name: "Incentivo Q3 - Atualizado", status: "active" }, mockDb);
+      const res = await updateCampaign(1, { name: "Incentivo Q3 - Atualizado", description: "Nova descrição comercial" }, mockDb);
       expect(res.campaign).toEqual(updatedCampaign);
+      expect(capturedAudit.action).toBe("commercial_campaign_updated");
+      expect(capturedAudit.reason).toBeNull();
+    });
+
+    it("should reject status transitions without reason (422 CAMPAIGN_STATUS_REASON_REQUIRED)", async () => {
+      const statuses = ["active", "paused", "closed", "archived"] as const;
+      for (const st of statuses) {
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([{ id: 1, status: "draft" }]),
+              }),
+            }),
+          }),
+        };
+        await expect(updateCampaign(1, { status: st }, mockDb)).rejects.toMatchObject({
+          code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+          statusCode: 422,
+        });
+
+        await expect(updateCampaign(1, { status: st, reason: "   " }, mockDb)).rejects.toMatchObject({
+          code: "CAMPAIGN_STATUS_REASON_REQUIRED",
+          statusCode: 422,
+        });
+      }
+    });
+
+    it("should record canonical action commercial_campaign_status_changed on status mutation with valid reason", async () => {
+      const updatedCampaign = {
+        id: 1,
+        name: "Incentivo Q3",
+        status: "paused",
+      };
+      let capturedAudit: any = null;
+      const mockDb: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ id: 1, status: "active", name: "Incentivo Q3" }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([updatedCampaign]),
+            }),
+          }),
+        }),
+        insert: vi.fn().mockReturnValue({
+          values: vi.fn().mockImplementation((val) => {
+            capturedAudit = val;
+            const p: any = Promise.resolve([{ id: 1 }]);
+            p.returning = vi.fn().mockResolvedValue([{ id: 1 }]);
+            return p;
+          }),
+        }),
+        transaction: vi.fn(async (cb) => cb(mockDb)),
+      };
+
+      const res = await updateCampaign(1, { status: "paused", reason: "  Pausa para auditoria contratual  " }, mockDb);
+      expect(res.campaign).toEqual(updatedCampaign);
+      expect(capturedAudit.action).toBe("commercial_campaign_status_changed");
+      expect(capturedAudit.actorRole).toBe("master_admin");
+      expect(capturedAudit.reason).toBe("Pausa para auditoria contratual");
+      expect(capturedAudit.beforeState.status).toBe("active");
+      expect(capturedAudit.afterState.status).toBe("paused");
     });
   });
 
@@ -815,7 +985,7 @@ describe("commercialCampaigns service", () => {
 
     it("validates Stripe API version constant accepted by typecheck and pinned to Dahlia (R36.F1)", async () => {
       const { STRIPE_API_VERSION } = await import("../lib/stripeClient.js");
-      expect(STRIPE_API_VERSION).toBe("2026-03-25.dahlia");
+      expect(STRIPE_API_VERSION).toBe("2026-05-27.dahlia");
     });
   });
 });

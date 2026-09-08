@@ -161,6 +161,17 @@ export async function createCampaign(
     );
   }
 
+  if (params.status === "active") {
+    const trimmedReason = params.reason?.trim();
+    if (!trimmedReason) {
+      throw new CommercialCampaignError(
+        "Justificativa comercial obrigatória para ativação da campanha.",
+        "CAMPAIGN_STATUS_REASON_REQUIRED",
+        422,
+      );
+    }
+  }
+
   return await dbClient.transaction(async (tx: any) => {
     const [campaign] = await tx
       .insert(commercialCampaignsTable)
@@ -190,8 +201,11 @@ export async function createCampaign(
       {
         targetCrecheId: 1, // Global campaign audit
         actorType: "user",
+        actorRole: "master_admin",
+        actorEmail: params.createdBy ?? "master_admin",
         action: "commercial_campaign_created",
         reason: params.reason ? params.reason.trim() : null,
+        requiresReason: params.status === "active",
         executionStatus: "SUCCESS",
         afterState: {
           campaignId: campaign.id,
@@ -236,6 +250,19 @@ export async function updateCampaign(
     );
   }
 
+  const isStatusMutation = params.status !== undefined;
+  const trimmedReason = params.reason?.trim();
+
+  if (isStatusMutation) {
+    if (!trimmedReason) {
+      throw new CommercialCampaignError(
+        "Justificativa comercial obrigatória para alteração de status da campanha.",
+        "CAMPAIGN_STATUS_REASON_REQUIRED",
+        422,
+      );
+    }
+  }
+
   return await dbClient.transaction(async (tx: any) => {
     const updateSet: Record<string, any> = { updatedAt: new Date() };
     if (params.name !== undefined) updateSet.name = params.name.trim();
@@ -277,12 +304,19 @@ export async function updateCampaign(
       benefit = updatedBenefit;
     }
 
+    const auditAction = isStatusMutation
+      ? "commercial_campaign_status_changed"
+      : "commercial_campaign_updated";
+
     await logCommercialAudit(
       {
         targetCrecheId: 1,
         actorType: "user",
-        action: "commercial_campaign_updated",
-        reason: params.reason ? params.reason.trim() : null,
+        actorRole: "master_admin",
+        actorEmail: params.updatedBy ?? "master_admin",
+        action: auditAction,
+        reason: trimmedReason || null,
+        requiresReason: isStatusMutation,
         executionStatus: "SUCCESS",
         beforeState: existing,
         afterState: updatedCampaign,

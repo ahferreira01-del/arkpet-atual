@@ -1804,7 +1804,7 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         // Missing key on PATCH -> 400
         const resMissing = await request(app)
           .patch("/api/commercial/campaigns/99")
-          .send({ status: "paused" });
+          .send({ status: "paused", reason: "Pausa operacional" });
 
         expect(resMissing.status).toBe(400);
         expect(resMissing.body.error).toBe("idempotency_key_invalid");
@@ -1819,6 +1819,7 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
           eligibleFrom: null,
           eligibleUntil: null,
           priority: null,
+          reason: "Pausa operacional",
         });
 
         vi.mocked(db.select).mockReturnValueOnce({
@@ -1842,7 +1843,7 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         const resReplay = await request(app)
           .patch("/api/commercial/campaigns/99")
           .set("X-Idempotency-Key", idempotencyKey)
-          .send({ status: "paused" });
+          .send({ status: "paused", reason: "Pausa operacional" });
 
         expect(resReplay.status).toBe(200);
         expect(resReplay.body.replay).toBe(true);
@@ -1874,7 +1875,7 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         const resConflict = await request(app)
           .patch("/api/commercial/campaigns/99")
           .set("X-Idempotency-Key", idempotencyKey)
-          .send({ status: "active" });
+          .send({ status: "active", reason: "Ativação comercial" });
 
         expect(resConflict.status).toBe(409);
         expect(resConflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
