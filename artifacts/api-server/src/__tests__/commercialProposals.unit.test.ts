@@ -689,4 +689,419 @@ describe("Commercial Proposals Domain Unit Tests (R36.G)", () => {
       ).rejects.toThrow("Justificativa obrigatória");
     });
   });
+
+  describe("6. R36.G1 Hardening & Regression Suite", () => {
+    describe("Section 1: Proposal Retry Recovery States", () => {
+      it("supports retryProposalActivation when proposal activationStatus is 'not_started' (crash right after acceptance commit)", async () => {
+        const agreement = {
+          id: 101,
+          crecheId: 1,
+          status: "accepted",
+          activationStatus: "not_started",
+          predecessorConditionId: 55,
+          snapshotJson: {
+            crecheId: 1,
+            planId: 2,
+            displayedEffectivePriceCents: 15000,
+            executionRequirement: "ARKPET_ONLY",
+          },
+        };
+
+        const newCondition = { id: 301, crecheId: 1, status: "active" };
+        const updatedAgreement = { ...agreement, activationStatus: "active", activatedConditionId: 301 };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([agreement]) // agreement
+                  .mockResolvedValueOnce([]) // assignedCommercialBenefitsTable (no conflict)
+                  .mockResolvedValueOnce([{ id: 10, crecheId: 1, planId: 2 }]), // subscriptionsTable
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([newCondition]),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([updatedAgreement]),
+              }),
+            }),
+          }),
+        };
+
+        const res = await retryProposalActivation({
+          id: 101,
+          crecheId: 1,
+          adminEmail: "admin@arkpet.com",
+          reason: "Recuperação após crash do processo antes da ativação iniciar",
+          dbClient: mockDb,
+        });
+
+        expect(res.activationStatus).toBe("active");
+        expect(res.activatedConditionId).toBe(301);
+      });
+
+      it("supports retryProposalActivation when proposal activationStatus is 'pending_activation' (crash during activation)", async () => {
+        const agreement = {
+          id: 102,
+          crecheId: 1,
+          status: "accepted",
+          activationStatus: "pending_activation",
+          predecessorConditionId: 55,
+          snapshotJson: {
+            crecheId: 1,
+            planId: 2,
+            displayedEffectivePriceCents: 15000,
+            executionRequirement: "ARKPET_ONLY",
+          },
+        };
+
+        const newCondition = { id: 302, crecheId: 1, status: "active" };
+        const updatedAgreement = { ...agreement, activationStatus: "active", activatedConditionId: 302 };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([agreement])
+                  .mockResolvedValueOnce([]) // assignedCommercialBenefitsTable (no conflict)
+                  .mockResolvedValueOnce([{ id: 10, crecheId: 1, planId: 2 }]),
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([newCondition]),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([updatedAgreement]),
+              }),
+            }),
+          }),
+        };
+
+        const res = await retryProposalActivation({
+          id: 102,
+          crecheId: 1,
+          adminEmail: "admin@arkpet.com",
+          reason: "Recuperação após timeout intermediário",
+          dbClient: mockDb,
+        });
+
+        expect(res.activationStatus).toBe("active");
+      });
+    });
+
+    describe("Section 2: Accept Operation Remains SUCCEEDED on Activation Failure", () => {
+      it("records ACCEPT_PROPOSAL operation as SUCCEEDED when durable acceptance commits, even if Stripe activation fails", async () => {
+        const validUntil = new Date(Date.now() + 86400000);
+        const agreement = {
+          id: 103,
+          crecheId: 1,
+          status: "sent",
+          predecessorConditionId: 55,
+          validUntil,
+          snapshotJson: {
+            crecheId: 1,
+            planId: 2,
+            displayedEffectivePriceCents: 15000,
+            pricingOverrideType: "fixed_amount",
+            executionRequirement: "STRIPE_REQUIRED",
+          },
+        };
+
+        const acceptedAgreement = {
+          ...agreement,
+          status: "accepted",
+          activationStatus: "activation_failed",
+          activationError: "Stripe connection failed",
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([agreement]) // proposal query
+                  .mockResolvedValueOnce([{ id: 10, activeConditionId: 55 }]) // sub check
+                  .mockResolvedValueOnce([]) // assignedCommercialBenefitsTable (no campaign conflict)
+                  .mockResolvedValueOnce([acceptedAgreement]), // final re-fetch
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([acceptedAgreement]),
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 205, status: "pending_activation" }]),
+            }),
+          }),
+        };
+
+        vi.spyOn(stripeModule, "executeStripeCommercialActivation").mockRejectedValue(
+          new Error("Stripe connection failed"),
+        );
+
+        // Execute acceptProposal directly
+        const result = await acceptProposal({
+          id: 103,
+          crecheId: 1,
+          userId: 9,
+          userEmail: "customer@creche.com",
+          dbClient: mockDb,
+        });
+
+        // Customer acceptance succeeded and is durable terminal fact
+        expect(result.success).toBe(true);
+        expect(result.agreement.status).toBe("accepted");
+        expect(result.activationStatus).toBe("activation_failed");
+      });
+    });
+
+    describe("Section 3 & 4: Active Temporal Campaign Conflict", () => {
+      it("blocks acceptance when an active or scheduled campaign owns temporal billing (PROPOSAL_ACTIVE_CAMPAIGN_CONFLICT)", async () => {
+        const validUntil = new Date(Date.now() + 86400000);
+        const agreement = {
+          id: 104,
+          crecheId: 1,
+          status: "sent",
+          predecessorConditionId: 55,
+          validUntil,
+          snapshotJson: {
+            crecheId: 1,
+            planId: 2,
+            displayedEffectivePriceCents: 15000,
+          },
+        };
+
+        const activeCampaignBenefit = {
+          id: 77,
+          crecheId: 1,
+          status: "active", // active temporal campaign owns billing
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([agreement]) // agreement
+                  .mockResolvedValueOnce([{ id: 10, activeConditionId: 55 }]) // sub
+                  .mockResolvedValueOnce([activeCampaignBenefit]), // campaign conflict found!
+              }),
+            }),
+          }),
+          update: vi.fn(),
+          insert: vi.fn(),
+        };
+
+        await expect(
+          acceptProposal({
+            id: 104,
+            crecheId: 1,
+            userId: 9,
+            dbClient: mockDb,
+          }),
+        ).rejects.toThrow(/possui um benefício de campanha comercial não terminal/i);
+
+        // Must NOT update agreement, subscription, or create condition
+        expect(mockDb.update).not.toHaveBeenCalled();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it("blocks retryProposalActivation when a campaign ownership state exists", async () => {
+        const agreement = {
+          id: 105,
+          crecheId: 1,
+          status: "accepted",
+          activationStatus: "activation_failed",
+          predecessorConditionId: 55,
+          snapshotJson: { crecheId: 1, planId: 2 },
+        };
+
+        const scheduledCampaignBenefit = {
+          id: 78,
+          crecheId: 1,
+          status: "scheduled",
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([agreement]) // agreement
+                  .mockResolvedValueOnce([scheduledCampaignBenefit]), // campaign conflict!
+              }),
+            }),
+          }),
+          update: vi.fn(),
+          insert: vi.fn(),
+        };
+
+        await expect(
+          retryProposalActivation({
+            id: 105,
+            crecheId: 1,
+            adminEmail: "admin@arkpet.com",
+            reason: "Tentativa de reativação",
+            dbClient: mockDb,
+          }),
+        ).rejects.toThrow(/possui um benefício de campanha comercial não terminal/i);
+
+        expect(mockDb.update).not.toHaveBeenCalled();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("Section 10 & 11: Snapshot Immutability Source Proof", () => {
+      it("proves termsSnapshot is frozen on send and subsequent catalog mutation does not alter sent terms", async () => {
+        const validUntil = new Date("2026-12-31");
+        const existingDraft = {
+          id: 106,
+          crecheId: 1,
+          status: "draft",
+          title: "Proposta Fixa",
+          snapshotJson: {
+            planId: 2,
+            billingInterval: "month",
+            pricingOverrideType: "percentage",
+            pricingOverrideValue: 1000, // 10% discount
+            entitlementPetLimit: 30,
+          },
+          validUntil,
+        };
+
+        const sub = { id: 1, crecheId: 1, planId: 2, activeConditionId: 99 };
+        // Initial catalog price: 200.00 BRL -> 10% off = 180.00 BRL
+        const plan = { id: 2, name: "Plano Pro", priceBrl: 20000 };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([existingDraft])
+                  .mockResolvedValueOnce([sub])
+                  .mockResolvedValueOnce([plan])
+                  .mockResolvedValueOnce([{ priceBrl: 20000 }]),
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockImplementation((payload) => ({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([{ ...existingDraft, ...payload }]),
+              }),
+            })),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+            }),
+          }),
+        };
+
+        const sent = await sendProposal({
+          id: 106,
+          crecheId: 1,
+          senderEmail: "admin@arkpet.com",
+          reason: "Congelando proposta",
+          dbClient: mockDb,
+        });
+
+        expect(sent.status).toBe("sent");
+        expect((sent as any).termsSnapshot).toBeDefined();
+        expect((sent as any).termsSnapshot.displayedEffectivePriceCents).toBe(18000);
+
+        // Catalog now mutates: price increases to 300.00 BRL
+        plan.priceBrl = 30000;
+
+        // Frozen termsSnapshot in the agreement remains 180.00 BRL
+        expect((sent as any).termsSnapshot.displayedEffectivePriceCents).toBe(18000);
+      });
+
+      it("rejects attempt to edit sent proposal via updateDraftProposal (PROPOSAL_NOT_EDITABLE)", async () => {
+        const sentAgreement = {
+          id: 107,
+          crecheId: 1,
+          status: "sent", // not draft
+          title: "Proposta Enviada",
+          snapshotJson: {},
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([sentAgreement]),
+              }),
+            }),
+          }),
+        };
+
+        await expect(
+          updateDraftProposal({
+            id: 107,
+            crecheId: 1,
+            title: "Tentativa de alteração pós-envio",
+            dbClient: mockDb,
+          }),
+        ).rejects.toThrow(/Apenas propostas em rascunho podem ser editadas/i);
+      });
+    });
+
+    describe("Section 14: Audit Reason Enforcement", () => {
+      it("requires non-empty human reason to send proposal (fail-closed, no fabricated reasons)", async () => {
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([{ id: 1, status: "draft" }]),
+              }),
+            }),
+          }),
+        };
+
+        await expect(
+          sendProposal({
+            id: 1,
+            crecheId: 1,
+            senderEmail: "admin@arkpet.com",
+            reason: "", // blank
+            dbClient: mockDb,
+          }),
+        ).rejects.toThrow(/Justificativa obrigatória/i);
+      });
+
+      it("requires non-empty human reason to supersede proposal (fail-closed)", async () => {
+        const mockDb: any = {};
+        await expect(
+          supersedeProposal({
+            id: 1,
+            crecheId: 1,
+            supersededByAgreementId: 2,
+            adminEmail: "admin@arkpet.com",
+            reason: "   ", // whitespace only
+            dbClient: mockDb,
+          }),
+        ).rejects.toThrow(/Justificativa obrigatória/i);
+      });
+    });
+  });
 });

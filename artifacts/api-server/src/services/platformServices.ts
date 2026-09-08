@@ -438,7 +438,7 @@ export async function createImplementationCheckoutSession(
           status: "open",
         };
       }
-      if (currentSession.status === "complete" || currentSession.payment_status === "paid") {
+      if (currentSession.payment_status === "paid") {
         await handlePlatformServicePaymentWebhook(currentSession, dbClient);
         return { checkoutUrl: null, sessionId: currentSession.id, status: "paid" };
       }
@@ -515,6 +515,13 @@ export async function handlePlatformServicePaymentWebhook(
     throw new PlatformServiceError("MISSING_SERVICE_REQUEST_ID", "ID de solicitação de serviço ausente no evento.", 400);
   }
 
+  if (session.client_reference_id && Number(session.client_reference_id) !== serviceRequestId) {
+    throw new PlatformServiceError("SERVICE_REQUEST_ID_MISMATCH", "client_reference_id diverge do ID da solicitação.", 422);
+  }
+  if (session.metadata?.serviceRequestId && Number(session.metadata.serviceRequestId) !== serviceRequestId) {
+    throw new PlatformServiceError("SERVICE_REQUEST_ID_MISMATCH", "metadata.serviceRequestId diverge do ID da solicitação.", 422);
+  }
+
   const [request] = await client
     .select()
     .from(platformServiceRequestsTable)
@@ -535,12 +542,18 @@ export async function handlePlatformServicePaymentWebhook(
     throw new PlatformServiceError("SERVICE_TYPE_MISMATCH", "Tipo de serviço diverge da solicitação.", 422);
   }
 
-  // Validate session ID if stored
-  if (request.stripeCheckoutSessionId && request.stripeCheckoutSessionId !== session.id) {
-    throw new PlatformServiceError("SESSION_ID_MISMATCH", "Sessão Stripe diverge da sessão registrada para a solicitação.", 422);
+  // Validate environment if present
+  const expectedEnv = process.env.NODE_ENV || "development";
+  if (session.metadata?.environment && session.metadata.environment !== expectedEnv) {
+    throw new PlatformServiceError("ENVIRONMENT_MISMATCH", "Ambiente da sessão Stripe diverge do ambiente do servidor.", 422);
   }
 
-  // Validate amount & currency
+  // Validate stored session ID (fail-closed if unknown or stale)
+  if (!request.stripeCheckoutSessionId || request.stripeCheckoutSessionId !== session.id) {
+    throw new PlatformServiceError("SESSION_ID_MISMATCH", "Sessão Stripe desconhecida ou desatualizada para esta solicitação.", 422);
+  }
+
+  // Validate amount & currency against frozen quote
   const frozenSnapshot = (request.quoteSnapshotJson as any) ?? {};
   const expectedAmount = frozenSnapshot.quotedPriceCents ?? request.quotedPriceCents ?? 0;
 
@@ -560,7 +573,7 @@ export async function handlePlatformServicePaymentWebhook(
     );
   }
 
-  // Idempotency: if already paid or in later state, return cleanly
+  // Idempotency: if already paid or in later active state, return cleanly
   if (request.status === "paid" || request.status === "scheduled" || request.status === "in_progress" || request.status === "completed") {
     return;
   }
@@ -600,6 +613,41 @@ export async function handlePlatformServicePaymentWebhook(
         amountPaidCents: session.amount_total,
       },
     }, client);
+  } else {
+    // CAS did not match payment_pending: check if row was cancelled concurrently
+    const [concurrent] = await client
+      .select()
+      .from(platformServiceRequestsTable)
+      .where(eq(platformServiceRequestsTable.id, request.id))
+      .limit(1);
+
+    if (concurrent && concurrent.status === "cancelled") {
+      // Invariant: paid money can never end as plain cancelled without REFUND_REVIEW_REQUIRED
+      await client
+        .update(platformServiceRequestsTable)
+        .set({
+          refundStatus: "REFUND_REVIEW_REQUIRED",
+          stripePaymentIntentId: paymentIntentId,
+          updatedAt: now,
+        })
+        .where(eq(platformServiceRequestsTable.id, request.id));
+
+      await logCommercialAudit({
+        targetCrecheId: request.crecheId,
+        actorType: "gateway",
+        action: "platform_service_payment_confirmed_after_cancellation",
+        reason: "Pagamento confirmado após cancelamento da solicitação; marcado para revisão de reembolso.",
+        executionRequirement: "PAYMENT_REQUIRED",
+        executionStatus: "warning",
+        afterState: {
+          serviceRequestId: request.id,
+          status: "cancelled",
+          refundStatus: "REFUND_REVIEW_REQUIRED",
+          stripePaymentIntentId: paymentIntentId,
+          amountPaidCents: session.amount_total,
+        },
+      }, client);
+    }
   }
 }
 
@@ -884,10 +932,10 @@ export async function cancelImplementation(
     try {
       const stripe = params.stripeClient ?? (await getUncachableStripeClient());
       const session = await stripe.checkout.sessions.retrieve(existing.stripeCheckoutSessionId);
-      if (session.status === "open") {
-        await stripe.checkout.sessions.expire(existing.stripeCheckoutSessionId);
-      } else if (session.status === "complete" || session.payment_status === "paid") {
+      if (session.payment_status === "paid") {
         refundStatus = "REFUND_REVIEW_REQUIRED";
+      } else if (session.status === "open") {
+        await stripe.checkout.sessions.expire(existing.stripeCheckoutSessionId);
       }
     } catch (sessionErr) {
       console.warn("[platformServices] Error expiring checkout session on cancellation:", sessionErr);
@@ -900,6 +948,9 @@ export async function cancelImplementation(
   }
 
   const now = new Date();
+  let finalUpdated: PlatformServiceRequest;
+
+  // CAS concurrency protection (R36.G1 Section 8 & 9)
   const [updated] = await dbClient
     .update(platformServiceRequestsTable)
     .set({
@@ -910,8 +961,87 @@ export async function cancelImplementation(
       refundStatus: refundStatus ?? existing.refundStatus,
       updatedAt: now,
     })
-    .where(eq(platformServiceRequestsTable.id, existing.id))
+    .where(
+      and(
+        eq(platformServiceRequestsTable.id, existing.id),
+        eq(platformServiceRequestsTable.status, existing.status),
+      ),
+    )
     .returning();
+
+  if (updated) {
+    finalUpdated = updated;
+  } else {
+    // CAS failed: concurrent transaction altered state (e.g. payment webhook won the race)
+    const [concurrent] = await dbClient
+      .select()
+      .from(platformServiceRequestsTable)
+      .where(eq(platformServiceRequestsTable.id, existing.id))
+      .limit(1);
+
+    if (!concurrent) {
+      throw new PlatformServiceError("REQUEST_NOT_FOUND", "Solicitação não encontrada.", 404);
+    }
+
+    if (concurrent.status === "cancelled" || concurrent.status === "completed" || concurrent.status === "declined") {
+      throw new PlatformServiceError(
+        "INVALID_STATUS",
+        `Solicitação já está em estado terminal ('${concurrent.status}').`,
+        422,
+      );
+    }
+
+    if (concurrent.status === "paid" || concurrent.status === "scheduled" || concurrent.status === "in_progress") {
+      if (params.actorRole === "creche_admin") {
+        throw new PlatformServiceError(
+          "CUSTOMER_CANCELLATION_NOT_ALLOWED",
+          "O pagamento foi confirmado concorrentemente. Serviços pagos só podem ser cancelados através do suporte da plataforma com análise de reembolso.",
+          403,
+        );
+      }
+
+      refundStatus = "REFUND_REVIEW_REQUIRED";
+      const [reCancelled] = await dbClient
+        .update(platformServiceRequestsTable)
+        .set({
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledBy: params.actorEmail ?? `user_${params.actorId}`,
+          cancellationReason: params.reason.trim(),
+          refundStatus: "REFUND_REVIEW_REQUIRED",
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(platformServiceRequestsTable.id, concurrent.id),
+            eq(platformServiceRequestsTable.status, concurrent.status),
+          ),
+        )
+        .returning();
+
+      finalUpdated = reCancelled ?? concurrent;
+    } else {
+      const [reCancelled] = await dbClient
+        .update(platformServiceRequestsTable)
+        .set({
+          status: "cancelled",
+          cancelledAt: now,
+          cancelledBy: params.actorEmail ?? `user_${params.actorId}`,
+          cancellationReason: params.reason.trim(),
+          refundStatus: refundStatus ?? concurrent.refundStatus,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(platformServiceRequestsTable.id, concurrent.id),
+            eq(platformServiceRequestsTable.status, concurrent.status),
+          ),
+        )
+        .returning();
+
+      finalUpdated = reCancelled ?? concurrent;
+    }
+  }
 
   await logCommercialAudit({
     targetCrecheId: params.crecheId,
@@ -925,9 +1055,9 @@ export async function cancelImplementation(
       status: "cancelled",
       cancelledAt: now.toISOString(),
       cancelledBy: params.actorEmail,
-      refundStatus: updated.refundStatus,
+      refundStatus: finalUpdated.refundStatus,
     },
   }, dbClient);
 
-  return updated;
+  return finalUpdated;
 }

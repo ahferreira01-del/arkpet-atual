@@ -577,6 +577,7 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
         serviceType: "ASSISTED_IMPLEMENTATION",
         status: "payment_pending",
         quotedPriceCents: 50000,
+        stripeCheckoutSessionId: "cs_test_webhook",
       };
 
       const updated = {
@@ -636,6 +637,7 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
         serviceType: "ASSISTED_IMPLEMENTATION",
         status: "payment_pending",
         quotedPriceCents: 50000,
+        stripeCheckoutSessionId: "cs_test_webhook",
       };
 
       const mockDb: any = {
@@ -674,6 +676,7 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
         serviceType: "ASSISTED_IMPLEMENTATION",
         status: "paid", // already paid
         quotedPriceCents: 50000,
+        stripeCheckoutSessionId: "cs_test_webhook",
       };
 
       const mockDb: any = {
@@ -712,6 +715,7 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
         serviceType: "ASSISTED_IMPLEMENTATION",
         status: "payment_pending",
         quotedPriceCents: 50000,
+        stripeCheckoutSessionId: "cs_test_webhook",
       };
 
       const mockDb: any = {
@@ -1043,6 +1047,440 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
 
       expect(result.status).toBe("cancelled");
       expect(mockStripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_test_cancel_me");
+    });
+  });
+
+  describe("8. R36.G1 Hardening & Concurrency Protection Suite", () => {
+    describe("Section 5: Quote Acceptance Isolation from Stripe SDK", () => {
+      it("accepts implementation quote and transitions to payment_pending without interacting with Stripe SDK", async () => {
+        const existing: any = {
+          id: 50,
+          crecheId: 10,
+          serviceType: "ASSISTED_IMPLEMENTATION",
+          status: "proposal_sent",
+          quotedPriceCents: 45000,
+          quoteSnapshotJson: { quotedPriceCents: 45000, scopeNotes: "Setup completo" },
+          customerNotes: null,
+          scopeNotes: "Setup completo",
+          quotedBy: "admin@arkpet.com",
+          quotedAt: new Date(),
+          requestedByUserId: 1,
+          acceptedAt: null,
+          stripeCheckoutSessionId: null,
+          stripePaymentIntentId: null,
+          paidAt: null,
+          scheduledFor: null,
+          startedAt: null,
+          completedAt: null,
+          completedBy: null,
+          completionNotes: null,
+          cancelledAt: null,
+          cancelledBy: null,
+          cancellationReason: null,
+          refundStatus: null,
+          adminNotes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const updated = {
+          ...existing,
+          status: "payment_pending",
+          acceptedAt: new Date(),
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([existing]),
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([updated]),
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+            }),
+          }),
+        };
+
+        const result = await acceptImplementationQuote({
+          id: 50,
+          crecheId: 10,
+          userId: 1,
+          userEmail: "owner@petcreche.com",
+          dbClient: mockDb,
+        });
+
+        expect(result.status).toBe("payment_pending");
+        expect(mockDb.update).toHaveBeenCalled();
+      });
+    });
+
+    describe("Section 6 & 7: Strict payment_status verification & Trusted Reconciliation", () => {
+      it("ignores checkout session reconciliation in createImplementationCheckoutSession if payment_status is not 'paid' even if status is 'complete'", async () => {
+        const existing: any = {
+          id: 51,
+          crecheId: 10,
+          serviceType: "ASSISTED_IMPLEMENTATION",
+          status: "payment_pending",
+          quotedPriceCents: 50000,
+          quoteSnapshotJson: { quotedPriceCents: 50000 },
+          stripeCheckoutSessionId: "cs_async_unpaid",
+          customerNotes: null,
+          scopeNotes: null,
+          quotedBy: null,
+          quotedAt: null,
+          requestedByUserId: 1,
+          acceptedAt: null,
+          stripePaymentIntentId: null,
+          paidAt: null,
+          scheduledFor: null,
+          startedAt: null,
+          completedAt: null,
+          completedBy: null,
+          completionNotes: null,
+          cancelledAt: null,
+          cancelledBy: null,
+          cancellationReason: null,
+          refundStatus: null,
+          adminNotes: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+
+        const mockStripe: any = {
+          checkout: {
+            sessions: {
+              retrieve: vi.fn().mockResolvedValue({
+                id: "cs_async_unpaid",
+                status: "complete",
+                payment_status: "unpaid",
+                url: "https://checkout.stripe.com/pay/cs_async_unpaid",
+              }),
+              create: vi.fn().mockResolvedValue({
+                id: "cs_new_session",
+                url: "https://checkout.stripe.com/pay/cs_new_session",
+              }),
+            },
+          },
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([existing]),
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([existing]),
+              }),
+            }),
+          }),
+        };
+
+        const res = await createImplementationCheckoutSession({
+          id: 51,
+          crecheId: 10,
+          userId: 1,
+          successUrl: "https://app.arkpet.com/success",
+          cancelUrl: "https://app.arkpet.com/cancel",
+          dbClient: mockDb,
+          stripeClient: mockStripe,
+        });
+
+        // Did not reconcile to paid because payment_status was unpaid; created fresh session
+        expect(res.status).not.toBe("paid");
+        expect(res.sessionId).toBe("cs_new_session");
+      });
+
+      it("rejects webhook if session.id does not match stored stripeCheckoutSessionId (SESSION_ID_MISMATCH)", async () => {
+        const existing = {
+          id: 52,
+          crecheId: 10,
+          serviceType: "ASSISTED_IMPLEMENTATION",
+          status: "payment_pending",
+          quotedPriceCents: 50000,
+          quoteSnapshotJson: { quotedPriceCents: 50000 },
+          stripeCheckoutSessionId: "cs_legitimate_session",
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([existing]),
+              }),
+            }),
+          }),
+        };
+
+        const rogueSession: any = {
+          id: "cs_rogue_or_stale_session",
+          mode: "payment",
+          payment_status: "paid",
+          client_reference_id: "52",
+          amount_total: 50000,
+          currency: "brl",
+          metadata: {
+            serviceType: "ASSISTED_IMPLEMENTATION",
+            crecheId: "10",
+            serviceRequestId: "52",
+          },
+        };
+
+        await expect(handlePlatformServicePaymentWebhook(rogueSession, mockDb)).rejects.toMatchObject({
+          code: "SESSION_ID_MISMATCH",
+        });
+      });
+
+      it("rejects webhook if metadata.environment mismatches process.env.NODE_ENV (ENVIRONMENT_MISMATCH)", async () => {
+        const existing = {
+          id: 53,
+          crecheId: 10,
+          serviceType: "ASSISTED_IMPLEMENTATION",
+          status: "payment_pending",
+          quotedPriceCents: 50000,
+          quoteSnapshotJson: { quotedPriceCents: 50000 },
+          stripeCheckoutSessionId: "cs_test_env",
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([existing]),
+              }),
+            }),
+          }),
+        };
+
+        const mismatchedEnvSession: any = {
+          id: "cs_test_env",
+          mode: "payment",
+          payment_status: "paid",
+          client_reference_id: "53",
+          amount_total: 50000,
+          currency: "brl",
+          metadata: {
+            serviceType: "ASSISTED_IMPLEMENTATION",
+            crecheId: "10",
+            serviceRequestId: "53",
+            environment: "production_foreign_cluster",
+          },
+        };
+
+        await expect(handlePlatformServicePaymentWebhook(mismatchedEnvSession, mockDb)).rejects.toMatchObject({
+          code: "ENVIRONMENT_MISMATCH",
+        });
+      });
+    });
+
+    describe("Section 8 & 9: Concurrent Payment vs. Cancellation (CAS Protection)", () => {
+      it("rejects customer cancellation if payment webhook reconciles concurrently (reconciliation won)", async () => {
+        const initialPending = {
+          id: 54,
+          crecheId: 10,
+          status: "payment_pending",
+          stripeCheckoutSessionId: "cs_race_1",
+        };
+
+        const concurrentPaid = {
+          id: 54,
+          crecheId: 10,
+          status: "paid",
+          stripeCheckoutSessionId: "cs_race_1",
+          amountPaidCents: 50000,
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([initialPending])
+                  .mockResolvedValueOnce([concurrentPaid]),
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          }),
+        };
+
+        const mockStripe: any = {
+          checkout: {
+            sessions: {
+              retrieve: vi.fn().mockResolvedValue({ id: "cs_race_1", payment_status: "paid" }),
+            },
+          },
+        };
+
+        await expect(
+          cancelImplementation({
+            id: 54,
+            crecheId: 10,
+            actorRole: "creche_admin",
+            actorId: 99,
+            actorEmail: "customer@creche.com",
+            reason: "Quero cancelar agora",
+            dbClient: mockDb,
+            stripeClient: mockStripe,
+          }),
+        ).rejects.toMatchObject({
+          code: "CUSTOMER_CANCELLATION_NOT_ALLOWED",
+        });
+      });
+
+      it("marks refundStatus as REFUND_REVIEW_REQUIRED when payment webhook arrives after request was cancelled (cancellation won)", async () => {
+        const cancelledRequest = {
+          id: 55,
+          crecheId: 10,
+          serviceType: "ASSISTED_IMPLEMENTATION",
+          status: "cancelled",
+          quotedPriceCents: 50000,
+          quoteSnapshotJson: { quotedPriceCents: 50000 },
+          stripeCheckoutSessionId: "cs_race_cancel_first",
+          refundStatus: "NONE",
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn()
+                  .mockResolvedValueOnce([cancelledRequest])
+                  .mockResolvedValueOnce([cancelledRequest]),
+              }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          }),
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 1 }]),
+            }),
+          }),
+        };
+
+        const session: any = {
+          id: "cs_race_cancel_first",
+          mode: "payment",
+          payment_status: "paid",
+          client_reference_id: "55",
+          amount_total: 50000,
+          currency: "brl",
+          payment_intent: "pi_late_arrival",
+          metadata: {
+            serviceType: "ASSISTED_IMPLEMENTATION",
+            crecheId: "10",
+            serviceRequestId: "55",
+          },
+        };
+
+        await handlePlatformServicePaymentWebhook(session, mockDb);
+
+        expect(mockDb.update).toHaveBeenCalledTimes(2);
+        expect(mockDb.insert).toHaveBeenCalled();
+      });
+    });
+
+    describe("Section 10 & 11: Quote Immutability", () => {
+      it("blocks sending quote if request is not in under_review status (PROPOSAL_NOT_UNDER_REVIEW)", async () => {
+        const alreadySent = {
+          id: 56,
+          crecheId: 10,
+          status: "proposal_sent",
+          quotedPriceCents: 50000,
+        };
+
+        const mockDb: any = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([alreadySent]),
+              }),
+            }),
+          }),
+        };
+
+        await expect(
+          sendImplementationQuote({
+            id: 56,
+            crecheId: 10,
+            quotedPriceCents: 60000,
+            scopeNotes: "Novo escopo",
+            adminEmail: "admin@arkpet.com",
+            reason: "Tentativa de re-orçar",
+            dbClient: mockDb,
+          }),
+        ).rejects.toMatchObject({
+          code: "INVALID_STATUS",
+        });
+      });
+    });
+
+    describe("Section 14: Audit Reason Enforcement", () => {
+      it("strictly requires non-empty reason for scheduling, starting, completing, and cancelling", async () => {
+        await expect(
+          scheduleImplementation({
+            id: 57,
+            crecheId: 10,
+            scheduledFor: new Date(),
+            adminEmail: "admin@arkpet.com",
+            reason: "   ",
+          }),
+        ).rejects.toMatchObject({ code: "REASON_REQUIRED" });
+
+        await expect(
+          startImplementation({
+            id: 57,
+            crecheId: 10,
+            adminEmail: "admin@arkpet.com",
+            reason: "",
+          }),
+        ).rejects.toMatchObject({ code: "REASON_REQUIRED" });
+
+        await expect(
+          completeImplementation({
+            id: 57,
+            crecheId: 10,
+            completionNotes: "Notas",
+            adminEmail: "admin@arkpet.com",
+            reason: " ",
+          }),
+        ).rejects.toMatchObject({ code: "REASON_REQUIRED" });
+
+        await expect(
+          cancelImplementation({
+            id: 57,
+            crecheId: 10,
+            actorRole: "master_admin",
+            actorEmail: "admin@arkpet.com",
+            reason: "   ",
+          }),
+        ).rejects.toMatchObject({ code: "REASON_REQUIRED" });
+      });
     });
   });
 });

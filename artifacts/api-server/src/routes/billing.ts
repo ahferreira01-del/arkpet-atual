@@ -1,4 +1,5 @@
 import { Router } from "express";
+import crypto from "crypto";
 import { db } from "@workspace/db";
 import {
   BILLING_INTERVALS,
@@ -834,7 +835,7 @@ router.get("/proposals/:id", requireRole("creche_admin"), async (req: AuthReques
       return;
     }
 
-    const snapshot = (p.snapshotJson as any) ?? {};
+    const snapshot = ((p as any).termsSnapshot ?? p.snapshotJson as any) ?? {};
     res.json({
       id: p.id,
       title: p.title,
@@ -871,7 +872,14 @@ router.post("/proposals/:id/accept", requireRole("creche_admin"), async (req: Au
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await acceptProposal({
@@ -930,7 +938,14 @@ router.post("/proposals/:id/decline", requireRole("creche_admin"), async (req: A
   }
 
   const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : null;
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await declineProposal({
@@ -1008,7 +1023,14 @@ router.post("/platform-services/request", requireRole("creche_admin"), async (re
   }
 
   const { customerNotes } = req.body;
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await requestAssistedImplementation({
@@ -1066,7 +1088,14 @@ router.post("/platform-services/:id/accept-quote", requireRole("creche_admin"), 
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await acceptImplementationQuote({
@@ -1127,7 +1156,14 @@ router.post("/platform-services/:id/create-checkout-session", requireRole("crech
   const appBaseUrl = getAppBaseUrl();
   const successUrl = req.body.successUrl || `${appBaseUrl}/assinatura?impl_session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = req.body.cancelUrl || `${appBaseUrl}/assinatura`;
-  const idempotencyAttemptKey = (req.headers["x-idempotency-key"] as string) || req.body.idempotencyAttemptKey;
+  let idempotencyAttemptKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || req.body.idempotencyAttemptKey || null;
+    idempotencyAttemptKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await createImplementationCheckoutSession({
@@ -1188,7 +1224,14 @@ router.post("/platform-services/:id/cancel", requireRole("creche_admin"), async 
   }
 
   const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "Cancelamento solicitado pelo cliente";
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await cancelImplementation({

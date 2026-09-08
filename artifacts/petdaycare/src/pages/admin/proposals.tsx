@@ -120,7 +120,7 @@ export default function AdminProposals() {
     mutationFn: async (payload: any) => {
       const res = await fetch("/api/commercial/proposals", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -143,7 +143,7 @@ export default function AdminProposals() {
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
       const res = await fetch(`/api/commercial/proposals/${id}/send`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ reason }),
       });
       if (!res.ok) {
@@ -165,7 +165,7 @@ export default function AdminProposals() {
     mutationFn: async ({ id, reason }: { id: number; reason: string }) => {
       const res = await fetch(`/api/commercial/proposals/${id}/retry-activation`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({ reason }),
       });
       if (!res.ok) {
@@ -188,7 +188,7 @@ export default function AdminProposals() {
     mutationFn: async ({ endpoint, payload }: { endpoint: string; payload: any }) => {
       const res = await fetch(endpoint, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -269,6 +269,7 @@ export default function AdminProposals() {
                 const isSent = p.status === "sent";
                 const isAccepted = p.status === "accepted";
                 const isFailedActivation = p.activationStatus === "activation_failed";
+                const canRetryActivation = isAccepted && p.activationStatus !== "active";
                 const targetCreche = creches?.find((c: any) => c.id === p.crecheId);
 
                 return (
@@ -314,7 +315,7 @@ export default function AdminProposals() {
                           <Send className="h-3.5 w-3.5" /> Enviar
                         </Button>
                       )}
-                      {isFailedActivation && (
+                      {canRetryActivation && (
                         <Button
                           size="sm"
                           variant="destructive"

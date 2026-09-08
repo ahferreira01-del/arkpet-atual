@@ -591,6 +591,7 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
       type VARCHAR(50) NOT NULL,
       status VARCHAR(30) NOT NULL DEFAULT 'draft',
       snapshot_json JSONB,
+      terms_snapshot JSONB,
       sent_at TIMESTAMP,
       accepted_at TIMESTAMP,
       accepted_by_user_id INTEGER,
@@ -610,6 +611,7 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS activated_condition_id INTEGER;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS superseded_by_agreement_id INTEGER;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS snapshot_json JSONB;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS terms_snapshot JSONB;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_by_user_id INTEGER;

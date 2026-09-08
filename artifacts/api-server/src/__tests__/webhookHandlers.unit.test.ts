@@ -4,6 +4,7 @@ import * as gatewayService from "../services/gatewayEvents.js";
 import * as subSync from "../lib/subscriptionSync.js";
 import * as finSync from "../lib/financialSync.js";
 import * as stripeClient from "../lib/stripeClient.js";
+import * as platformServices from "../services/platformServices.js";
 import type { GatewayEvent } from "@workspace/db/schema";
 
 describe("WebhookHandlers Gateway Integration Regression Tests (R36.C1)", () => {
@@ -206,5 +207,36 @@ describe("WebhookHandlers Gateway Integration Regression Tests (R36.C1)", () => 
         id: "evt_replay_test_99",
       }),
     );
+  });
+
+  it("R36.G1 Section 13: ASSISTED_IMPLEMENTATION checkout.session.completed early returns, calls platform handler once, 0 tenant invoice writes, 0 subscription sync calls", async () => {
+    const platformSpy = vi.spyOn(platformServices, "handlePlatformServicePaymentWebhook").mockResolvedValue(undefined);
+
+    const platformEvent = {
+      id: "evt_assisted_impl_test_1",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_assisted_test_123",
+          mode: "payment",
+          payment_status: "paid",
+          metadata: {
+            serviceType: "ASSISTED_IMPLEMENTATION",
+            serviceRequestId: "42",
+            crecheId: "10",
+          },
+        },
+      },
+    };
+
+    await dispatchWebhookBusinessLogic(platformEvent);
+
+    // Platform handler called with exact session object
+    expect(platformSpy).toHaveBeenCalledTimes(1);
+    expect(platformSpy).toHaveBeenCalledWith(platformEvent.data.object);
+
+    // Tenant billing handlers were NOT called (zero tenant invoice writes)
+    expect(applyStripeEventSpy).not.toHaveBeenCalled();
+    expect(applyFinancialStripeEventSpy).not.toHaveBeenCalled();
   });
 });

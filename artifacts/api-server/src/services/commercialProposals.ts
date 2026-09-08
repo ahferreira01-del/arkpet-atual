@@ -5,10 +5,11 @@ import {
   subscriptionsTable,
   plansTable,
   crechesTable,
+  assignedCommercialBenefitsTable,
   type CommercialAgreement,
   type CustomerCommercialCondition,
 } from "@workspace/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { calculateEffectivePrice, PricingEngineError } from "./pricingEngine.js";
 import { resolveCatalogPlanPrice, normalizeBillingInterval, CatalogPriceResolutionError } from "./catalogPricing.js";
 import { logCommercialAudit } from "./commercialAudit.js";
@@ -205,6 +206,14 @@ export async function sendProposal(params: SendProposalParams): Promise<Commerci
     throw new CommercialProposalError("PROPOSAL_NOT_FOUND", "Proposta não encontrada.", 404);
   }
 
+  if (!params.reason || typeof params.reason !== "string" || params.reason.trim().length === 0) {
+    throw new CommercialProposalError(
+      "REASON_REQUIRED",
+      "Justificativa obrigatória para envio de proposta comercial.",
+      400,
+    );
+  }
+
   if (existing.status !== "draft") {
     throw new CommercialProposalError(
       "PROPOSAL_NOT_DRAFT",
@@ -291,6 +300,7 @@ export async function sendProposal(params: SendProposalParams): Promise<Commerci
       sentAt: new Date(),
       predecessorConditionId,
       snapshotJson: frozenSnapshot,
+      termsSnapshot: frozenSnapshot,
       updatedAt: new Date(),
     })
     .where(
@@ -343,6 +353,14 @@ export interface SupersedeProposalParams {
 
 export async function supersedeProposal(params: SupersedeProposalParams): Promise<CommercialAgreement> {
   const dbClient = params.dbClient ?? db;
+
+  if (!params.reason || typeof params.reason !== "string" || params.reason.trim().length === 0) {
+    throw new CommercialProposalError(
+      "REASON_REQUIRED",
+      "Justificativa obrigatória para substituição de proposta comercial.",
+      400,
+    );
+  }
 
   const [superseded] = await dbClient
     .update(commercialAgreementsTable)
@@ -462,7 +480,34 @@ export async function acceptProposal(params: AcceptProposalParams): Promise<Acce
     );
   }
 
-  const snapshot: ProposalSnapshot = (agreement.snapshotJson as any) ?? {};
+  // Active temporal campaign conflict check (R36.G1 Sections 3 & 4)
+  const [activeCampaignBenefit] = await dbClient
+    .select({ id: assignedCommercialBenefitsTable.id, status: assignedCommercialBenefitsTable.status })
+    .from(assignedCommercialBenefitsTable)
+    .where(
+      and(
+        eq(assignedCommercialBenefitsTable.crecheId, params.crecheId),
+        inArray(assignedCommercialBenefitsTable.status, [
+          "pending",
+          "pending_activation",
+          "scheduled",
+          "active",
+          "restoration_review",
+          "failed",
+        ]),
+      ),
+    )
+    .limit(1);
+
+  if (activeCampaignBenefit) {
+    throw new CommercialProposalError(
+      "PROPOSAL_ACTIVE_CAMPAIGN_CONFLICT",
+      `A creche possui um benefício de campanha comercial não terminal (status: '${activeCampaignBenefit.status}'). A proposta não pode ser aceita enquanto uma campanha controlar o ciclo de cobrança.`,
+      422,
+    );
+  }
+
+  const snapshot: ProposalSnapshot = ((agreement as any).termsSnapshot ?? agreement.snapshotJson) as any ?? {};
 
   if (snapshot.pricingOverrideType === "percentage" && snapshot.planId) {
     const [plan] = await dbClient
@@ -659,15 +704,16 @@ export async function acceptProposal(params: AcceptProposalParams): Promise<Acce
       .where(eq(commercialAgreementsTable.id, acceptedAgreement.id));
   }
 
-  const [finalAgreement] = await dbClient
+  const finalRows = await dbClient
     .select()
     .from(commercialAgreementsTable)
     .where(eq(commercialAgreementsTable.id, acceptedAgreement.id))
     .limit(1);
+  const finalAgreement = finalRows?.[0] ?? acceptedAgreement;
 
   return {
     success: true,
-    agreement: finalAgreement ?? acceptedAgreement,
+    agreement: finalAgreement,
     activationStatus,
     conditionId: activatedConditionId ?? undefined,
     message:
@@ -781,7 +827,43 @@ export async function retryProposalActivation(params: RetryProposalActivationPar
     return agreement;
   }
 
-  const snapshot: ProposalSnapshot = (agreement.snapshotJson as any) ?? {};
+  const allowedRecoveryStatuses = ["not_started", "pending_activation", "activation_failed"];
+  if (!allowedRecoveryStatuses.includes(agreement.activationStatus)) {
+    throw new CommercialProposalError(
+      "INVALID_ACTIVATION_STATUS",
+      `Status de ativação '${agreement.activationStatus}' não permite retentativa.`,
+      422,
+    );
+  }
+
+  // Active temporal campaign conflict check (R36.G1 Sections 3 & 4)
+  const [activeCampaignBenefit] = await dbClient
+    .select({ id: assignedCommercialBenefitsTable.id, status: assignedCommercialBenefitsTable.status })
+    .from(assignedCommercialBenefitsTable)
+    .where(
+      and(
+        eq(assignedCommercialBenefitsTable.crecheId, params.crecheId),
+        inArray(assignedCommercialBenefitsTable.status, [
+          "pending",
+          "pending_activation",
+          "scheduled",
+          "active",
+          "restoration_review",
+          "failed",
+        ]),
+      ),
+    )
+    .limit(1);
+
+  if (activeCampaignBenefit) {
+    throw new CommercialProposalError(
+      "PROPOSAL_ACTIVE_CAMPAIGN_CONFLICT",
+      `A creche possui um benefício de campanha comercial não terminal (status: '${activeCampaignBenefit.status}'). A ativação da proposta não pode sobrescrever a campanha.`,
+      422,
+    );
+  }
+
+  const snapshot: ProposalSnapshot = ((agreement as any).termsSnapshot ?? agreement.snapshotJson) as any ?? {};
   const now = new Date();
 
   const [sub] = await dbClient
@@ -848,7 +930,7 @@ export async function retryProposalActivation(params: RetryProposalActivationPar
       executionStatus: "success",
       relatedAgreementId: agreement.id,
       relatedConditionId: newCondition.id,
-    });
+    }, dbClient);
 
     return updated;
   }

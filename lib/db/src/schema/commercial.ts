@@ -130,6 +130,7 @@ export const commercialAgreementsTable = pgTable(
     activatedConditionId: integer("activated_condition_id"),
     supersededByAgreementId: integer("superseded_by_agreement_id"),
     snapshotJson: jsonb("snapshot_json"),
+    termsSnapshot: jsonb("terms_snapshot"),
     sentAt: timestamp("sent_at"),
     acceptedAt: timestamp("accepted_at"),
     acceptedByUserId: integer("accepted_by_user_id"),

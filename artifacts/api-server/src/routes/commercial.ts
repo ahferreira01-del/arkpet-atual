@@ -1884,7 +1884,14 @@ commercialRouter.post("/proposals", async (req: AuthRequest, res: Response): Pro
     validUntil,
   } = req.body;
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await createProposal({
@@ -1966,7 +1973,14 @@ commercialRouter.patch("/proposals/:id", async (req: AuthRequest, res: Response)
     validUntil,
   } = req.body;
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await updateDraftProposal({
@@ -2046,7 +2060,14 @@ commercialRouter.post("/proposals/:id/send", async (req: AuthRequest, res: Respo
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await sendProposal({
@@ -2113,7 +2134,22 @@ commercialRouter.post("/proposals/:id/supersede", async (req: AuthRequest, res: 
   }
 
   const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  if (!reason) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para substituição de proposta comercial.",
+    });
+    return;
+  }
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await supersedeProposal({
@@ -2122,7 +2158,7 @@ commercialRouter.post("/proposals/:id/supersede", async (req: AuthRequest, res: 
       supersededByAgreementId,
       adminEmail: req.user?.email ?? `user_${req.user?.id}`,
       adminId: req.user?.id,
-      reason: reason || undefined,
+      reason: reason.trim(),
       dbClient: tx,
     });
   };
@@ -2188,7 +2224,14 @@ commercialRouter.post("/proposals/:id/retry-activation", async (req: AuthRequest
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await retryProposalActivation({
@@ -2300,7 +2343,14 @@ commercialRouter.post("/platform-services/:id/review", async (req: AuthRequest, 
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await reviewImplementationRequest({
@@ -2370,7 +2420,14 @@ commercialRouter.post("/platform-services/:id/quote", async (req: AuthRequest, r
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await sendImplementationQuote({
@@ -2446,7 +2503,14 @@ commercialRouter.post("/platform-services/:id/schedule", async (req: AuthRequest
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await scheduleImplementation({
@@ -2517,7 +2581,14 @@ commercialRouter.post("/platform-services/:id/start", async (req: AuthRequest, r
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await startImplementation({
@@ -2590,7 +2661,14 @@ commercialRouter.post("/platform-services/:id/complete", async (req: AuthRequest
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await completeImplementation({
@@ -2660,7 +2738,14 @@ commercialRouter.post("/platform-services/:id/cancel", async (req: AuthRequest, 
     return;
   }
 
-  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+  let idempotencyKey: string;
+  try {
+    const rawKey = (req.headers["x-idempotency-key"] as string) || (req.header("X-Idempotency-Key") as string) || null;
+    idempotencyKey = rawKey ? validateIdempotencyKey(rawKey) : crypto.randomUUID();
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
   const executeAction = async (tx?: any) => {
     return await cancelImplementation({
