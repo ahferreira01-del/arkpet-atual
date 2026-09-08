@@ -433,6 +433,10 @@ describe("Dashboard Page Characterization Tests (R34.E0.1)", () => {
     });
 
     // Provide an invoice due in 2 days from today
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 2);
+    const futureDueDate = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, "0")}-${String(futureDate.getDate()).padStart(2, "0")}`;
+
     (financialModule.useUpcomingInvoices as any).mockReturnValue({
       data: [
         {
@@ -440,7 +444,7 @@ describe("Dashboard Page Characterization Tests (R34.E0.1)", () => {
           invoiceNumber: "FAT-002",
           totalAmount: 12000,
           status: "pending",
-          dueDate: "2026-09-04",
+          dueDate: futureDueDate,
         },
       ],
       isLoading: false,

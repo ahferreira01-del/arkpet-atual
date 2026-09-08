@@ -11,6 +11,7 @@ import { logCommercialAudit } from "../services/commercialAudit.js";
 import { getUncachableStripeClient } from "./stripeClient.js";
 import { resolveCatalogPlanPrice } from "../services/catalogPricing.js";
 import { calculateEffectivePrice } from "../services/pricingEngine.js";
+import { reconcileBenefitCycleAdvancement } from "../services/commercialCampaigns.js";
 
 // Shared downgrade detection: returns true if planId is cheaper than the
 // creche's currently active plan and the current paid period has not yet ended.
@@ -66,6 +67,11 @@ function mapStripeSubStatus(stripeStatus: string): AppStatus | null {
 // Basil moved current_period_end onto items; fall back to the top level.
 function readPeriodEnd(sub: any): Date | null {
   const ts = sub?.items?.data?.[0]?.current_period_end ?? sub?.current_period_end ?? null;
+  return typeof ts === "number" ? new Date(ts * 1000) : null;
+}
+
+function readPeriodStart(sub: any): Date | null {
+  const ts = sub?.items?.data?.[0]?.current_period_start ?? sub?.current_period_start ?? null;
   return typeof ts === "number" ? new Date(ts * 1000) : null;
 }
 
@@ -314,6 +320,7 @@ export async function handleSubscriptionEvent(
   }
 
   const periodEnd = readPeriodEnd(currentSub ?? sub);
+  const periodStart = readPeriodStart(currentSub ?? sub);
   if (periodEnd) updates.currentPeriodEnd = periodEnd;
 
   if (status === "past_due") {
@@ -323,6 +330,23 @@ export async function handleSubscriptionEvent(
   }
 
   await commit(appSub, eventCreatedMs, updates);
+
+  // Reconcile commercial campaign cycle advancement and completion
+  if (status === "active" && periodStart && periodEnd && subId && appSub.crecheId) {
+    try {
+      await reconcileBenefitCycleAdvancement({
+        crecheId: appSub.crecheId,
+        stripeSubscriptionId: subId,
+        contractualPeriodStart: periodStart,
+        contractualPeriodEnd: periodEnd,
+        sourceReferenceId: sub?.id,
+        dbClient: db,
+        stripeClient: activeStripe ?? undefined,
+      });
+    } catch (err: any) {
+      console.error(`[campaign] Failed to reconcile cycle advancement for creche ${appSub.crecheId}:`, err);
+    }
+  }
 }
 
 async function handleInvoiceFailed(invoice: any, eventCreatedMs: number): Promise<void> {
@@ -348,9 +372,25 @@ async function handleInvoicePaid(invoice: any, eventCreatedMs: number): Promise<
     pastDueSince: null,
     stripeSubscriptionId: appSub.stripeSubscriptionId ?? subId,
   };
+  const periodStartTs = invoice?.lines?.data?.[0]?.period?.start;
   const periodEndTs = invoice?.lines?.data?.[0]?.period?.end;
   if (typeof periodEndTs === "number") updates.currentPeriodEnd = new Date(periodEndTs * 1000);
   await commit(appSub, eventCreatedMs, updates);
+
+  if (typeof periodStartTs === "number" && typeof periodEndTs === "number" && appSub.crecheId) {
+    try {
+      await reconcileBenefitCycleAdvancement({
+        crecheId: appSub.crecheId,
+        stripeSubscriptionId: subId,
+        contractualPeriodStart: new Date(periodStartTs * 1000),
+        contractualPeriodEnd: new Date(periodEndTs * 1000),
+        sourceReferenceId: invoice?.id,
+        dbClient: db,
+      });
+    } catch (err: any) {
+      console.error(`[campaign] Failed to reconcile cycle advancement from invoice for creche ${appSub.crecheId}:`, err);
+    }
+  }
 }
 
 // Handles payment_intent.succeeded for PIX and Boleto (mode=payment checkout).

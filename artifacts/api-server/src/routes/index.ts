@@ -30,6 +30,7 @@ const router = Router();
 router.use(healthRouter);
 router.use(storageRouter);
 router.use("/auth", authRouter);
+router.use("/commercial", commercialRouter);
 
 // ── Central subscription gate ─────────────────────────────────────────────────
 // Applies to every /creches/:crecheId/* route (all tenant operational endpoints).

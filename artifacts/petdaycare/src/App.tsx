@@ -27,6 +27,7 @@ const Bookings = React.lazy(() => import("./pages/bookings/index"));
 const NewBooking = React.lazy(() => import("./pages/bookings/new"));
 const AdminDashboard = React.lazy(() => import("./pages/admin/index"));
 const AdminCreches = React.lazy(() => import("./pages/admin/creches"));
+const AdminCampaigns = React.lazy(() => import("./pages/admin/campaigns"));
 const Chat = React.lazy(() => import("./pages/chat/index"));
 const StaffBoard = React.lazy(() => import("./pages/staff/board"));
 const ManageStaff = React.lazy(() => import("./pages/staff/manage"));
@@ -315,6 +316,12 @@ function App() {
                 <Route path="/admin/creches">
                   <AppLayout>
                     <AdminCreches />
+                  </AppLayout>
+                </Route>
+
+                <Route path="/admin/campaigns">
+                  <AppLayout>
+                    <AdminCampaigns />
                   </AppLayout>
                 </Route>
 

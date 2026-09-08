@@ -6,6 +6,10 @@ import {
   subscriptionsTable,
   plansTable,
   customerCommercialConditionsTable,
+  commercialCampaignsTable,
+  commercialCampaignBenefitsTable,
+  assignedCommercialBenefitsTable,
+  benefitCycleConsumptionsTable,
 } from "@workspace/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
@@ -46,6 +50,20 @@ import {
   CommercialOperationFailedFinalError,
   CommercialOperationFencingLostError,
 } from "../services/commercialOperationRequests.js";
+import {
+  createCampaign,
+  updateCampaign,
+  previewCampaignAssignment,
+  assignCampaignToCreche,
+  CommercialCampaignIntegrityError,
+  CommercialCampaignFavorableOnlyError,
+  CommercialCampaignConflictError,
+  CommercialCampaignNotActiveError,
+} from "../services/commercialCampaigns.js";
+import {
+  ExistingStripeScheduleUnsupportedError,
+  StripeCampaignScheduleError,
+} from "../services/stripeCampaignSchedule.js";
 
 export const COMMERCIAL_OPERATIONS = {
   PET_LIMIT_OVERRIDE: "PET_LIMIT_OVERRIDE",
@@ -54,6 +72,7 @@ export const COMMERCIAL_OPERATIONS = {
   RETRY_PRICE_ACTIVATION: "RETRY_PRICE_ACTIVATION",
   ABANDON_PRICE_CONDITION: "ABANDON_PRICE_CONDITION",
   REPRICE_PERCENTAGE_CONDITION: "REPRICE_PERCENTAGE_CONDITION",
+  ASSIGN_COMMERCIAL_CAMPAIGN: "ASSIGN_COMMERCIAL_CAMPAIGN",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
 
@@ -1234,6 +1253,366 @@ commercialRouter.post(
       res.status(500).json({
         error: "REPRICE_PERCENTAGE_ERROR",
         message: err.message || "Erro ao reconciliar cobrança percentual no Stripe.",
+      });
+    }
+  },
+);
+
+// ============================================================================
+// COMMERCIAL CAMPAIGNS & TEMPORAL BENEFITS (R36.F)
+// ============================================================================
+
+/**
+ * GET /campaigns
+ * Lists all commercial campaigns with benefit details and assignment statistics.
+ */
+commercialRouter.get("/campaigns", async (_req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const campaigns = await db
+      .select()
+      .from(commercialCampaignsTable)
+      .orderBy(desc(commercialCampaignsTable.priority), desc(commercialCampaignsTable.createdAt));
+
+    const enriched = await Promise.all(
+      campaigns.map(async (camp) => {
+        const [benefit] = await db
+          .select()
+          .from(commercialCampaignBenefitsTable)
+          .where(eq(commercialCampaignBenefitsTable.campaignId, camp.id))
+          .limit(1);
+
+        const assignments = await db
+          .select()
+          .from(assignedCommercialBenefitsTable)
+          .where(eq(assignedCommercialBenefitsTable.campaignId, camp.id));
+
+        const assignedCount = assignments.length;
+        const activeCount = assignments.filter((a) => a.status === "active").length;
+        const completedCount = assignments.filter((a) => a.status === "completed").length;
+
+        return {
+          ...camp,
+          benefit: benefit ?? null,
+          stats: {
+            assignedCount,
+            activeCount,
+            completedCount,
+          },
+        };
+      }),
+    );
+
+    res.json({ campaigns: enriched });
+  } catch (err: any) {
+    res.status(500).json({ error: "CAMPAIGNS_FETCH_FAILED", message: err.message });
+  }
+});
+
+/**
+ * POST /campaigns
+ * Creates a new draft or active commercial campaign with its recurring benefit definition.
+ */
+commercialRouter.post("/campaigns", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const {
+      name,
+      description,
+      status,
+      eligibleFrom,
+      eligibleUntil,
+      priority,
+      benefitType,
+      benefitValue,
+      billingCycles,
+    } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      res.status(400).json({ error: "name_required", message: "Nome da campanha é obrigatório." });
+      return;
+    }
+
+    const campaign = await createCampaign(
+      {
+        name: name.trim(),
+        description: description ? String(description).trim() : undefined,
+        status: status ?? "draft",
+        eligibleFrom: eligibleFrom ? new Date(eligibleFrom) : null,
+        eligibleUntil: eligibleUntil ? new Date(eligibleUntil) : null,
+        priority: typeof priority === "number" ? priority : 0,
+        benefitType,
+        benefitValue: Number(benefitValue),
+        billingCycles: Number(billingCycles),
+        createdBy: req.user?.email ?? "master_admin",
+      },
+      db,
+    );
+
+    res.status(201).json(campaign);
+  } catch (err: any) {
+    if (err instanceof CommercialCampaignIntegrityError) {
+      res.status(400).json({ error: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CAMPAIGN_CREATE_FAILED", message: err.message });
+  }
+});
+
+/**
+ * GET /campaigns/:id
+ * Retrieves campaign details, benefit definition, and assigned benefits with cycle consumption counts.
+ */
+commercialRouter.get("/campaigns/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const campaignId = Number(req.params.id);
+    if (!campaignId || Number.isNaN(campaignId)) {
+      res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+      return;
+    }
+
+    const [campaign] = await db
+      .select()
+      .from(commercialCampaignsTable)
+      .where(eq(commercialCampaignsTable.id, campaignId))
+      .limit(1);
+
+    if (!campaign) {
+      res.status(404).json({ error: "campaign_not_found", message: "Campanha não encontrada." });
+      return;
+    }
+
+    const [benefit] = await db
+      .select()
+      .from(commercialCampaignBenefitsTable)
+      .where(eq(commercialCampaignBenefitsTable.campaignId, campaignId))
+      .limit(1);
+
+    const assignments = await db
+      .select({
+        assignedBenefit: assignedCommercialBenefitsTable,
+        crecheName: crechesTable.name,
+      })
+      .from(assignedCommercialBenefitsTable)
+      .innerJoin(crechesTable, eq(assignedCommercialBenefitsTable.crecheId, crechesTable.id))
+      .where(eq(assignedCommercialBenefitsTable.campaignId, campaignId))
+      .orderBy(desc(assignedCommercialBenefitsTable.assignedAt));
+
+    const enrichedAssignments = await Promise.all(
+      assignments.map(async ({ assignedBenefit, crecheName }) => {
+        const consumptions = await db
+          .select()
+          .from(benefitCycleConsumptionsTable)
+          .where(eq(benefitCycleConsumptionsTable.assignedBenefitId, assignedBenefit.id));
+
+        return {
+          ...assignedBenefit,
+          crecheName,
+          consumedCyclesCount: consumptions.length,
+          consumptions,
+        };
+      }),
+    );
+
+    res.json({
+      campaign,
+      benefit: benefit ?? null,
+      assignments: enrichedAssignments,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "CAMPAIGN_FETCH_FAILED", message: err.message });
+  }
+});
+
+/**
+ * PATCH /campaigns/:id
+ * Updates mutable campaign metadata or status (pause, close, archive).
+ */
+commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const campaignId = Number(req.params.id);
+    if (!campaignId || Number.isNaN(campaignId)) {
+      res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+      return;
+    }
+
+    const {
+      name,
+      description,
+      status,
+      eligibleFrom,
+      eligibleUntil,
+      priority,
+    } = req.body;
+
+    const updated = await updateCampaign(
+      campaignId,
+      {
+        name: name !== undefined ? String(name).trim() : undefined,
+        description: description !== undefined ? (description ? String(description).trim() : undefined) : undefined,
+        status,
+        eligibleFrom: eligibleFrom !== undefined ? (eligibleFrom ? new Date(eligibleFrom) : null) : undefined,
+        eligibleUntil: eligibleUntil !== undefined ? (eligibleUntil ? new Date(eligibleUntil) : null) : undefined,
+        priority: typeof priority === "number" ? priority : undefined,
+      },
+      db,
+    );
+
+    res.json({ campaign: updated });
+  } catch (err: any) {
+    if (err instanceof CommercialCampaignIntegrityError) {
+      res.status(400).json({ error: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CAMPAIGN_UPDATE_FAILED", message: err.message });
+  }
+});
+
+/**
+ * POST /campaigns/:id/preview
+ * Read-only dry-run preview evaluating customer eligibility, prices, savings, and dates.
+ */
+commercialRouter.post("/campaigns/:id/preview", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const campaignId = Number(req.params.id);
+    if (!campaignId || Number.isNaN(campaignId)) {
+      res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+      return;
+    }
+
+    const { crecheIds } = req.body;
+    if (!Array.isArray(crecheIds) || crecheIds.length === 0) {
+      res.status(400).json({ error: "creche_ids_required", message: "Lista de creches é obrigatória para o preview." });
+      return;
+    }
+
+    const parsedIds = crecheIds.map(Number).filter((n) => Number.isInteger(n) && n > 0);
+    if (parsedIds.length === 0) {
+      res.status(400).json({ error: "invalid_creche_ids", message: "Nenhum ID de creche válido informado." });
+      return;
+    }
+
+    const preview = await previewCampaignAssignment(campaignId, parsedIds, db);
+
+    res.json(preview);
+  } catch (err: any) {
+    if (err instanceof CommercialCampaignIntegrityError || err instanceof CommercialCampaignNotActiveError) {
+      res.status(400).json({ error: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CAMPAIGN_PREVIEW_FAILED", message: err.message });
+  }
+});
+
+/**
+ * POST /campaigns/:id/assign/:crecheId
+ * Single-target idempotent assignment of a commercial campaign to a customer.
+ */
+commercialRouter.post(
+  "/campaigns/:id/assign/:crecheId",
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    const campaignId = Number(req.params.id);
+    const crecheId = Number(req.params.crecheId);
+
+    if (!campaignId || Number.isNaN(campaignId)) {
+      res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+      return;
+    }
+    if (!crecheId || Number.isNaN(crecheId)) {
+      res.status(400).json({ error: "invalid_creche_id", message: "ID da creche inválido." });
+      return;
+    }
+
+    let idempotencyKey: string;
+    try {
+      idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+    } catch (err: any) {
+      res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+      return;
+    }
+
+    const { reason } = req.body;
+    if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+      res.status(400).json({
+        error: "reason_required",
+        message: "Justificativa obrigatória para atribuição de campanha comercial.",
+      });
+      return;
+    }
+
+    const operation = COMMERCIAL_OPERATIONS.ASSIGN_COMMERCIAL_CAMPAIGN;
+    const payload = {
+      crecheId,
+      campaignId,
+      operation,
+      reason: reason.trim(),
+    };
+
+    try {
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation,
+        idempotencyKey,
+        payload,
+        resourceType: "assigned_commercial_benefit",
+        resourceId: undefined,
+        isDbOnly: false,
+        execute: async (client, _fencingToken) => {
+          const assignRes = await assignCampaignToCreche({
+            campaignId,
+            crecheId,
+            assignedBy: req.user?.email ?? "master_admin",
+            reason: reason.trim(),
+            dbClient: client,
+          });
+
+          return {
+            statusCode: 201,
+            data: assignRes,
+            resourceId: assignRes.assignedBenefit.id,
+          };
+        },
+      });
+
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+    } catch (err: any) {
+      if (
+        err instanceof CommercialIdempotencyConflictError ||
+        err instanceof CommercialOperationInProgressError ||
+        err instanceof CommercialOperationFailedFinalError ||
+        err instanceof CommercialOperationFencingLostError
+      ) {
+        res.status(err.statusCode).json({
+          error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+          code: err.code,
+          message: err.message,
+        });
+        return;
+      }
+      if (err instanceof CommercialCampaignIntegrityError || err instanceof CommercialCampaignNotActiveError) {
+        res.status(400).json({ error: err.code, code: err.code, message: err.message });
+        return;
+      }
+      if (err instanceof CommercialCampaignFavorableOnlyError) {
+        res.status(422).json({ error: err.code, code: err.code, message: err.message });
+        return;
+      }
+      if (err instanceof CommercialCampaignConflictError) {
+        res.status(409).json({ error: err.code, code: err.code, message: err.message });
+        return;
+      }
+      if (err instanceof ExistingStripeScheduleUnsupportedError) {
+        res.status(409).json({ error: err.code, code: err.code, message: err.message });
+        return;
+      }
+      if (err instanceof StripeCampaignScheduleError) {
+        res.status(422).json({ error: err.code, code: err.code, message: err.message });
+        return;
+      }
+      res.status(500).json({
+        error: "ASSIGN_CAMPAIGN_ERROR",
+        message: err.message || "Erro ao atribuir campanha comercial.",
       });
     }
   },

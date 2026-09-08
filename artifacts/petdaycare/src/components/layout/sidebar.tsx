@@ -16,7 +16,8 @@ import {
   QrCode,
   CreditCard,
   CircleDollarSign,
-  Receipt
+  Receipt,
+  Tag,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
@@ -61,6 +62,7 @@ export function Sidebar({ user }: SidebarProps) {
         return [
           { name: "Dashboard", href: "/", icon: LayoutDashboard },
           { name: "Creches", href: "/admin/creches", icon: Building2 },
+          { name: "Campanhas", href: "/admin/campaigns", icon: Tag },
           { name: "Usuários", href: "/admin/users", icon: Users },
         ];
       case "creche_admin":

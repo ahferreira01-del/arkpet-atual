@@ -2,7 +2,7 @@ import React from "react";
 import { useListCreches, useListUsers } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Users, Activity, Sparkles } from "lucide-react";
+import { Building2, Users, Activity, Sparkles, Tag } from "lucide-react";
 import { Link } from "wouter";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -23,11 +23,18 @@ export default function AdminDashboard() {
         description="Visão global da rede ArkPet."
         icon={Sparkles}
         action={
-          <Link href="/admin/creches">
-            <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
-              <Building2 className="h-4 w-4" /> <span className="hidden sm:inline">Gerenciar Creches</span>
-            </button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/admin/campaigns">
+              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-input bg-background text-foreground text-sm font-medium hover:bg-accent transition-colors">
+                <Tag className="h-4 w-4" /> <span className="hidden sm:inline">Campanhas Comerciais</span>
+              </button>
+            </Link>
+            <Link href="/admin/creches">
+              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+                <Building2 className="h-4 w-4" /> <span className="hidden sm:inline">Gerenciar Creches</span>
+              </button>
+            </Link>
+          </div>
         }
       />
 
