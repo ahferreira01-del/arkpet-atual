@@ -12,6 +12,9 @@ import {
   getCommercialNotificationsForUser,
   markCommercialNotificationAsRead,
   markAllCommercialNotificationsAsRead,
+  getProviderEmailIdempotencyKey,
+  CommercialOutboxError,
+  RESEND_IDEMPOTENCY_WINDOW_MS,
 } from "../services/commercialOutbox.js";
 import express from "express";
 import request from "supertest";
@@ -458,6 +461,250 @@ describe("R36.H Commercial Communications & Durable Outbox Unit Tests", () => {
 
       const res = await request(app).get("/api/commercial/operational-notifications");
       expect(res.status).toBe(403);
+    });
+  });
+
+  describe("8. Final Freeze Corrections (Sections 1-7, 11)", () => {
+    it("preserves stable provider delivery identity across worker retries (attempt 1 -> 2)", async () => {
+      const emailOutboxRow: any = {
+        id: 500,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-500",
+        dedupKey: "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(),
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      // 1st claim with attemptCount = 1
+      const keyAttempt1 = getProviderEmailIdempotencyKey(emailOutboxRow);
+      expect(keyAttempt1).toBe(`arkpet-commercial:${emailOutboxRow.dedupKey}`);
+
+      let capturedIdempotencyKey1: string | null = null;
+      const mockEmailClient1 = {
+        send: vi.fn(async (params: any) => {
+          capturedIdempotencyKey1 = params.idempotencyKey;
+          throw { status: 503, message: "Service Unavailable" }; // Transient failure
+        }),
+      };
+
+      const mockDb1: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ email: "admin@creche.com", name: "Admin", isActive: true }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 500 }]),
+            }),
+          }),
+        }),
+      };
+
+      const result1 = await dispatchOutboxEvent(emailOutboxRow, 1, mockDb1, mockEmailClient1);
+      expect(result1.status).toBe("failed_retryable");
+      expect(capturedIdempotencyKey1).toBe(keyAttempt1);
+
+      // 2nd claim (retry) with attemptCount = 2
+      const keyAttempt2 = getProviderEmailIdempotencyKey(emailOutboxRow);
+      expect(keyAttempt2).toBe(keyAttempt1); // Key MUST STILL = K
+
+      let capturedIdempotencyKey2: string | null = null;
+      const mockEmailClient2 = {
+        send: vi.fn(async (params: any) => {
+          capturedIdempotencyKey2 = params.idempotencyKey;
+          return { id: "resend-msg-success" };
+        }),
+      };
+
+      const result2 = await dispatchOutboxEvent(emailOutboxRow, 2, mockDb1, mockEmailClient2);
+      expect(result2.status).toBe("delivered");
+      expect(capturedIdempotencyKey2).toBe(keyAttempt1); // Proves provider delivery identity did not change
+    });
+
+    it("proves stale worker CAS affects zero rows and does not overwrite status", async () => {
+      // Worker A generation 1 claims row id=500
+      // Lease expires, worker B generation 2 reclaims and finalizes row
+      // Worker A returns late with attemptCount=1
+      const mockDb: any = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([]), // CAS fails because attemptCount is no longer 1
+            }),
+          }),
+        }),
+      };
+
+      const workerAResult = await markOutboxDelivered(500, 1, "msg-from-worker-a", mockDb);
+      expect(workerAResult).toBe(false); // Affects 0 rows, no overwrite
+    });
+
+    it("escalates ambiguous email outcome to failed_final (dead-letter) when provider retention window (24h) is exceeded", async () => {
+      // Outbox item created 25 hours ago
+      const expiredOutboxRow: any = {
+        id: 501,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-501",
+        dedupKey: "exp1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(Date.now() - (25 * 60 * 60 * 1000)), // 25 hours ago
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      let failedPayload: any = null;
+      const mockDb: any = {
+        update: vi.fn().mockReturnValue({
+          set: vi.fn((p) => {
+            failedPayload = p;
+            return {
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([{ id: 501, ...p }]),
+              }),
+            };
+          }),
+        }),
+      };
+
+      const emailClient = { send: vi.fn() };
+      const outcome = await dispatchOutboxEvent(expiredOutboxRow, 3, mockDb, emailClient);
+
+      expect(outcome.success).toBe(false);
+      expect(outcome.status).toBe("failed_final");
+      expect(emailClient.send).not.toHaveBeenCalled(); // Blind send avoided
+      expect(failedPayload.lastErrorCode).toBe("RESEND_IDEMPOTENCY_WINDOW_EXPIRED");
+    });
+
+    it("classifies permanent email rejection (HTTP 4xx) as failed_final terminal error", async () => {
+      const emailOutboxRow: any = {
+        id: 502,
+        crecheId: 10,
+        recipientUserId: 12,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-502",
+        dedupKey: "perm1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(),
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      let failedPayload: any = null;
+      const mockDb: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ email: "invalid@nonexistent.domain", name: "User", isActive: true }]),
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn((p) => {
+            failedPayload = p;
+            return {
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([{ id: 502, ...p }]),
+              }),
+            };
+          }),
+        }),
+      };
+
+      const emailClient = {
+        send: vi.fn(async () => {
+          throw { status: 422, message: "Invalid email address domain" };
+        }),
+      };
+
+      const outcome = await dispatchOutboxEvent(emailOutboxRow, 1, mockDb, emailClient);
+      expect(outcome.status).toBe("failed_final");
+      expect(failedPayload.status).toBe("failed_final");
+      expect(failedPayload.lastErrorCode).toBe("EMAIL_PERMANENT_REJECT");
+    });
+
+    it("skips permanently inactive or missing user/email without retrying", async () => {
+      const emailOutboxRow: any = {
+        id: 503,
+        crecheId: 10,
+        recipientUserId: 999,
+        channel: "email",
+        eventType: "COMMERCIAL_PROPOSAL_SENT",
+        eventOccurrenceKey: "proposal-sent-503",
+        dedupKey: "skip1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        category: "COMMERCIAL",
+        createdAt: new Date(),
+        factsSnapshotJson: { displayedEffectivePriceCents: 15000 },
+        audienceRole: "creche_admin",
+      };
+
+      let skippedPayload: any = null;
+      const mockDb: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]), // User does not exist
+            }),
+          }),
+        }),
+        update: vi.fn().mockReturnValue({
+          set: vi.fn((p) => {
+            skippedPayload = p;
+            return {
+              where: vi.fn().mockReturnValue({
+                returning: vi.fn().mockResolvedValue([{ id: 503, ...p }]),
+              }),
+            };
+          }),
+        }),
+      };
+
+      const outcome = await dispatchOutboxEvent(emailOutboxRow, 1, mockDb);
+      expect(outcome.status).toBe("skipped");
+      expect(skippedPayload.status).toBe("skipped");
+      expect(skippedPayload.lastErrorCode).toBe("SKIPPED");
+      expect(skippedPayload.lastErrorMessage).toBe("USER_OR_EMAIL_INACTIVE");
+    });
+
+    it("fails with CommercialOutboxError when contractually required customer event has zero active recipients", async () => {
+      const mockDb: any = {
+        select: vi.fn().mockReturnValue({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+        }),
+      };
+
+      await expect(
+        enqueueCommercialCommunication(
+          {
+            eventType: "COMMERCIAL_PROPOSAL_SENT",
+            eventOccurrenceKey: "proposal-sent-req-fail",
+            aggregateType: "commercial_agreement",
+            aggregateId: 99,
+            crecheId: 999,
+            audienceRole: "creche_admin",
+            category: "COMMERCIAL",
+            factsSnapshotJson: {},
+            requireCustomerRecipient: true,
+          },
+          mockDb,
+        ),
+      ).rejects.toThrow(CommercialOutboxError);
     });
   });
 });

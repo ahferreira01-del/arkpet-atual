@@ -78,7 +78,7 @@ function formatDate(value?: string | null): string {
 
 export default function Billing() {
   const { user } = useAuth();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const isAdmin = user?.role === "creche_admin";
 
@@ -423,7 +423,13 @@ export default function Billing() {
                           className="text-xs h-8"
                           onClick={() => {
                             if (isUnread) markNotificationRead(n.id);
-                            window.location.href = n.deepLink;
+                            if (n.deepLink && n.deepLink.startsWith("/")) {
+                              if (typeof setLocation === "function") {
+                                setLocation(n.deepLink);
+                              } else {
+                                window.location.href = n.deepLink;
+                              }
+                            }
                           }}
                         >
                           Visualizar
