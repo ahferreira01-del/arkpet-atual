@@ -7,14 +7,39 @@ import {
   computeIntervalPrice,
   type BillingInterval,
 } from "@workspace/db";
-import { plansTable, planPricesTable, subscriptionsTable, crechesTable, petsTable } from "@workspace/db/schema";
-import { eq, and, count, isNotNull, lte } from "drizzle-orm";
+import {
+  plansTable,
+  planPricesTable,
+  subscriptionsTable,
+  crechesTable,
+  petsTable,
+  commercialAgreementsTable,
+  platformServiceRequestsTable,
+} from "@workspace/db/schema";
+import { eq, and, count, isNotNull, lte, desc, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
 import { getAppBaseUrl } from "../lib/config.js";
 import { sensitiveLimiter } from "../middlewares/rateLimit.js";
+import {
+  acceptProposal,
+  declineProposal,
+  CommercialProposalError,
+} from "../services/commercialProposals.js";
+import {
+  requestAssistedImplementation,
+  acceptImplementationQuote,
+  createImplementationCheckoutSession,
+  cancelImplementation,
+  PlatformServiceError,
+} from "../services/platformServices.js";
+import {
+  withCommercialOperationIdempotency,
+  validateIdempotencyKey,
+} from "../services/commercialOperationRequests.js";
+import { COMMERCIAL_OPERATIONS } from "./commercial.js";
 
 // Validates a redirect URL supplied by the client. Accepts only http/https URLs
 // whose origin matches the app's own base URL or the request's Origin header.
@@ -723,6 +748,491 @@ router.post("/portal", requireRole("creche_admin"), async (req: AuthRequest, res
   });
 
   res.json({ url: portal.url });
+});
+
+// ==========================================================
+// CUSTOMER COMMERCIAL PROPOSALS (Phase R36.G)
+// ==========================================================
+
+router.get("/proposals", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  try {
+    const proposals = await db
+      .select()
+      .from(commercialAgreementsTable)
+      .where(
+        and(
+          eq(commercialAgreementsTable.crecheId, crecheId),
+          eq(commercialAgreementsTable.type, "commercial_proposal"),
+          sql`${commercialAgreementsTable.status} IN ('sent', 'accepted', 'declined', 'expired', 'superseded')`,
+        ),
+      )
+      .orderBy(desc(commercialAgreementsTable.createdAt));
+
+    // Customer-safe mapping (never expose internal Stripe IDs or internal condition IDs)
+    const customerSafeProposals = proposals.map((p) => {
+      const snapshot = (p.snapshotJson as any) ?? {};
+      return {
+        id: p.id,
+        title: p.title,
+        status: p.status,
+        activationStatus: p.activationStatus,
+        sentAt: p.sentAt,
+        acceptedAt: p.acceptedAt,
+        declinedAt: p.declinedAt,
+        validUntil: p.validUntil,
+        notes: p.notes,
+        terms: {
+          planName: snapshot.planName ?? null,
+          billingInterval: snapshot.billingInterval ?? null,
+          displayedEffectivePriceCents: snapshot.displayedEffectivePriceCents ?? snapshot.catalogPriceCents ?? null,
+          entitlementPetLimit: snapshot.entitlementPetLimit ?? null,
+          prorationMode: snapshot.prorationMode ?? null,
+        },
+      };
+    });
+
+    res.json(customerSafeProposals);
+  } catch (err: any) {
+    res.status(500).json({ error: "LIST_PROPOSALS_ERROR", message: err.message });
+  }
+});
+
+router.get("/proposals/:id", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  try {
+    const [p] = await db
+      .select()
+      .from(commercialAgreementsTable)
+      .where(
+        and(
+          eq(commercialAgreementsTable.id, id),
+          eq(commercialAgreementsTable.crecheId, crecheId),
+          eq(commercialAgreementsTable.type, "commercial_proposal"),
+        ),
+      )
+      .limit(1);
+
+    if (!p) {
+      res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+      return;
+    }
+
+    const snapshot = (p.snapshotJson as any) ?? {};
+    res.json({
+      id: p.id,
+      title: p.title,
+      status: p.status,
+      activationStatus: p.activationStatus,
+      sentAt: p.sentAt,
+      acceptedAt: p.acceptedAt,
+      declinedAt: p.declinedAt,
+      validUntil: p.validUntil,
+      notes: p.notes,
+      terms: {
+        planName: snapshot.planName ?? null,
+        billingInterval: snapshot.billingInterval ?? null,
+        displayedEffectivePriceCents: snapshot.displayedEffectivePriceCents ?? snapshot.catalogPriceCents ?? null,
+        entitlementPetLimit: snapshot.entitlementPetLimit ?? null,
+        prorationMode: snapshot.prorationMode ?? null,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "GET_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+router.post("/proposals/:id/accept", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await acceptProposal({
+      id,
+      crecheId,
+      userId: req.user!.id,
+      userEmail: req.user?.email,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.ACCEPT_PROPOSAL,
+        idempotencyKey,
+        payload: { id, crecheId },
+        resourceType: "commercial_agreement",
+        isDbOnly: false,
+        execute: async (tx) => {
+          const acceptRes = await executeAction(tx);
+          return { statusCode: 200, data: acceptRes, resourceId: acceptRes.agreement.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...((result.data as any) ?? {}),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const acceptRes = await executeAction();
+    res.json(acceptRes);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "ACCEPT_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+router.post("/proposals/:id/decline", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : null;
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await declineProposal({
+      id,
+      crecheId,
+      userId: req.user!.id,
+      userEmail: req.user?.email,
+      reason,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.DECLINE_PROPOSAL,
+        idempotencyKey,
+        payload: { id, crecheId, reason },
+        resourceType: "commercial_agreement",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const declined = await executeAction(tx);
+          return { statusCode: 200, data: declined, resourceId: declined.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const declined = await executeAction();
+    res.json(declined);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "DECLINE_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+// ==========================================================
+// CUSTOMER PLATFORM SERVICES (Phase R36.G: Assisted Implementation)
+// ==========================================================
+
+router.get("/platform-services", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  try {
+    const requests = await db
+      .select()
+      .from(platformServiceRequestsTable)
+      .where(eq(platformServiceRequestsTable.crecheId, crecheId))
+      .orderBy(desc(platformServiceRequestsTable.createdAt));
+
+    res.json(requests);
+  } catch (err: any) {
+    res.status(500).json({ error: "LIST_PLATFORM_SERVICES_ERROR", message: err.message });
+  }
+});
+
+router.post("/platform-services/request", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const { customerNotes } = req.body;
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await requestAssistedImplementation({
+      crecheId,
+      userId: req.user!.id,
+      userEmail: req.user?.email,
+      customerNotes,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.REQUEST_ASSISTED_IMPLEMENTATION,
+        idempotencyKey,
+        payload: { crecheId, customerNotes },
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const created = await executeAction(tx);
+          return { statusCode: 201, data: created, resourceId: created.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const created = await executeAction();
+    res.status(201).json(created);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "REQUEST_IMPLEMENTATION_ERROR", message: err.message });
+  }
+});
+
+router.post("/platform-services/:id/accept-quote", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await acceptImplementationQuote({
+      id,
+      crecheId,
+      userId: req.user!.id,
+      userEmail: req.user?.email,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.ACCEPT_IMPLEMENTATION_QUOTE,
+        idempotencyKey,
+        payload: { id, crecheId },
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const accepted = await executeAction(tx);
+          return { statusCode: 200, data: accepted, resourceId: accepted.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const accepted = await executeAction();
+    res.json(accepted);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "ACCEPT_QUOTE_ERROR", message: err.message });
+  }
+});
+
+router.post("/platform-services/:id/create-checkout-session", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const appBaseUrl = getAppBaseUrl();
+  const successUrl = req.body.successUrl || `${appBaseUrl}/assinatura?impl_session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = req.body.cancelUrl || `${appBaseUrl}/assinatura`;
+  const idempotencyAttemptKey = (req.headers["x-idempotency-key"] as string) || req.body.idempotencyAttemptKey;
+
+  const executeAction = async (tx?: any) => {
+    return await createImplementationCheckoutSession({
+      id,
+      crecheId,
+      userId: req.user!.id,
+      successUrl,
+      cancelUrl,
+      idempotencyAttemptKey,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyAttemptKey) {
+      validateIdempotencyKey(idempotencyAttemptKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.CREATE_IMPLEMENTATION_PAYMENT,
+        idempotencyKey: idempotencyAttemptKey,
+        payload: { id, crecheId },
+        resourceType: "platform_service_request",
+        isDbOnly: false,
+        execute: async (tx) => {
+          const sessionResult = await executeAction(tx);
+          return { statusCode: 200, data: sessionResult, resourceId: id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const sessionResult = await executeAction();
+    res.json(sessionResult);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CREATE_CHECKOUT_ERROR", message: err.message });
+  }
+});
+
+router.post("/platform-services/:id/cancel", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "Cancelamento solicitado pelo cliente";
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await cancelImplementation({
+      id,
+      crecheId,
+      actorRole: "creche_admin",
+      actorId: req.user!.id,
+      actorEmail: req.user?.email,
+      reason,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.CANCEL_IMPLEMENTATION,
+        idempotencyKey,
+        payload: { id, crecheId, reason },
+        resourceType: "platform_service_request",
+        isDbOnly: false,
+        execute: async (tx) => {
+          const cancelled = await executeAction(tx);
+          return { statusCode: 200, data: cancelled, resourceId: cancelled.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const cancelled = await executeAction();
+    res.json(cancelled);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CANCEL_SERVICE_ERROR", message: err.message });
+  }
 });
 
 export default router;

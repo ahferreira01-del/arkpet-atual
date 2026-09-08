@@ -122,11 +122,22 @@ export const commercialAgreementsTable = pgTable(
     crecheId: integer("creche_id").notNull().references(() => crechesTable.id),
     type: varchar("type", { length: 50 }).notNull(),
     status: varchar("status", { length: 30 }).notNull().default("draft"),
+    title: varchar("title", { length: 255 }),
+    notes: text("notes"),
+    activationStatus: varchar("activation_status", { length: 30 }).notNull().default("not_started"),
+    activationError: text("activation_error"),
+    predecessorConditionId: integer("predecessor_condition_id"),
+    activatedConditionId: integer("activated_condition_id"),
+    supersededByAgreementId: integer("superseded_by_agreement_id"),
     snapshotJson: jsonb("snapshot_json"),
     sentAt: timestamp("sent_at"),
     acceptedAt: timestamp("accepted_at"),
     acceptedByUserId: integer("accepted_by_user_id"),
+    declinedAt: timestamp("declined_at"),
+    declinedByUserId: integer("declined_by_user_id"),
+    declineReason: text("decline_reason"),
     validUntil: timestamp("valid_until"),
+    createdBy: varchar("created_by", { length: 100 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -442,3 +453,69 @@ export const insertBenefitCycleConsumptionSchema = createInsertSchema(benefitCyc
 });
 export type InsertBenefitCycleConsumption = z.infer<typeof insertBenefitCycleConsumptionSchema>;
 export type BenefitCycleConsumption = typeof benefitCycleConsumptionsTable.$inferSelect;
+
+// 10. Platform Service Requests (Assisted Implementation & Platform Operations)
+// Strictly separated from tenant service catalog, daycare booking, and tenant invoice tables.
+export const platformServiceStatusValues = [
+  "requested",
+  "under_review",
+  "proposal_sent",
+  "accepted",
+  "payment_pending",
+  "paid",
+  "scheduled",
+  "in_progress",
+  "completed",
+  "declined",
+  "cancelled",
+] as const;
+export type PlatformServiceStatus = (typeof platformServiceStatusValues)[number];
+
+export const platformServiceRequestsTable = pgTable(
+  "platform_service_requests",
+  {
+    id: serial("id").primaryKey(),
+    crecheId: integer("creche_id").notNull().references(() => crechesTable.id),
+    serviceType: varchar("service_type", { length: 50 }).notNull().default("ASSISTED_IMPLEMENTATION"),
+    status: varchar("status", { length: 30 }).notNull().default("requested"),
+    requestedByUserId: integer("requested_by_user_id").notNull(),
+    customerNotes: text("customer_notes"),
+    quotedPriceCents: integer("quoted_price_cents"),
+    quoteSnapshotJson: jsonb("quote_snapshot_json"),
+    scopeNotes: text("scope_notes"),
+    adminNotes: text("admin_notes"),
+    quotedBy: varchar("quoted_by", { length: 100 }),
+    quotedAt: timestamp("quoted_at"),
+    acceptedAt: timestamp("accepted_at"),
+    acceptedByUserId: integer("accepted_by_user_id"),
+    stripeCheckoutSessionId: varchar("stripe_checkout_session_id", { length: 255 }),
+    stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+    paidAt: timestamp("paid_at"),
+    scheduledFor: timestamp("scheduled_for"),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    completedBy: varchar("completed_by", { length: 100 }),
+    completionNotes: text("completion_notes"),
+    cancelledAt: timestamp("cancelled_at"),
+    cancelledBy: varchar("cancelled_by", { length: 100 }),
+    cancellationReason: text("cancellation_reason"),
+    refundStatus: varchar("refund_status", { length: 40 }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    crecheStatusIdx: index("platform_service_requests_creche_status_idx").on(table.crecheId, table.status),
+    checkoutSessionIdx: index("platform_service_requests_checkout_session_idx").on(table.stripeCheckoutSessionId),
+    activeCrecheServiceIdx: uniqueIndex("platform_services_active_creche_idx")
+      .on(table.crecheId, table.serviceType)
+      .where(sql`${table.status} NOT IN ('completed', 'declined', 'cancelled')`),
+  }),
+);
+
+export const insertPlatformServiceRequestSchema = createInsertSchema(platformServiceRequestsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPlatformServiceRequest = z.infer<typeof insertPlatformServiceRequestSchema>;
+export type PlatformServiceRequest = typeof platformServiceRequestsTable.$inferSelect;

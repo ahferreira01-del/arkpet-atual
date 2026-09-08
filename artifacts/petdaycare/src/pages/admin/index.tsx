@@ -2,7 +2,7 @@ import React from "react";
 import { useListCreches, useListUsers } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building2, Users, Activity, Sparkles, Tag } from "lucide-react";
+import { Building2, Users, Activity, Sparkles, Tag, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { PageHeader } from "@/components/layout/page-header";
 
@@ -24,6 +24,11 @@ export default function AdminDashboard() {
         icon={Sparkles}
         action={
           <div className="flex gap-2">
+            <Link href="/admin/proposals">
+              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-input bg-background text-foreground text-sm font-medium hover:bg-accent transition-colors">
+                <FileText className="h-4 w-4" /> <span className="hidden sm:inline">Propostas & Serviços</span>
+              </button>
+            </Link>
             <Link href="/admin/campaigns">
               <button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-input bg-background text-foreground text-sm font-medium hover:bg-accent transition-colors">
                 <Tag className="h-4 w-4" /> <span className="hidden sm:inline">Campanhas Comerciais</span>

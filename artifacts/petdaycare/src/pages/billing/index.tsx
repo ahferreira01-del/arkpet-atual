@@ -13,7 +13,12 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText } from "lucide-react";
+import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText, Wrench, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -90,6 +95,54 @@ export default function Billing() {
   const queryClient = useQueryClient();
 
   const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+  // Commercial Proposals (R36.G)
+  const [proposalAttemptKeys, setProposalAttemptKeys] = React.useState<Record<number, string>>({});
+  const [acceptModalOpen, setAcceptModalOpen] = React.useState(false);
+  const [declineModalOpen, setDeclineModalOpen] = React.useState(false);
+  const [selectedProposal, setSelectedProposal] = React.useState<any>(null);
+  const [declineReason, setDeclineReason] = React.useState("");
+
+  const getProposalAttemptKey = (id: number) => {
+    if (!proposalAttemptKeys[id]) {
+      const key = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `attempt-${Date.now()}-${Math.random()}`;
+      setProposalAttemptKeys((prev) => ({ ...prev, [id]: key }));
+      return key;
+    }
+    return proposalAttemptKeys[id];
+  };
+
+  const { data: proposalsData, isLoading: proposalsLoading } = useQuery({
+    queryKey: ["billing-proposals"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/api/billing/proposals`, { credentials: "include" });
+      if (!res.ok) return { proposals: [] };
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+
+  // Assisted Implementation (R36.G)
+  const [serviceModalOpen, setServiceModalOpen] = React.useState(false);
+  const [customerNotes, setCustomerNotes] = React.useState("");
+  const [serviceAttemptKey, setServiceAttemptKey] = React.useState("");
+
+  const { data: servicesData, isLoading: servicesLoading } = useQuery({
+    queryKey: ["billing-platform-services"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/api/billing/platform-services`, { credentials: "include" });
+      if (!res.ok) return { requests: [] };
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+
+  const activeServiceRequest = servicesData?.requests?.find(
+    (r: any) => !["completed", "cancelled", "declined"].includes(r.status)
+  ) || servicesData?.requests?.[0] || null;
+
+  const proposals = proposalsData?.proposals || [];
+
 
   // True whenever the subscription has a Stripe subscription (saved card on file),
   // regardless of which payment mode tab is currently selected.
@@ -267,6 +320,286 @@ export default function Billing() {
           </div>
         </CardContent>
       </Card>
+
+      {/* SEÇÃO: PROPOSTAS COMERCIAIS (R36.G) */}
+      {isAdmin && proposals.length > 0 && (
+        <Card className="bg-card border border-border rounded-[24px] shadow-sm overflow-hidden">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-display font-bold text-foreground">Propostas Comerciais</h3>
+                  <p className="text-xs text-muted-foreground">Propostas formais com termos exclusivos para sua creche.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y border rounded-xl overflow-hidden">
+              {proposals.map((p: any) => {
+                const snap = p.snapshotJson || {};
+                const isSent = p.status === "sent";
+                const isAccepted = p.status === "accepted";
+                const isExpired = p.validUntil && new Date(p.validUntil) <= new Date();
+                const isPendingActivation = p.activationStatus === "pending_activation" || p.activationStatus === "activation_failed";
+
+                return (
+                  <div key={p.id} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">#{p.id} {p.title || "Proposta Comercial"}</span>
+                        <Badge variant={isAccepted ? "default" : isExpired ? "destructive" : isSent ? "outline" : "secondary"}>
+                          {isExpired && isSent ? "Expirada" : p.status}
+                        </Badge>
+                        {isAccepted && isPendingActivation && (
+                          <Badge variant="secondary" className="text-amber-600 bg-amber-50">
+                            Ativação em Processamento
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Plano: <strong className="text-foreground">{snap.planName || "Personalizado"}</strong> •
+                        Preço Efetivo: <strong className="text-foreground">{formatBrl(snap.displayedEffectivePriceCents)}</strong>{INTERVAL_SUFFIX[snap.billingInterval as Interval] || "/mês"} •
+                        Limite Pets: <strong className="text-foreground">{snap.entitlementPetLimit || "Padrão"}</strong>
+                      </p>
+                      {p.validUntil && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Válida até: {formatDate(p.validUntil)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isSent && !isExpired && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => {
+                              setSelectedProposal(p);
+                              setDeclineReason("");
+                              setDeclineModalOpen(true);
+                            }}
+                          >
+                            Recusar
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedProposal(p);
+                              setAcceptModalOpen(true);
+                            }}
+                          >
+                            Aceitar Proposta
+                          </Button>
+                        </>
+                      )}
+                      {isAccepted && (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                          <CheckCircle className="h-4 w-4" /> Aceita em {formatDate(p.acceptedAt)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* SEÇÃO: IMPLANTAÇÃO ASSISTIDA (R36.G) */}
+      {isAdmin && (
+        <Card className="bg-card border border-border rounded-[24px] shadow-sm overflow-hidden">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                  <Wrench className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-display font-bold text-foreground">Implantação Assistida</h3>
+                  <p className="text-xs text-muted-foreground">Onboarding dedicado e consultoria técnica com especialistas da plataforma.</p>
+                </div>
+              </div>
+
+              {!activeServiceRequest && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCustomerNotes("");
+                    setServiceAttemptKey(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `svc-${Date.now()}`);
+                    setServiceModalOpen(true);
+                  }}
+                >
+                  Solicitar Implantação
+                </Button>
+              )}
+            </div>
+
+            {activeServiceRequest ? (
+              <div className="border rounded-xl p-4 bg-muted/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-foreground">Solicitação #{activeServiceRequest.id}</span>
+                    <Badge variant={activeServiceRequest.status === "completed" ? "default" : "outline"}>
+                      {activeServiceRequest.status}
+                    </Badge>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Solicitado em: {formatDate(activeServiceRequest.createdAt)}
+                  </span>
+                </div>
+
+                {/* Status description */}
+                {activeServiceRequest.status === "requested" && (
+                  <p className="text-xs text-muted-foreground">
+                    Sua solicitação foi recebida e está aguardando análise pela equipe técnica da ArkPet.
+                  </p>
+                )}
+                {activeServiceRequest.status === "under_review" && (
+                  <p className="text-xs text-muted-foreground">
+                    Nossa equipe está analisando o escopo da sua creche para formular uma proposta de atendimento.
+                  </p>
+                )}
+                {activeServiceRequest.status === "proposal_sent" && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <p className="text-sm font-medium text-foreground">
+                      Orçamento Disponível: <strong className="text-primary">{formatBrl(activeServiceRequest.quotedPriceCents)}</strong>
+                    </p>
+                    {activeServiceRequest.adminNotes && (
+                      <p className="text-xs text-muted-foreground italic">
+                        "{activeServiceRequest.adminNotes}"
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${apiBase}/api/billing/platform-services/${activeServiceRequest.id}/accept-quote`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              credentials: "include",
+                            });
+                            if (!res.ok) {
+                              const err = await res.json();
+                              throw new Error(err.message || "Erro ao aceitar orçamento");
+                            }
+                            queryClient.invalidateQueries({ queryKey: ["billing-platform-services"] });
+                            toast({ title: "Orçamento aceito!", description: "Avançando para as próximas etapas." });
+                          } catch (err: any) {
+                            toast({ title: "Erro", description: err.message, variant: "destructive" });
+                          }
+                        }}
+                      >
+                        Aceitar Orçamento
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={async () => {
+                          if (confirm("Deseja recusar e cancelar esta solicitação?")) {
+                            try {
+                              const res = await fetch(`${apiBase}/api/billing/platform-services/${activeServiceRequest.id}/cancel`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ reason: "Recusa de orçamento pelo cliente" }),
+                                credentials: "include",
+                              });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                throw new Error(err.message || "Erro ao cancelar");
+                              }
+                              queryClient.invalidateQueries({ queryKey: ["billing-platform-services"] });
+                              toast({ title: "Solicitação cancelada", description: "O orçamento foi recusado." });
+                            } catch (err: any) {
+                              toast({ title: "Erro", description: err.message, variant: "destructive" });
+                            }
+                          }
+                        }}
+                      >
+                        Recusar
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {activeServiceRequest.status === "payment_pending" && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      Orçamento aceito. Para prosseguir com o agendamento, realize o pagamento avulso seguro com cartão:
+                    </p>
+                    <p className="text-sm font-semibold text-foreground">
+                      Valor: {formatBrl(activeServiceRequest.quotedPriceCents)}
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${apiBase}/api/billing/platform-services/${activeServiceRequest.id}/create-checkout-session`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              successUrl: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
+                              cancelUrl: `${window.location.origin}/billing`,
+                            }),
+                            credentials: "include",
+                          });
+                          if (!res.ok) {
+                            const err = await res.json();
+                            throw new Error(err.message || "Erro ao iniciar checkout");
+                          }
+                          const data = await res.json();
+                          if (data.checkoutUrl) {
+                            window.location.href = data.checkoutUrl;
+                          } else if (data.status === "paid") {
+                            queryClient.invalidateQueries({ queryKey: ["billing-platform-services"] });
+                            toast({ title: "Pagamento já confirmado!", description: "Sua solicitação está paga." });
+                          }
+                        } catch (err: any) {
+                          toast({ title: "Erro no checkout", description: err.message, variant: "destructive" });
+                        }
+                      }}
+                      className="flex items-center gap-1.5"
+                    >
+                      <CreditCard className="h-4 w-4" /> Pagar com Cartão
+                    </Button>
+                  </div>
+                )}
+                {activeServiceRequest.status === "paid" && (
+                  <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+                    <CheckCircle className="h-4 w-4" /> Pagamento confirmado! Nossa equipe entrará em contato para agendar a sessão.
+                  </p>
+                )}
+                {activeServiceRequest.status === "scheduled" && (
+                  <p className="text-xs text-blue-600 font-medium">
+                    📅 Sessão agendada para: {activeServiceRequest.scheduledFor ? new Date(activeServiceRequest.scheduledFor).toLocaleString("pt-BR") : "A confirmar"}
+                  </p>
+                )}
+                {activeServiceRequest.status === "in_progress" && (
+                  <p className="text-xs text-amber-600 font-medium">
+                    ⚡ Implantação em andamento com o suporte ArkPet.
+                  </p>
+                )}
+                {activeServiceRequest.status === "completed" && (
+                  <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+                    <CheckCircle className="h-4 w-4" /> Implantação concluída com sucesso!
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Precisa de auxílio para cadastrar seus pets, configurar turmas e treinar sua equipe?
+                Solicite uma Implantação Assistida dedicada com nossos especialistas.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {!isAdmin && (
         <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm text-blue-500 font-medium">
@@ -514,6 +847,158 @@ export default function Billing() {
           })}
         </div>
       </div>
+
+
+      {/* DIÁLOGO: ACEITAR PROPOSTA COMERCIAL */}
+      <Modal
+        isOpen={acceptModalOpen}
+        onClose={() => setAcceptModalOpen(false)}
+        title="Aceitar Proposta Comercial"
+        description="Ao aceitar esta proposta, você concorda formalmente com os termos apresentados. As condições comerciais serão ativadas na sua assinatura."
+      >
+        <div className="py-2 space-y-3 text-sm">
+          <p><strong>Proposta:</strong> #{selectedProposal?.id} {selectedProposal?.title}</p>
+          <p><strong>Valor Efetivo:</strong> {formatBrl(selectedProposal?.snapshotJson?.displayedEffectivePriceCents)}</p>
+          <p><strong>Limite de Pets:</strong> {selectedProposal?.snapshotJson?.entitlementPetLimit || "Padrão"}</p>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setAcceptModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                const attemptKey = getProposalAttemptKey(selectedProposal.id);
+                try {
+                  const res = await fetch(`${apiBase}/api/billing/proposals/${selectedProposal.id}/accept`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "x-idempotency-key": attemptKey,
+                    },
+                    credentials: "include",
+                  });
+                  if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.message || "Erro ao aceitar proposta");
+                  }
+                  const data = await res.json();
+                  queryClient.invalidateQueries({ queryKey: ["billing-proposals"] });
+                  queryClient.invalidateQueries({ queryKey: ["getBillingSubscription"] });
+                  setAcceptModalOpen(false);
+                  toast({
+                    title: "Proposta aceita com sucesso!",
+                    description: data.message || "Condições comerciais aceitas.",
+                  });
+                } catch (err: any) {
+                  toast({ title: "Erro ao aceitar proposta", description: err.message, variant: "destructive" });
+                }
+              }}
+            >
+              Confirmar Aceite
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* DIÁLOGO: RECUSAR PROPOSTA COMERCIAL */}
+      <Modal
+        isOpen={declineModalOpen}
+        onClose={() => setDeclineModalOpen(false)}
+        title="Recusar Proposta Comercial"
+        description="Informe opcionalmente o motivo da recusa para nossa equipe."
+      >
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Motivo da Recusa (opcional)</Label>
+            <Textarea
+              placeholder="Ex: Condições fora do orçamento atual..."
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setDeclineModalOpen(false)}>
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${apiBase}/api/billing/proposals/${selectedProposal.id}/decline`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reason: declineReason.trim() || undefined }),
+                    credentials: "include",
+                  });
+                  if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.message || "Erro ao recusar proposta");
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["billing-proposals"] });
+                  setDeclineModalOpen(false);
+                  toast({ title: "Proposta recusada", description: "O status foi atualizado." });
+                } catch (err: any) {
+                  toast({ title: "Erro ao recusar", description: err.message, variant: "destructive" });
+                }
+              }}
+            >
+              Confirmar Recusa
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* DIÁLOGO: SOLICITAR IMPLANTAÇÃO ASSISTIDA */}
+      <Modal
+        isOpen={serviceModalOpen}
+        onClose={() => setServiceModalOpen(false)}
+        title="Solicitar Implantação Assistida"
+        description="Nossa equipe entrará em contato para alinhar o escopo e enviar uma proposta ou cortesia."
+      >
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Observações / Necessidades da Creche (opcional)</Label>
+            <Textarea
+              placeholder="Ex: Temos 60 pets, gostaríamos de apoio para migrar os dados das fichas..."
+              value={customerNotes}
+              onChange={(e) => setCustomerNotes(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setServiceModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${apiBase}/api/billing/platform-services/request`, {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "x-idempotency-key": serviceAttemptKey,
+                    },
+                    body: JSON.stringify({ customerNotes: customerNotes.trim() || undefined }),
+                    credentials: "include",
+                  });
+                  if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.message || "Erro ao solicitar serviço");
+                  }
+                  queryClient.invalidateQueries({ queryKey: ["billing-platform-services"] });
+                  setServiceModalOpen(false);
+                  toast({
+                    title: "Solicitação enviada com sucesso!",
+                    description: "Nossa equipe entrará em contato em breve.",
+                  });
+                } catch (err: any) {
+                  toast({ title: "Erro ao solicitar", description: err.message, variant: "destructive" });
+                }
+              }}
+            >
+              Enviar Solicitação
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Diálogo de seleção de cartão — exibido quando o cliente já tem assinatura ativa */}
       <AlertDialog

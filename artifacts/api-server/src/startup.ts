@@ -602,11 +602,22 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS creche_id INTEGER;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS type VARCHAR(50);
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS status VARCHAR(30) NOT NULL DEFAULT 'draft';
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS notes TEXT;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS activation_status VARCHAR(30) NOT NULL DEFAULT 'not_started';
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS activation_error TEXT;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS predecessor_condition_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS activated_condition_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS superseded_by_agreement_id INTEGER;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS snapshot_json JSONB;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS accepted_by_user_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS declined_at TIMESTAMP;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS declined_by_user_id INTEGER;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS decline_reason TEXT;
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS valid_until TIMESTAMP;
+    ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS created_by VARCHAR(100);
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS created_at TIMESTAMP NOT NULL DEFAULT NOW();
     ALTER TABLE commercial_agreements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
 
@@ -921,6 +932,76 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS benefit_cycle_consumptions_assigned_benefit_idx
       ON benefit_cycle_consumptions (assigned_benefit_id);
+
+    -- 8. Platform Service Requests (Phase R36.G: Assisted Implementation)
+    CREATE TABLE IF NOT EXISTS platform_service_requests (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      service_type VARCHAR(50) NOT NULL DEFAULT 'ASSISTED_IMPLEMENTATION',
+      status VARCHAR(30) NOT NULL DEFAULT 'requested',
+      requested_by_user_id INTEGER NOT NULL,
+      customer_notes TEXT,
+      quoted_price_cents INTEGER,
+      quote_snapshot_json JSONB,
+      scope_notes TEXT,
+      admin_notes TEXT,
+      quoted_by VARCHAR(100),
+      quoted_at TIMESTAMP,
+      accepted_at TIMESTAMP,
+      accepted_by_user_id INTEGER,
+      stripe_checkout_session_id VARCHAR(255),
+      stripe_payment_intent_id VARCHAR(255),
+      paid_at TIMESTAMP,
+      scheduled_for TIMESTAMP,
+      started_at TIMESTAMP,
+      completed_at TIMESTAMP,
+      completed_by VARCHAR(100),
+      completion_notes TEXT,
+      cancelled_at TIMESTAMP,
+      cancelled_by VARCHAR(100),
+      cancellation_reason TEXT,
+      refund_status VARCHAR(40),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS service_type VARCHAR(50) DEFAULT 'ASSISTED_IMPLEMENTATION';
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'requested';
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS requested_by_user_id INTEGER;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS customer_notes TEXT;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS quoted_price_cents INTEGER;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS quote_snapshot_json JSONB;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS scope_notes TEXT;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS admin_notes TEXT;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS quoted_by VARCHAR(100);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS quoted_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS accepted_by_user_id INTEGER;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS stripe_checkout_session_id VARCHAR(255);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS stripe_payment_intent_id VARCHAR(255);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS completed_by VARCHAR(100);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS completion_notes TEXT;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS cancelled_by VARCHAR(100);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS refund_status VARCHAR(40);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS platform_service_requests_creche_status_idx
+      ON platform_service_requests (creche_id, status);
+
+    CREATE INDEX IF NOT EXISTS platform_service_requests_checkout_session_idx
+      ON platform_service_requests (stripe_checkout_session_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS platform_services_active_creche_idx
+      ON platform_service_requests (creche_id, service_type)
+      WHERE status NOT IN ('completed', 'declined', 'cancelled');
   `);
   console.log("[startup] commercial foundation: schema verificado (idempotente).");
 }

@@ -6,14 +6,33 @@ import {
   subscriptionsTable,
   plansTable,
   customerCommercialConditionsTable,
+  commercialAgreementsTable,
   commercialCampaignsTable,
   commercialCampaignBenefitsTable,
   assignedCommercialBenefitsTable,
   benefitCycleConsumptionsTable,
+  platformServiceRequestsTable,
 } from "@workspace/db/schema";
 import { eq, and, or, desc } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { countActivePetsForCreche } from "../middlewares/checkPetLimit.js";
+import {
+  createProposal,
+  updateDraftProposal,
+  sendProposal,
+  supersedeProposal,
+  retryProposalActivation,
+  CommercialProposalError,
+} from "../services/commercialProposals.js";
+import {
+  reviewImplementationRequest,
+  sendImplementationQuote,
+  scheduleImplementation,
+  startImplementation,
+  completeImplementation,
+  cancelImplementation,
+  PlatformServiceError,
+} from "../services/platformServices.js";
 import {
   calculateEffectivePrice,
   PricingEngineError,
@@ -77,6 +96,22 @@ export const COMMERCIAL_OPERATIONS = {
   UPDATE_COMMERCIAL_CAMPAIGN: "UPDATE_COMMERCIAL_CAMPAIGN",
   CHANGE_COMMERCIAL_CAMPAIGN_STATUS: "CHANGE_COMMERCIAL_CAMPAIGN_STATUS",
   ASSIGN_COMMERCIAL_CAMPAIGN: "ASSIGN_COMMERCIAL_CAMPAIGN",
+  CREATE_PROPOSAL: "CREATE_PROPOSAL",
+  UPDATE_DRAFT_PROPOSAL: "UPDATE_DRAFT_PROPOSAL",
+  SEND_PROPOSAL: "SEND_PROPOSAL",
+  SUPERSEDE_PROPOSAL: "SUPERSEDE_PROPOSAL",
+  ACCEPT_PROPOSAL: "ACCEPT_PROPOSAL",
+  DECLINE_PROPOSAL: "DECLINE_PROPOSAL",
+  RETRY_PROPOSAL_ACTIVATION: "RETRY_PROPOSAL_ACTIVATION",
+  REQUEST_ASSISTED_IMPLEMENTATION: "REQUEST_ASSISTED_IMPLEMENTATION",
+  REVIEW_IMPLEMENTATION_REQUEST: "REVIEW_IMPLEMENTATION_REQUEST",
+  SEND_IMPLEMENTATION_QUOTE: "SEND_IMPLEMENTATION_QUOTE",
+  ACCEPT_IMPLEMENTATION_QUOTE: "ACCEPT_IMPLEMENTATION_QUOTE",
+  CREATE_IMPLEMENTATION_PAYMENT: "CREATE_IMPLEMENTATION_PAYMENT",
+  SCHEDULE_IMPLEMENTATION: "SCHEDULE_IMPLEMENTATION",
+  START_IMPLEMENTATION: "START_IMPLEMENTATION",
+  COMPLETE_IMPLEMENTATION: "COMPLETE_IMPLEMENTATION",
+  CANCEL_IMPLEMENTATION: "CANCEL_IMPLEMENTATION",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
 
@@ -1773,3 +1808,901 @@ commercialRouter.post(
     }
   },
 );
+
+// ==========================================================
+// MASTER ADMIN PROPOSALS (Phase R36.G)
+// ==========================================================
+
+commercialRouter.get("/proposals", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const crecheId = req.params.crecheId ? Number(req.params.crecheId) : req.query.crecheId ? Number(req.query.crecheId) : null;
+    const status = typeof req.query.status === "string" ? req.query.status : null;
+
+    let query = db.select().from(commercialAgreementsTable).$dynamic();
+    const conditions = [eq(commercialAgreementsTable.type, "commercial_proposal")];
+
+    if (crecheId && !Number.isNaN(crecheId)) {
+      conditions.push(eq(commercialAgreementsTable.crecheId, crecheId));
+    }
+    if (status) {
+      conditions.push(eq(commercialAgreementsTable.status, status));
+    }
+
+    const proposals = await query.where(and(...conditions)).orderBy(desc(commercialAgreementsTable.createdAt));
+    res.json(proposals);
+  } catch (err: any) {
+    res.status(500).json({ error: "LIST_PROPOSALS_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.get("/proposals/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      res.status(400).json({ error: "ID inválido." });
+      return;
+    }
+
+    const [proposal] = await db
+      .select()
+      .from(commercialAgreementsTable)
+      .where(
+        and(
+          eq(commercialAgreementsTable.id, id),
+          eq(commercialAgreementsTable.type, "commercial_proposal"),
+        ),
+      )
+      .limit(1);
+
+    if (!proposal) {
+      res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+      return;
+    }
+
+    res.json(proposal);
+  } catch (err: any) {
+    res.status(500).json({ error: "GET_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/proposals", async (req: AuthRequest, res: Response): Promise<void> => {
+  const crecheId = Number(req.body.crecheId || req.params.crecheId);
+  if (!crecheId || Number.isNaN(crecheId)) {
+    res.status(400).json({ error: "Creche inválida." });
+    return;
+  }
+
+  const {
+    title,
+    notes,
+    planId,
+    billingInterval,
+    pricingOverrideType,
+    pricingOverrideValue,
+    entitlementPetLimit,
+    prorationMode,
+    validUntil,
+  } = req.body;
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await createProposal({
+      crecheId,
+      title,
+      notes,
+      planId: planId ? Number(planId) : null,
+      billingInterval,
+      pricingOverrideType,
+      pricingOverrideValue: pricingOverrideValue !== undefined && pricingOverrideValue !== null ? Number(pricingOverrideValue) : null,
+      entitlementPetLimit: entitlementPetLimit !== undefined && entitlementPetLimit !== null ? Number(entitlementPetLimit) : null,
+      prorationMode,
+      validUntil: validUntil ? new Date(validUntil) : null,
+      createdBy: req.user?.email ?? `user_${req.user?.id}`,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId,
+        operation: COMMERCIAL_OPERATIONS.CREATE_PROPOSAL,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "commercial_agreement",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const proposal = await executeAction(tx);
+          return { statusCode: 201, data: proposal, resourceId: proposal.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const proposal = await executeAction();
+    res.status(201).json(proposal);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CREATE_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.patch("/proposals/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commercialAgreementsTable)
+    .where(eq(commercialAgreementsTable.id, id))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+    return;
+  }
+
+  const {
+    title,
+    notes,
+    planId,
+    billingInterval,
+    pricingOverrideType,
+    pricingOverrideValue,
+    entitlementPetLimit,
+    prorationMode,
+    validUntil,
+  } = req.body;
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await updateDraftProposal({
+      id,
+      crecheId: existing.crecheId,
+      title,
+      notes,
+      planId: planId !== undefined ? (planId ? Number(planId) : null) : undefined,
+      billingInterval,
+      pricingOverrideType,
+      pricingOverrideValue: pricingOverrideValue !== undefined ? (pricingOverrideValue !== null ? Number(pricingOverrideValue) : null) : undefined,
+      entitlementPetLimit: entitlementPetLimit !== undefined ? (entitlementPetLimit !== null ? Number(entitlementPetLimit) : null) : undefined,
+      prorationMode,
+      validUntil: validUntil !== undefined ? (validUntil ? new Date(validUntil) : null) : undefined,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.UPDATE_DRAFT_PROPOSAL,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "commercial_agreement",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const updated = await executeAction(tx);
+          return { statusCode: 200, data: updated, resourceId: updated.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const updated = await executeAction();
+    res.json(updated);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "UPDATE_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/proposals/:id/send", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commercialAgreementsTable)
+    .where(eq(commercialAgreementsTable.id, id))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+    return;
+  }
+
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+  if (!reason) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para envio de proposta comercial.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await sendProposal({
+      id,
+      crecheId: existing.crecheId,
+      senderEmail: req.user?.email ?? `user_${req.user?.id}`,
+      senderId: req.user?.id,
+      reason,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.SEND_PROPOSAL,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "commercial_agreement",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const sent = await executeAction(tx);
+          return { statusCode: 200, data: sent, resourceId: sent.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const sent = await executeAction();
+    res.json(sent);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "SEND_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/proposals/:id/supersede", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  const supersededByAgreementId = Number(req.body.supersededByAgreementId);
+
+  if (!id || Number.isNaN(id) || !supersededByAgreementId || Number.isNaN(supersededByAgreementId)) {
+    res.status(400).json({ error: "IDs inválidos." });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commercialAgreementsTable)
+    .where(eq(commercialAgreementsTable.id, id))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+    return;
+  }
+
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await supersedeProposal({
+      id,
+      crecheId: existing.crecheId,
+      supersededByAgreementId,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      adminId: req.user?.id,
+      reason: reason || undefined,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.SUPERSEDE_PROPOSAL,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "commercial_agreement",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const superseded = await executeAction(tx);
+          return { statusCode: 200, data: superseded, resourceId: superseded.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const superseded = await executeAction();
+    res.json(superseded);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "SUPERSEDE_PROPOSAL_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/proposals/:id/retry-activation", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db
+    .select()
+    .from(commercialAgreementsTable)
+    .where(eq(commercialAgreementsTable.id, id))
+    .limit(1);
+
+  if (!existing) {
+    res.status(404).json({ error: "PROPOSAL_NOT_FOUND", message: "Proposta não encontrada." });
+    return;
+  }
+
+  const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+  if (!reason) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para retentativa de ativação.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await retryProposalActivation({
+      id,
+      crecheId: existing.crecheId,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      adminId: req.user?.id,
+      reason,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.RETRY_PROPOSAL_ACTIVATION,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "commercial_agreement",
+        isDbOnly: false,
+        execute: async (tx) => {
+          const retried = await executeAction(tx);
+          return { statusCode: 200, data: retried, resourceId: retried.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const retried = await executeAction();
+    res.json(retried);
+  } catch (err: any) {
+    if (err instanceof CommercialProposalError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "RETRY_ACTIVATION_ERROR", message: err.message });
+  }
+});
+
+// ==========================================================
+// MASTER ADMIN PLATFORM SERVICES (Phase R36.G: Assisted Implementation)
+// ==========================================================
+
+commercialRouter.get("/platform-services", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const crecheId = req.params.crecheId ? Number(req.params.crecheId) : req.query.crecheId ? Number(req.query.crecheId) : null;
+    const status = typeof req.query.status === "string" ? req.query.status : null;
+
+    let query = db.select().from(platformServiceRequestsTable).$dynamic();
+    const conditions = [];
+
+    if (crecheId && !Number.isNaN(crecheId)) {
+      conditions.push(eq(platformServiceRequestsTable.crecheId, crecheId));
+    }
+    if (status) {
+      conditions.push(eq(platformServiceRequestsTable.status, status));
+    }
+
+    const requests = await (conditions.length > 0 ? query.where(and(...conditions)) : query).orderBy(
+      desc(platformServiceRequestsTable.createdAt),
+    );
+    res.json(requests);
+  } catch (err: any) {
+    res.status(500).json({ error: "LIST_PLATFORM_SERVICES_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.get("/platform-services/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      res.status(400).json({ error: "ID inválido." });
+      return;
+    }
+
+    const [request] = await db
+      .select()
+      .from(platformServiceRequestsTable)
+      .where(eq(platformServiceRequestsTable.id, id))
+      .limit(1);
+
+    if (!request) {
+      res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+      return;
+    }
+
+    res.json(request);
+  } catch (err: any) {
+    res.status(500).json({ error: "GET_PLATFORM_SERVICE_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/review", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await reviewImplementationRequest({
+      id,
+      crecheId: existing.crecheId,
+      adminId: req.user?.id,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      adminNotes: req.body.adminNotes,
+      reason: req.body.reason,
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.REVIEW_IMPLEMENTATION_REQUEST,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const reviewed = await executeAction(tx);
+          return { statusCode: 200, data: reviewed, resourceId: reviewed.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const reviewed = await executeAction();
+    res.json(reviewed);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "REVIEW_REQUEST_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/quote", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const { quotedPriceCents, scopeNotes, adminNotes, reason } = req.body;
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para envio de orçamento.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await sendImplementationQuote({
+      id,
+      crecheId: existing.crecheId,
+      quotedPriceCents: Number(quotedPriceCents),
+      scopeNotes,
+      adminNotes,
+      adminId: req.user?.id,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      reason: reason.trim(),
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.SEND_IMPLEMENTATION_QUOTE,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const quoted = await executeAction(tx);
+          return { statusCode: 200, data: quoted, resourceId: quoted.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const quoted = await executeAction();
+    res.json(quoted);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "SEND_QUOTE_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/schedule", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const { scheduledFor, adminNotes, reason } = req.body;
+  if (!scheduledFor) {
+    res.status(400).json({ error: "Data de agendamento obrigatória." });
+    return;
+  }
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para agendamento.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await scheduleImplementation({
+      id,
+      crecheId: existing.crecheId,
+      scheduledFor: new Date(scheduledFor),
+      adminNotes,
+      adminId: req.user?.id,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      reason: reason.trim(),
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.SCHEDULE_IMPLEMENTATION,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const scheduled = await executeAction(tx);
+          return { statusCode: 200, data: scheduled, resourceId: scheduled.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const scheduled = await executeAction();
+    res.json(scheduled);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "SCHEDULE_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/start", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const { reason } = req.body;
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para iniciar implantação.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await startImplementation({
+      id,
+      crecheId: existing.crecheId,
+      adminId: req.user?.id,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      reason: reason.trim(),
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.START_IMPLEMENTATION,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const started = await executeAction(tx);
+          return { statusCode: 200, data: started, resourceId: started.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const started = await executeAction();
+    res.json(started);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "START_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/complete", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const { completionNotes, reason } = req.body;
+  if (!completionNotes || typeof completionNotes !== "string" || !completionNotes.trim()) {
+    res.status(400).json({ error: "Notas de conclusão obrigatórias." });
+    return;
+  }
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para conclusão.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await completeImplementation({
+      id,
+      crecheId: existing.crecheId,
+      completionNotes: completionNotes.trim(),
+      adminId: req.user?.id,
+      adminEmail: req.user?.email ?? `user_${req.user?.id}`,
+      reason: reason.trim(),
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.COMPLETE_IMPLEMENTATION,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: true,
+        execute: async (tx) => {
+          const completed = await executeAction(tx);
+          return { statusCode: 200, data: completed, resourceId: completed.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const completed = await executeAction();
+    res.json(completed);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "COMPLETE_ERROR", message: err.message });
+  }
+});
+
+commercialRouter.post("/platform-services/:id/cancel", async (req: AuthRequest, res: Response): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!id || Number.isNaN(id)) {
+    res.status(400).json({ error: "ID inválido." });
+    return;
+  }
+
+  const [existing] = await db.select().from(platformServiceRequestsTable).where(eq(platformServiceRequestsTable.id, id)).limit(1);
+  if (!existing) {
+    res.status(404).json({ error: "REQUEST_NOT_FOUND", message: "Solicitação não encontrada." });
+    return;
+  }
+
+  const { reason } = req.body;
+  if (!reason || typeof reason !== "string" || !reason.trim()) {
+    res.status(400).json({
+      error: "REASON_REQUIRED",
+      code: "REASON_REQUIRED",
+      message: "Justificativa obrigatória para cancelamento.",
+    });
+    return;
+  }
+
+  const idempotencyKey = (req.headers["x-idempotency-key"] as string) || null;
+
+  const executeAction = async (tx?: any) => {
+    return await cancelImplementation({
+      id,
+      crecheId: existing.crecheId,
+      actorRole: "master_admin",
+      actorId: req.user?.id,
+      actorEmail: req.user?.email ?? `user_${req.user?.id}`,
+      reason: reason.trim(),
+      dbClient: tx,
+    });
+  };
+
+  try {
+    if (idempotencyKey) {
+      validateIdempotencyKey(idempotencyKey);
+      const result = await withCommercialOperationIdempotency({
+        crecheId: existing.crecheId,
+        operation: COMMERCIAL_OPERATIONS.CANCEL_IMPLEMENTATION,
+        idempotencyKey,
+        payload: req.body,
+        resourceType: "platform_service_request",
+        isDbOnly: false,
+        execute: async (tx) => {
+          const cancelled = await executeAction(tx);
+          return { statusCode: 200, data: cancelled, resourceId: cancelled.id };
+        },
+      });
+      res.status(result.statusCode).json({
+        ...(result.data as Record<string, unknown>),
+        ...(result.replayed ? { replay: true } : {}),
+      });
+      return;
+    }
+
+    const cancelled = await executeAction();
+    res.json(cancelled);
+  } catch (err: any) {
+    if (err instanceof PlatformServiceError) {
+      res.status(err.statusCode).json({ error: err.code, code: err.code, message: err.message });
+      return;
+    }
+    res.status(500).json({ error: "CANCEL_ERROR", message: err.message });
+  }
+});

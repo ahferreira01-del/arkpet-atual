@@ -6,6 +6,7 @@ import { getStripeSync, getStripeSecretKey } from "./stripeClient.js";
 import { applyStripeEvent } from "./subscriptionSync.js";
 import { applyFinancialStripeEvent } from "./financialSync.js";
 import { claimGatewayEvent, finalizeGatewayEvent } from "../services/gatewayEvents.js";
+import { handlePlatformServicePaymentWebhook } from "../services/platformServices.js";
 
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
@@ -15,6 +16,17 @@ const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
  * Reused identically by primary webhook ingestion and background recovery workers.
  */
 export async function dispatchWebhookBusinessLogic(event: any): Promise<void> {
+  // Phase R36.G: Platform services webhook routing (Corrections 18 & 19)
+  // ASSISTED_IMPLEMENTATION checkout event terminates platform-service webhook branch.
+  // It must NOT continue into tenant invoices or daycare billing handlers.
+  if (
+    event.type === "checkout.session.completed" &&
+    event.data?.object?.metadata?.serviceType === "ASSISTED_IMPLEMENTATION"
+  ) {
+    await handlePlatformServicePaymentWebhook(event.data.object);
+    return;
+  }
+
   await applyStripeEvent(event);
   await applyFinancialStripeEvent(event);
 }
