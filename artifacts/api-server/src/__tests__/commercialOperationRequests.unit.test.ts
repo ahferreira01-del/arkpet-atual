@@ -104,6 +104,7 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
     app = express();
     app.use(express.json());
     app.use("/api/creches/:crecheId/commercial", commercialRouter);
+    app.use("/api/commercial", commercialRouter);
   });
 
   describe("1. Operation Ledger Service Engine", () => {
@@ -1614,6 +1615,238 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         expect(mockStripe.prices.create.mock.calls.length).toBe(stripeCreateCallCount);
         // Zero additional subscription updates
         expect(mockStripe.subscriptions.update.mock.calls.length).toBe(stripeSubUpdateCallCount);
+      });
+    });
+
+    describe("6. Campaign Writes Idempotency Engine (R36.F1 Section 14, 15)", () => {
+      it("should reject POST /api/commercial/campaigns when X-Idempotency-Key is missing or not a valid UUID", async () => {
+        const payload = {
+          name: "Black Friday 2026",
+          status: "draft",
+          benefitType: "PERCENTAGE_DISCOUNT",
+          benefitValue: 2000,
+          billingCycles: 3,
+        };
+
+        // Missing key
+        const resMissing = await request(app)
+          .post("/api/commercial/campaigns")
+          .send(payload);
+
+        expect(resMissing.status).toBe(400);
+        expect(resMissing.body.error).toBe("idempotency_key_invalid");
+
+        // Invalid key (not a UUID)
+        const resInvalid = await request(app)
+          .post("/api/commercial/campaigns")
+          .set("X-Idempotency-Key", "not-a-valid-uuid-12345")
+          .send(payload);
+
+        expect(resInvalid.status).toBe(400);
+        expect(resInvalid.body.error).toBe("idempotency_key_invalid");
+      });
+
+      it("should execute create campaign, store in ledger, and replay on duplicate same-key same-payload request (Section 15)", async () => {
+        const idempotencyKey = "b3c37571-3cb5-4cf5-b1b7-a3a0e377f0a1";
+        const payload = {
+          name: "Campanha Verão 2026",
+          description: "Desconto especial de verão",
+          status: "draft",
+          priority: 10,
+          benefitType: "PERCENTAGE_DISCOUNT",
+          benefitValue: 1500,
+          billingCycles: 3,
+        };
+
+        const createdCampaignData = {
+          campaign: {
+            id: 99,
+            name: "Campanha Verão 2026",
+            status: "draft",
+            priority: 10,
+            createdAt: new Date().toISOString(),
+          },
+          benefit: {
+            id: 199,
+            campaignId: 99,
+            benefitType: "PERCENTAGE_DISCOUNT",
+            benefitValue: 1500,
+            billingCycles: 3,
+          },
+        };
+
+        // 1st request: fresh claim -> insert -> return 201
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]), // no existing record
+            }),
+          }),
+        } as any);
+
+        vi.mocked(db.insert).mockReturnValueOnce({
+          values: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([{ id: 1, attemptCount: 1 }]),
+          }),
+        } as any);
+
+        // createCampaign transaction mock:
+        // insert campaign
+        vi.mocked(db.insert).mockReturnValueOnce({
+          values: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([createdCampaignData.campaign]),
+          }),
+        } as any);
+        // insert benefit
+        vi.mocked(db.insert).mockReturnValueOnce({
+          values: vi.fn().mockReturnValueOnce({
+            returning: vi.fn().mockResolvedValueOnce([createdCampaignData.benefit]),
+          }),
+        } as any);
+
+        // ledger update to SUCCEEDED
+        vi.mocked(db.update).mockReturnValueOnce({
+          set: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              returning: vi.fn().mockResolvedValueOnce([{ id: 1, status: "SUCCEEDED" }]),
+            }),
+          }),
+        } as any);
+
+        const res1 = await request(app)
+          .post("/api/commercial/campaigns")
+          .set("X-Idempotency-Key", idempotencyKey)
+          .send(payload);
+
+        expect(res1.status).toBe(201);
+        expect(res1.body.campaign.name).toBe("Campanha Verão 2026");
+
+        // 2nd request: replay cached SUCCEEDED from ledger
+        const fingerprint = computeRequestFingerprint({
+          operation: COMMERCIAL_OPERATIONS.CREATE_COMMERCIAL_CAMPAIGN,
+          name: "Campanha Verão 2026",
+          description: "Desconto especial de verão",
+          status: "draft",
+          eligibleFrom: null,
+          eligibleUntil: null,
+          priority: 10,
+          benefitType: "PERCENTAGE_DISCOUNT",
+          benefitValue: 1500,
+          billingCycles: 3,
+        });
+
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 1,
+                  operation: COMMERCIAL_OPERATIONS.CREATE_COMMERCIAL_CAMPAIGN,
+                  idempotencyKey,
+                  requestFingerprint: fingerprint,
+                  status: "SUCCEEDED",
+                  statusCode: 201,
+                  responsePayload: createdCampaignData,
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        const res2 = await request(app)
+          .post("/api/commercial/campaigns")
+          .set("X-Idempotency-Key", idempotencyKey)
+          .send(payload);
+
+        expect(res2.status).toBe(201);
+        expect(res2.body.replay).toBe(true);
+        expect(res2.body.campaign.id).toBe(99);
+      });
+
+      it("should return 409 IDEMPOTENCY_CONFLICT when same key is used with changed payload on POST /api/commercial/campaigns", async () => {
+        const idempotencyKey = "c4d48682-4dc6-5ef6-c2c8-b4b1f488f1b2";
+        const oldFingerprint = "old_fingerprint_hash_abc";
+
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 2,
+                  operation: COMMERCIAL_OPERATIONS.CREATE_COMMERCIAL_CAMPAIGN,
+                  idempotencyKey,
+                  requestFingerprint: oldFingerprint, // different fingerprint!
+                  status: "SUCCEEDED",
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        const resConflict = await request(app)
+          .post("/api/commercial/campaigns")
+          .set("X-Idempotency-Key", idempotencyKey)
+          .send({
+            name: "Novo Nome Modificado",
+            status: "draft",
+            benefitType: "PERCENTAGE_DISCOUNT",
+            benefitValue: 3000,
+            billingCycles: 6,
+          });
+
+        expect(resConflict.status).toBe(409);
+        expect(resConflict.body.code).toBe("IDEMPOTENCY_CONFLICT");
+      });
+
+      it("should require X-Idempotency-Key and replay result on PATCH /api/commercial/campaigns/:id", async () => {
+        const idempotencyKey = "d5e59793-5ed7-6fa7-d3d9-c5c2a599a2c3";
+
+        // Missing key on PATCH -> 400
+        const resMissing = await request(app)
+          .patch("/api/commercial/campaigns/99")
+          .send({ status: "paused" });
+
+        expect(resMissing.status).toBe(400);
+        expect(resMissing.body.error).toBe("idempotency_key_invalid");
+
+        // Valid key with replay from ledger
+        const fingerprint = computeRequestFingerprint({
+          campaignId: 99,
+          operation: COMMERCIAL_OPERATIONS.CHANGE_COMMERCIAL_CAMPAIGN_STATUS,
+          name: null,
+          description: null,
+          status: "paused",
+          eligibleFrom: null,
+          eligibleUntil: null,
+          priority: null,
+        });
+
+        vi.mocked(db.select).mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([
+                {
+                  id: 3,
+                  operation: COMMERCIAL_OPERATIONS.CHANGE_COMMERCIAL_CAMPAIGN_STATUS,
+                  idempotencyKey,
+                  requestFingerprint: fingerprint,
+                  status: "SUCCEEDED",
+                  statusCode: 200,
+                  responsePayload: { campaign: { id: 99, status: "paused" } },
+                },
+              ]),
+            }),
+          }),
+        } as any);
+
+        const resReplay = await request(app)
+          .patch("/api/commercial/campaigns/99")
+          .set("X-Idempotency-Key", idempotencyKey)
+          .send({ status: "paused" });
+
+        expect(resReplay.status).toBe(200);
+        expect(resReplay.body.replay).toBe(true);
+        expect(resReplay.body.campaign.status).toBe("paused");
       });
     });
   });

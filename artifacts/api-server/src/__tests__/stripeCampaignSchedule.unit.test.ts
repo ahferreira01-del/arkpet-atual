@@ -210,9 +210,15 @@ describe("stripeCampaignSchedule service", () => {
       expect(res.promotionalStripePriceId).toBe("price_promo_test_150");
       expect(res.restorationStripePriceId).toBe("price_restore_test_200");
 
-      // Verify create called with from_subscription
+      // Verify create called with from_subscription and metadata
       expect(mockStripe.subscriptionSchedules.create).toHaveBeenCalledWith(
-        { from_subscription: "sub_123" },
+        expect.objectContaining({
+          from_subscription: "sub_123",
+          metadata: expect.objectContaining({
+            scope: "arkpet_commercial_campaign",
+            assignedBenefitId: "1",
+          }),
+        }),
         expect.anything(),
       );
 
@@ -241,6 +247,138 @@ describe("stripeCampaignSchedule service", () => {
         }),
         expect.anything(),
       );
+    });
+
+    it("should survive crash during phase update (R36.F1 Section 11, 12): retains pending_activation, then retry reuses schedule", async () => {
+      const currentPeriodEnd = Math.floor(Date.now() / 1000) + 86400 * 15;
+      const mockSub: any = {
+        id: "sub_123",
+        status: "active",
+        schedule: null,
+        current_period_end: currentPeriodEnd,
+        items: {
+          data: [{ id: "si_1", price: { id: "price_orig", product: "prod_1" } }],
+        },
+      };
+
+      const mockScheduleCreated: any = {
+        id: "sub_sched_crash_111",
+        metadata: {
+          scope: "arkpet_commercial_campaign",
+          assignedBenefitId: "2",
+        },
+        phases: [
+          {
+            start_date: currentPeriodEnd - 86400 * 15,
+            end_date: currentPeriodEnd,
+            items: [{ price: "price_orig", quantity: 1 }],
+          },
+        ],
+      };
+
+      let dbUpdates: any[] = [];
+      const mockDb: any = {
+        select: vi.fn().mockImplementation(() => ({
+          from: vi.fn().mockImplementation((table) => ({
+            where: vi.fn().mockImplementation(() => ({
+              limit: vi.fn().mockImplementation(async () => {
+                if (table === subscriptionsTable) return [{ id: 2, planId: 10 }];
+                if (table === plansTable) return [{ id: 10, stripeProductId: "prod_1" }];
+                return [];
+              }),
+            })),
+          })),
+        })),
+        update: vi.fn().mockImplementation(() => ({
+          set: vi.fn().mockImplementation((fields) => {
+            dbUpdates.push(fields);
+            return {
+              where: vi.fn().mockResolvedValue([{ id: 2 }]),
+            };
+          }),
+        })),
+      };
+
+      // 1st Attempt: update throws an error (crash)
+      const mockStripeCrash: any = {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(mockSub),
+        },
+        prices: {
+          list: vi.fn().mockResolvedValue({ data: [] }),
+          create: vi.fn().mockImplementation((p) => Promise.resolve({ id: `price_${p.unit_amount}` })),
+        },
+        subscriptionSchedules: {
+          create: vi.fn().mockResolvedValue(mockScheduleCreated),
+          retrieve: vi.fn().mockResolvedValue(mockScheduleCreated),
+          update: vi.fn().mockRejectedValue(new Error("Stripe API Phase Update Timeout")),
+        },
+      };
+
+      await expect(
+        executeStripeCampaignSchedule({
+          assignedBenefitId: 2,
+          campaignId: 10,
+          crecheId: 100,
+          stripeSubscriptionId: "sub_123",
+          billingInterval: "month",
+          billingCycles: 3,
+          promotionalPriceCents: 15000,
+          restorationPriceCents: 20000,
+          stripeClient: mockStripeCrash,
+          dbClient: mockDb,
+        }),
+      ).rejects.toThrow("Stripe API Phase Update Timeout");
+
+      // Verify that after crash, stripeScheduleId was checkpointed but status was NOT set to 'scheduled'
+      expect(dbUpdates.length).toBe(1);
+      expect(dbUpdates[0].stripeScheduleId).toBe("sub_sched_crash_111");
+      expect(dbUpdates[0].status).toBeUndefined(); // Remains pending_activation!
+
+      // 2nd Attempt (Retry): retry with existingStripeScheduleId
+      dbUpdates = [];
+      const mockStripeRetry: any = {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue({
+            ...mockSub,
+            schedule: "sub_sched_crash_111",
+          }),
+        },
+        prices: {
+          create: vi.fn().mockImplementation((p) => Promise.resolve({ id: `price_${p.unit_amount}` })),
+          list: vi.fn().mockResolvedValue({
+            data: [
+              { id: "price_15000", unit_amount: 15000 },
+              { id: "price_20000", unit_amount: 20000 },
+            ],
+          }),
+        },
+        subscriptionSchedules: {
+          create: vi.fn(), // MUST NOT BE CALLED ON RETRY
+          retrieve: vi.fn().mockResolvedValue(mockScheduleCreated),
+          update: vi.fn().mockResolvedValue({ id: "sub_sched_crash_111", status: "active" }),
+        },
+      };
+
+      const retryRes = await executeStripeCampaignSchedule({
+        assignedBenefitId: 2,
+        campaignId: 10,
+        crecheId: 100,
+        stripeSubscriptionId: "sub_123",
+        billingInterval: "month",
+        billingCycles: 3,
+        promotionalPriceCents: 15000,
+        restorationPriceCents: 20000,
+        existingStripeScheduleId: "sub_sched_crash_111",
+        stripeClient: mockStripeRetry,
+        dbClient: mockDb,
+      });
+
+      expect(retryRes.stripeScheduleId).toBe("sub_sched_crash_111");
+      expect(mockStripeRetry.subscriptionSchedules.create).not.toHaveBeenCalled();
+      expect(mockStripeRetry.subscriptionSchedules.update).toHaveBeenCalled();
+      // Final update set status to scheduled
+      expect(dbUpdates.some((u) => u.status === "scheduled")).toBe(true);
     });
   });
 

@@ -12,7 +12,7 @@ import {
   type CommercialCampaignBenefit,
   type AssignedCommercialBenefit,
 } from "@workspace/db/schema";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, inArray } from "drizzle-orm";
 import type Stripe from "stripe";
 import { logCommercialAudit } from "./commercialAudit.js";
 import { resolveCatalogPlanPrice } from "./catalogPricing.js";
@@ -481,7 +481,7 @@ export async function previewCampaignAssignment(
       promotionalPriceCents = benefit.benefitValue;
     }
 
-    // 5. Non-stacking campaign conflict check (Section 15, Correction 8)
+    // 5. Non-stacking campaign conflict check (Section 15, Correction 8, R36.F1 Item 7)
     const [activeCampaign] = await dbClient
       .select({ id: assignedCommercialBenefitsTable.id, status: assignedCommercialBenefitsTable.status })
       .from(assignedCommercialBenefitsTable)
@@ -489,6 +489,7 @@ export async function previewCampaignAssignment(
         and(
           eq(assignedCommercialBenefitsTable.crecheId, crecheId),
           inArray(assignedCommercialBenefitsTable.status, [
+            "pending",
             "pending_activation",
             "scheduled",
             "active",
@@ -622,8 +623,21 @@ export async function assignCampaignToCreche(params: {
     .where(eq(subscriptionsTable.crecheId, params.crecheId))
     .limit(1);
 
+  // Preserve existing entitlement coordinates (e.g. custom petLimit, R36.F1 Section 10)
+  let existingEntitlementPetLimit: number | null = null;
+  if (sub?.activeConditionId) {
+    const [activeCond] = await dbClient
+      .select({ entitlementPetLimit: customerCommercialConditionsTable.entitlementPetLimit })
+      .from(customerCommercialConditionsTable)
+      .where(eq(customerCommercialConditionsTable.id, sub.activeConditionId))
+      .limit(1);
+    if (activeCond?.entitlementPetLimit !== undefined && activeCond?.entitlementPetLimit !== null) {
+      existingEntitlementPetLimit = activeCond.entitlementPetLimit;
+    }
+  }
+
   return await dbClient.transaction(async (tx: any) => {
-    // 2. Create immutable Assigned Commercial Benefit Snapshot (Section 13, 18)
+    // 2. Create immutable Assigned Commercial Benefit Snapshot (Section 13, 18, R36.F1 Section 10)
     const [assignedBenefit] = await tx
       .insert(assignedCommercialBenefitsTable)
       .values({
@@ -638,16 +652,17 @@ export async function assignCampaignToCreche(params: {
         targetPlanId: target.targetPlanId!,
         targetBillingInterval: target.billingInterval!,
         catalogPriceCents: target.catalogPriceCents,
-        predecessorConditionId: sub.activeConditionId ?? null,
+        predecessorConditionId: sub?.activeConditionId ?? null,
         predecessorEffectivePriceCents: target.currentEffectivePriceCents,
         promotionalPriceCents: target.promotionalPriceCents,
         restorationPriceCents: target.restorationCommittedPriceCents,
+        entitlementPetLimit: existingEntitlementPetLimit,
         stripeSubscriptionId: target.stripeSubscriptionId!,
         assignedBy: params.assignedBy ?? "master_admin",
       })
       .returning();
 
-    // 3. Create promotional commercial condition (Section 21, 22)
+    // 3. Create promotional commercial condition (Section 21, 22, R36.F1 Section 10)
     const pricingOverrideType = preview.benefit.benefitType === "PERCENTAGE_DISCOUNT" ? "percentage" : "fixed_amount";
     const pricingOverrideValue =
       preview.benefit.benefitType === "PERCENTAGE_DISCOUNT"
@@ -659,7 +674,7 @@ export async function assignCampaignToCreche(params: {
       planId: target.targetPlanId!,
       pricingOverrideType,
       pricingOverrideValue,
-      entitlementPetLimit: null,
+      entitlementPetLimit: existingEntitlementPetLimit,
       snapshotBillingInterval: target.billingInterval!,
       snapshotBasePriceCents: target.catalogPriceCents,
       lastSynchronizedAmountCents: target.promotionalPriceCents,
@@ -684,7 +699,7 @@ export async function assignCampaignToCreche(params: {
       .set({ commercialConditionId: promoCondition.id })
       .where(eq(assignedCommercialBenefitsTable.id, assignedBenefit.id));
 
-    // 4. External Stripe Schedule Execution (Section 25, Correction 3, 4, 5, 6)
+    // 4. External Stripe Schedule Execution (Section 25, Correction 3, 4, 5, 6, R36.F1 Section 11-13)
     const scheduleResult = await executeStripeCampaignSchedule({
       assignedBenefitId: assignedBenefit.id,
       campaignId: preview.campaign.id,
@@ -694,6 +709,7 @@ export async function assignCampaignToCreche(params: {
       billingCycles: preview.benefit.billingCycles,
       promotionalPriceCents: target.promotionalPriceCents,
       restorationPriceCents: target.restorationCommittedPriceCents,
+      existingStripeScheduleId: assignedBenefit.stripeScheduleId ?? null,
       stripeClient: stripe,
       dbClient: tx,
     });
@@ -763,8 +779,20 @@ export async function reconcileBenefitCycleAdvancement(params: {
   const dbClient = params.dbClient ?? db;
   const stripe = params.stripeClient ?? (await getUncachableStripeClient());
 
-  // Canonical cycleKey: <subscriptionId>:<periodStartTs>:<periodEndTs> (Section 31)
-  const cycleKey = `${params.stripeSubscriptionId}:${params.contractualPeriodStart.getTime()}:${params.contractualPeriodEnd.getTime()}`;
+  // 1. Resolve local subscription ID for gateway-neutral cycleKey (R36.F1 Section 3)
+  const [sub] = await dbClient
+    .select({ id: subscriptionsTable.id })
+    .from(subscriptionsTable)
+    .where(
+      or(
+        eq(subscriptionsTable.stripeSubscriptionId, params.stripeSubscriptionId),
+        eq(subscriptionsTable.crecheId, params.crecheId),
+      ),
+    )
+    .limit(1);
+
+  const localSubId = sub?.id ?? params.crecheId;
+  const cycleKey = `${localSubId}:${params.contractualPeriodStart.getTime()}:${params.contractualPeriodEnd.getTime()}`;
 
   // Find assigned benefit in scheduled or active status for this creche
   const [assignedBenefit] = await dbClient
@@ -841,16 +869,31 @@ export async function reconcileBenefitCycleAdvancement(params: {
   if (priorCount >= assignedBenefit.billingCycles) {
     // All promotional cycles have already been consumed.
     // The arrival of this contractual period indicates we have moved into the post-promotional restoration period!
-    const restoration = await reconcileCampaignRestoration({
-      assignedBenefitId: assignedBenefit.id,
-      dbClient,
-      stripeClient: stripe,
-    });
+    // Enforce temporal gate: currentContractualPeriodStart >= lastConsumedPeriodEnd (R36.F1 Section 5)
+    const lastEndMs = assignedBenefit.lastConsumedPeriodEnd
+      ? new Date(assignedBenefit.lastConsumedPeriodEnd).getTime()
+      : 0;
+    const currentStartMs = params.contractualPeriodStart.getTime();
+
+    if (currentStartMs >= lastEndMs) {
+      const restoration = await reconcileCampaignRestoration({
+        assignedBenefitId: assignedBenefit.id,
+        dbClient,
+        stripeClient: stripe,
+      });
+      return {
+        cycleConsumed: false,
+        cycleNumber: priorCount,
+        assignedBenefitId: assignedBenefit.id,
+        completed: restoration.completed,
+      };
+    }
+
     return {
       cycleConsumed: false,
       cycleNumber: priorCount,
       assignedBenefitId: assignedBenefit.id,
-      completed: restoration.completed,
+      completed: false,
     };
   }
 
@@ -928,7 +971,7 @@ export async function reconcileCampaignRestoration(params: {
         planId: assignedBenefit.targetPlanId,
         pricingOverrideType: "fixed_amount",
         pricingOverrideValue: assignedBenefit.restorationPriceCents,
-        entitlementPetLimit: null,
+        entitlementPetLimit: assignedBenefit.entitlementPetLimit ?? null,
         snapshotBillingInterval: assignedBenefit.targetBillingInterval,
         snapshotBasePriceCents: assignedBenefit.catalogPriceCents,
         lastSynchronizedAmountCents: assignedBenefit.restorationPriceCents,

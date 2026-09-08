@@ -119,11 +119,13 @@ export default function AdminCampaigns() {
   const handleStatusChange = async (campaignId: number, nextStatus: string) => {
     try {
       const token = localStorage.getItem("auth_token");
+      const idempotencyKey = generateUUID();
       const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns/${campaignId}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({ status: nextStatus }),
       });
@@ -444,11 +446,13 @@ function CreateCampaignForm({
     setSubmitting(true);
     try {
       const token = localStorage.getItem("auth_token");
+      const idempotencyKey = generateUUID();
       const res = await fetch(`${import.meta.env.BASE_URL}api/commercial/campaigns`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": idempotencyKey,
         },
         body: JSON.stringify({
           name: name.trim(),

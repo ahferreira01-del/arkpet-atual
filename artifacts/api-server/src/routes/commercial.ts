@@ -72,6 +72,9 @@ export const COMMERCIAL_OPERATIONS = {
   RETRY_PRICE_ACTIVATION: "RETRY_PRICE_ACTIVATION",
   ABANDON_PRICE_CONDITION: "ABANDON_PRICE_CONDITION",
   REPRICE_PERCENTAGE_CONDITION: "REPRICE_PERCENTAGE_CONDITION",
+  CREATE_COMMERCIAL_CAMPAIGN: "CREATE_COMMERCIAL_CAMPAIGN",
+  UPDATE_COMMERCIAL_CAMPAIGN: "UPDATE_COMMERCIAL_CAMPAIGN",
+  CHANGE_COMMERCIAL_CAMPAIGN_STATUS: "CHANGE_COMMERCIAL_CAMPAIGN_STATUS",
   ASSIGN_COMMERCIAL_CAMPAIGN: "ASSIGN_COMMERCIAL_CAMPAIGN",
 } as const;
 export type CommercialOperation = (typeof COMMERCIAL_OPERATIONS)[keyof typeof COMMERCIAL_OPERATIONS];
@@ -1313,42 +1316,95 @@ commercialRouter.get("/campaigns", async (_req: AuthRequest, res: Response): Pro
  * Creates a new draft or active commercial campaign with its recurring benefit definition.
  */
 commercialRouter.post("/campaigns", async (req: AuthRequest, res: Response): Promise<void> => {
+  let idempotencyKey: string;
   try {
-    const {
-      name,
-      description,
-      status,
-      eligibleFrom,
-      eligibleUntil,
-      priority,
-      benefitType,
-      benefitValue,
-      billingCycles,
-    } = req.body;
+    idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
 
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      res.status(400).json({ error: "name_required", message: "Nome da campanha é obrigatório." });
+  const {
+    name,
+    description,
+    status,
+    eligibleFrom,
+    eligibleUntil,
+    priority,
+    benefitType,
+    benefitValue,
+    billingCycles,
+  } = req.body;
+
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    res.status(400).json({ error: "name_required", message: "Nome da campanha é obrigatório." });
+    return;
+  }
+
+  const operation = COMMERCIAL_OPERATIONS.CREATE_COMMERCIAL_CAMPAIGN;
+  const payload = {
+    operation,
+    name: name.trim(),
+    description: description ? String(description).trim() : null,
+    status: status ?? "draft",
+    eligibleFrom: eligibleFrom ?? null,
+    eligibleUntil: eligibleUntil ?? null,
+    priority: typeof priority === "number" ? priority : 0,
+    benefitType,
+    benefitValue: Number(benefitValue),
+    billingCycles: Number(billingCycles),
+  };
+
+  try {
+    const result = await withCommercialOperationIdempotency({
+      crecheId: null,
+      operation,
+      idempotencyKey,
+      payload,
+      resourceType: "commercial_campaign",
+      isDbOnly: true,
+      execute: async (tx) => {
+        const campaign = await createCampaign(
+          {
+            name: name.trim(),
+            description: description ? String(description).trim() : undefined,
+            status: status ?? "draft",
+            eligibleFrom: eligibleFrom ? new Date(eligibleFrom) : null,
+            eligibleUntil: eligibleUntil ? new Date(eligibleUntil) : null,
+            priority: typeof priority === "number" ? priority : 0,
+            benefitType,
+            benefitValue: Number(benefitValue),
+            billingCycles: Number(billingCycles),
+            createdBy: req.user?.email ?? "master_admin",
+          },
+          tx,
+        );
+        return {
+          statusCode: 201,
+          data: campaign,
+          resourceId: campaign.campaign.id,
+        };
+      },
+    });
+
+    res.status(result.statusCode).json({
+      ...result.data,
+      ...(result.replayed ? { replay: true } : {}),
+    });
+  } catch (err: any) {
+    if (
+      err instanceof CommercialIdempotencyConflictError ||
+      err instanceof CommercialOperationInProgressError ||
+      err instanceof CommercialOperationFailedFinalError ||
+      err instanceof CommercialOperationFencingLostError
+    ) {
+      res.status(err.statusCode).json({
+        error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+        code: err.code,
+        message: err.message,
+      });
       return;
     }
-
-    const campaign = await createCampaign(
-      {
-        name: name.trim(),
-        description: description ? String(description).trim() : undefined,
-        status: status ?? "draft",
-        eligibleFrom: eligibleFrom ? new Date(eligibleFrom) : null,
-        eligibleUntil: eligibleUntil ? new Date(eligibleUntil) : null,
-        priority: typeof priority === "number" ? priority : 0,
-        benefitType,
-        benefitValue: Number(benefitValue),
-        billingCycles: Number(billingCycles),
-        createdBy: req.user?.email ?? "master_admin",
-      },
-      db,
-    );
-
-    res.status(201).json(campaign);
-  } catch (err: any) {
     if (err instanceof CommercialCampaignIntegrityError) {
       res.status(400).json({ error: err.code, message: err.message });
       return;
@@ -1427,37 +1483,100 @@ commercialRouter.get("/campaigns/:id", async (req: AuthRequest, res: Response): 
  * Updates mutable campaign metadata or status (pause, close, archive).
  */
 commercialRouter.patch("/campaigns/:id", async (req: AuthRequest, res: Response): Promise<void> => {
+  const campaignId = Number(req.params.id);
+  if (!campaignId || Number.isNaN(campaignId)) {
+    res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+    return;
+  }
+
+  let idempotencyKey: string;
   try {
-    const campaignId = Number(req.params.id);
-    if (!campaignId || Number.isNaN(campaignId)) {
-      res.status(400).json({ error: "invalid_campaign_id", message: "ID da campanha inválido." });
+    idempotencyKey = validateIdempotencyKey(req.header("X-Idempotency-Key"));
+  } catch (err: any) {
+    res.status(400).json({ error: "idempotency_key_invalid", message: err.message });
+    return;
+  }
+
+  const {
+    name,
+    description,
+    status,
+    eligibleFrom,
+    eligibleUntil,
+    priority,
+  } = req.body;
+
+  const isStatusOnly =
+    status !== undefined &&
+    name === undefined &&
+    description === undefined &&
+    eligibleFrom === undefined &&
+    eligibleUntil === undefined &&
+    priority === undefined;
+
+  const operation = isStatusOnly
+    ? COMMERCIAL_OPERATIONS.CHANGE_COMMERCIAL_CAMPAIGN_STATUS
+    : COMMERCIAL_OPERATIONS.UPDATE_COMMERCIAL_CAMPAIGN;
+
+  const payload = {
+    campaignId,
+    operation,
+    name: name !== undefined ? String(name).trim() : null,
+    description: description !== undefined ? (description ? String(description).trim() : null) : null,
+    status: status ?? null,
+    eligibleFrom: eligibleFrom ?? null,
+    eligibleUntil: eligibleUntil ?? null,
+    priority: typeof priority === "number" ? priority : null,
+  };
+
+  try {
+    const result = await withCommercialOperationIdempotency({
+      crecheId: null,
+      operation,
+      idempotencyKey,
+      payload,
+      resourceType: "commercial_campaign",
+      resourceId: campaignId,
+      isDbOnly: true,
+      execute: async (tx) => {
+        const updated = await updateCampaign(
+          campaignId,
+          {
+            name: name !== undefined ? String(name).trim() : undefined,
+            description: description !== undefined ? (description ? String(description).trim() : undefined) : undefined,
+            status,
+            eligibleFrom: eligibleFrom !== undefined ? (eligibleFrom ? new Date(eligibleFrom) : null) : undefined,
+            eligibleUntil: eligibleUntil !== undefined ? (eligibleUntil ? new Date(eligibleUntil) : null) : undefined,
+            priority: typeof priority === "number" ? priority : undefined,
+          },
+          tx,
+        );
+        return {
+          statusCode: 200,
+          data: { campaign: updated },
+          resourceId: campaignId,
+        };
+      },
+    });
+
+    res.status(result.statusCode).json({
+      ...result.data,
+      ...(result.replayed ? { replay: true } : {}),
+    });
+  } catch (err: any) {
+    if (
+      err instanceof CommercialIdempotencyConflictError ||
+      err instanceof CommercialOperationInProgressError ||
+      err instanceof CommercialOperationFailedFinalError ||
+      err instanceof CommercialOperationFencingLostError
+    ) {
+      res.status(err.statusCode).json({
+        error: err.code === "IDEMPOTENCY_CONFLICT" ? "idempotency_conflict" : err.code,
+        code: err.code,
+        message: err.message,
+      });
       return;
     }
-
-    const {
-      name,
-      description,
-      status,
-      eligibleFrom,
-      eligibleUntil,
-      priority,
-    } = req.body;
-
-    const updated = await updateCampaign(
-      campaignId,
-      {
-        name: name !== undefined ? String(name).trim() : undefined,
-        description: description !== undefined ? (description ? String(description).trim() : undefined) : undefined,
-        status,
-        eligibleFrom: eligibleFrom !== undefined ? (eligibleFrom ? new Date(eligibleFrom) : null) : undefined,
-        eligibleUntil: eligibleUntil !== undefined ? (eligibleUntil ? new Date(eligibleUntil) : null) : undefined,
-        priority: typeof priority === "number" ? priority : undefined,
-      },
-      db,
-    );
-
-    res.json({ campaign: updated });
-  } catch (err: any) {
     if (err instanceof CommercialCampaignIntegrityError) {
       res.status(400).json({ error: err.code, message: err.message });
       return;

@@ -233,7 +233,7 @@ export const commercialOperationRequestsTable = pgTable(
   "commercial_operation_requests",
   {
     id: serial("id").primaryKey(),
-    crecheId: integer("creche_id").notNull().references(() => crechesTable.id),
+    crecheId: integer("creche_id").references(() => crechesTable.id),
     operation: varchar("operation", { length: 64 }).notNull(),
     idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
     requestFingerprint: varchar("request_fingerprint", { length: 64 }).notNull(),
@@ -251,10 +251,12 @@ export const commercialOperationRequestsTable = pgTable(
     completedAt: timestamp("completed_at"),
   },
   (table) => ({
-    crecheIdempotencyIdx: uniqueIndex("commercial_operation_requests_creche_idempotency_unique").on(
-      table.crecheId,
-      table.idempotencyKey,
-    ),
+    crecheIdempotencyIdx: uniqueIndex("commercial_operation_requests_creche_idempotency_unique")
+      .on(table.crecheId, table.idempotencyKey)
+      .where(sql`${table.crecheId} IS NOT NULL`),
+    globalIdempotencyIdx: uniqueIndex("commercial_operation_requests_global_idempotency_unique")
+      .on(table.idempotencyKey)
+      .where(sql`${table.crecheId} IS NULL`),
     crecheOperationIdx: index("commercial_operation_requests_creche_operation_idx").on(
       table.crecheId,
       table.operation,
@@ -377,6 +379,7 @@ export const assignedCommercialBenefitsTable = pgTable(
     predecessorEffectivePriceCents: integer("predecessor_effective_price_cents").notNull(),
     promotionalPriceCents: integer("promotional_price_cents").notNull(),
     restorationPriceCents: integer("restoration_price_cents").notNull(),
+    entitlementPetLimit: integer("entitlement_pet_limit"),
     commercialConditionId: integer("commercial_condition_id").references(() => customerCommercialConditionsTable.id),
     restorationConditionId: integer("restoration_condition_id").references(() => customerCommercialConditionsTable.id),
     stripeSubscriptionId: text("stripe_subscription_id").notNull(),
@@ -398,7 +401,7 @@ export const assignedCommercialBenefitsTable = pgTable(
     // Enforces at most ONE active/scheduled/pending/review recurring campaign benefit per creche (Non-stacking rule)
     singleActiveCampaignIdx: uniqueIndex("assigned_commercial_benefits_single_active_idx")
       .on(table.crecheId)
-      .where(sql`${table.status} IN ('pending_activation', 'scheduled', 'active', 'restoration_review')`),
+      .where(sql`${table.status} IN ('pending', 'pending_activation', 'scheduled', 'active', 'restoration_review')`),
   }),
 );
 

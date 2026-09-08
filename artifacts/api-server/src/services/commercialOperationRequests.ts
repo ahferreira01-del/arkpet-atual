@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { db } from "@workspace/db";
 import { commercialOperationRequestsTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 export const LEASE_DURATION_MS = 60_000; // 60 seconds lease for commercial operations
 
@@ -77,7 +77,7 @@ export interface CommercialOperationExecutionResult<T> {
 }
 
 export interface WithCommercialIdempotencyParams<T> {
-  crecheId: number;
+  crecheId?: number | null;
   operation: string;
   idempotencyKey: string;
   payload: Record<string, unknown>;
@@ -86,6 +86,12 @@ export interface WithCommercialIdempotencyParams<T> {
   isDbOnly?: boolean;
   dbClient?: any;
   execute: (client: any, fencingToken: CommercialFencingToken) => Promise<CommercialOperationExecutionResult<T>>;
+}
+
+function crecheIdCondition(crecheId?: number | null) {
+  return crecheId !== undefined && crecheId !== null
+    ? eq(commercialOperationRequestsTable.crecheId, crecheId)
+    : isNull(commercialOperationRequestsTable.crecheId);
 }
 
 /**
@@ -150,7 +156,7 @@ export async function withCommercialOperationIdempotency<T>(
     .from(commercialOperationRequestsTable)
     .where(
       and(
-        eq(commercialOperationRequestsTable.crecheId, params.crecheId),
+        crecheIdCondition(params.crecheId),
         eq(commercialOperationRequestsTable.idempotencyKey, validKey),
       ),
     )
@@ -230,7 +236,7 @@ export async function withCommercialOperationIdempotency<T>(
       const valuesRes = rootDb
         .insert(commercialOperationRequestsTable)
         .values({
-          crecheId: params.crecheId,
+          crecheId: params.crecheId ?? null,
           operation: params.operation,
           idempotencyKey: validKey,
           requestFingerprint: fingerprint,
@@ -258,7 +264,7 @@ export async function withCommercialOperationIdempotency<T>(
             .from(commercialOperationRequestsTable)
             .where(
               and(
-                eq(commercialOperationRequestsTable.crecheId, params.crecheId),
+                crecheIdCondition(params.crecheId),
                 eq(commercialOperationRequestsTable.idempotencyKey, validKey),
               ),
             )
@@ -278,7 +284,7 @@ export async function withCommercialOperationIdempotency<T>(
         .from(commercialOperationRequestsTable)
         .where(
           and(
-            eq(commercialOperationRequestsTable.crecheId, params.crecheId),
+            crecheIdCondition(params.crecheId),
             eq(commercialOperationRequestsTable.idempotencyKey, validKey),
           ),
         )

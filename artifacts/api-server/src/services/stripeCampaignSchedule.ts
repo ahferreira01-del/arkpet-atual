@@ -129,6 +129,7 @@ export async function executeStripeCampaignSchedule(params: {
   billingCycles: number;
   promotionalPriceCents: number;
   restorationPriceCents: number;
+  existingStripeScheduleId?: string | null;
   stripeClient?: Stripe;
   dbClient?: any;
 }): Promise<{
@@ -171,19 +172,22 @@ export async function executeStripeCampaignSchedule(params: {
     throw new StripeCampaignScheduleError("Plano ou produto Stripe correspondente não encontrado.", "PLAN_NOT_FOUND", 404);
   }
 
-  // 1. Inspect existing schedule on subscription (Section 27 & Crash Recovery Section 5)
-  const existingScheduleId =
+  // 1. Inspect existing schedule on subscription or assigned benefit (Section 27 & Crash Recovery Section 5)
+  const subScheduleId =
     typeof (stripeSub as any).schedule === "string"
       ? (stripeSub as any).schedule
       : (stripeSub as any).schedule?.id ?? null;
+
+  const existingScheduleId = subScheduleId ?? params.existingStripeScheduleId ?? null;
 
   let scheduleIdToUse: string | null = null;
 
   if (existingScheduleId) {
     const existingSched = await stripe.subscriptionSchedules.retrieve(existingScheduleId);
     const isOurSchedule =
-      existingSched.metadata?.scope === "arkpet_commercial_campaign" &&
-      existingSched.metadata?.assignedBenefitId === String(params.assignedBenefitId);
+      (existingSched.metadata?.scope === "arkpet_commercial_campaign" &&
+        existingSched.metadata?.assignedBenefitId === String(params.assignedBenefitId)) ||
+      existingScheduleId === params.existingStripeScheduleId;
 
     if (!isOurSchedule) {
       throw new ExistingStripeScheduleUnsupportedError(
@@ -227,6 +231,12 @@ export async function executeStripeCampaignSchedule(params: {
     schedule = await stripe.subscriptionSchedules.create(
       {
         from_subscription: params.stripeSubscriptionId,
+        metadata: {
+          scope: "arkpet_commercial_campaign",
+          campaignId: String(params.campaignId),
+          assignedBenefitId: String(params.assignedBenefitId),
+          crecheId: String(params.crecheId),
+        },
       },
       { idempotencyKey: scheduleCreateKey },
     );
