@@ -6,6 +6,7 @@ import {
 } from "@workspace/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { logCommercialAudit } from "./commercialAudit.js";
+import { enqueueCommercialCommunication } from "./commercialOutbox.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 
 export class PlatformServiceError extends Error {
@@ -103,6 +104,25 @@ export async function requestAssistedImplementation(
       customerNotes: created.customerNotes,
     },
   }, dbClient);
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_REQUEST_RECEIVED",
+      eventOccurrenceKey: `implementation-request-${created.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: created.id,
+      crecheId: params.crecheId,
+      audienceRole: "master_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: created.id,
+        crecheId: params.crecheId,
+        customerNotes: created.customerNotes,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
 
   return created;
 }
@@ -279,6 +299,26 @@ export async function sendImplementationQuote(
     },
   }, dbClient);
 
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_QUOTE_SENT",
+      eventOccurrenceKey: `implementation-quote-${updated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: updated.id,
+      crecheId: params.crecheId,
+      audienceRole: "creche_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: updated.id,
+        crecheId: params.crecheId,
+        quotedPriceCents: params.quotedPriceCents,
+        scopeNotes: updated.scopeNotes,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
   return updated;
 }
 
@@ -368,6 +408,25 @@ export async function acceptImplementationQuote(
       priceCents,
     },
   }, dbClient);
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_QUOTE_ACCEPTED",
+      eventOccurrenceKey: `implementation-quote-accepted-${updated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: updated.id,
+      crecheId: params.crecheId,
+      audienceRole: "master_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: updated.id,
+        crecheId: params.crecheId,
+        quotedPriceCents: updated.quotedPriceCents,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
 
   return updated;
 }
@@ -587,6 +646,7 @@ export async function handlePlatformServicePaymentWebhook(
       status: "paid",
       paidAt: now,
       stripePaymentIntentId: paymentIntentId,
+      amountPaidCents: session.amount_total,
       updatedAt: now,
     })
     .where(
@@ -613,6 +673,44 @@ export async function handlePlatformServicePaymentWebhook(
         amountPaidCents: session.amount_total,
       },
     }, client);
+
+    await enqueueCommercialCommunication(
+      {
+        eventType: "IMPLEMENTATION_PAYMENT_CONFIRMED",
+        eventOccurrenceKey: `implementation-payment-confirmed-${updated.id}-creche`,
+        aggregateType: "platform_service_request",
+        aggregateId: updated.id,
+        crecheId: updated.crecheId,
+        audienceRole: "creche_admin",
+        category: "PLATFORM_SERVICE",
+        factsSnapshotJson: {
+          serviceRequestId: updated.id,
+          crecheId: updated.crecheId,
+          amountPaidCents: updated.amountPaidCents,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      client,
+    );
+
+    await enqueueCommercialCommunication(
+      {
+        eventType: "IMPLEMENTATION_PAYMENT_CONFIRMED",
+        eventOccurrenceKey: `implementation-payment-confirmed-${updated.id}-master`,
+        aggregateType: "platform_service_request",
+        aggregateId: updated.id,
+        crecheId: updated.crecheId,
+        audienceRole: "master_admin",
+        category: "PLATFORM_SERVICE",
+        factsSnapshotJson: {
+          serviceRequestId: updated.id,
+          crecheId: updated.crecheId,
+          amountPaidCents: updated.amountPaidCents,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      client,
+    );
   } else {
     // CAS did not match payment_pending: check if row was cancelled concurrently
     const [concurrent] = await client
@@ -628,6 +726,8 @@ export async function handlePlatformServicePaymentWebhook(
         .set({
           refundStatus: "REFUND_REVIEW_REQUIRED",
           stripePaymentIntentId: paymentIntentId,
+          amountPaidCents: session.amount_total,
+          paidAt: concurrent.paidAt ?? now,
           updatedAt: now,
         })
         .where(eq(platformServiceRequestsTable.id, request.id));
@@ -647,6 +747,26 @@ export async function handlePlatformServicePaymentWebhook(
           amountPaidCents: session.amount_total,
         },
       }, client);
+
+      await enqueueCommercialCommunication(
+        {
+          eventType: "IMPLEMENTATION_REFUND_REVIEW",
+          eventOccurrenceKey: `implementation-refund-review-${request.id}-webhook`,
+          aggregateType: "platform_service_request",
+          aggregateId: request.id,
+          crecheId: request.crecheId,
+          audienceRole: "master_admin",
+          category: "PLATFORM_SERVICE",
+          factsSnapshotJson: {
+            serviceRequestId: request.id,
+            crecheId: request.crecheId,
+            amountPaidCents: session.amount_total,
+            reason: "Pagamento recebido após cancelamento da solicitação de serviço",
+          },
+          channels: ["in_app", "email", "push"],
+        },
+        client,
+      );
     }
   }
 }
@@ -721,6 +841,25 @@ export async function scheduleImplementation(
     },
   }, dbClient);
 
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_SCHEDULED",
+      eventOccurrenceKey: `implementation-scheduled-${updated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: updated.id,
+      crecheId: updated.crecheId,
+      audienceRole: "creche_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: updated.id,
+        crecheId: updated.crecheId,
+        scheduledFor: params.scheduledFor.toISOString(),
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
   return updated;
 }
 
@@ -789,6 +928,24 @@ export async function startImplementation(
       startedAt: now.toISOString(),
     },
   }, dbClient);
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_STARTED",
+      eventOccurrenceKey: `implementation-started-${updated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: updated.id,
+      crecheId: updated.crecheId,
+      audienceRole: "creche_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: updated.id,
+        crecheId: updated.crecheId,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
 
   return updated;
 }
@@ -866,6 +1023,24 @@ export async function completeImplementation(
       completionNotes: updated.completionNotes,
     },
   }, dbClient);
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_COMPLETED",
+      eventOccurrenceKey: `implementation-completed-${updated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: updated.id,
+      crecheId: updated.crecheId,
+      audienceRole: "creche_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: updated.id,
+        crecheId: updated.crecheId,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
 
   return updated;
 }
@@ -1058,6 +1233,47 @@ export async function cancelImplementation(
       refundStatus: finalUpdated.refundStatus,
     },
   }, dbClient);
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "IMPLEMENTATION_CANCELLED",
+      eventOccurrenceKey: `implementation-cancelled-${finalUpdated.id}`,
+      aggregateType: "platform_service_request",
+      aggregateId: finalUpdated.id,
+      crecheId: finalUpdated.crecheId,
+      audienceRole: "creche_admin",
+      category: "PLATFORM_SERVICE",
+      factsSnapshotJson: {
+        serviceRequestId: finalUpdated.id,
+        crecheId: finalUpdated.crecheId,
+        reason: params.reason.trim(),
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
+  if (finalUpdated.refundStatus === "REFUND_REVIEW_REQUIRED") {
+    await enqueueCommercialCommunication(
+      {
+        eventType: "IMPLEMENTATION_REFUND_REVIEW",
+        eventOccurrenceKey: `implementation-refund-review-${finalUpdated.id}-cancel`,
+        aggregateType: "platform_service_request",
+        aggregateId: finalUpdated.id,
+        crecheId: finalUpdated.crecheId,
+        audienceRole: "master_admin",
+        category: "PLATFORM_SERVICE",
+        factsSnapshotJson: {
+          serviceRequestId: finalUpdated.id,
+          crecheId: finalUpdated.crecheId,
+          amountPaidCents: finalUpdated.amountPaidCents,
+          reason: params.reason.trim(),
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+  }
 
   return finalUpdated;
 }

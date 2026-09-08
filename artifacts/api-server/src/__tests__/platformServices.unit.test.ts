@@ -42,6 +42,7 @@ describe("Platform Services (Implantação Assistida) Domain Unit Tests (R36.G)"
         acceptedByUserId: null,
         stripeCheckoutSessionId: null,
         stripePaymentIntentId: null,
+        amountPaidCents: null,
         paidAt: null,
         scheduledFor: null,
         startedAt: null,

@@ -19,6 +19,7 @@ import {
   type ActivationTimingMode,
   CommercialActivationError,
 } from "./stripeCommercialActivation.js";
+import { enqueueCommercialCommunication } from "./commercialOutbox.js";
 
 export class CommercialProposalError extends Error {
   public code: string;
@@ -338,6 +339,30 @@ export async function sendProposal(params: SendProposalParams): Promise<Commerci
     },
   }, dbClient);
 
+  await enqueueCommercialCommunication(
+    {
+      eventType: "COMMERCIAL_PROPOSAL_SENT",
+      eventOccurrenceKey: `proposal-sent-${sent.id}`,
+      aggregateType: "commercial_agreement",
+      aggregateId: sent.id,
+      crecheId: params.crecheId,
+      audienceRole: "creche_admin",
+      category: "COMMERCIAL",
+      factsSnapshotJson: {
+        proposalId: sent.id,
+        agreementId: sent.id,
+        crecheId: params.crecheId,
+        title: sent.title,
+        planName: planName ?? "Personalizado",
+        displayedEffectivePriceCents,
+        billingInterval: interval,
+        validUntil: existing.validUntil ? existing.validUntil.toISOString() : null,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
   return sent;
 }
 
@@ -578,6 +603,45 @@ export async function acceptProposal(params: AcceptProposalParams): Promise<Acce
     },
   }, dbClient);
 
+  // Enqueue proposal accepted communications (Correction 8)
+  await enqueueCommercialCommunication(
+    {
+      eventType: "COMMERCIAL_PROPOSAL_ACCEPTED",
+      eventOccurrenceKey: `proposal-accepted-${acceptedAgreement.id}-creche`,
+      aggregateType: "commercial_agreement",
+      aggregateId: acceptedAgreement.id,
+      crecheId: params.crecheId,
+      audienceRole: "creche_admin",
+      category: "COMMERCIAL",
+      factsSnapshotJson: {
+        proposalId: acceptedAgreement.id,
+        agreementId: acceptedAgreement.id,
+        crecheId: params.crecheId,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
+  await enqueueCommercialCommunication(
+    {
+      eventType: "COMMERCIAL_PROPOSAL_ACCEPTED",
+      eventOccurrenceKey: `proposal-accepted-${acceptedAgreement.id}-master`,
+      aggregateType: "commercial_agreement",
+      aggregateId: acceptedAgreement.id,
+      crecheId: params.crecheId,
+      audienceRole: "master_admin",
+      category: "COMMERCIAL",
+      factsSnapshotJson: {
+        proposalId: acceptedAgreement.id,
+        agreementId: acceptedAgreement.id,
+        crecheId: params.crecheId,
+      },
+      channels: ["in_app", "email", "push"],
+    },
+    dbClient,
+  );
+
   let activationStatus = "pending_activation";
   let activatedConditionId: number | null = null;
   let activationError: string | null = null;
@@ -710,6 +774,68 @@ export async function acceptProposal(params: AcceptProposalParams): Promise<Acce
     .where(eq(commercialAgreementsTable.id, acceptedAgreement.id))
     .limit(1);
   const finalAgreement = finalRows?.[0] ?? acceptedAgreement;
+
+  // Enqueue activation outcome communications (Correction 8, Section 18)
+  if (activationStatus === "active") {
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_SUCCEEDED",
+        eventOccurrenceKey: `proposal-activation-succeeded-${acceptedAgreement.id}`,
+        aggregateType: "commercial_agreement",
+        aggregateId: acceptedAgreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: acceptedAgreement.id,
+          agreementId: acceptedAgreement.id,
+          crecheId: params.crecheId,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+  } else if (activationStatus === "activation_failed") {
+    // Customer-safe copy for creche_admin (zero raw internal error leakage)
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_FAILED",
+        eventOccurrenceKey: `proposal-activation-failed-${acceptedAgreement.id}-creche`,
+        aggregateType: "commercial_agreement",
+        aggregateId: acceptedAgreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: acceptedAgreement.id,
+          agreementId: acceptedAgreement.id,
+          crecheId: params.crecheId,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+    // Operational alert for master_admin with safe error code
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_FAILED",
+        eventOccurrenceKey: `proposal-activation-failed-${acceptedAgreement.id}-master`,
+        aggregateType: "commercial_agreement",
+        aggregateId: acceptedAgreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "master_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: acceptedAgreement.id,
+          agreementId: acceptedAgreement.id,
+          crecheId: params.crecheId,
+          safeErrorCode: "ACTIVATION_FAILED",
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+  }
 
   return {
     success: true,
@@ -932,6 +1058,25 @@ export async function retryProposalActivation(params: RetryProposalActivationPar
       relatedConditionId: newCondition.id,
     }, dbClient);
 
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_SUCCEEDED",
+        eventOccurrenceKey: `proposal-activation-succeeded-${agreement.id}-retry-${Date.now()}`,
+        aggregateType: "commercial_agreement",
+        aggregateId: agreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: agreement.id,
+          agreementId: agreement.id,
+          crecheId: params.crecheId,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+
     return updated;
   }
 
@@ -1009,6 +1154,25 @@ export async function retryProposalActivation(params: RetryProposalActivationPar
         relatedConditionId: condition.id,
       }, dbClient);
 
+      await enqueueCommercialCommunication(
+        {
+          eventType: "PROPOSAL_ACTIVATION_SUCCEEDED",
+          eventOccurrenceKey: `proposal-activation-succeeded-${agreement.id}-retry-${Date.now()}`,
+          aggregateType: "commercial_agreement",
+          aggregateId: agreement.id,
+          crecheId: params.crecheId,
+          audienceRole: "creche_admin",
+          category: "COMMERCIAL",
+          factsSnapshotJson: {
+            proposalId: agreement.id,
+            agreementId: agreement.id,
+            crecheId: params.crecheId,
+          },
+          channels: ["in_app", "email", "push"],
+        },
+        dbClient,
+      );
+
       return updated;
     }
   } catch (err: any) {
@@ -1038,6 +1202,45 @@ export async function retryProposalActivation(params: RetryProposalActivationPar
         error: err?.message ?? String(err),
       },
     }, dbClient);
+
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_FAILED",
+        eventOccurrenceKey: `proposal-activation-failed-${agreement.id}-creche-retry-${Date.now()}`,
+        aggregateType: "commercial_agreement",
+        aggregateId: agreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: agreement.id,
+          agreementId: agreement.id,
+          crecheId: params.crecheId,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+
+    await enqueueCommercialCommunication(
+      {
+        eventType: "PROPOSAL_ACTIVATION_FAILED",
+        eventOccurrenceKey: `proposal-activation-failed-${agreement.id}-master-retry-${Date.now()}`,
+        aggregateType: "commercial_agreement",
+        aggregateId: agreement.id,
+        crecheId: params.crecheId,
+        audienceRole: "master_admin",
+        category: "COMMERCIAL",
+        factsSnapshotJson: {
+          proposalId: agreement.id,
+          agreementId: agreement.id,
+          crecheId: params.crecheId,
+          safeErrorCode: "ACTIVATION_FAILED",
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
 
     throw err;
   }

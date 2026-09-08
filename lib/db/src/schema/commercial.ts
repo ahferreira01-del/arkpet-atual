@@ -4,6 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { crechesTable } from "./creches";
 import { plansTable } from "./plans";
+import { usersTable } from "./users";
 
 // Status enums as string literals / varchar for maximum robustness and zero-migration runtime safety
 export const commercialConditionStatusValues = [
@@ -491,6 +492,7 @@ export const platformServiceRequestsTable = pgTable(
     acceptedByUserId: integer("accepted_by_user_id"),
     stripeCheckoutSessionId: varchar("stripe_checkout_session_id", { length: 255 }),
     stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+    amountPaidCents: integer("amount_paid_cents"),
     paidAt: timestamp("paid_at"),
     scheduledFor: timestamp("scheduled_for"),
     startedAt: timestamp("started_at"),
@@ -520,3 +522,109 @@ export const insertPlatformServiceRequestSchema = createInsertSchema(platformSer
 });
 export type InsertPlatformServiceRequest = z.infer<typeof insertPlatformServiceRequestSchema>;
 export type PlatformServiceRequest = typeof platformServiceRequestsTable.$inferSelect;
+
+// 10. Commercial Communication Outbox (R36.H)
+// Durable outbox for authoritative commercial event notices.
+// Guaranteed delivery deduplication, lease-based worker fencing, and per-user personal addressing.
+export const commercialOutboxStatusValues = [
+  "pending",
+  "processing",
+  "delivered",
+  "failed_retryable",
+  "failed_final",
+  "skipped",
+] as const;
+export type CommercialOutboxStatus = (typeof commercialOutboxStatusValues)[number];
+
+export const commercialCommunicationOutboxTable = pgTable(
+  "commercial_communication_outbox",
+  {
+    id: serial("id").primaryKey(),
+    eventType: varchar("event_type", { length: 64 }).notNull(),
+    eventOccurrenceKey: varchar("event_occurrence_key", { length: 255 }).notNull(),
+    aggregateType: varchar("aggregate_type", { length: 64 }).notNull(),
+    aggregateId: integer("aggregate_id").notNull(),
+    crecheId: integer("creche_id").references(() => crechesTable.id),
+    audienceRole: varchar("audience_role", { length: 32 }).notNull(),
+    recipientUserId: integer("recipient_user_id").notNull().references(() => usersTable.id),
+    channel: varchar("channel", { length: 32 }).notNull(),
+    dedupKey: varchar("dedup_key", { length: 255 }).notNull(),
+    category: varchar("category", { length: 32 }).notNull(),
+    factsSnapshotJson: jsonb("facts_snapshot_json").notNull(),
+    templateKey: varchar("template_key", { length: 64 }).notNull(),
+    templateVersion: varchar("template_version", { length: 16 }).notNull().default("1.0"),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
+    availableAt: timestamp("available_at").notNull().defaultNow(),
+    processingStartedAt: timestamp("processing_started_at"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    deliveredAt: timestamp("delivered_at"),
+    lastErrorCode: varchar("last_error_code", { length: 64 }),
+    lastErrorMessage: text("last_error_message"),
+    providerMessageId: text("provider_message_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    dedupKeyIdx: uniqueIndex("commercial_communication_outbox_dedup_key_idx").on(table.dedupKey),
+    statusLeaseIdx: index("commercial_communication_outbox_status_lease_idx").on(
+      table.status,
+      table.availableAt,
+      table.leaseExpiresAt,
+    ),
+    crecheRecipientStatusIdx: index("commercial_communication_outbox_creche_recipient_status_idx").on(
+      table.crecheId,
+      table.recipientUserId,
+      table.status,
+    ),
+    aggregateIdx: index("commercial_communication_outbox_aggregate_idx").on(
+      table.aggregateType,
+      table.aggregateId,
+    ),
+  }),
+);
+
+export const insertCommercialCommunicationOutboxSchema = createInsertSchema(commercialCommunicationOutboxTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCommercialCommunicationOutbox = z.infer<typeof insertCommercialCommunicationOutboxSchema>;
+export type CommercialCommunicationOutbox = typeof commercialCommunicationOutboxTable.$inferSelect;
+
+// 11. Commercial Notifications (In-App Projection) (R36.H)
+// Personal, tenant-isolated in-app notification inbox with per-user read/unread tracking.
+export const commercialNotificationsTable = pgTable(
+  "commercial_notifications",
+  {
+    id: serial("id").primaryKey(),
+    outboxId: integer("outbox_id").references(() => commercialCommunicationOutboxTable.id),
+    crecheId: integer("creche_id").references(() => crechesTable.id),
+    recipientRole: varchar("recipient_role", { length: 32 }).notNull(),
+    recipientUserId: integer("recipient_user_id").notNull().references(() => usersTable.id),
+    category: varchar("category", { length: 32 }).notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    deepLink: text("deep_link"),
+    metadataJson: jsonb("metadata_json"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    outboxIdIdx: uniqueIndex("commercial_notifications_outbox_id_idx").on(table.outboxId),
+    userCrecheReadIdx: index("commercial_notifications_user_creche_read_idx").on(
+      table.recipientUserId,
+      table.crecheId,
+      table.readAt,
+    ),
+  }),
+);
+
+export const insertCommercialNotificationSchema = createInsertSchema(commercialNotificationsTable).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCommercialNotification = z.infer<typeof insertCommercialNotificationSchema>;
+export type CommercialNotification = typeof commercialNotificationsTable.$inferSelect;

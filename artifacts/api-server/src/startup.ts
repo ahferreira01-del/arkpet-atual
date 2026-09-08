@@ -953,6 +953,7 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
       accepted_by_user_id INTEGER,
       stripe_checkout_session_id VARCHAR(255),
       stripe_payment_intent_id VARCHAR(255),
+      amount_paid_cents INTEGER,
       paid_at TIMESTAMP,
       scheduled_for TIMESTAMP,
       started_at TIMESTAMP,
@@ -982,6 +983,7 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS accepted_by_user_id INTEGER;
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS stripe_checkout_session_id VARCHAR(255);
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS stripe_payment_intent_id VARCHAR(255);
+    ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS amount_paid_cents INTEGER;
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS paid_at TIMESTAMP;
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP;
     ALTER TABLE platform_service_requests ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;
@@ -1004,6 +1006,108 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS platform_services_active_creche_idx
       ON platform_service_requests (creche_id, service_type)
       WHERE status NOT IN ('completed', 'declined', 'cancelled');
+
+    -- 9. Commercial Communication Outbox (Phase R36.H)
+    CREATE TABLE IF NOT EXISTS commercial_communication_outbox (
+      id SERIAL PRIMARY KEY,
+      event_type VARCHAR(64) NOT NULL,
+      event_occurrence_key VARCHAR(255) NOT NULL,
+      aggregate_type VARCHAR(64) NOT NULL,
+      aggregate_id INTEGER NOT NULL,
+      creche_id INTEGER REFERENCES creches(id),
+      audience_role VARCHAR(32) NOT NULL,
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id),
+      channel VARCHAR(32) NOT NULL,
+      dedup_key VARCHAR(255) NOT NULL,
+      category VARCHAR(32) NOT NULL,
+      facts_snapshot_json JSONB NOT NULL,
+      template_key VARCHAR(64) NOT NULL,
+      template_version VARCHAR(16) NOT NULL DEFAULT '1.0',
+      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      available_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      processing_started_at TIMESTAMP,
+      lease_expires_at TIMESTAMP,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      delivered_at TIMESTAMP,
+      last_error_code VARCHAR(64),
+      last_error_message TEXT,
+      provider_message_id TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS event_type VARCHAR(64);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS event_occurrence_key VARCHAR(255);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS aggregate_type VARCHAR(64);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS aggregate_id INTEGER;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS audience_role VARCHAR(32);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS recipient_user_id INTEGER;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS channel VARCHAR(32);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS dedup_key VARCHAR(255);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS category VARCHAR(32);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS facts_snapshot_json JSONB;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS template_key VARCHAR(64);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS template_version VARCHAR(16) DEFAULT '1.0';
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'pending';
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS available_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMP;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS attempt_count INTEGER DEFAULT 0;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS last_error_code VARCHAR(64);
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS last_error_message TEXT;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS provider_message_id TEXT;
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_communication_outbox ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE UNIQUE INDEX IF NOT EXISTS commercial_communication_outbox_dedup_key_idx
+      ON commercial_communication_outbox (dedup_key);
+
+    CREATE INDEX IF NOT EXISTS commercial_communication_outbox_status_lease_idx
+      ON commercial_communication_outbox (status, available_at, lease_expires_at);
+
+    CREATE INDEX IF NOT EXISTS commercial_communication_outbox_creche_recipient_status_idx
+      ON commercial_communication_outbox (creche_id, recipient_user_id, status);
+
+    CREATE INDEX IF NOT EXISTS commercial_communication_outbox_aggregate_idx
+      ON commercial_communication_outbox (aggregate_type, aggregate_id);
+
+    -- 10. Commercial Notifications (In-App Projection) (Phase R36.H)
+    CREATE TABLE IF NOT EXISTS commercial_notifications (
+      id SERIAL PRIMARY KEY,
+      outbox_id INTEGER REFERENCES commercial_communication_outbox(id),
+      creche_id INTEGER REFERENCES creches(id),
+      recipient_role VARCHAR(32) NOT NULL,
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id),
+      category VARCHAR(32) NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      deep_link TEXT,
+      metadata_json JSONB,
+      read_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS outbox_id INTEGER;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS creche_id INTEGER;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS recipient_role VARCHAR(32);
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS recipient_user_id INTEGER;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS category VARCHAR(32);
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS title TEXT;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS body TEXT;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS deep_link TEXT;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS metadata_json JSONB;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE commercial_notifications ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE UNIQUE INDEX IF NOT EXISTS commercial_notifications_outbox_id_idx
+      ON commercial_notifications (outbox_id);
+
+    CREATE INDEX IF NOT EXISTS commercial_notifications_user_creche_read_idx
+      ON commercial_notifications (recipient_user_id, creche_id, read_at);
   `);
   console.log("[startup] commercial foundation: schema verificado (idempotente).");
 }

@@ -24,6 +24,7 @@ import {
   ExistingStripeScheduleUnsupportedError,
 } from "./stripeCampaignSchedule.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
+import { enqueueCommercialCommunication } from "./commercialOutbox.js";
 
 export class CommercialCampaignError extends Error {
   readonly code: string;
@@ -793,6 +794,28 @@ export async function assignCampaignToCreche(params: {
       tx,
     );
 
+    await enqueueCommercialCommunication(
+      {
+        eventType: "CAMPAIGN_BENEFIT_SCHEDULED",
+        eventOccurrenceKey: `campaign-benefit-scheduled-${assignedBenefit.id}`,
+        aggregateType: "assigned_commercial_benefit",
+        aggregateId: assignedBenefit.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "PROMOTION",
+        factsSnapshotJson: {
+          assignedBenefitId: assignedBenefit.id,
+          campaignName: preview.campaign.name,
+          promotionalPriceCents: target.promotionalPriceCents,
+          billingCycles: preview.benefit.billingCycles,
+          restorationPriceCents: target.restorationCommittedPriceCents,
+          billingInterval: target.billingInterval,
+        },
+        channels: ["in_app"],
+      },
+      tx,
+    );
+
     const [finalAssigned] = await tx
       .select()
       .from(assignedCommercialBenefitsTable)
@@ -878,6 +901,27 @@ export async function reconcileBenefitCycleAdvancement(params: {
         executionStatus: "SUCCESS",
         relatedConditionId: assignedBenefit.commercialConditionId ?? undefined,
         afterState: { status: "active", periodStart: params.contractualPeriodStart },
+      },
+      dbClient,
+    );
+
+    await enqueueCommercialCommunication(
+      {
+        eventType: "CAMPAIGN_BENEFIT_ACTIVE",
+        eventOccurrenceKey: `campaign-benefit-active-${assignedBenefit.id}`,
+        aggregateType: "assigned_commercial_benefit",
+        aggregateId: assignedBenefit.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "PROMOTION",
+        factsSnapshotJson: {
+          assignedBenefitId: assignedBenefit.id,
+          campaignName: assignedBenefit.campaignName,
+          promotionalPriceCents: assignedBenefit.promotionalPriceCents,
+          billingCycles: assignedBenefit.billingCycles,
+          firstConsumedPeriodStart: params.contractualPeriodStart.toISOString(),
+        },
+        channels: ["in_app"],
       },
       dbClient,
     );
@@ -975,6 +1019,29 @@ export async function reconcileBenefitCycleAdvancement(params: {
     dbClient,
   );
 
+  if (cycleNumber === assignedBenefit.billingCycles) {
+    await enqueueCommercialCommunication(
+      {
+        eventType: "CAMPAIGN_RESTORATION_UPCOMING",
+        eventOccurrenceKey: `campaign-restoration-upcoming-${assignedBenefit.id}-${cycleNumber}`,
+        aggregateType: "assigned_commercial_benefit",
+        aggregateId: assignedBenefit.id,
+        crecheId: params.crecheId,
+        audienceRole: "creche_admin",
+        category: "BILLING",
+        factsSnapshotJson: {
+          assignedBenefitId: assignedBenefit.id,
+          campaignName: assignedBenefit.campaignName,
+          restorationPriceCents: assignedBenefit.restorationPriceCents,
+          billingCycles: assignedBenefit.billingCycles,
+          cycleNumber,
+        },
+        channels: ["in_app", "email", "push"],
+      },
+      dbClient,
+    );
+  }
+
   return { cycleConsumed: true, cycleNumber, assignedBenefitId: assignedBenefit.id, completed: false };
 }
 
@@ -1068,6 +1135,25 @@ export async function reconcileCampaignRestoration(params: {
             restorationConditionId: restoreCond.id,
             restorationPriceCents: assignedBenefit.restorationPriceCents,
           },
+        },
+        tx,
+      );
+
+      await enqueueCommercialCommunication(
+        {
+          eventType: "CAMPAIGN_COMPLETED",
+          eventOccurrenceKey: `campaign-completed-${assignedBenefit.id}`,
+          aggregateType: "assigned_commercial_benefit",
+          aggregateId: assignedBenefit.id,
+          crecheId: assignedBenefit.crecheId,
+          audienceRole: "creche_admin",
+          category: "COMMERCIAL",
+          factsSnapshotJson: {
+            assignedBenefitId: assignedBenefit.id,
+            campaignName: assignedBenefit.campaignName,
+            restorationPriceCents: assignedBenefit.restorationPriceCents,
+          },
+          channels: ["in_app", "email", "push"],
         },
         tx,
       );

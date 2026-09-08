@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText, Wrench, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { CreditCard, Check, Sparkles, Bell, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText, Wrench, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -126,6 +126,44 @@ export default function Billing() {
   const [serviceModalOpen, setServiceModalOpen] = React.useState(false);
   const [customerNotes, setCustomerNotes] = React.useState("");
   const [serviceAttemptKey, setServiceAttemptKey] = React.useState("");
+
+  // Commercial In-App Notifications (R36.H)
+  const { data: notificationsData, refetch: refetchNotifications } = useQuery({
+    queryKey: ["billing-commercial-notifications"],
+    queryFn: async () => {
+      const res = await fetch(`${apiBase}/api/billing/commercial-notifications`, { credentials: "include" });
+      if (!res.ok) return { notifications: [], unreadCount: 0 };
+      return res.json();
+    },
+    enabled: isAdmin,
+  });
+
+  const commercialNotifications = notificationsData?.notifications || [];
+  const unreadNotificationsCount = notificationsData?.unreadCount || 0;
+
+  const markNotificationRead = async (id: number) => {
+    try {
+      await fetch(`${apiBase}/api/billing/commercial-notifications/${id}/read`, {
+        method: "POST",
+        credentials: "include",
+      });
+      refetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await fetch(`${apiBase}/api/billing/commercial-notifications/read-all`, {
+        method: "POST",
+        credentials: "include",
+      });
+      refetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const { data: servicesData, isLoading: servicesLoading } = useQuery({
     queryKey: ["billing-platform-services"],
@@ -320,6 +358,95 @@ export default function Billing() {
           </div>
         </CardContent>
       </Card>
+
+      {/* SEÇÃO: ATUALIZAÇÕES COMERCIAIS (R36.H) */}
+      {isAdmin && commercialNotifications.length > 0 && (
+        <Card className="bg-card border border-border rounded-[24px] shadow-sm overflow-hidden mb-8">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-display font-bold text-foreground">Atualizações Comerciais</h3>
+                    {unreadNotificationsCount > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {unreadNotificationsCount} {unreadNotificationsCount === 1 ? "nova" : "novas"}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Comunicações e avisos contratuais da sua assinatura.</p>
+                </div>
+              </div>
+              {unreadNotificationsCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={markAllNotificationsRead}
+                  className="text-xs h-8"
+                >
+                  Marcar todas como lidas
+                </Button>
+              )}
+            </div>
+
+            <div className="divide-y border rounded-xl overflow-hidden">
+              {commercialNotifications.map((n: any) => {
+                const isUnread = !n.readAt;
+                return (
+                  <div
+                    key={n.id}
+                    className={cn(
+                      "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors",
+                      isUnread ? "bg-primary/5" : "bg-card"
+                    )}
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        {isUnread && <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
+                        <span className="font-semibold text-sm text-foreground">{n.title}</span>
+                        <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          {n.category}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{n.body}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatDate(n.createdAt)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {n.deepLink && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="text-xs h-8"
+                          onClick={() => {
+                            if (isUnread) markNotificationRead(n.id);
+                            window.location.href = n.deepLink;
+                          }}
+                        >
+                          Visualizar
+                        </Button>
+                      )}
+                      {isUnread && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs h-8 text-muted-foreground hover:text-foreground"
+                          onClick={() => markNotificationRead(n.id)}
+                        >
+                          Marcar como lida
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* SEÇÃO: PROPOSTAS COMERCIAIS (R36.G) */}
       {isAdmin && proposals.length > 0 && (

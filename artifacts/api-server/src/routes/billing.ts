@@ -1278,4 +1278,74 @@ router.post("/platform-services/:id/cancel", requireRole("creche_admin"), async 
   }
 });
 
+// ─── Commercial Notifications for Creche Admin (R36.H) ───────────────────────
+
+router.get(
+  "/commercial-notifications",
+  authenticate,
+  requireRole("creche_admin"),
+  async (req: AuthRequest, res) => {
+    try {
+      const crecheId = req.user!.crecheId!;
+      const userId = req.user!.id;
+      const { getCommercialNotificationsForUser } = await import("../services/commercialOutbox.js");
+      const notifications = await getCommercialNotificationsForUser(userId, crecheId, "creche_admin");
+      const unreadCount = notifications.filter((n) => !n.readAt).length;
+
+      res.json({
+        notifications,
+        unreadCount,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "LIST_COMMERCIAL_NOTIFICATIONS_ERROR", message: err.message });
+    }
+  },
+);
+
+router.post(
+  "/commercial-notifications/:id/read",
+  authenticate,
+  requireRole("creche_admin"),
+  async (req: AuthRequest, res) => {
+    try {
+      const crecheId = req.user!.crecheId!;
+      const userId = req.user!.id;
+      const id = Number(req.params.id);
+      if (!id || Number.isNaN(id)) {
+        res.status(400).json({ error: "ID inválido." });
+        return;
+      }
+
+      const { markCommercialNotificationAsRead } = await import("../services/commercialOutbox.js");
+      const updated = await markCommercialNotificationAsRead(id, userId, crecheId);
+      if (!updated) {
+        res.status(404).json({ error: "NOTIFICATION_NOT_FOUND", message: "Notificação não encontrada." });
+        return;
+      }
+
+      res.json({ success: true, notification: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: "MARK_READ_ERROR", message: err.message });
+    }
+  },
+);
+
+router.post(
+  "/commercial-notifications/read-all",
+  authenticate,
+  requireRole("creche_admin"),
+  async (req: AuthRequest, res) => {
+    try {
+      const crecheId = req.user!.crecheId!;
+      const userId = req.user!.id;
+      const { markAllCommercialNotificationsAsRead } = await import("../services/commercialOutbox.js");
+      const count = await markAllCommercialNotificationsAsRead(userId, crecheId);
+
+      res.json({ success: true, markedCount: count });
+    } catch (err: any) {
+      res.status(500).json({ error: "MARK_ALL_READ_ERROR", message: err.message });
+    }
+  },
+);
+
 export default router;

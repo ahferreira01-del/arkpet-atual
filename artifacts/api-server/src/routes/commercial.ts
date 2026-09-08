@@ -2791,3 +2791,64 @@ commercialRouter.post("/platform-services/:id/cancel", async (req: AuthRequest, 
     res.status(500).json({ error: "CANCEL_ERROR", message: err.message });
   }
 });
+
+// ─── Operational Commercial Notifications (R36.H) ───────────────────────────
+
+commercialRouter.get(
+  "/operational-notifications",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { getCommercialNotificationsForUser } = await import("../services/commercialOutbox.js");
+      const notifications = await getCommercialNotificationsForUser(userId, null, "master_admin");
+      const unreadCount = notifications.filter((n) => !n.readAt).length;
+
+      res.json({
+        notifications,
+        unreadCount,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "LIST_OPERATIONAL_NOTIFICATIONS_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.post(
+  "/operational-notifications/:id/read",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const id = Number(req.params.id);
+      if (!id || Number.isNaN(id)) {
+        res.status(400).json({ error: "ID inválido." });
+        return;
+      }
+
+      const { markCommercialNotificationAsRead } = await import("../services/commercialOutbox.js");
+      const updated = await markCommercialNotificationAsRead(id, userId, null);
+      if (!updated) {
+        res.status(404).json({ error: "NOTIFICATION_NOT_FOUND", message: "Notificação não encontrada." });
+        return;
+      }
+
+      res.json({ success: true, notification: updated });
+    } catch (err: any) {
+      res.status(500).json({ error: "MARK_READ_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.post(
+  "/operational-notifications/read-all",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { markAllCommercialNotificationsAsRead } = await import("../services/commercialOutbox.js");
+      const count = await markAllCommercialNotificationsAsRead(userId, null);
+
+      res.json({ success: true, markedCount: count });
+    } catch (err: any) {
+      res.status(500).json({ error: "MARK_ALL_READ_ERROR", message: err.message });
+    }
+  },
+);

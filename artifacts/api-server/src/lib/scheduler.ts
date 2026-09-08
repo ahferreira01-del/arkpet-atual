@@ -1055,3 +1055,32 @@ export function startGatewayEventRecoveryWorker(): void {
   );
   console.log("[scheduler] Gateway event recovery worker started (every 5 minutes).");
 }
+
+let commercialOutboxWorkerRunning = false;
+
+export async function processCommercialOutbox(): Promise<{ processedCount: number; successCount: number; failedCount: number }> {
+  if (commercialOutboxWorkerRunning) return { processedCount: 0, successCount: 0, failedCount: 0 };
+  commercialOutboxWorkerRunning = true;
+  try {
+    const { processCommercialOutboxBatch } = await import("../services/commercialOutbox.js");
+    const result = await processCommercialOutboxBatch(50);
+    if (result.processedCount > 0) {
+      console.log(
+        `[scheduler] Commercial outbox batch: ${result.processedCount} processed, ${result.successCount} succeeded, ${result.failedCount} failed.`,
+      );
+    }
+    return result;
+  } catch (err) {
+    console.error("[scheduler] Error during commercial outbox processing:", err);
+    return { processedCount: 0, successCount: 0, failedCount: 0 };
+  } finally {
+    commercialOutboxWorkerRunning = false;
+  }
+}
+
+export function startCommercialOutboxWorker(): void {
+  registerCronTask(
+    cron.schedule("* * * * *", processCommercialOutbox, { timezone: SAO_PAULO_TZ })
+  );
+  console.log("[scheduler] Commercial outbox worker started (every minute).");
+}

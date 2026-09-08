@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   FileText,
+  Bell,
   Plus,
   Send,
   RefreshCw,
@@ -59,6 +60,43 @@ export default function AdminProposals() {
   const { data: creches } = useListCreches();
 
   const [activeTab, setActiveTab] = useState<string>("proposals");
+
+  // Commercial Operational Notifications (R36.H)
+  const { data: notificationsData, refetch: refetchNotifications } = useQuery({
+    queryKey: ["admin-operational-notifications"],
+    queryFn: async () => {
+      const res = await fetch("/api/commercial/operational-notifications", { credentials: "include" });
+      if (!res.ok) return { notifications: [], unreadCount: 0 };
+      return res.json();
+    },
+  });
+
+  const operationalNotifications = notificationsData?.notifications || [];
+  const unreadNotificationsCount = notificationsData?.unreadCount || 0;
+
+  const markNotificationRead = async (id: number) => {
+    try {
+      await fetch(`/api/commercial/operational-notifications/${id}/read`, {
+        method: "POST",
+        credentials: "include",
+      });
+      refetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await fetch("/api/commercial/operational-notifications/read-all", {
+        method: "POST",
+        credentials: "include",
+      });
+      refetchNotifications();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Proposals State
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -519,6 +557,103 @@ export default function AdminProposals() {
     </div>
   );
 
+  const notificationsContent = (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
+          <div>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">Eventos & Notificações Operacionais</CardTitle>
+              {unreadNotificationsCount > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  {unreadNotificationsCount} {unreadNotificationsCount === 1 ? "pendente" : "pendentes"}
+                </Badge>
+              )}
+            </div>
+            <CardDescription>
+              Fatos comerciais operacionais que requerem acompanhamento ou ação do Master Admin.
+            </CardDescription>
+          </div>
+          {unreadNotificationsCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={markAllNotificationsRead}
+              className="text-xs"
+            >
+              Marcar todas como lidas
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent className="pt-6">
+          {operationalNotifications.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground text-sm">
+              Nenhuma notificação comercial operacional registrada.
+            </div>
+          ) : (
+            <div className="divide-y border rounded-xl overflow-hidden">
+              {operationalNotifications.map((n: any) => {
+                const isUnread = !n.readAt;
+                return (
+                  <div
+                    key={n.id}
+                    className={
+                      "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-colors " +
+                      (isUnread ? "bg-primary/5" : "bg-card")
+                    }
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        {isUnread && <span className="h-2 w-2 rounded-full bg-primary flex-shrink-0" />}
+                        <span className="font-semibold text-sm text-foreground">{n.title}</span>
+                        <Badge variant="outline" className="text-[10px] uppercase font-mono">
+                          {n.category}
+                        </Badge>
+                        {n.crecheId && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            Creche #{n.crecheId}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">{n.body}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatDateTime(n.createdAt)}</p>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {n.deepLink && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="text-xs h-8"
+                          onClick={() => {
+                            if (isUnread) markNotificationRead(n.id);
+                            window.location.href = n.deepLink;
+                          }}
+                        >
+                          Acessar
+                        </Button>
+                      )}
+                      {isUnread && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs h-8 text-muted-foreground hover:text-foreground"
+                          onClick={() => markNotificationRead(n.id)}
+                        >
+                          Marcar como lida
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -540,6 +675,12 @@ export default function AdminProposals() {
         tabs={[
           { id: "proposals", label: "Propostas Comerciais", icon: <FileText className="h-4 w-4" />, content: proposalsContent },
           { id: "services", label: "Implantação Assistida", icon: <Wrench className="h-4 w-4" />, content: servicesContent },
+          {
+            id: "notifications",
+            label: unreadNotificationsCount > 0 ? `Notificações (${unreadNotificationsCount})` : "Notificações",
+            icon: <Bell className="h-4 w-4" />,
+            content: notificationsContent,
+          },
         ]}
       />
 
