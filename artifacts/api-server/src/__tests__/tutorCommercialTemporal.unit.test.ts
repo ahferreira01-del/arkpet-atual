@@ -120,5 +120,19 @@ describe("TutorCommercialPricing - Temporal & Overlap Rules Unit Tests (R37.B)",
       expect(isConditionActive(revoked, now)).toBe(false);
       expect(isConditionActive(superseded, now)).toBe(false);
     });
+
+    it("SCHEDULED → REVOKED não aplica preço quando validFrom chegar", () => {
+      const scheduledThenRevoked: any = {
+        status: "REVOKED",
+        validFrom: new Date("2026-06-01T00:00:00Z"),
+        validUntil: new Date("2026-06-30T00:00:00Z"),
+      };
+
+      // Prova que quando validFrom chega, a condição REVOKED é completamente inativa
+      const whenValidFromArrives = new Date("2026-06-01T00:00:01Z");
+      const midPeriod = new Date("2026-06-15T12:00:00Z");
+      expect(isConditionActive(scheduledThenRevoked, whenValidFromArrives)).toBe(false);
+      expect(isConditionActive(scheduledThenRevoked, midPeriod)).toBe(false);
+    });
   });
 });
