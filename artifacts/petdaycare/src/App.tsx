@@ -45,6 +45,7 @@ const TutorStore = React.lazy(() => import("./pages/tutor/store"));
 const Terms = React.lazy(() => import("./pages/terms"));
 const Privacy = React.lazy(() => import("./pages/privacy"));
 const ThermalReceipt = React.lazy(() => import("./pages/thermal-receipt"));
+const CrecheCampaigns = React.lazy(() => import("./pages/marketing/campaigns/index"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -362,6 +363,14 @@ function App() {
                   <AppLayout>
                     <Billing />
                   </AppLayout>
+                </Route>
+
+                <Route path="/marketing/campaigns">
+                  <OperationGuard>
+                    <AppLayout>
+                      <CrecheCampaigns />
+                    </AppLayout>
+                  </OperationGuard>
                 </Route>
 
                 <Route path="/financial">

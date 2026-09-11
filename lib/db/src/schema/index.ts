@@ -14,3 +14,4 @@ export * from "./passwordResetTokens";
 export * from "./financial";
 export * from "./commercial";
 export * from "./tutorCommercial";
+export * from "./crechePromotionalCampaign";

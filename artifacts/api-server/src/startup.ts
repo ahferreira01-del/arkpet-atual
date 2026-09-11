@@ -1245,6 +1245,178 @@ export async function ensureTutorCommercialSchema(): Promise<void> {
   console.log("[startup] tutor commercial foundation: schema verificado (idempotente).");
 }
 
+export async function ensureCrechePromotionalCampaignSchema() {
+  await (db as any).execute(`
+    -- 1. Creche Promotional Campaigns
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaigns (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      benefit_type VARCHAR(32) NOT NULL,
+      percentage_bps INTEGER,
+      fixed_discount_cents INTEGER,
+      fixed_promotional_price_cents INTEGER,
+      audience_type VARCHAR(32) NOT NULL DEFAULT 'ALL_ACTIVE_TUTORS',
+      condition_interaction_policy VARCHAR(32) NOT NULL DEFAULT 'EXCLUDE_IF_TUTOR_CONDITION',
+      usage_limit_type VARCHAR(32) NOT NULL DEFAULT 'UNLIMITED',
+      usage_limit_per_tutor INTEGER,
+      priority INTEGER NOT NULL DEFAULT 100,
+      valid_from TIMESTAMP NOT NULL,
+      valid_until TIMESTAMP NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+      reason TEXT,
+      created_by_user_id INTEGER NOT NULL REFERENCES users(id),
+      supersedes_campaign_id INTEGER REFERENCES creche_promotional_campaigns(id),
+      revoked_by_user_id INTEGER REFERENCES users(id),
+      revoked_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS name VARCHAR(255);
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS benefit_type VARCHAR(32);
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS percentage_bps INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS fixed_discount_cents INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS fixed_promotional_price_cents INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS audience_type VARCHAR(32) DEFAULT 'ALL_ACTIVE_TUTORS';
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS condition_interaction_policy VARCHAR(32) DEFAULT 'EXCLUDE_IF_TUTOR_CONDITION';
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS usage_limit_type VARCHAR(32) DEFAULT 'UNLIMITED';
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS usage_limit_per_tutor INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 100;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS valid_from TIMESTAMP;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS valid_until TIMESTAMP;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'DRAFT';
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS supersedes_campaign_id INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS revoked_by_user_id INTEGER;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP;
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE creche_promotional_campaigns ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_campaigns_lookup_idx
+      ON creche_promotional_campaigns (creche_id, status);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_campaigns_temporal_idx
+      ON creche_promotional_campaigns (creche_id, status, valid_from, valid_until);
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_benefit_type_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_benefit_type_check
+          CHECK (benefit_type IN ('PERCENTAGE_DISCOUNT', 'FIXED_DISCOUNT', 'FIXED_PROMOTIONAL_PRICE'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_status_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_status_check
+          CHECK (status IN ('DRAFT', 'SCHEDULED', 'ACTIVE', 'PAUSED', 'ENDED', 'REVOKED'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_audience_type_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_audience_type_check
+          CHECK (audience_type IN ('ALL_ACTIVE_TUTORS', 'SELECTED_TUTORS'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_interaction_policy_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_interaction_policy_check
+          CHECK (condition_interaction_policy IN ('EXCLUDE_IF_TUTOR_CONDITION', 'ALLOW_IF_BETTER'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_usage_limit_type_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_usage_limit_type_check
+          CHECK (usage_limit_type IN ('UNLIMITED', 'ONCE_PER_TUTOR', 'N_PER_TUTOR'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_validity_window_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_validity_window_check
+          CHECK (valid_until > valid_from);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_percentage_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_percentage_check
+          CHECK (benefit_type != 'PERCENTAGE_DISCOUNT' OR (percentage_bps IS NOT NULL AND percentage_bps >= 1 AND percentage_bps <= 10000 AND fixed_discount_cents IS NULL AND fixed_promotional_price_cents IS NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_fixed_discount_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_fixed_discount_check
+          CHECK (benefit_type != 'FIXED_DISCOUNT' OR (fixed_discount_cents IS NOT NULL AND fixed_discount_cents > 0 AND percentage_bps IS NULL AND fixed_promotional_price_cents IS NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_fixed_price_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_fixed_price_check
+          CHECK (benefit_type != 'FIXED_PROMOTIONAL_PRICE' OR (fixed_promotional_price_cents IS NOT NULL AND fixed_promotional_price_cents >= 0 AND percentage_bps IS NULL AND fixed_discount_cents IS NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_usage_limit_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_usage_limit_check
+          CHECK (usage_limit_type != 'N_PER_TUTOR' OR (usage_limit_per_tutor IS NOT NULL AND usage_limit_per_tutor > 0));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_priority_check') THEN
+        ALTER TABLE creche_promotional_campaigns ADD CONSTRAINT creche_promotional_priority_check
+          CHECK (priority >= 0);
+      END IF;
+    END $$;
+
+    -- 2. Campaign Items
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_items (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL REFERENCES creche_promotional_campaigns(id) ON DELETE CASCADE,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      catalogue_item_id INTEGER NOT NULL REFERENCES catalogue_items(id),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_items_unique_idx
+      ON creche_promotional_campaign_items (campaign_id, catalogue_item_id);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_items_creche_item_idx
+      ON creche_promotional_campaign_items (creche_id, catalogue_item_id);
+
+    -- 3. Campaign Selected Tutors
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_tutors (
+      id SERIAL PRIMARY KEY,
+      campaign_id INTEGER NOT NULL REFERENCES creche_promotional_campaigns(id) ON DELETE CASCADE,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      tutor_id INTEGER NOT NULL REFERENCES users(id),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_tutors_unique_idx
+      ON creche_promotional_campaign_tutors (campaign_id, tutor_id);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_tutors_creche_tutor_idx
+      ON creche_promotional_campaign_tutors (creche_id, tutor_id);
+
+    -- 4. Campaign Audits
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_audits (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      campaign_id INTEGER NOT NULL REFERENCES creche_promotional_campaigns(id),
+      action VARCHAR(64) NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id),
+      actor_role VARCHAR(32) NOT NULL,
+      reason TEXT NOT NULL,
+      before_state JSONB,
+      after_state JSONB,
+      request_id VARCHAR(64),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_audits_campaign_idx
+      ON creche_promotional_campaign_audits (creche_id, campaign_id, created_at);
+
+    -- 5. Campaign Operations Ledger
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_operations (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      campaign_id INTEGER,
+      idempotency_key VARCHAR(64) NOT NULL,
+      operation_type VARCHAR(64) NOT NULL,
+      payload_hash VARCHAR(64) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      response_json JSONB,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_ops_creche_key_idx
+      ON creche_promotional_campaign_operations (creche_id, idempotency_key);
+  `);
+  console.log("[startup] creche promotional campaigns foundation: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -1260,6 +1432,8 @@ export async function initializeDatabase() {
   await ensureCommercialFoundationSchema();
   // Phase R37.B: idempotent tutor commercial conditions schema (runs in all environments)
   await ensureTutorCommercialSchema();
+  // Phase R37.C1: idempotent creche promotional campaigns schema (runs in all environments)
+  await ensureCrechePromotionalCampaignSchema();
 
   await seedPlans();
 

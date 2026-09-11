@@ -22,6 +22,7 @@ import ordersRouter from "./orders.js";
 import logsRouter from "./logs.js";
 import { commercialRouter } from "./commercial.js";
 import tutorCommercialRouter from "./tutorCommercial.routes.js";
+import crecheCampaignRouter from "./crecheCampaign.routes.js";
 import { authenticate } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
@@ -62,6 +63,7 @@ router.use("/creches/:crecheId/financial", requireCrecheMembership, financialRep
 router.use("/creches/:crecheId/medical", medicalRouter);
 router.use("/creches/:crecheId/orders", requireCrecheMembership, ordersRouter);
 router.use("/creches/:crecheId/tutors/:tutorId/commercial-conditions", requireCrecheMembership, tutorCommercialRouter);
+router.use("/creches/:crecheId/campaigns", requireCrecheMembership, crecheCampaignRouter);
 router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);
