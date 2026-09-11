@@ -278,6 +278,13 @@ export const invoiceItemsTable = pgTable("invoice_items", {
   snapshotMaxPets: integer("snapshot_max_pets"),          // maxPetsPerDay capturado (para packages multi-pet)
   snapshotExpirationDays: integer("snapshot_expiration_days"), // Dias até expirar (padrão 365)
   refundedQuantity: integer("refunded_quantity").default(0).notNull(), // Qtd já estornada do item
+  // ─── R37.B: Snapshot Comercial Aditivo do Tutor ───────────────────────────
+  baseUnitPrice: numeric("base_unit_price", { precision: 10, scale: 2 }),
+  discountAmount: numeric("discount_amount", { precision: 10, scale: 2 }),
+  finalPrice: numeric("final_price", { precision: 10, scale: 2 }),
+  pricingSourceType: varchar("pricing_source_type", { length: 50 }),
+  appliedConditionId: integer("applied_condition_id"),
+  conditionSnapshot: jsonb("condition_snapshot"),
 });
 
 export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({

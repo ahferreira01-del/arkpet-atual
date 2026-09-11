@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SearchInput } from "@/components/ui/search-input";
 import {
-  Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound, ChevronRight, PawPrint, ToggleLeft, ToggleRight,
+  Users, Plus, Search, Mail, Dog, UserX, UserCheck, Eye, EyeOff, KeyRound, ChevronRight, PawPrint, ToggleLeft, ToggleRight, Tag,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
@@ -18,6 +18,7 @@ import { ptBR } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { TutorSmartIndicators } from "@/components/financial/smart-indicators";
+import { TutorCommercialModal } from "@/components/commercial/tutor-commercial-modal";
 
 function useTutors(crecheId: number | null) {
   const token = localStorage.getItem("auth_token");
@@ -238,6 +239,7 @@ export default function TutorsPage() {
   const [createdPassword, setCreatedPassword] = useState<string | null>(null);
   const [createdName, setCreatedName] = useState<string | null>(null);
   const [selectedTutor, setSelectedTutor] = useState<any | null>(null);
+  const [commercialTutor, setCommercialTutor] = useState<any | null>(null);
 
   const [form, setForm] = useState({ name: "", email: "", cpf: "", password: generateTempPassword(), mensalidadeDia: "" });
 
@@ -398,7 +400,7 @@ export default function TutorsPage() {
                   ) : null}
                 </div>
 
-                <div className="mt-3 pt-3 border-t border-border flex gap-2">
+                <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-2">
                   <button
                     onClick={() => setSelectedTutor(tutor)}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-primary hover:bg-primary/10 transition-colors min-h-[44px]"
@@ -407,6 +409,17 @@ export default function TutorsPage() {
                     <ChevronRight className="h-3 w-3 opacity-60" />
                   </button>
                   <div className="w-px bg-border my-2" />
+                  {user?.role === "creche_admin" && (
+                    <>
+                      <button
+                        onClick={() => setCommercialTutor(tutor)}
+                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-amber-500 hover:bg-amber-500/10 transition-colors min-h-[44px]"
+                      >
+                        <Tag className="h-3.5 w-3.5" /> Condição Comercial
+                      </button>
+                      <div className="w-px bg-border my-2" />
+                    </>
+                  )}
                   <button
                     onClick={() => handleToggle(tutor)}
                     disabled={toggleMutation.isPending}
@@ -435,6 +448,17 @@ export default function TutorsPage() {
           tutor={selectedTutor}
           crecheId={crecheId ?? 0}
           onClose={() => setSelectedTutor(null)}
+        />
+      )}
+
+      {/* Tutor commercial conditions modal */}
+      {commercialTutor && (
+        <TutorCommercialModal
+          isOpen={!!commercialTutor}
+          onClose={() => setCommercialTutor(null)}
+          crecheId={crecheId ?? 0}
+          tutorId={commercialTutor.id}
+          tutorName={commercialTutor.name}
         />
       )}
 

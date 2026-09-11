@@ -5,6 +5,7 @@ import { z } from "zod";
 import { WalletService } from "../../services/wallet.js";
 import { BillingService } from "../../services/billing.js";
 import { CatalogueRepository } from "../../repositories/catalogue.repository.js";
+import { TutorCommercialPricingService } from "../../services/tutorCommercialPricing.js";
 import { InvoiceRepository } from "../../repositories/invoice.repository.js";
 import { logFinancialAudit } from "../../services/audit.js";
 import { getUncachableStripeClient } from "../../lib/stripeClient.js";
@@ -121,10 +122,17 @@ router.post(
         res.status(422).json({ error: "Este pacote não possui preço definido. Configure o preço antes de vender." }); return;
       }
 
+      const priceSnapshot = await TutorCommercialPricingService.resolveItemPriceForTutor(
+        crecheId,
+        tutorId,
+        item.id
+      );
+      const effectiveAmount = priceSnapshot.effectiveUnitPrice;
+
       const { invoiceId } = await BillingService.addCharge({
         crecheId,
         tutorId,
-        amount: item.basePrice,
+        amount: effectiveAmount,
         description: item.name,
         type: "package",
         itemDate: new Date(),
@@ -134,6 +142,12 @@ router.post(
         creditsAmount: item.creditsAmount ?? undefined,
         snapshotMaxPets: item.maxPetsPerDay ?? undefined,
         snapshotExpiration: 365,
+        baseUnitPrice: priceSnapshot.baseUnitPrice,
+        discountAmount: priceSnapshot.unitDiscount,
+        finalPrice: priceSnapshot.effectiveUnitPrice,
+        pricingSourceType: priceSnapshot.pricingSourceType,
+        appliedConditionId: priceSnapshot.appliedConditionId,
+        conditionSnapshot: priceSnapshot.conditionSnapshot,
       });
 
       await logFinancialAudit({
@@ -155,7 +169,7 @@ router.post(
               price_data: {
                 currency: "brl",
                 product_data: { name: item.name, description: `${item.creditsAmount} diárias` },
-                unit_amount: Math.round(Number(item.basePrice)),
+                unit_amount: Math.round(Number(effectiveAmount)),
               },
               quantity: 1,
             }],

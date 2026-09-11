@@ -408,6 +408,13 @@ async function ensureInvoicesSchema(): Promise<void> {
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_max_pets     INTEGER;
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS snapshot_expiration_days INTEGER;
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS refunded_quantity      INTEGER NOT NULL DEFAULT 0;
+    -- R37.B: additive commercial condition snapshot columns
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS base_unit_price        NUMERIC(10,2);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS discount_amount        NUMERIC(10,2);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS final_price            NUMERIC(10,2);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS pricing_source_type    VARCHAR(50);
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS applied_condition_id   INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS condition_snapshot     JSONB;
 
     -- pos_sale_operations: technical idempotency table for POS sales (Phase R20F)
     CREATE TABLE IF NOT EXISTS pos_sale_operations (
@@ -1116,6 +1123,128 @@ export async function ensureCommercialFoundationSchema(): Promise<void> {
   console.log("[startup] commercial foundation: schema verificado (idempotente).");
 }
 
+/**
+ * Phase R37.B: idempotent tutor commercial conditions schema (runs in all environments).
+ * Defines tutor_commercial_conditions, tutor_commercial_operations, tutor_commercial_audits.
+ */
+export async function ensureTutorCommercialSchema(): Promise<void> {
+  await (db as any).execute(`
+    -- 1. Tutor Commercial Conditions
+    CREATE TABLE IF NOT EXISTS tutor_commercial_conditions (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      tutor_id INTEGER NOT NULL REFERENCES users(id),
+      catalogue_item_id INTEGER NOT NULL REFERENCES catalogue_items(id),
+      condition_type VARCHAR(32) NOT NULL,
+      custom_price_cents INTEGER,
+      percentage_bps INTEGER,
+      fixed_discount_cents INTEGER,
+      valid_from TIMESTAMP NOT NULL,
+      valid_until TIMESTAMP,
+      status VARCHAR(32) NOT NULL DEFAULT 'SCHEDULED',
+      reason TEXT NOT NULL,
+      created_by_user_id INTEGER NOT NULL REFERENCES users(id),
+      supersedes_condition_id INTEGER,
+      revoked_by_user_id INTEGER REFERENCES users(id),
+      revoked_at TIMESTAMP,
+      idempotency_key VARCHAR(64),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS custom_price_cents INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS percentage_bps INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS fixed_discount_cents INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS valid_from TIMESTAMP;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS valid_until TIMESTAMP;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'SCHEDULED';
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS reason TEXT;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS supersedes_condition_id INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS revoked_by_user_id INTEGER;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMP;
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(64);
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+    ALTER TABLE tutor_commercial_conditions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+    CREATE INDEX IF NOT EXISTS tutor_commercial_creche_tutor_item_idx
+      ON tutor_commercial_conditions (creche_id, tutor_id, catalogue_item_id);
+
+    CREATE INDEX IF NOT EXISTS tutor_commercial_status_validity_idx
+      ON tutor_commercial_conditions (creche_id, tutor_id, catalogue_item_id, status, valid_from, valid_until);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS tutor_commercial_unique_idempotency_idx
+      ON tutor_commercial_conditions (creche_id, idempotency_key)
+      WHERE idempotency_key IS NOT NULL;
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_condition_type_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_condition_type_check
+          CHECK (condition_type IN ('CUSTOM_PRICE', 'PERCENTAGE_DISCOUNT', 'FIXED_DISCOUNT'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_status_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_status_check
+          CHECK (status IN ('SCHEDULED', 'ACTIVE', 'SUPERSEDED', 'EXPIRED', 'REVOKED', 'CANCELLED'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_validity_window_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_validity_window_check
+          CHECK (valid_until IS NULL OR valid_until > valid_from);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_custom_price_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_custom_price_check
+          CHECK (condition_type != 'CUSTOM_PRICE' OR (custom_price_cents IS NOT NULL AND custom_price_cents >= 0 AND percentage_bps IS NULL AND fixed_discount_cents IS NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_percentage_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_percentage_check
+          CHECK (condition_type != 'PERCENTAGE_DISCOUNT' OR (percentage_bps IS NOT NULL AND percentage_bps >= 0 AND percentage_bps <= 10000 AND custom_price_cents IS NULL AND fixed_discount_cents IS NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tutor_commercial_fixed_discount_check') THEN
+        ALTER TABLE tutor_commercial_conditions ADD CONSTRAINT tutor_commercial_fixed_discount_check
+          CHECK (condition_type != 'FIXED_DISCOUNT' OR (fixed_discount_cents IS NOT NULL AND fixed_discount_cents >= 0 AND custom_price_cents IS NULL AND percentage_bps IS NULL));
+      END IF;
+    END $$;
+
+    -- 2. Tutor Commercial Operations Ledger (Idempotency Engine)
+    CREATE TABLE IF NOT EXISTS tutor_commercial_operations (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      tutor_id INTEGER NOT NULL REFERENCES users(id),
+      idempotency_key VARCHAR(64) NOT NULL,
+      operation_type VARCHAR(64) NOT NULL,
+      payload_hash VARCHAR(64) NOT NULL,
+      status VARCHAR(32) NOT NULL,
+      response_json JSONB,
+      condition_id INTEGER,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS tutor_commercial_ops_creche_key_idx
+      ON tutor_commercial_operations (creche_id, idempotency_key);
+
+    -- 3. Tutor Commercial Audits
+    CREATE TABLE IF NOT EXISTS tutor_commercial_audits (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      tutor_id INTEGER NOT NULL REFERENCES users(id),
+      condition_id INTEGER,
+      catalogue_item_id INTEGER,
+      action VARCHAR(64) NOT NULL,
+      actor_user_id INTEGER NOT NULL REFERENCES users(id),
+      actor_role VARCHAR(32) NOT NULL,
+      reason TEXT NOT NULL,
+      before_state JSONB,
+      after_state JSONB,
+      request_id VARCHAR(64),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS tutor_commercial_audits_creche_tutor_idx
+      ON tutor_commercial_audits (creche_id, tutor_id, created_at);
+  `);
+  console.log("[startup] tutor commercial foundation: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -1129,6 +1258,8 @@ export async function initializeDatabase() {
   await ensureTasksSchema();
   // Phase R36.C Slice 1: idempotent commercial foundation schema (runs in all environments)
   await ensureCommercialFoundationSchema();
+  // Phase R37.B: idempotent tutor commercial conditions schema (runs in all environments)
+  await ensureTutorCommercialSchema();
 
   await seedPlans();
 

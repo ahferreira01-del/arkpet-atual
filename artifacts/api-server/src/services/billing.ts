@@ -511,6 +511,13 @@ export class BillingService {
     creditsAmount?: number;       // Qtd de créditos que este item concede
     snapshotMaxPets?: number;     // maxPetsPerDay do pacote
     snapshotExpiration?: number;  // Dias até expirar (padrão 365)
+    // ─── R37.B: Snapshot Comercial Aditivo do Tutor ───────────────────────────
+    baseUnitPrice?: number | string;
+    discountAmount?: number | string;
+    finalPrice?: number | string;
+    pricingSourceType?: string;
+    appliedConditionId?: number | null;
+    conditionSnapshot?: any;
   }) {
     const amountVal =
       typeof params.amount === "string" ? parseFloat(params.amount) : params.amount;
@@ -699,6 +706,13 @@ export class BillingService {
         creditsAmount: params.creditsAmount,
         snapshotMaxPets: params.snapshotMaxPets,
         snapshotExpirationDays: params.snapshotExpiration ?? (params.creditsAmount ? 365 : undefined),
+        // ── Snapshot Comercial Aditivo (R37.B) ────────────────────────────
+        baseUnitPrice: params.baseUnitPrice != null ? String(params.baseUnitPrice) : amountVal.toFixed(2),
+        discountAmount: params.discountAmount != null ? String(params.discountAmount) : "0.00",
+        finalPrice: params.finalPrice != null ? String(params.finalPrice) : amountVal.toFixed(2),
+        pricingSourceType: params.pricingSourceType || "CATALOG",
+        appliedConditionId: params.appliedConditionId ?? null,
+        conditionSnapshot: params.conditionSnapshot ?? null,
       }, txClient);
 
       // ── Audit log (Fase 14) ────────────────────────────────────────────

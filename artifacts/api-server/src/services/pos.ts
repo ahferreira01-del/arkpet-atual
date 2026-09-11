@@ -6,6 +6,7 @@ import { CatalogueRepository } from "../repositories/catalogue.repository.js";
 import { InvoiceRepository } from "../repositories/invoice.repository.js";
 import { TransactionRepository } from "../repositories/transaction.repository.js";
 import { hasOverdueInvoices, BillingService } from "./billing.js";
+import { TutorCommercialPricingService } from "./tutorCommercialPricing.js";
 
 export interface PosItem {
   catalogueItemId: number;
@@ -128,6 +129,7 @@ export class PosService {
           quantity: number;
           unitPrice: number;
           totalPrice: number;
+          snapshot?: any;
         }> = [];
 
         // Phase 1 — Lock + validate stock
@@ -156,12 +158,19 @@ export class PosService {
             );
           }
 
-          const unitPrice = Number(lockedItem.basePrice);
+          const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
+            crecheId,
+            tutorId,
+            lockedItem.id,
+            { quantity: reqItem.quantity, tx }
+          );
+          const unitPrice = Number(resolved.effectiveUnitPrice);
           lockedItems.push({
             item: lockedItem,
             quantity: reqItem.quantity,
             unitPrice,
             totalPrice: unitPrice * reqItem.quantity,
+            snapshot: resolved,
           });
           subtotal += unitPrice * reqItem.quantity;
         }
@@ -217,6 +226,12 @@ export class PosService {
             tx,
             userId,
             catalogueItemId: li.item.id,
+            baseUnitPrice: (li as any).snapshot?.baseUnitPrice,
+            discountAmount: (li as any).snapshot?.unitDiscount,
+            finalPrice: (li as any).snapshot?.effectiveUnitPrice,
+            pricingSourceType: (li as any).snapshot?.pricingSourceType,
+            appliedConditionId: (li as any).snapshot?.appliedConditionId,
+            conditionSnapshot: (li as any).snapshot?.conditionSnapshot,
           }));
         }
 

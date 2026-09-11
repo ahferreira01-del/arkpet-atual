@@ -25,6 +25,7 @@ import {
 } from "@workspace/db";
 import { financialLog } from "../lib/logger.js";
 import { BillingService } from "./billing.js";
+import { TutorCommercialPricingService } from "./tutorCommercialPricing.js";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import type { FinancialDomainEvent } from "./events.js";
 import { eq, and, sql, inArray, desc } from "drizzle-orm";
@@ -138,6 +139,7 @@ export async function createOrder(
         quantity: number;
         unitPrice: string;
         totalPrice: string;
+        snapshot?: any;
       }[] = [];
       let subtotal = 0;
 
@@ -188,7 +190,14 @@ export async function createOrder(
         const catItem = catalogueItems.find(c => c.id === reqItem.catalogueItemId);
         if (!catItem) continue;
 
-        const unitPrice = Number(catItem.basePrice);
+        const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
+          crecheId,
+          tutorId,
+          catItem.id,
+          { quantity: reqItem.quantity, tx }
+        );
+
+        const unitPrice = Number(resolved.effectiveUnitPrice);
         const totalPrice = unitPrice * reqItem.quantity;
         subtotal += totalPrice;
 
@@ -197,6 +206,7 @@ export async function createOrder(
           quantity: reqItem.quantity,
           unitPrice: unitPrice.toString(),
           totalPrice: totalPrice.toString(),
+          snapshot: resolved,
         });
       }
 
@@ -234,6 +244,12 @@ export async function createOrder(
           creditsAmount: catItem.creditsAmount ?? undefined,
           snapshotMaxPets: catItem.maxPetsPerDay ?? undefined,
           snapshotExpiration: (catItem as any).expirationDays ?? undefined,
+          baseUnitPrice: (reqItem as any).snapshot?.baseUnitPrice,
+          discountAmount: (reqItem as any).snapshot?.unitDiscount,
+          finalPrice: (reqItem as any).snapshot?.effectiveUnitPrice,
+          pricingSourceType: (reqItem as any).snapshot?.pricingSourceType,
+          appliedConditionId: (reqItem as any).snapshot?.appliedConditionId,
+          conditionSnapshot: (reqItem as any).snapshot?.conditionSnapshot,
           tx,
         });
         if (!firstInvoiceId) firstInvoiceId = invId;

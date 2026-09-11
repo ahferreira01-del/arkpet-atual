@@ -39,6 +39,7 @@ import {
   restoreAdditionalServices,
 } from "../services/credits.js";
 import { BookingServicesRepository } from "../repositories/booking-services.repository.js";
+import { TutorCommercialPricingService } from "../services/tutorCommercialPricing.js";
 
 // ── Domain error helper ────────────────────────────────────────────────────────
 // Creates an Error with an explicit HTTP status code so catch blocks can
@@ -430,11 +431,14 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
         }
 
         for (const item of items) {
-          // Compute price based on pet size
-          let price = Number(item.basePrice);
-          if (pet.size === "small" && item.priceSmall) price = Number(item.priceSmall);
-          else if (pet.size === "medium" && item.priceMedium) price = Number(item.priceMedium);
-          else if (pet.size === "large" && item.priceLarge) price = Number(item.priceLarge);
+          // Compute price based on pet size and individual commercial condition (R37.B pricing lock)
+          const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
+            crecheId,
+            tutorId,
+            item.id,
+            { petSize: pet.size, tx }
+          );
+          const price = Number(resolved.effectiveUnitPrice);
 
           await BookingServicesRepository.insert({
             bookingId: booking.id,
@@ -698,17 +702,16 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
           }
 
           let unitPrice = 0;
+          let pricingSnapshot: any = null;
           if (catalogueItem) {
              const [pet] = await tx.select().from(petsTable).where(eq(petsTable.id, existing.petId)).limit(1);
-             if (pet?.size === 'small' && catalogueItem.priceSmall) {
-               unitPrice = Number(catalogueItem.priceSmall);
-             } else if (pet?.size === 'medium' && catalogueItem.priceMedium) {
-               unitPrice = Number(catalogueItem.priceMedium);
-             } else if (pet?.size === 'large' && catalogueItem.priceLarge) {
-               unitPrice = Number(catalogueItem.priceLarge);
-             } else {
-               unitPrice = Number(catalogueItem.basePrice);
-             }
+             pricingSnapshot = await TutorCommercialPricingService.resolveItemPriceForTutor(
+               crecheId,
+               existing.tutorId,
+               catalogueItem.id,
+               { petSize: pet?.size, tx, atTime: new Date(existing.startDate) }
+             );
+             unitPrice = Number(pricingSnapshot.effectiveUnitPrice);
              
              // Fase 7: CreditService.consumeServiceCreditsForBooking
              // Rastreia consumo em booking_service_credits para restauração no cancelamento (Fase 5)
@@ -741,6 +744,13 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
               userId: req.user!.id,
               // Fase 14: snapshot para rastreabilidade e recuperação sem Catalogue
               catalogueItemId: catalogueItem?.id,
+              // R37.B: snapshot comercial do tutor
+              baseUnitPrice: pricingSnapshot?.baseUnitPrice,
+              discountAmount: pricingSnapshot?.unitDiscount,
+              finalPrice: pricingSnapshot?.effectiveUnitPrice,
+              pricingSourceType: pricingSnapshot?.pricingSourceType,
+              appliedConditionId: pricingSnapshot?.appliedConditionId,
+              conditionSnapshot: pricingSnapshot?.conditionSnapshot,
             });
           }
           
@@ -1658,23 +1668,24 @@ router.post("/:bookingId/consumables", async (req: AuthRequest, res) => {
       return;
     }
 
-    // Se o serviço depender do porte do pet, precisaríamos buscar o pet. Simplificado para usar basePrice:
-    let price = Number(item.basePrice);
-
+    let petSize: string | null = null;
     if (item.type === "service") {
       const [pet] = await db
         .select()
         .from(petsTable)
         .where(eq(petsTable.id, booking.petId));
       if (pet && pet.size) {
-        if (pet.size === "small" && item.priceSmall)
-          price = Number(item.priceSmall);
-        else if (pet.size === "medium" && item.priceMedium)
-          price = Number(item.priceMedium);
-        else if (pet.size === "large" && item.priceLarge)
-          price = Number(item.priceLarge);
+        petSize = pet.size;
       }
     }
+
+    const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
+      crecheId,
+      booking.tutorId,
+      itemId,
+      { petSize, quantity: quantity || 1 }
+    );
+    const price = Number(resolved.effectiveUnitPrice);
 
     const [consumable] = await db
       .insert(bookingConsumablesTable)
