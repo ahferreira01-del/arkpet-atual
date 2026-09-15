@@ -40,6 +40,7 @@ import {
 } from "../services/credits.js";
 import { BookingServicesRepository } from "../repositories/booking-services.repository.js";
 import { TutorCommercialPricingService } from "../services/tutorCommercialPricing.js";
+import { CrecheCampaignReservationService } from "../services/crecheCampaignReservation.service.js";
 
 // ── Domain error helper ────────────────────────────────────────────────────────
 // Creates an Error with an explicit HTTP status code so catch blocks can
@@ -430,6 +431,12 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
           }
         }
 
+        const createdAddonServices: Array<{
+          bookingServiceId: number;
+          catalogueItemId: number;
+          quantity: number;
+        }> = [];
+
         for (const item of items) {
           // Compute price based on pet size and individual commercial condition (R37.B pricing lock)
           const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
@@ -440,15 +447,62 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
           );
           const price = Number(resolved.effectiveUnitPrice);
 
-          await BookingServicesRepository.insert({
+          const insertedService = await BookingServicesRepository.insert({
             bookingId: booking.id,
             catalogueItemId: item.id,
             quantity: 1,
             status: "pending",
             capturedPrice: String(price),
           }, tx);
+
+          createdAddonServices.push({
+            bookingServiceId: insertedService.id,
+            catalogueItemId: item.id,
+            quantity: 1,
+          });
         }
+
+        // R37.C2A: Reserve winning promotional campaigns atomically within this booking transaction
+        const commercialReservation = await CrecheCampaignReservationService.reserveBookingCampaigns(tx, {
+          crecheId,
+          tutorId,
+          bookingId: booking.id,
+          petSize: pet.size,
+          primaryCatalogueItemId: booking.primaryCatalogueItemId,
+          additionalServiceItems: createdAddonServices,
+          atTime: new Date(startDate),
+          actor: {
+            userId: req.user!.id,
+            role: req.user!.role,
+            source: "http",
+          },
+        });
+
+        // Prepara objeto enriquecido para retornar
+        const [tutorRec] = await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1);
+        return {
+          ...booking,
+          petName: pet.name,
+          tutorName: tutorRec?.name ?? null,
+          commercialReservation,
+        };
       }
+
+      // No add-ons branch: still evaluate primaryCatalogueItemId for campaign reservation
+      const commercialReservation = await CrecheCampaignReservationService.reserveBookingCampaigns(tx, {
+        crecheId,
+        tutorId,
+        bookingId: booking.id,
+        petSize: pet.size,
+        primaryCatalogueItemId: booking.primaryCatalogueItemId,
+        additionalServiceItems: [],
+        atTime: new Date(startDate),
+        actor: {
+          userId: req.user!.id,
+          role: req.user!.role,
+          source: "http",
+        },
+      });
 
       // Lógica de consumo de créditos movida para a rota PUT (status = confirmed)
 
@@ -458,6 +512,7 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
         ...booking,
         petName: pet.name,
         tutorName: tutorRec?.name ?? null,
+        commercialReservation,
       };
     });
 
@@ -527,11 +582,12 @@ router.get("/:bookingId", async (req: AuthRequest, res) => {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  const [enriched, addons] = await Promise.all([
+  const [enriched, addons, commercialReservation] = await Promise.all([
     getBookingWithNames(booking),
     BookingServicesRepository.findByBookingId(bookingId),
+    CrecheCampaignReservationService.getBookingCommercialSummary(crecheId, bookingId),
   ]);
-  res.json({ ...enriched, additionalServices: addons });
+  res.json({ ...enriched, additionalServices: addons, commercialReservation });
 });
 
 router.put("/:bookingId", async (req: AuthRequest, res, next) => {
@@ -899,6 +955,18 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
           referenceType: "bookings",
           details: "Estorno de créditos devido a cancelamento da reserva."
         }, tx);
+
+        // R37.C2A: Release reserved promotional campaigns upon booking cancellation
+        await CrecheCampaignReservationService.releaseBookingCampaigns(
+          tx,
+          crecheId,
+          bookingId,
+          "booking_cancelled",
+          {
+            userId: req.user!.id,
+            role: req.user!.role,
+          }
+        );
       }
 
 
@@ -911,11 +979,13 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       // Enriquecer
       const [pet] = await tx.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, booking.petId)).limit(1);
       const [tutor] = await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, booking.tutorId)).limit(1);
+      const commercialReservation = await CrecheCampaignReservationService.getBookingCommercialSummary(crecheId, bookingId, tx);
       
       return {
         ...booking,
         petName: pet?.name,
         tutorName: tutor?.name,
+        commercialReservation,
         _prevStatus: existing.status
       };
     });

@@ -907,7 +907,8 @@ export class CrecheCampaignService {
     campaignId: number,
     actor: ActorContext,
     reason: string,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    atTime: Date = new Date()
   ): Promise<any> {
     assertCanManageCampaign(actor);
 
@@ -944,7 +945,14 @@ export class CrecheCampaignService {
           return { result: full, campaignId };
         }
 
-        const now = new Date();
+        const validUntil = new Date(campaign.validUntil);
+        if (campaign.status === "ENDED" || atTime.getTime() >= validUntil.getTime()) {
+          throw new CrecheCampaignConflictError(
+            "Campanhas cujo período já terminou (ENDED) não podem ser revogadas."
+          );
+        }
+
+        const now = atTime;
         const [updated] = await tx
           .update(crechePromotionalCampaignsTable)
           .set({

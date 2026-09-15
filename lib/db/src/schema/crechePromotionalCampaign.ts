@@ -2,7 +2,8 @@ import { pgTable, serial, integer, varchar, timestamp, text, check, jsonb, uniqu
 import { relations, sql } from "drizzle-orm";
 import { crechesTable } from "./creches";
 import { usersTable } from "./users";
-import { catalogueItemsTable } from "./financial";
+import { catalogueItemsTable, bookingServicesTable } from "./financial";
+import { bookingsTable } from "./bookings";
 
 // Allowed Campaign Benefit Types
 export const CAMPAIGN_BENEFIT_TYPES = [
@@ -55,8 +56,29 @@ export const CAMPAIGN_AUDIT_ACTIONS = [
   "CAMPAIGN_SUPERSEDED",
   "CAMPAIGN_REVOKED",
   "CAMPAIGN_ENDED",
+  "CAMPAIGN_REDEMPTION_RESERVED",
+  "CAMPAIGN_REDEMPTION_RELEASED",
 ] as const;
 export type CampaignAuditAction = (typeof CAMPAIGN_AUDIT_ACTIONS)[number];
+
+// Allowed Campaign Redemption Statuses (CANONICAL: RESERVED, APPLIED, RELEASED)
+export const CAMPAIGN_REDEMPTION_STATUSES = [
+  "RESERVED",
+  "APPLIED",
+  "RELEASED",
+] as const;
+export type CampaignRedemptionStatus = (typeof CAMPAIGN_REDEMPTION_STATUSES)[number];
+
+// Allowed Campaign Redemption Context Types
+export const CAMPAIGN_REDEMPTION_CONTEXT_TYPES = ["BOOKING"] as const;
+export type CampaignRedemptionContextType = (typeof CAMPAIGN_REDEMPTION_CONTEXT_TYPES)[number];
+
+// Allowed Campaign Redemption Line Types
+export const CAMPAIGN_REDEMPTION_LINE_TYPES = [
+  "PRIMARY",
+  "BOOKING_SERVICE",
+] as const;
+export type CampaignRedemptionLineType = (typeof CAMPAIGN_REDEMPTION_LINE_TYPES)[number];
 
 /**
  * 1. Creche Promotional Campaigns (Creche -> Tutor)
@@ -346,3 +368,192 @@ export type InsertCrechePromotionalCampaignAudit = typeof crechePromotionalCampa
 
 export type CrechePromotionalCampaignOperation = typeof crechePromotionalCampaignOperationsTable.$inferSelect;
 export type InsertCrechePromotionalCampaignOperation = typeof crechePromotionalCampaignOperationsTable.$inferInsert;
+
+/**
+ * 6. Campaign Redemptions (1 Redemption per Commercial Context/Booking)
+ * R37.C2A operational redemption & reservation entity.
+ * Statuses in C2A are strictly 'RESERVED' and 'RELEASED' ('APPLIED' is reserved for R37.C2B).
+ */
+export const crechePromotionalCampaignRedemptionsTable = pgTable(
+  "creche_promotional_campaign_redemptions",
+  {
+    id: serial("id").primaryKey(),
+    crecheId: integer("creche_id")
+      .notNull()
+      .references(() => crechesTable.id, { onDelete: "restrict" }),
+    campaignId: integer("campaign_id")
+      .notNull()
+      .references(() => crechePromotionalCampaignsTable.id, { onDelete: "restrict" }),
+    tutorId: integer("tutor_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    bookingId: integer("booking_id")
+      .notNull()
+      .references(() => bookingsTable.id, { onDelete: "restrict" }),
+    contextType: varchar("context_type", { length: 32 }).default("BOOKING").notNull(),
+    status: varchar("status", { length: 32 }).default("RESERVED").notNull(),
+    reservedAt: timestamp("reserved_at").defaultNow().notNull(),
+    appliedAt: timestamp("applied_at"),
+    releasedAt: timestamp("released_at"),
+    releaseReason: text("release_reason"),
+    campaignSnapshot: jsonb("campaign_snapshot").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    checkStatus: check(
+      "creche_promotional_redemption_status_check",
+      sql`${table.status} IN ('RESERVED', 'APPLIED', 'RELEASED')`
+    ),
+    checkContextType: check(
+      "creche_promotional_redemption_context_type_check",
+      sql`${table.contextType} IN ('BOOKING')`
+    ),
+    uniqueContextIdx: uniqueIndex("creche_promotional_redemptions_unique_context_idx").on(
+      table.crecheId,
+      table.campaignId,
+      table.tutorId,
+      table.bookingId
+    ),
+    usageIdx: index("creche_promotional_redemptions_usage_idx").on(
+      table.crecheId,
+      table.tutorId,
+      table.campaignId,
+      table.status
+    ),
+    bookingIdx: index("creche_promotional_redemptions_booking_idx").on(
+      table.crecheId,
+      table.bookingId
+    ),
+  })
+);
+
+export const crechePromotionalCampaignRedemptionsRelations = relations(
+  crechePromotionalCampaignRedemptionsTable,
+  ({ one, many }) => ({
+    creche: one(crechesTable, {
+      fields: [crechePromotionalCampaignRedemptionsTable.crecheId],
+      references: [crechesTable.id],
+    }),
+    campaign: one(crechePromotionalCampaignsTable, {
+      fields: [crechePromotionalCampaignRedemptionsTable.campaignId],
+      references: [crechePromotionalCampaignsTable.id],
+    }),
+    tutor: one(usersTable, {
+      fields: [crechePromotionalCampaignRedemptionsTable.tutorId],
+      references: [usersTable.id],
+    }),
+    booking: one(bookingsTable, {
+      fields: [crechePromotionalCampaignRedemptionsTable.bookingId],
+      references: [bookingsTable.id],
+    }),
+    items: many(crechePromotionalCampaignRedemptionItemsTable),
+  })
+);
+
+/**
+ * 7. Campaign Redemption Items (1..N Items per Redemption)
+ * Distinguishes PRIMARY booking item from BOOKING_SERVICE add-on items.
+ */
+export const crechePromotionalCampaignRedemptionItemsTable = pgTable(
+  "creche_promotional_campaign_redemption_items",
+  {
+    id: serial("id").primaryKey(),
+    redemptionId: integer("redemption_id")
+      .notNull()
+      .references(() => crechePromotionalCampaignRedemptionsTable.id, { onDelete: "restrict" }),
+    catalogueItemId: integer("catalogue_item_id")
+      .notNull()
+      .references(() => catalogueItemsTable.id, { onDelete: "restrict" }),
+    lineType: varchar("line_type", { length: 32 }).notNull(),
+    bookingServiceId: integer("booking_service_id")
+      .references(() => bookingServicesTable.id, { onDelete: "restrict" }),
+    baseUnitPriceCents: integer("base_unit_price_cents").notNull(),
+    effectiveUnitPriceCents: integer("effective_unit_price_cents").notNull(),
+    unitDiscountCents: integer("unit_discount_cents").notNull(),
+    quantity: integer("quantity").default(1).notNull(),
+    baseLineTotalCents: integer("base_line_total_cents").notNull(),
+    discountLineTotalCents: integer("discount_line_total_cents").notNull(),
+    finalLineTotalCents: integer("final_line_total_cents").notNull(),
+    campaignSnapshot: jsonb("campaign_snapshot").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    checkLineType: check(
+      "creche_promotional_redemption_item_line_type_check",
+      sql`${table.lineType} IN ('PRIMARY', 'BOOKING_SERVICE')`
+    ),
+    checkBookingServiceId: check(
+      "creche_promotional_redemption_item_service_fk_check",
+      sql`(${table.lineType} = 'PRIMARY' AND ${table.bookingServiceId} IS NULL) OR (${table.lineType} = 'BOOKING_SERVICE' AND ${table.bookingServiceId} IS NOT NULL)`
+    ),
+    checkBasePrice: check(
+      "creche_promotional_redemption_item_base_price_check",
+      sql`${table.baseUnitPriceCents} >= 0`
+    ),
+    checkEffectivePrice: check(
+      "creche_promotional_redemption_item_effective_price_check",
+      sql`${table.effectiveUnitPriceCents} >= 0 AND ${table.effectiveUnitPriceCents} <= ${table.baseUnitPriceCents}`
+    ),
+    checkUnitDiscount: check(
+      "creche_promotional_redemption_item_unit_discount_check",
+      sql`${table.unitDiscountCents} = ${table.baseUnitPriceCents} - ${table.effectiveUnitPriceCents}`
+    ),
+    checkQuantity: check(
+      "creche_promotional_redemption_item_quantity_check",
+      sql`${table.quantity} > 0`
+    ),
+    checkBaseLineTotal: check(
+      "creche_promotional_redemption_item_base_line_total_check",
+      sql`${table.baseLineTotalCents} = ${table.baseUnitPriceCents} * ${table.quantity}`
+    ),
+    checkFinalLineTotal: check(
+      "creche_promotional_redemption_item_final_line_total_check",
+      sql`${table.finalLineTotalCents} = ${table.effectiveUnitPriceCents} * ${table.quantity}`
+    ),
+    checkDiscountLineTotal: check(
+      "creche_promotional_redemption_item_discount_line_total_check",
+      sql`${table.discountLineTotalCents} = ${table.baseLineTotalCents} - ${table.finalLineTotalCents}`
+    ),
+    primaryItemUniqueIdx: uniqueIndex("creche_promotional_items_primary_unique_idx")
+      .on(table.redemptionId)
+      .where(sql`${table.lineType} = 'PRIMARY'`),
+    serviceItemUniqueIdx: uniqueIndex("creche_promotional_items_service_unique_idx")
+      .on(table.redemptionId, table.bookingServiceId)
+      .where(sql`${table.lineType} = 'BOOKING_SERVICE'`),
+    redemptionIdx: index("creche_promotional_redemption_items_redemption_idx").on(
+      table.redemptionId
+    ),
+    catalogueIdx: index("creche_promotional_redemption_items_catalogue_idx").on(
+      table.catalogueItemId
+    ),
+  })
+);
+
+export const crechePromotionalCampaignRedemptionItemsRelations = relations(
+  crechePromotionalCampaignRedemptionItemsTable,
+  ({ one }) => ({
+    redemption: one(crechePromotionalCampaignRedemptionsTable, {
+      fields: [crechePromotionalCampaignRedemptionItemsTable.redemptionId],
+      references: [crechePromotionalCampaignRedemptionsTable.id],
+    }),
+    catalogueItem: one(catalogueItemsTable, {
+      fields: [crechePromotionalCampaignRedemptionItemsTable.catalogueItemId],
+      references: [catalogueItemsTable.id],
+    }),
+    bookingService: one(bookingServicesTable, {
+      fields: [crechePromotionalCampaignRedemptionItemsTable.bookingServiceId],
+      references: [bookingServicesTable.id],
+    }),
+  })
+);
+
+export type CrechePromotionalCampaignRedemption =
+  typeof crechePromotionalCampaignRedemptionsTable.$inferSelect;
+export type InsertCrechePromotionalCampaignRedemption =
+  typeof crechePromotionalCampaignRedemptionsTable.$inferInsert;
+
+export type CrechePromotionalCampaignRedemptionItem =
+  typeof crechePromotionalCampaignRedemptionItemsTable.$inferSelect;
+export type InsertCrechePromotionalCampaignRedemptionItem =
+  typeof crechePromotionalCampaignRedemptionItemsTable.$inferInsert;

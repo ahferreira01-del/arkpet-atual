@@ -604,7 +604,7 @@ export default function CrecheCampaignsPage() {
                         </Button>
                       )}
 
-                      {camp.status !== "REVOKED" && (
+                      {camp.status !== "REVOKED" && camp.status !== "ENDED" && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1285,6 +1285,13 @@ export default function CrecheCampaignsPage() {
         className="max-w-md"
       >
         <div className="space-y-4 pt-2">
+          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2 text-xs text-amber-400">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              Atenção: Reservas promocionais já realizadas permanecem válidas.
+            </span>
+          </div>
+
           <p className="text-xs text-muted-foreground">
             Pausar a campanha <strong className="text-foreground">"{pauseModal?.name}"</strong> suspende temporariamente qualquer nova elegibilidade ou benefício aos tutores.
           </p>
@@ -1361,7 +1368,7 @@ export default function CrecheCampaignsPage() {
           <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2 text-xs text-rose-400">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
-              Atenção: A revogação é definitiva. A campanha não poderá mais ser reativada no futuro.
+              Atenção: A revogação é definitiva. Reservas promocionais já realizadas permanecem válidas. A campanha não poderá mais ser reativada no futuro.
             </span>
           </div>
 

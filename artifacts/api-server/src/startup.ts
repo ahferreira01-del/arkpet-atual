@@ -1413,6 +1413,115 @@ export async function ensureCrechePromotionalCampaignSchema() {
 
     CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_ops_creche_key_idx
       ON creche_promotional_campaign_operations (creche_id, idempotency_key);
+
+    -- 6. Campaign Redemptions (R37.C2A)
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_redemptions (
+      id SERIAL PRIMARY KEY,
+      creche_id INTEGER NOT NULL REFERENCES creches(id),
+      campaign_id INTEGER NOT NULL REFERENCES creche_promotional_campaigns(id),
+      tutor_id INTEGER NOT NULL REFERENCES users(id),
+      booking_id INTEGER NOT NULL REFERENCES bookings(id),
+      context_type VARCHAR(32) NOT NULL DEFAULT 'BOOKING',
+      status VARCHAR(32) NOT NULL DEFAULT 'RESERVED',
+      reserved_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      applied_at TIMESTAMP,
+      released_at TIMESTAMP,
+      release_reason TEXT,
+      campaign_snapshot JSONB NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_redemptions_unique_context_idx
+      ON creche_promotional_campaign_redemptions (creche_id, campaign_id, tutor_id, booking_id);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_redemptions_usage_idx
+      ON creche_promotional_campaign_redemptions (creche_id, tutor_id, campaign_id, status);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_redemptions_booking_idx
+      ON creche_promotional_campaign_redemptions (creche_id, booking_id);
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_status_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemptions ADD CONSTRAINT creche_promotional_redemption_status_check
+          CHECK (status IN ('RESERVED', 'APPLIED', 'RELEASED'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_context_type_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemptions ADD CONSTRAINT creche_promotional_redemption_context_type_check
+          CHECK (context_type IN ('BOOKING'));
+      END IF;
+    END $$;
+
+    -- 7. Campaign Redemption Items (R37.C2A)
+    CREATE TABLE IF NOT EXISTS creche_promotional_campaign_redemption_items (
+      id SERIAL PRIMARY KEY,
+      redemption_id INTEGER NOT NULL REFERENCES creche_promotional_campaign_redemptions(id),
+      catalogue_item_id INTEGER NOT NULL REFERENCES catalogue_items(id),
+      line_type VARCHAR(32) NOT NULL,
+      booking_service_id INTEGER REFERENCES booking_services(id),
+      base_unit_price_cents INTEGER NOT NULL,
+      effective_unit_price_cents INTEGER NOT NULL,
+      unit_discount_cents INTEGER NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 1,
+      base_line_total_cents INTEGER NOT NULL,
+      discount_line_total_cents INTEGER NOT NULL,
+      final_line_total_cents INTEGER NOT NULL,
+      campaign_snapshot JSONB NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_items_primary_unique_idx
+      ON creche_promotional_campaign_redemption_items (redemption_id)
+      WHERE line_type = 'PRIMARY';
+
+    CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_items_service_unique_idx
+      ON creche_promotional_campaign_redemption_items (redemption_id, booking_service_id)
+      WHERE line_type = 'BOOKING_SERVICE';
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_redemption_items_redemption_idx
+      ON creche_promotional_campaign_redemption_items (redemption_id);
+
+    CREATE INDEX IF NOT EXISTS creche_promotional_redemption_items_catalogue_idx
+      ON creche_promotional_campaign_redemption_items (catalogue_item_id);
+
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_line_type_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_line_type_check
+          CHECK (line_type IN ('PRIMARY', 'BOOKING_SERVICE'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_service_fk_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_service_fk_check
+          CHECK ((line_type = 'PRIMARY' AND booking_service_id IS NULL) OR (line_type = 'BOOKING_SERVICE' AND booking_service_id IS NOT NULL));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_base_price_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_base_price_check
+          CHECK (base_unit_price_cents >= 0);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_effective_price_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_effective_price_check
+          CHECK (effective_unit_price_cents >= 0 AND effective_unit_price_cents <= base_unit_price_cents);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_unit_discount_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_unit_discount_check
+          CHECK (unit_discount_cents = base_unit_price_cents - effective_unit_price_cents);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_quantity_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_quantity_check
+          CHECK (quantity > 0);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_base_line_total_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_base_line_total_check
+          CHECK (base_line_total_cents = base_unit_price_cents * quantity);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_final_line_total_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_final_line_total_check
+          CHECK (final_line_total_cents = effective_unit_price_cents * quantity);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_discount_line_total_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_discount_line_total_check
+          CHECK (discount_line_total_cents = base_line_total_cents - final_line_total_cents);
+      END IF;
+    END $$;
   `);
   console.log("[startup] creche promotional campaigns foundation: schema verificado (idempotente).");
 }

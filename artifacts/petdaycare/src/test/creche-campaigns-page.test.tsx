@@ -186,6 +186,60 @@ describe("Creche Promotional Campaigns Page (R37.C1)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Pausar Campanha/i)).toBeInTheDocument();
       expect(screen.getByText(/Motivo Administrativo \*/i)).toBeInTheDocument();
+      expect(screen.getByText(/Reservas promocionais já realizadas permanecem válidas\./i)).toBeInTheDocument();
+    });
+  });
+
+  it("5. opens Revoke modal with administrative warning and does not show Revoke button for ENDED campaigns", async () => {
+    const campaignsWithEnded = [
+      ...mockCampaigns,
+      {
+        id: 3,
+        crecheId: 1,
+        name: "Campanha Expirada Férias",
+        description: "Campanha já encerrada",
+        benefitType: "PERCENTAGE_DISCOUNT",
+        percentageBps: 1000,
+        audienceType: "ALL_ACTIVE_TUTORS",
+        status: "ENDED",
+        priority: 100,
+        validFrom: "2026-01-01T00:00:00.000Z",
+        validUntil: "2026-02-01T00:00:00.000Z",
+        items: [{ catalogueItemId: 10, itemName: "Day Use Avulso" }],
+        tutors: [],
+      },
+    ];
+
+    (global.fetch as any).mockImplementation((url: string) => {
+      if (url.includes("/campaigns")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              campaigns: campaignsWithEnded,
+              kpis: { total: 3, active: 1, scheduled: 0, paused: 0, ended: 1, revoked: 0 },
+            }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+
+    renderWithProviders(<CampaignsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Campanha Black Friday Creche")).toBeInTheDocument();
+      expect(screen.getByText("Campanha Expirada Férias")).toBeInTheDocument();
+    });
+
+    // Revoke button exists for active campaign
+    const revokeBtns = screen.getAllByRole("button", { name: /Revogar/i });
+    expect(revokeBtns.length).toBe(2); // for draft and active, NOT for ended
+
+    fireEvent.click(revokeBtns[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Revogar Campanha Definitivamente/i)).toBeInTheDocument();
+      expect(screen.getByText(/Reservas promocionais já realizadas permanecem válidas\./i)).toBeInTheDocument();
     });
   });
 });
