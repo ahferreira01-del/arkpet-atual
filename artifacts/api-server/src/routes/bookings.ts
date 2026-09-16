@@ -230,9 +230,14 @@ router.get("/", async (req: AuthRequest, res: Response, next: NextFunction) => {
       addonsByBooking.set(addon.bookingId, arr);
     }
 
-    const enrichedData = data.map((b: any) => ({
+    const summaries = await Promise.all(
+      data.map((b: any) => CrecheCampaignReservationService.getBookingCommercialSummary(crecheId, b.id))
+    );
+
+    const enrichedData = data.map((b: any, idx: number) => ({
       ...b,
       additionalServices: addonsByBooking.get(b.id) ?? [],
+      commercialReservation: summaries[idx] ?? null,
     }));
 
     res.json({

@@ -454,6 +454,15 @@ function InvoiceDetailsModal({ isOpen, onClose, invoiceId, crecheId }: { isOpen:
                 <div className="flex flex-col pr-4">
                   <p className="text-sm font-semibold text-foreground">{item.description}</p>
                   <p className="text-xs text-muted-foreground mt-1">Qtd: {item.quantity}</p>
+                  {item.campaignSnapshot?.campaignName && (
+                    <p className="text-xs text-emerald-500 font-medium mt-0.5">
+                      Campanha: {item.campaignSnapshot.campaignName}
+                      {Number(item.campaignSnapshot.unitDiscountCents) > 0 && ` (-${formatCentsToBRL(Number(item.campaignSnapshot.unitDiscountCents))})`}
+                    </p>
+                  )}
+                  {!item.campaignSnapshot && item.pricingSourceType === "TUTOR_CONDITION" && (
+                    <p className="text-xs text-primary font-medium mt-0.5">Preço especial</p>
+                  )}
                 </div>
                 <span className="font-bold text-foreground">{formatCentsToBRL(Number(item.amount))}</span>
               </div>

@@ -294,6 +294,9 @@ export class InvoiceRepository {
         itemType: invoiceItemsTable.itemType,
         petId: invoiceItemsTable.petId,
         petName: petsTable.name,
+        pricingSourceType: invoiceItemsTable.pricingSourceType,
+        appliedCampaignId: invoiceItemsTable.appliedCampaignId,
+        campaignSnapshot: invoiceItemsTable.campaignSnapshot,
       })
       .from(invoiceItemsTable)
       .leftJoin(petsTable, eq(invoiceItemsTable.petId, petsTable.id))

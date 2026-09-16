@@ -13,9 +13,10 @@ import { useListCatalogue, usePackagesBalance, useServiceCredits } from "@/hooks
 import { formatCentsToBRL } from "@/lib/money";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
   CheckCircle2,
@@ -27,6 +28,7 @@ import {
   Info,
   Check,
   AlertCircle,
+  Sparkles,
 } from "lucide-react";
 
 // Strips size qualifiers (pequeno/médio/grande) so "Banho Pequeno" and
@@ -69,6 +71,21 @@ export default function NewBooking() {
   const { data: packagesData } = usePackagesBalance(crecheId ?? 0);
   const { data: serviceCreditsData } = useServiceCredits(crecheId ?? 0);
   const createMutation = useCreateBooking();
+
+  const token = localStorage.getItem("auth_token");
+  const { data: tutorOffersData } = useQuery<{ offers: any[] }>({
+    queryKey: ["tutor-commercial-offers", crecheId, user?.id],
+    enabled: Boolean(crecheId && isTutor),
+    queryFn: async () => {
+      if (!crecheId) return { offers: [] };
+      const res = await fetch(`/api/creches/${crecheId}/tutor/commercial-offers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { offers: [] };
+      return res.json();
+    },
+  });
+  const tutorOffers = tutorOffersData?.offers || [];
 
   const [step, setStep] = useState(1);
   const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
@@ -532,14 +549,44 @@ export default function NewBooking() {
                             </div>
                           ) : (
                             <div>
-                              <p className="text-2xl font-bold text-emerald-400">
-                                {formatCentsToBRL(service.price)}
-                                {service.pricingBySize && (
-                                  <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
-                                    *Variável por porte
-                                  </span>
-                                )}
-                              </p>
+                              {(() => {
+                                const offer = tutorOffers.find((o: any) => o.catalogueItemId === service.id);
+                                if (offer) {
+                                  return (
+                                    <div>
+                                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-semibold">
+                                          {offer.statusLabel}
+                                        </Badge>
+                                        {offer.campaignName && (
+                                          <span className="text-[11px] text-muted-foreground truncate max-w-[150px]">{offer.campaignName}</span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-baseline gap-2">
+                                        <span className="text-xs sm:text-sm text-muted-foreground line-through font-medium">
+                                          R$ {parseFloat(offer.basePrice).toFixed(2).replace(".", ",")}
+                                        </span>
+                                        <span className="text-2xl font-bold text-emerald-400">
+                                          R$ {parseFloat(offer.effectivePrice).toFixed(2).replace(".", ",")}
+                                        </span>
+                                      </div>
+                                      {offer.isComplimentaryZeroValue && (
+                                        <p className="text-xs text-purple-400 font-medium mt-0.5">Cortesia promocional (100% de desconto)</p>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <p className="text-2xl font-bold text-emerald-400">
+                                    {formatCentsToBRL(service.price)}
+                                    {service.pricingBySize && (
+                                      <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
+                                        *Variável por porte
+                                      </span>
+                                    )}
+                                  </p>
+                                );
+                              })()}
                               {(() => {
                                 // Match credits by normalized base service type so that a
                                 // "Banho Pequeno" credit shows on "Banho Grande" cards too.
@@ -805,6 +852,24 @@ export default function NewBooking() {
                     </p>
                   </div>
                 )}
+
+                {isTutor && selectedServiceId && (() => {
+                  const offer = tutorOffers.find((o: any) => o.catalogueItemId === selectedServiceId);
+                  if (!offer) return null;
+                  return (
+                    <div className="flex gap-3 items-start p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400">
+                      <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold">
+                          {offer.statusLabel}: {offer.campaignName || "Benefício comercial"}
+                        </p>
+                        <p className="text-xs text-foreground/80 mt-0.5">
+                          Ao concluir o agendamento, o valor promocional de R$ {parseFloat(offer.effectivePrice).toFixed(2).replace(".", ",")} será reservado para sua solicitação.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Financial Column */}

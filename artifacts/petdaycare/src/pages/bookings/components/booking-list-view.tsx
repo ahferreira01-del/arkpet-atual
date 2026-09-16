@@ -47,6 +47,7 @@ export type BookingListItem = Omit<Booking, "type"> & {
   type: string;
   additionalServices?: BookingAdditionalService[] | null;
   onTheWayAt?: string | null;
+  commercialReservation?: any | null;
 };
 
 export const bookingTypeLabel: Record<string, string> = {
@@ -80,6 +81,42 @@ export const statusLabel: Record<string, string> = {
   cancel_requested: "Cancelamento Solicitado",
   all: "Todos os status",
 };
+
+export function getCommercialBadge(commercialReservation: any) {
+  if (!commercialReservation?.hasReservedCampaign || !commercialReservation?.items?.length) {
+    return null;
+  }
+  const item = commercialReservation.items[0];
+  if (item.lineStatus === "RELEASED") {
+    if (item.releaseReason === "covered_by_prepaid_credit") {
+      return (
+        <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+          Crédito pré-pago
+        </Badge>
+      );
+    }
+    return null;
+  }
+  if (item.effectiveUnitPriceCents === 0 || item.applicationMode === "COMPLIMENTARY_ZERO_VALUE") {
+    return (
+      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-purple-400 bg-purple-500/10 border-purple-500/20 font-medium">
+        Cortesia promocional
+      </Badge>
+    );
+  }
+  if (item.lineStatus === "APPLIED") {
+    return (
+      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-blue-400 bg-blue-500/10 border-blue-500/20 font-medium">
+        Campanha aplicada
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-emerald-400 bg-emerald-500/10 border-emerald-500/20 font-medium">
+      Preço promocional reservado
+    </Badge>
+  );
+}
 
 export interface BookingListViewProps {
   bookings: BookingListItem[];
@@ -173,6 +210,7 @@ export function BookingListView({
                     <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-muted-foreground bg-secondary border-border">
                       {bookingTypeLabel[booking.type] || booking.type}
                     </Badge>
+                    {getCommercialBadge(booking.commercialReservation)}
                   </div>
                 </div>
                 {!isTutor && (
@@ -438,9 +476,12 @@ export function BookingListView({
                   )}
                 </td>
                 <td className="px-6 py-4">
-                  <Badge variant={statusVariant[booking.status] || "secondary"}>
-                    {statusLabel[booking.status] || booking.status}
-                  </Badge>
+                  <div className="flex flex-col gap-1 items-start">
+                    <Badge variant={statusVariant[booking.status] || "secondary"}>
+                      {statusLabel[booking.status] || booking.status}
+                    </Badge>
+                    {getCommercialBadge(booking.commercialReservation)}
+                  </div>
                   {booking.onTheWayAt && booking.status !== "completed" && (
                     <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
                       <Car className="h-3 w-3" /> A caminho

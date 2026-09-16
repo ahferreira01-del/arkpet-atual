@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { MarketingOpportunitiesTab } from "./components/marketing-opportunities-tab";
 
 // ─── API Hooks ────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ export default function CrecheCampaignsPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [mainTab, setMainTab] = useState<"campaigns" | "opportunities">("campaigns");
 
   // Modals state
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -396,7 +398,7 @@ export default function CrecheCampaignsPage() {
         description="Gerencie ofertas e benefícios operacionais gratuitos para tutores da sua creche."
         showBack={false}
         action={
-          isCrecheAdmin ? (
+          isCrecheAdmin && mainTab === "campaigns" ? (
             <Button onClick={openNewWizard} className="gap-2 shadow-sm font-semibold">
               <Plus className="h-4 w-4" />
               Nova Campanha
@@ -405,7 +407,46 @@ export default function CrecheCampaignsPage() {
         }
       />
 
-      {/* KPI Cards */}
+      {/* Main Navigation Tabs */}
+      <div className="flex border-b border-border space-x-6">
+        <button
+          onClick={() => setMainTab("campaigns")}
+          className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+            mainTab === "campaigns"
+              ? "border-primary text-primary font-semibold"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Campanhas
+        </button>
+        <button
+          onClick={() => setMainTab("opportunities")}
+          className={`pb-3 text-sm font-medium transition-colors border-b-2 flex items-center gap-2 ${
+            mainTab === "opportunities"
+              ? "border-primary text-primary font-semibold"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <span>Oportunidades</span>
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/15 text-primary border-primary/20">
+            CRM Leve
+          </Badge>
+        </button>
+      </div>
+
+      {mainTab === "opportunities" ? (
+        <MarketingOpportunitiesTab
+          crecheId={crecheId}
+          isCrecheAdmin={isCrecheAdmin}
+          eligibleItems={eligibleItems}
+          onDraftCreated={() => {
+            setMainTab("campaigns");
+            qc.invalidateQueries({ queryKey: ["creche-campaigns", crecheId] });
+          }}
+        />
+      ) : (
+        <>
+          {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card className="bg-card/50 border-border/50 shadow-sm">
           <CardContent className="p-4 flex items-center justify-between">
@@ -625,6 +666,8 @@ export default function CrecheCampaignsPage() {
             </Card>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* ─── 7-Step "Nova Campanha" Wizard Modal ─────────────────────────────── */}
