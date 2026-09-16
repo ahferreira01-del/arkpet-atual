@@ -1552,15 +1552,16 @@ export async function ensureCrechePromotionalCampaignSchema() {
         ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_app_mode_check
           CHECK (application_mode IS NULL OR application_mode IN ('INVOICE_ITEM', 'COMPLIMENTARY_ZERO_VALUE'));
       END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_app_consistency_check') THEN
-        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_app_consistency_check
-          CHECK (
-            (status = 'RESERVED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NULL) OR
-            (status = 'RELEASED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL) OR
-            (status = 'APPLIED' AND application_mode = 'INVOICE_ITEM' AND applied_invoice_id IS NOT NULL AND applied_invoice_item_id IS NOT NULL AND applied_at IS NOT NULL) OR
-            (status = 'APPLIED' AND application_mode = 'COMPLIMENTARY_ZERO_VALUE' AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NOT NULL)
-          );
-      END IF;
+      ALTER TABLE creche_promotional_campaign_redemption_items DROP CONSTRAINT IF EXISTS creche_promotional_redemption_item_app_consistency_check;
+      ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_app_consistency_check
+        CHECK (
+          (status = 'RESERVED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NULL) OR
+          (status = 'RELEASED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL) OR
+          (status = 'APPLIED' AND application_mode IS NOT NULL AND (
+            (application_mode = 'INVOICE_ITEM' AND applied_invoice_id IS NOT NULL AND applied_invoice_item_id IS NOT NULL AND applied_at IS NOT NULL) OR
+            (application_mode = 'COMPLIMENTARY_ZERO_VALUE' AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NOT NULL)
+          ))
+        );
 
       -- invoice_items foreign keys to campaign tables
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_applied_campaign_fk') THEN

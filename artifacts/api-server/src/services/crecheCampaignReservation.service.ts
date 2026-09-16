@@ -1061,12 +1061,17 @@ export class CrecheCampaignReservationService {
     const finalLineTotalCents = effectiveUnitPriceCents * quantity;
     const discountLineTotalCents = baseLineTotalCents - finalLineTotalCents;
 
+    const reservedQuantity = item.quantity;
+    const creditCoveredQuantity = Math.max(0, reservedQuantity - quantity);
+
     // 8A. Subcase: 100% OFF / Complimentary Zero Value (Option 2)
     if (effectiveUnitPriceCents === 0) {
       const updatedSnapshot = {
         ...item.campaignSnapshot,
         redemptionId: item.redemptionId,
         redemptionItemId: item.id,
+        reservedQuantity,
+        creditCoveredQuantity,
         actualBillableQuantity: quantity,
         baseLineTotalCents,
         discountLineTotalCents,
@@ -1128,6 +1133,8 @@ export class CrecheCampaignReservationService {
       ...item.campaignSnapshot,
       redemptionId: item.redemptionId,
       redemptionItemId: item.id,
+      reservedQuantity,
+      creditCoveredQuantity,
       actualBillableQuantity: quantity,
       baseLineTotalCents,
       discountLineTotalCents,
@@ -1177,6 +1184,17 @@ export class CrecheCampaignReservationService {
       })
       .where(eq(crechePromotionalCampaignRedemptionItemsTable.id, item.id))
       .returning();
+
+    // Section 7: Cross-link consistency assertion (defense-in-depth)
+    if (
+      !chargeResult.invoiceItemId ||
+      (appliedItem?.appliedInvoiceItemId != null &&
+        appliedItem.appliedInvoiceItemId !== chargeResult.invoiceItemId)
+    ) {
+      throw new CrecheCampaignConflictError(
+        "FALHA_INTEGRIDADE_CROSS_LINK: Vínculo bidirecional entre item de fatura e redenção corrompido."
+      );
+    }
 
     await this.recomputeRedemptionStatus(tx, redemption.id, actor);
 
