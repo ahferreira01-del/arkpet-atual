@@ -83,7 +83,8 @@ export interface ReservedCampaignItemSummary {
   baseLineTotal: string;
   discountLineTotal: string;
   finalLineTotal: string;
-  reservationStatus: "RESERVED" | null;
+  reservationStatus: "RESERVED" | "APPLIED" | "RELEASED" | null;
+  applicationMode?: "INVOICE_ITEM" | "COMPLIMENTARY_ZERO_VALUE" | null;
 }
 
 export interface BookingCommercialReservationSummary {
@@ -96,10 +97,41 @@ export interface BookingCommercialReservationSummary {
     redemptionId: number;
     campaignId: number;
     campaignName: string;
-    status: "RESERVED";
+    status: "RESERVED" | "PARTIALLY_APPLIED" | "APPLIED" | "RELEASED";
     reservedAt: string;
     itemsCount: number;
   }>;
+}
+
+export interface ApplyBookingLineCampaignParams {
+  crecheId: number;
+  tutorId: number;
+  bookingId: number;
+  lineType: "PRIMARY" | "BOOKING_SERVICE";
+  catalogueItemId: number;
+  bookingServiceId?: number | null;
+  actualBillableQuantity: number;
+  petId?: number | null;
+  itemDate?: Date;
+  description?: string;
+  actor?: {
+    userId: number;
+    role: string;
+    requestId?: string;
+  };
+}
+
+export interface ApplyBookingLineCampaignResult {
+  hasCampaign: boolean;
+  applied: boolean;
+  mode: "INVOICE_ITEM" | "COMPLIMENTARY_ZERO_VALUE" | null;
+  replayed?: boolean;
+  released?: boolean;
+  releaseReason?: string | null;
+  invoiceId?: number | null;
+  invoiceItemId?: number | null;
+  finalAmountCents: number;
+  campaignSnapshot?: any;
 }
 
 // ─── Service Implementation ───────────────────────────────────────────────────
@@ -136,7 +168,11 @@ export class CrecheCampaignReservationService {
       eq(crechePromotionalCampaignRedemptionsTable.crecheId, crecheId),
       eq(crechePromotionalCampaignRedemptionsTable.campaignId, campaignId),
       eq(crechePromotionalCampaignRedemptionsTable.tutorId, tutorId),
-      inArray(crechePromotionalCampaignRedemptionsTable.status, ["RESERVED", "APPLIED"]),
+      inArray(crechePromotionalCampaignRedemptionsTable.status, [
+        "RESERVED",
+        "PARTIALLY_APPLIED",
+        "APPLIED",
+      ]),
     ];
 
     if (excludeBookingId) {
@@ -731,6 +767,446 @@ export class CrecheCampaignReservationService {
    * Retrieves sanitized commercial summary for a booking.
    * Returns authoritative pricing numbers without exposing administrative audit or internals (Contract 31).
    */
+  /**
+   * Recomputes the aggregate header status of a redemption based on its lines (Contracts 11, 12).
+   * Semantics:
+   * - RESERVED: 0 APPLIED and at least 1 RESERVED.
+   * - PARTIALLY_APPLIED: at least 1 APPLIED and at least 1 RESERVED.
+   * - APPLIED: 0 RESERVED and at least 1 APPLIED.
+   * - RELEASED: all RELEASED and 0 APPLIED (or 0 items remaining).
+   */
+  static async recomputeRedemptionStatus(
+    tx: any,
+    redemptionId: number,
+    actor?: { userId: number; role: string; requestId?: string }
+  ): Promise<CrechePromotionalCampaignRedemption | null> {
+    const [redemption] = await tx
+      .select()
+      .from(crechePromotionalCampaignRedemptionsTable)
+      .where(eq(crechePromotionalCampaignRedemptionsTable.id, redemptionId))
+      .for("update");
+
+    if (!redemption) return null;
+
+    const items = await tx
+      .select()
+      .from(crechePromotionalCampaignRedemptionItemsTable)
+      .where(eq(crechePromotionalCampaignRedemptionItemsTable.redemptionId, redemptionId));
+
+    const reservedCount = items.filter((i: any) => i.status === "RESERVED").length;
+    const appliedCount = items.filter((i: any) => i.status === "APPLIED").length;
+    const releasedCount = items.filter((i: any) => i.status === "RELEASED").length;
+    const totalCount = items.length;
+
+    let newStatus: "RESERVED" | "PARTIALLY_APPLIED" | "APPLIED" | "RELEASED";
+
+    if (totalCount === 0 || (releasedCount === totalCount && appliedCount === 0)) {
+      newStatus = "RELEASED";
+    } else if (appliedCount > 0 && reservedCount > 0) {
+      newStatus = "PARTIALLY_APPLIED";
+    } else if (appliedCount > 0 && reservedCount === 0) {
+      newStatus = "APPLIED";
+    } else if (appliedCount === 0 && reservedCount > 0) {
+      newStatus = "RESERVED";
+    } else {
+      newStatus = "RELEASED";
+    }
+
+    if (newStatus !== redemption.status) {
+      const now = new Date();
+      const updateData: any = {
+        status: newStatus,
+        updatedAt: now,
+      };
+
+      if ((newStatus === "APPLIED" || newStatus === "PARTIALLY_APPLIED") && !redemption.appliedAt) {
+        updateData.appliedAt = now;
+      }
+      if (newStatus === "RELEASED" && !redemption.releasedAt) {
+        updateData.releasedAt = now;
+      }
+
+      const [updated] = await tx
+        .update(crechePromotionalCampaignRedemptionsTable)
+        .set(updateData)
+        .where(eq(crechePromotionalCampaignRedemptionsTable.id, redemptionId))
+        .returning();
+
+      await tx.insert(crechePromotionalCampaignAuditsTable).values({
+        crecheId: redemption.crecheId,
+        campaignId: redemption.campaignId,
+        action: "CAMPAIGN_REDEMPTION_STATUS_RECOMPUTED",
+        actorUserId: actor?.userId ?? (redemption.tutorId || 1),
+        actorRole: actor?.role ?? "system",
+        reason: `Status da reserva promocional recomputado: ${redemption.status} -> ${newStatus}`,
+        beforeState: redemption,
+        afterState: updated,
+        requestId: actor?.requestId,
+      });
+
+      return updated;
+    }
+
+    return redemption;
+  }
+
+  /**
+   * Applies a reserved campaign promise to a booking line during the real billing event (R37.C2B).
+   * Honoring frozen promise: strictly does NOT recalculate campaign eligibility or current rules.
+   * Lock Order: LOCK 1 (Tutor Campaign Lock) -> LOCK 2 (Tutor Financial Lock via BillingService).
+   * Option 2 (Complimentary Zero-Value): if effectiveUnitPriceCents === 0, marks APPLIED without invoice_item.
+   * Pre-paid credit precedence: if actualBillableQuantity === 0, transitions line to RELEASED.
+   */
+  static async applyBookingLineCampaign(
+    tx: any,
+    params: ApplyBookingLineCampaignParams
+  ): Promise<ApplyBookingLineCampaignResult> {
+    const {
+      crecheId,
+      tutorId,
+      bookingId,
+      lineType,
+      catalogueItemId,
+      bookingServiceId,
+      actualBillableQuantity,
+      petId,
+      itemDate,
+      description,
+      actor,
+    } = params;
+
+    // 1. Lock 1: Tutor campaign advisory lock (strictly precedes financial lock)
+    await this.acquireTutorCampaignLock(tx, crecheId, tutorId);
+
+    // 2. Locate active or already-applied redemption for this booking
+    const candidateRedemptions = await tx
+      .select()
+      .from(crechePromotionalCampaignRedemptionsTable)
+      .where(
+        and(
+          eq(crechePromotionalCampaignRedemptionsTable.crecheId, crecheId),
+          eq(crechePromotionalCampaignRedemptionsTable.bookingId, bookingId),
+          inArray(crechePromotionalCampaignRedemptionsTable.status, [
+            "RESERVED",
+            "PARTIALLY_APPLIED",
+            "APPLIED",
+          ])
+        )
+      );
+
+    if (candidateRedemptions.length === 0) {
+      return {
+        hasCampaign: false,
+        applied: false,
+        mode: null,
+        finalAmountCents: 0,
+      };
+    }
+
+    const candidateIds = candidateRedemptions.map((r: any) => r.id);
+
+    // 3. Find matching redemption item with FOR UPDATE row lock
+    const itemConditions = [
+      inArray(crechePromotionalCampaignRedemptionItemsTable.redemptionId, candidateIds),
+      eq(crechePromotionalCampaignRedemptionItemsTable.lineType, lineType),
+    ];
+    if (lineType === "BOOKING_SERVICE") {
+      if (bookingServiceId != null) {
+        itemConditions.push(
+          eq(crechePromotionalCampaignRedemptionItemsTable.bookingServiceId, bookingServiceId)
+        );
+      }
+    }
+
+    const [item] = await tx
+      .select()
+      .from(crechePromotionalCampaignRedemptionItemsTable)
+      .where(and(...itemConditions))
+      .for("update");
+
+    if (!item) {
+      return {
+        hasCampaign: false,
+        applied: false,
+        mode: null,
+        finalAmountCents: 0,
+      };
+    }
+
+    const redemption = candidateRedemptions.find((r: any) => r.id === item.redemptionId)!;
+
+    // 4. Security & Context Integrity checks (fail-closed)
+    if (redemption.crecheId !== crecheId) {
+      throw new CrecheCampaignValidationError(
+        `Redemption #${redemption.id} pertence à creche #${redemption.crecheId}, não à creche #${crecheId}.`
+      );
+    }
+    if (redemption.bookingId !== bookingId) {
+      throw new CrecheCampaignValidationError(
+        `Redemption #${redemption.id} pertence ao booking #${redemption.bookingId}, não ao booking #${bookingId}.`
+      );
+    }
+    if (redemption.tutorId !== tutorId) {
+      throw new CrecheCampaignValidationError(
+        `Redemption #${redemption.id} pertence ao tutor #${redemption.tutorId}, não ao tutor #${tutorId}.`
+      );
+    }
+    if (catalogueItemId > 0 && item.catalogueItemId !== catalogueItemId) {
+      throw new CrecheCampaignValidationError(
+        `Item promocional #${item.id} foi reservado para o item de catálogo #${item.catalogueItemId}, divergente de #${catalogueItemId}.`
+      );
+    }
+
+    // 5. Idempotency / Replay Handling
+    if (item.status === "APPLIED") {
+      if (item.applicationMode === "COMPLIMENTARY_ZERO_VALUE") {
+        return {
+          hasCampaign: true,
+          applied: true,
+          mode: "COMPLIMENTARY_ZERO_VALUE",
+          replayed: true,
+          invoiceId: null,
+          invoiceItemId: null,
+          finalAmountCents: 0,
+          campaignSnapshot: item.campaignSnapshot,
+        };
+      } else {
+        return {
+          hasCampaign: true,
+          applied: true,
+          mode: "INVOICE_ITEM",
+          replayed: true,
+          invoiceId: item.appliedInvoiceId,
+          invoiceItemId: item.appliedInvoiceItemId,
+          finalAmountCents: item.finalLineTotalCents,
+          campaignSnapshot: item.campaignSnapshot,
+        };
+      }
+    }
+
+    if (item.status === "RELEASED") {
+      return {
+        hasCampaign: true,
+        applied: false,
+        mode: null,
+        released: true,
+        releaseReason: item.releaseReason,
+        finalAmountCents: 0,
+      };
+    }
+
+    // 6. Validate Frozen Promise Snapshot (Section 10 - Fail closed on promise corruption)
+    if (
+      !item.campaignSnapshot ||
+      typeof item.campaignSnapshot !== "object" ||
+      item.baseUnitPriceCents == null ||
+      item.effectiveUnitPriceCents == null ||
+      item.unitDiscountCents == null ||
+      item.baseUnitPriceCents < 0 ||
+      item.effectiveUnitPriceCents < 0 ||
+      item.effectiveUnitPriceCents > item.baseUnitPriceCents ||
+      item.unitDiscountCents !== item.baseUnitPriceCents - item.effectiveUnitPriceCents
+    ) {
+      throw new CrecheCampaignConflictError(
+        "PROMISE_CORRUPTED: A reserva da campanha contém snapshot inválido ou corrompido. Rollback executado (fail-closed)."
+      );
+    }
+
+    const now = new Date();
+    const actorId = actor?.userId ?? (tutorId || 1);
+    const actorRole = actor?.role ?? "system";
+
+    // 7. Case A: Quantity fully covered by prepaid credits
+    if (actualBillableQuantity === 0) {
+      const [releasedItem] = await tx
+        .update(crechePromotionalCampaignRedemptionItemsTable)
+        .set({
+          status: "RELEASED",
+          releasedAt: now,
+          releaseReason: "covered_by_prepaid_credit",
+        })
+        .where(eq(crechePromotionalCampaignRedemptionItemsTable.id, item.id))
+        .returning();
+
+      await tx.insert(crechePromotionalCampaignAuditsTable).values({
+        crecheId,
+        campaignId: redemption.campaignId,
+        action: "CAMPAIGN_REDEMPTION_ITEM_RELEASED",
+        actorUserId: actorId,
+        actorRole,
+        reason: "Linha promocional liberada: coberta integralmente por créditos pré-pagos",
+        beforeState: item,
+        afterState: releasedItem,
+        requestId: actor?.requestId,
+      });
+
+      await this.recomputeRedemptionStatus(tx, redemption.id, actor);
+
+      return {
+        hasCampaign: true,
+        applied: false,
+        mode: null,
+        released: true,
+        releaseReason: "covered_by_prepaid_credit",
+        finalAmountCents: 0,
+      };
+    }
+
+    // 8. Case B: Quantity > 0 -> Calculate line totals
+    const quantity = actualBillableQuantity;
+    const baseUnitPriceCents = item.baseUnitPriceCents;
+    const effectiveUnitPriceCents = item.effectiveUnitPriceCents;
+    const unitDiscountCents = item.unitDiscountCents;
+    const baseLineTotalCents = baseUnitPriceCents * quantity;
+    const finalLineTotalCents = effectiveUnitPriceCents * quantity;
+    const discountLineTotalCents = baseLineTotalCents - finalLineTotalCents;
+
+    // 8A. Subcase: 100% OFF / Complimentary Zero Value (Option 2)
+    if (effectiveUnitPriceCents === 0) {
+      const updatedSnapshot = {
+        ...item.campaignSnapshot,
+        redemptionId: item.redemptionId,
+        redemptionItemId: item.id,
+        actualBillableQuantity: quantity,
+        baseLineTotalCents,
+        discountLineTotalCents,
+        finalLineTotalCents: 0,
+        applicationMode: "COMPLIMENTARY_ZERO_VALUE",
+        appliedAt: now.toISOString(),
+      };
+
+      const [appliedItem] = await tx
+        .update(crechePromotionalCampaignRedemptionItemsTable)
+        .set({
+          status: "APPLIED",
+          applicationMode: "COMPLIMENTARY_ZERO_VALUE",
+          appliedInvoiceId: null,
+          appliedInvoiceItemId: null,
+          appliedAt: now,
+          quantity,
+          baseLineTotalCents,
+          discountLineTotalCents,
+          finalLineTotalCents: 0,
+          campaignSnapshot: updatedSnapshot,
+        })
+        .where(eq(crechePromotionalCampaignRedemptionItemsTable.id, item.id))
+        .returning();
+
+      await this.recomputeRedemptionStatus(tx, redemption.id, actor);
+
+      await tx.insert(crechePromotionalCampaignAuditsTable).values({
+        crecheId,
+        campaignId: redemption.campaignId,
+        action: "CAMPAIGN_REDEMPTION_ITEM_APPLIED",
+        actorUserId: actorId,
+        actorRole,
+        reason: "Benefício promocional integral aplicado (cortesia R$ 0,00)",
+        beforeState: item,
+        afterState: appliedItem,
+        requestId: actor?.requestId,
+      });
+
+      return {
+        hasCampaign: true,
+        applied: true,
+        mode: "COMPLIMENTARY_ZERO_VALUE",
+        invoiceId: null,
+        invoiceItemId: null,
+        finalAmountCents: 0,
+        campaignSnapshot: updatedSnapshot,
+      };
+    }
+
+    // 8B. Subcase: Monetary Application (effectiveUnitPriceCents > 0)
+    const { BillingService } = await import("./billing.js");
+
+    const unitPriceStr = centsToDecimalString(effectiveUnitPriceCents);
+    const baseUnitPriceStr = centsToDecimalString(baseUnitPriceCents);
+    const unitDiscountStr = centsToDecimalString(unitDiscountCents);
+
+    const updatedSnapshot = {
+      ...item.campaignSnapshot,
+      redemptionId: item.redemptionId,
+      redemptionItemId: item.id,
+      actualBillableQuantity: quantity,
+      baseLineTotalCents,
+      discountLineTotalCents,
+      finalLineTotalCents,
+      applicationMode: "INVOICE_ITEM",
+      appliedAt: now.toISOString(),
+    };
+
+    const chargeResult = await BillingService.addCharge({
+      crecheId: params.crecheId,
+      tutorId: params.tutorId,
+      amount: unitPriceStr,
+      quantity,
+      description: description || (lineType === "PRIMARY" ? "Diária Daycare" : `Serviço #${catalogueItemId}`),
+      type: lineType === "PRIMARY" ? "day_use" : "service",
+      petId: petId ?? undefined,
+      bookingId,
+      itemDate: itemDate || now,
+      tx,
+      userId: actor?.userId ?? 0,
+      catalogueItemId,
+      baseUnitPrice: baseUnitPriceStr,
+      discountAmount: unitDiscountStr,
+      finalPrice: unitPriceStr,
+      pricingSourceType: "CAMPAIGN",
+      appliedConditionId: null,
+      conditionSnapshot: null,
+      appliedCampaignId: redemption.campaignId,
+      appliedCampaignRedemptionId: redemption.id,
+      appliedCampaignRedemptionItemId: item.id,
+      campaignSnapshot: updatedSnapshot,
+    });
+
+    const [appliedItem] = await tx
+      .update(crechePromotionalCampaignRedemptionItemsTable)
+      .set({
+        status: "APPLIED",
+        applicationMode: "INVOICE_ITEM",
+        appliedInvoiceId: chargeResult.invoiceId,
+        appliedInvoiceItemId: chargeResult.invoiceItemId,
+        appliedAt: now,
+        quantity,
+        baseLineTotalCents,
+        discountLineTotalCents,
+        finalLineTotalCents,
+        campaignSnapshot: updatedSnapshot,
+      })
+      .where(eq(crechePromotionalCampaignRedemptionItemsTable.id, item.id))
+      .returning();
+
+    await this.recomputeRedemptionStatus(tx, redemption.id, actor);
+
+    await tx.insert(crechePromotionalCampaignAuditsTable).values({
+      crecheId,
+      campaignId: redemption.campaignId,
+      action: "CAMPAIGN_REDEMPTION_ITEM_APPLIED",
+      actorUserId: actorId,
+      actorRole,
+      reason: "Aplicação promocional faturada",
+      beforeState: item,
+      afterState: appliedItem,
+      requestId: actor?.requestId,
+    });
+
+    return {
+      hasCampaign: true,
+      applied: true,
+      mode: "INVOICE_ITEM",
+      invoiceId: chargeResult.invoiceId,
+      invoiceItemId: chargeResult.invoiceItemId,
+      finalAmountCents: finalLineTotalCents,
+      campaignSnapshot: updatedSnapshot,
+    };
+  }
+
+  /**
+   * Retrieves sanitized commercial summary for a booking.
+   * Returns authoritative pricing numbers without exposing administrative audit or internals (Contract 31).
+   */
   static async getBookingCommercialSummary(
     crecheId: number,
     bookingId: number,
@@ -750,7 +1226,11 @@ export class CrecheCampaignReservationService {
         and(
           eq(crechePromotionalCampaignRedemptionsTable.crecheId, crecheId),
           eq(crechePromotionalCampaignRedemptionsTable.bookingId, bookingId),
-          eq(crechePromotionalCampaignRedemptionsTable.status, "RESERVED")
+          inArray(crechePromotionalCampaignRedemptionsTable.status, [
+            "RESERVED",
+            "PARTIALLY_APPLIED",
+            "APPLIED",
+          ])
         )
       );
 
@@ -800,7 +1280,8 @@ export class CrecheCampaignReservationService {
         baseLineTotal: centsToDecimalString(item.baseLineTotalCents),
         discountLineTotal: centsToDecimalString(item.discountLineTotalCents),
         finalLineTotal: centsToDecimalString(item.finalLineTotalCents),
-        reservationStatus: "RESERVED",
+        reservationStatus: item.status as any,
+        applicationMode: item.applicationMode as any,
       };
     });
 
@@ -808,7 +1289,7 @@ export class CrecheCampaignReservationService {
       redemptionId: r.redemption.id,
       campaignId: r.redemption.campaignId,
       campaignName: r.campaignName,
-      status: "RESERVED" as const,
+      status: r.redemption.status as any,
       reservedAt: new Date(r.redemption.reservedAt).toISOString(),
       itemsCount: rawItems.filter((i: any) => i.redemptionId === r.redemption.id).length,
     }));

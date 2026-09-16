@@ -518,6 +518,11 @@ export class BillingService {
     pricingSourceType?: string;
     appliedConditionId?: number | null;
     conditionSnapshot?: any;
+    // ─── R37.C2B: Snapshot Comercial Promocional de Campanha ─────────────────
+    appliedCampaignId?: number | null;
+    appliedCampaignRedemptionId?: number | null;
+    appliedCampaignRedemptionItemId?: number | null;
+    campaignSnapshot?: any;
   }) {
     const amountVal =
       typeof params.amount === "string" ? parseFloat(params.amount) : params.amount;
@@ -713,6 +718,11 @@ export class BillingService {
         pricingSourceType: params.pricingSourceType || "CATALOG",
         appliedConditionId: params.appliedConditionId ?? null,
         conditionSnapshot: params.conditionSnapshot ?? null,
+        // ── Snapshot Promocional de Campanha (R37.C2B) ───────────────────
+        appliedCampaignId: params.appliedCampaignId ?? null,
+        appliedCampaignRedemptionId: params.appliedCampaignRedemptionId ?? null,
+        appliedCampaignRedemptionItemId: params.appliedCampaignRedemptionItemId ?? null,
+        campaignSnapshot: params.campaignSnapshot ?? null,
       }, txClient);
 
       // ── Audit log (Fase 14) ────────────────────────────────────────────

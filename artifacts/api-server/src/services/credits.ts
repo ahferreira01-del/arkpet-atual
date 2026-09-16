@@ -413,43 +413,103 @@ export async function consumeAdditionalServices(
       } as FinancialDomainEvent, tx);
 
       creditedIds.push(addon.id);
+
+      // Pre-paid credit precedence: release campaign reservation if one was reserved
+      const { CrecheCampaignReservationService } = await import(
+        "./crecheCampaignReservation.service.js"
+      );
+      await CrecheCampaignReservationService.applyBookingLineCampaign(tx, {
+        crecheId,
+        tutorId,
+        bookingId,
+        lineType: "BOOKING_SERVICE",
+        catalogueItemId: addon.catalogueItemId,
+        bookingServiceId: addon.id,
+        actualBillableQuantity: 0,
+        petId,
+        description: addon.itemName ?? `Serviço adicional #${addon.catalogueItemId}`,
+      });
     } else {
-      // No service credit — charge via BillingService
-      const price = Number(addon.capturedPrice ?? 0);
-      if (price > 0) {
-        // addCharge now returns { invoiceId, invoiceItemId } — use the item ID directly
-        const { invoiceItemId: resolvedInvoiceItemId } = await BillingService.addCharge({
-          crecheId,
-          tutorId,
-          amount: price,
-          quantity: addon.quantity,
-          description: addon.itemName ?? `Serviço adicional #${addon.catalogueItemId}`,
-          type: "service",
-          petId,
-          bookingId,
-          catalogueItemId: addon.catalogueItemId,
-          itemDate: new Date(),
-          tx,
-        });
+      // No service credit — check for reserved promotional campaign
+      const { CrecheCampaignReservationService } = await import(
+        "./crecheCampaignReservation.service.js"
+      );
+      const campaignResult = await CrecheCampaignReservationService.applyBookingLineCampaign(tx, {
+        crecheId,
+        tutorId,
+        bookingId,
+        lineType: "BOOKING_SERVICE",
+        catalogueItemId: addon.catalogueItemId,
+        bookingServiceId: addon.id,
+        actualBillableQuantity: addon.quantity,
+        petId,
+        description: addon.itemName ?? `Serviço adicional #${addon.catalogueItemId}`,
+      });
 
-        await BookingServicesRepository.markCharged(addon.id, resolvedInvoiceItemId, tx);
-
-        await OutboxRepository.insert({
-          type: "AdditionalServiceCharged",
-          crecheId,
-          bookingId,
-          tutorId,
-          bookingServiceId: addon.id,
-          catalogueItemId: addon.catalogueItemId,
-          amount: price,
-          occurredAt: new Date().toISOString(),
-        } as FinancialDomainEvent, tx);
-
-        chargedIds.push(addon.id);
+      if (campaignResult.hasCampaign) {
+        if (campaignResult.applied) {
+          if (campaignResult.mode === "COMPLIMENTARY_ZERO_VALUE") {
+            // Complimentary zero-value promo add-on
+            await BookingServicesRepository.markConfirmed(addon.id, tx);
+            creditedIds.push(addon.id);
+          } else {
+            // Monetary promo add-on faturado
+            await BookingServicesRepository.markCharged(addon.id, campaignResult.invoiceItemId!, tx);
+            await OutboxRepository.insert({
+              type: "AdditionalServiceCharged",
+              crecheId,
+              bookingId,
+              tutorId,
+              bookingServiceId: addon.id,
+              catalogueItemId: addon.catalogueItemId,
+              amount: campaignResult.finalAmountCents / 100,
+              occurredAt: new Date().toISOString(),
+            } as FinancialDomainEvent, tx);
+            chargedIds.push(addon.id);
+          }
+        } else {
+          // Line released
+          await BookingServicesRepository.markConfirmed(addon.id, tx);
+          creditedIds.push(addon.id);
+        }
       } else {
-        // Zero-price add-on (e.g. a free service) — just confirm it
-        await BookingServicesRepository.markConfirmed(addon.id, tx);
-        creditedIds.push(addon.id);
+        // No campaign reserved — charge via BillingService with captured price
+        const price = Number(addon.capturedPrice ?? 0);
+        if (price > 0) {
+          // addCharge now returns { invoiceId, invoiceItemId } — use the item ID directly
+          const { invoiceItemId: resolvedInvoiceItemId } = await BillingService.addCharge({
+            crecheId,
+            tutorId,
+            amount: price,
+            quantity: addon.quantity,
+            description: addon.itemName ?? `Serviço adicional #${addon.catalogueItemId}`,
+            type: "service",
+            petId,
+            bookingId,
+            catalogueItemId: addon.catalogueItemId,
+            itemDate: new Date(),
+            tx,
+          });
+
+          await BookingServicesRepository.markCharged(addon.id, resolvedInvoiceItemId, tx);
+
+          await OutboxRepository.insert({
+            type: "AdditionalServiceCharged",
+            crecheId,
+            bookingId,
+            tutorId,
+            bookingServiceId: addon.id,
+            catalogueItemId: addon.catalogueItemId,
+            amount: price,
+            occurredAt: new Date().toISOString(),
+          } as FinancialDomainEvent, tx);
+
+          chargedIds.push(addon.id);
+        } else {
+          // Zero-price add-on (e.g. a free service) — just confirm it
+          await BookingServicesRepository.markConfirmed(addon.id, tx);
+          creditedIds.push(addon.id);
+        }
       }
     }
   }

@@ -351,7 +351,7 @@ export async function ensureBookingServicesSchema(): Promise<void> {
  * Production databases were created before several columns were added; this
  * migration brings them up to the current Drizzle schema shape.
  */
-async function ensureInvoicesSchema(): Promise<void> {
+export async function ensureInvoicesSchema(): Promise<void> {
   await (db as any).execute(`
     -- Enums (guard: only created when absent)
     DO $$ BEGIN
@@ -415,6 +415,15 @@ async function ensureInvoicesSchema(): Promise<void> {
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS pricing_source_type    VARCHAR(50);
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS applied_condition_id   INTEGER;
     ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS condition_snapshot     JSONB;
+    -- R37.C2B: additive campaign snapshot columns and partial unique index
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS applied_campaign_id                 INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS applied_campaign_redemption_id      INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS applied_campaign_redemption_item_id INTEGER;
+    ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS campaign_snapshot                   JSONB;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS invoice_items_campaign_redemption_item_unique_idx
+      ON invoice_items (applied_campaign_redemption_item_id)
+      WHERE applied_campaign_redemption_item_id IS NOT NULL;
 
     -- pos_sale_operations: technical idempotency table for POS sales (Phase R20F)
     CREATE TABLE IF NOT EXISTS pos_sale_operations (
@@ -1442,17 +1451,16 @@ export async function ensureCrechePromotionalCampaignSchema() {
       ON creche_promotional_campaign_redemptions (creche_id, booking_id);
 
     DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_status_check') THEN
-        ALTER TABLE creche_promotional_campaign_redemptions ADD CONSTRAINT creche_promotional_redemption_status_check
-          CHECK (status IN ('RESERVED', 'APPLIED', 'RELEASED'));
-      END IF;
+      ALTER TABLE creche_promotional_campaign_redemptions DROP CONSTRAINT IF EXISTS creche_promotional_redemption_status_check;
+      ALTER TABLE creche_promotional_campaign_redemptions ADD CONSTRAINT creche_promotional_redemption_status_check
+        CHECK (status IN ('RESERVED', 'PARTIALLY_APPLIED', 'APPLIED', 'RELEASED'));
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_context_type_check') THEN
         ALTER TABLE creche_promotional_campaign_redemptions ADD CONSTRAINT creche_promotional_redemption_context_type_check
           CHECK (context_type IN ('BOOKING'));
       END IF;
     END $$;
 
-    -- 7. Campaign Redemption Items (R37.C2A)
+    -- 7. Campaign Redemption Items (R37.C2A / R37.C2B)
     CREATE TABLE IF NOT EXISTS creche_promotional_campaign_redemption_items (
       id SERIAL PRIMARY KEY,
       redemption_id INTEGER NOT NULL REFERENCES creche_promotional_campaign_redemptions(id),
@@ -1467,8 +1475,23 @@ export async function ensureCrechePromotionalCampaignSchema() {
       discount_line_total_cents INTEGER NOT NULL,
       final_line_total_cents INTEGER NOT NULL,
       campaign_snapshot JSONB NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'RESERVED',
+      application_mode VARCHAR(32),
+      applied_invoice_id INTEGER REFERENCES invoices(id) ON DELETE RESTRICT,
+      applied_invoice_item_id INTEGER REFERENCES invoice_items(id) ON DELETE RESTRICT,
+      applied_at TIMESTAMP,
+      released_at TIMESTAMP,
+      release_reason TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS status VARCHAR(32) NOT NULL DEFAULT 'RESERVED';
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS application_mode VARCHAR(32);
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS applied_invoice_id INTEGER REFERENCES invoices(id) ON DELETE RESTRICT;
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS applied_invoice_item_id INTEGER REFERENCES invoice_items(id) ON DELETE RESTRICT;
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP;
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS released_at TIMESTAMP;
+    ALTER TABLE creche_promotional_campaign_redemption_items ADD COLUMN IF NOT EXISTS release_reason TEXT;
 
     CREATE UNIQUE INDEX IF NOT EXISTS creche_promotional_items_primary_unique_idx
       ON creche_promotional_campaign_redemption_items (redemption_id)
@@ -1520,6 +1543,37 @@ export async function ensureCrechePromotionalCampaignSchema() {
       IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_discount_line_total_check') THEN
         ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_discount_line_total_check
           CHECK (discount_line_total_cents = base_line_total_cents - final_line_total_cents);
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_status_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_status_check
+          CHECK (status IN ('RESERVED', 'APPLIED', 'RELEASED'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_app_mode_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_app_mode_check
+          CHECK (application_mode IS NULL OR application_mode IN ('INVOICE_ITEM', 'COMPLIMENTARY_ZERO_VALUE'));
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'creche_promotional_redemption_item_app_consistency_check') THEN
+        ALTER TABLE creche_promotional_campaign_redemption_items ADD CONSTRAINT creche_promotional_redemption_item_app_consistency_check
+          CHECK (
+            (status = 'RESERVED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NULL) OR
+            (status = 'RELEASED' AND application_mode IS NULL AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL) OR
+            (status = 'APPLIED' AND application_mode = 'INVOICE_ITEM' AND applied_invoice_id IS NOT NULL AND applied_invoice_item_id IS NOT NULL AND applied_at IS NOT NULL) OR
+            (status = 'APPLIED' AND application_mode = 'COMPLIMENTARY_ZERO_VALUE' AND applied_invoice_id IS NULL AND applied_invoice_item_id IS NULL AND applied_at IS NOT NULL)
+          );
+      END IF;
+
+      -- invoice_items foreign keys to campaign tables
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_applied_campaign_fk') THEN
+        ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_applied_campaign_fk
+          FOREIGN KEY (applied_campaign_id) REFERENCES creche_promotional_campaigns(id) ON DELETE RESTRICT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_applied_redemption_fk') THEN
+        ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_applied_redemption_fk
+          FOREIGN KEY (applied_campaign_redemption_id) REFERENCES creche_promotional_campaign_redemptions(id) ON DELETE RESTRICT;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'invoice_items_applied_redemption_item_fk') THEN
+        ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_applied_redemption_item_fk
+          FOREIGN KEY (applied_campaign_redemption_item_id) REFERENCES creche_promotional_campaign_redemption_items(id) ON DELETE RESTRICT;
       END IF;
     END $$;
   `);

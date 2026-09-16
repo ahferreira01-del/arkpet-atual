@@ -784,33 +784,71 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
              }
           }
           
-          const subtotal = unitPrice * daysToBill;
-          if (subtotal > 0) {
-            await BillingService.addCharge({
+          // ── R37.C2B: Promotional Campaign Application for PRIMARY ───────
+          const { CrecheCampaignReservationService } = await import(
+            "../services/crecheCampaignReservation.service.js"
+          );
+
+          const campaignResult = await CrecheCampaignReservationService.applyBookingLineCampaign(
+            tx,
+            {
               crecheId,
               tutorId: existing.tutorId!,
-              amount: unitPrice,
-              quantity: daysToBill,
-              description: catalogueItem ? catalogueItem.name : existing.type,
-              type: existing.type,
+              bookingId,
+              lineType: "PRIMARY",
+              catalogueItemId: catalogueItem ? catalogueItem.id : 0,
+              actualBillableQuantity: daysToBill,
               petId: existing.petId,
-              bookingId: bookingId,
               itemDate: new Date(existing.startDate),
-              tx: tx,
-              userId: req.user!.id,
-              // Fase 14: snapshot para rastreabilidade e recuperação sem Catalogue
-              catalogueItemId: catalogueItem?.id,
-              // R37.B: snapshot comercial do tutor
-              baseUnitPrice: pricingSnapshot?.baseUnitPrice,
-              discountAmount: pricingSnapshot?.unitDiscount,
-              finalPrice: pricingSnapshot?.effectiveUnitPrice,
-              pricingSourceType: pricingSnapshot?.pricingSourceType,
-              appliedConditionId: pricingSnapshot?.appliedConditionId,
-              conditionSnapshot: pricingSnapshot?.conditionSnapshot,
-            });
+              description: catalogueItem ? catalogueItem.name : existing.type,
+              actor: {
+                userId: req.user!.id,
+                role: (req.user as any)?.role || "user",
+                requestId: (req as any).id,
+              },
+            }
+          );
+
+          if (campaignResult.hasCampaign) {
+            if (campaignResult.applied) {
+              if (campaignResult.mode === "COMPLIMENTARY_ZERO_VALUE") {
+                updates.price = 0;
+              } else {
+                updates.price = campaignResult.finalAmountCents / 100;
+              }
+            } else {
+              // Line was released (e.g. fully covered by credits)
+              updates.price = 0;
+            }
+          } else {
+            // No campaign reserved: fallback to catalog / tutor commercial condition
+            const subtotal = unitPrice * daysToBill;
+            if (subtotal > 0) {
+              await BillingService.addCharge({
+                crecheId,
+                tutorId: existing.tutorId!,
+                amount: unitPrice,
+                quantity: daysToBill,
+                description: catalogueItem ? catalogueItem.name : existing.type,
+                type: existing.type,
+                petId: existing.petId,
+                bookingId: bookingId,
+                itemDate: new Date(existing.startDate),
+                tx: tx,
+                userId: req.user!.id,
+                // Fase 14: snapshot para rastreabilidade e recuperação sem Catalogue
+                catalogueItemId: catalogueItem?.id,
+                // R37.B: snapshot comercial do tutor
+                baseUnitPrice: pricingSnapshot?.baseUnitPrice,
+                discountAmount: pricingSnapshot?.unitDiscount,
+                finalPrice: pricingSnapshot?.effectiveUnitPrice,
+                pricingSourceType: pricingSnapshot?.pricingSourceType,
+                appliedConditionId: pricingSnapshot?.appliedConditionId,
+                conditionSnapshot: pricingSnapshot?.conditionSnapshot,
+              });
+            }
+            updates.price = subtotal;
           }
-          
-          updates.price = subtotal;
         } else {
           updates.price = 0;
         }

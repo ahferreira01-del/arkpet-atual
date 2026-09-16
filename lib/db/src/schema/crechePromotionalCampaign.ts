@@ -2,7 +2,7 @@ import { pgTable, serial, integer, varchar, timestamp, text, check, jsonb, uniqu
 import { relations, sql } from "drizzle-orm";
 import { crechesTable } from "./creches";
 import { usersTable } from "./users";
-import { catalogueItemsTable, bookingServicesTable } from "./financial";
+import { catalogueItemsTable, bookingServicesTable, invoicesTable, invoiceItemsTable } from "./financial";
 import { bookingsTable } from "./bookings";
 
 // Allowed Campaign Benefit Types
@@ -403,7 +403,7 @@ export const crechePromotionalCampaignRedemptionsTable = pgTable(
   (table) => ({
     checkStatus: check(
       "creche_promotional_redemption_status_check",
-      sql`${table.status} IN ('RESERVED', 'APPLIED', 'RELEASED')`
+      sql`${table.status} IN ('RESERVED', 'PARTIALLY_APPLIED', 'APPLIED', 'RELEASED')`
     ),
     checkContextType: check(
       "creche_promotional_redemption_context_type_check",
@@ -476,6 +476,15 @@ export const crechePromotionalCampaignRedemptionItemsTable = pgTable(
     discountLineTotalCents: integer("discount_line_total_cents").notNull(),
     finalLineTotalCents: integer("final_line_total_cents").notNull(),
     campaignSnapshot: jsonb("campaign_snapshot").notNull(),
+    status: varchar("status", { length: 32 }).default("RESERVED").notNull(),
+    applicationMode: varchar("application_mode", { length: 32 }),
+    appliedInvoiceId: integer("applied_invoice_id")
+      .references(() => invoicesTable.id, { onDelete: "restrict" }),
+    appliedInvoiceItemId: integer("applied_invoice_item_id")
+      .references(() => invoiceItemsTable.id, { onDelete: "restrict" }),
+    appliedAt: timestamp("applied_at"),
+    releasedAt: timestamp("released_at"),
+    releaseReason: text("release_reason"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -515,6 +524,18 @@ export const crechePromotionalCampaignRedemptionItemsTable = pgTable(
       "creche_promotional_redemption_item_discount_line_total_check",
       sql`${table.discountLineTotalCents} = ${table.baseLineTotalCents} - ${table.finalLineTotalCents}`
     ),
+    checkItemStatus: check(
+      "creche_promotional_redemption_item_status_check",
+      sql`${table.status} IN ('RESERVED', 'APPLIED', 'RELEASED')`
+    ),
+    checkApplicationMode: check(
+      "creche_promotional_redemption_item_app_mode_check",
+      sql`${table.applicationMode} IS NULL OR ${table.applicationMode} IN ('INVOICE_ITEM', 'COMPLIMENTARY_ZERO_VALUE')`
+    ),
+    checkApplicationConsistency: check(
+      "creche_promotional_redemption_item_app_consistency_check",
+      sql`(${table.status} = 'RESERVED' AND ${table.applicationMode} IS NULL AND ${table.appliedInvoiceId} IS NULL AND ${table.appliedInvoiceItemId} IS NULL AND ${table.appliedAt} IS NULL) OR (${table.status} = 'RELEASED' AND ${table.applicationMode} IS NULL AND ${table.appliedInvoiceId} IS NULL AND ${table.appliedInvoiceItemId} IS NULL) OR (${table.status} = 'APPLIED' AND ${table.applicationMode} = 'INVOICE_ITEM' AND ${table.appliedInvoiceId} IS NOT NULL AND ${table.appliedInvoiceItemId} IS NOT NULL AND ${table.appliedAt} IS NOT NULL) OR (${table.status} = 'APPLIED' AND ${table.applicationMode} = 'COMPLIMENTARY_ZERO_VALUE' AND ${table.appliedInvoiceId} IS NULL AND ${table.appliedInvoiceItemId} IS NULL AND ${table.appliedAt} IS NOT NULL)`
+    ),
     primaryItemUniqueIdx: uniqueIndex("creche_promotional_items_primary_unique_idx")
       .on(table.redemptionId)
       .where(sql`${table.lineType} = 'PRIMARY'`),
@@ -544,6 +565,14 @@ export const crechePromotionalCampaignRedemptionItemsRelations = relations(
     bookingService: one(bookingServicesTable, {
       fields: [crechePromotionalCampaignRedemptionItemsTable.bookingServiceId],
       references: [bookingServicesTable.id],
+    }),
+    appliedInvoice: one(invoicesTable, {
+      fields: [crechePromotionalCampaignRedemptionItemsTable.appliedInvoiceId],
+      references: [invoicesTable.id],
+    }),
+    appliedInvoiceItem: one(invoiceItemsTable, {
+      fields: [crechePromotionalCampaignRedemptionItemsTable.appliedInvoiceItemId],
+      references: [invoiceItemsTable.id],
     }),
   })
 );

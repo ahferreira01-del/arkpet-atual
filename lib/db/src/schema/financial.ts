@@ -285,7 +285,16 @@ export const invoiceItemsTable = pgTable("invoice_items", {
   pricingSourceType: varchar("pricing_source_type", { length: 50 }),
   appliedConditionId: integer("applied_condition_id"),
   conditionSnapshot: jsonb("condition_snapshot"),
-});
+  // ─── R37.C2B: Snapshot Comercial Promocional de Campanha ─────────────────
+  appliedCampaignId: integer("applied_campaign_id"),
+  appliedCampaignRedemptionId: integer("applied_campaign_redemption_id"),
+  appliedCampaignRedemptionItemId: integer("applied_campaign_redemption_item_id"),
+  campaignSnapshot: jsonb("campaign_snapshot"),
+}, (table) => ({
+  campaignRedemptionItemUniqueIdx: uniqueIndex("invoice_items_campaign_redemption_item_unique_idx")
+    .on(table.appliedCampaignRedemptionItemId)
+    .where(sql`${table.appliedCampaignRedemptionItemId} IS NOT NULL`),
+}));
 
 export const invoiceItemsRelations = relations(invoiceItemsTable, ({ one }) => ({
   invoice: one(invoicesTable, {
