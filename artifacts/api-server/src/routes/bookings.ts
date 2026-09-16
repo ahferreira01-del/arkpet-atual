@@ -618,6 +618,13 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       if (!bookingIdentity) {
         throw clientError("Reserva não encontrada.", 404);
       }
+      // R37.C2B / R37.C2C1 Canonical Lock Order:
+      // Campaign Tutor Lock MUST strictly precede Financial Tutor Lock to eliminate any deadlock inversion.
+      await CrecheCampaignReservationService.acquireTutorCampaignLock(
+        tx,
+        crecheId,
+        bookingIdentity.tutorId
+      );
       await BillingService.acquireTutorFinancialLock(
         crecheId,
         bookingIdentity.tutorId,

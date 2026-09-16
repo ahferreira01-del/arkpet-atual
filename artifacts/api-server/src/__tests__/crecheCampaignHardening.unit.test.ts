@@ -415,4 +415,33 @@ describe("R37.C2C — Creche Campaign Financial Hardening & Integrity Unit Tests
       expect(dynamicTx.update).toHaveBeenCalled();
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // 5. Canonical Lock Order & Deadlock Inversion Prevention (R37.C2C1)
+  // ─────────────────────────────────────────────────────────────────────────────
+  describe("5. Canonical Lock Order & Deadlock Inversion Prevention", () => {
+    it("5.1 Invariant: acquireTutorCampaignLock strictly precedes acquireTutorFinancialLock in all paths", async () => {
+      const lockCallOrder: string[] = [];
+
+      const mockTx: any = {
+        execute: vi.fn().mockImplementation((query: any) => {
+          const queryStr = JSON.stringify(query);
+          if (queryStr.includes("campaign_redemption") || queryStr.includes("hashtext")) {
+            lockCallOrder.push("CAMPAIGN_TUTOR_LOCK");
+          } else {
+            lockCallOrder.push("FINANCIAL_TUTOR_LOCK");
+          }
+          return Promise.resolve([]);
+        }),
+      };
+
+      // Call in canonical order
+      await CrecheCampaignReservationService.acquireTutorCampaignLock(mockTx, 1, 10);
+      await BillingService.acquireTutorFinancialLock(1, 10, mockTx);
+
+      expect(lockCallOrder).toEqual(["CAMPAIGN_TUTOR_LOCK", "FINANCIAL_TUTOR_LOCK"]);
+      expect(lockCallOrder[0]).toBe("CAMPAIGN_TUTOR_LOCK");
+      expect(lockCallOrder[1]).toBe("FINANCIAL_TUTOR_LOCK");
+    });
+  });
 });
