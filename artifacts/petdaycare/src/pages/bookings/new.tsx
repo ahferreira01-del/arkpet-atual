@@ -555,7 +555,7 @@ export default function NewBooking() {
                                   return (
                                     <div>
                                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-semibold">
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 font-semibold">
                                           {offer.statusLabel}
                                         </Badge>
                                         {offer.campaignName && (
@@ -566,12 +566,12 @@ export default function NewBooking() {
                                         <span className="text-xs sm:text-sm text-muted-foreground line-through font-medium">
                                           R$ {parseFloat(offer.basePrice).toFixed(2).replace(".", ",")}
                                         </span>
-                                        <span className="text-2xl font-bold text-emerald-400">
+                                        <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
                                           R$ {parseFloat(offer.effectivePrice).toFixed(2).replace(".", ",")}
                                         </span>
                                       </div>
                                       {offer.isComplimentaryZeroValue && (
-                                        <p className="text-xs text-purple-400 font-medium mt-0.5">Cortesia promocional (100% de desconto)</p>
+                                        <p className="text-xs text-purple-700 dark:text-purple-300 font-medium mt-0.5">Cortesia promocional (100% de desconto)</p>
                                       )}
                                     </div>
                                   );
@@ -857,10 +857,10 @@ export default function NewBooking() {
                   const offer = tutorOffers.find((o: any) => o.catalogueItemId === selectedServiceId);
                   if (!offer) return null;
                   return (
-                    <div className="flex gap-3 items-start p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-600 dark:text-emerald-400">
-                      <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <div className="flex gap-3 items-start p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl text-emerald-900 dark:text-emerald-300">
+                      <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5 text-emerald-700 dark:text-emerald-400" />
                       <div>
-                        <p className="text-sm font-semibold">
+                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
                           {offer.statusLabel}: {offer.campaignName || "Benefício comercial"}
                         </p>
                         <p className="text-xs text-foreground/80 mt-0.5">

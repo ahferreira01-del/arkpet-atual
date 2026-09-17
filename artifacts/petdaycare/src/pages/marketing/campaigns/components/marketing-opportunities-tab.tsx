@@ -193,13 +193,13 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-medium text-amber-500 bg-amber-500/10 border-amber-500/20">
+              <Badge variant="outline" className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/60">
                 Reativação
               </Badge>
               <select
                 value={inactiveDays}
                 onChange={(e) => setInactiveDays(Number(e.target.value))}
-                className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="text-xs bg-secondary border border-border rounded-lg px-2 h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 aria-label="Filtrar dias de inatividade"
               >
                 <option value={30}>30+ dias</option>
@@ -208,7 +208,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <Users className="h-5 w-5 text-amber-400" />
+              <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               Tutores Inativos
             </CardTitle>
             <CardDescription className="text-xs">
@@ -232,7 +232,7 @@ export function MarketingOpportunitiesTab({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full sm:flex-1 text-xs h-10 gap-1.5"
+                className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5"
                 onClick={() => {
                   setInspectPage(1);
                   setInspectModal({
@@ -248,7 +248,7 @@ export function MarketingOpportunitiesTab({
               {isCrecheAdmin && (
                 <Button
                   size="sm"
-                  className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
+                  className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5 font-medium"
                   disabled={(inactiveData?.count ?? 0) === 0}
                   onClick={() => handleStartCampaign("INACTIVE_TUTORS", inactiveDays, undefined, inactiveData?.count ?? 0)}
                 >
@@ -264,13 +264,13 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-medium text-blue-500 bg-blue-500/10 border-blue-500/20">
+              <Badge variant="outline" className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800/60">
                 Boas-vindas
               </Badge>
               <select
                 value={newDays}
                 onChange={(e) => setNewDays(Number(e.target.value))}
-                className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="text-xs bg-secondary border border-border rounded-lg px-2 h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
                 aria-label="Filtrar dias de cadastro"
               >
                 <option value={7}>Últimos 7 dias</option>
@@ -279,7 +279,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-blue-400" />
+              <UserPlus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               Novos Tutores
             </CardTitle>
             <CardDescription className="text-xs">
@@ -303,7 +303,7 @@ export function MarketingOpportunitiesTab({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full sm:flex-1 text-xs h-10 gap-1.5"
+                className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5"
                 onClick={() => {
                   setInspectPage(1);
                   setInspectModal({
@@ -319,7 +319,7 @@ export function MarketingOpportunitiesTab({
               {isCrecheAdmin && (
                 <Button
                   size="sm"
-                  className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
+                  className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5 font-medium"
                   disabled={(newData?.count ?? 0) === 0}
                   onClick={() => handleStartCampaign("NEW_TUTORS", newDays, undefined, newData?.count ?? 0)}
                 >
@@ -335,13 +335,13 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-medium text-emerald-500 bg-emerald-500/10 border-emerald-500/20">
+              <Badge variant="outline" className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/60">
                 Cross-Sell
               </Badge>
               <select
                 value={activeItemId || ""}
                 onChange={(e) => setCatalogueItemId(Number(e.target.value))}
-                className="text-xs bg-secondary border border-border rounded-lg px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-primary max-w-[140px] truncate"
+                className="text-xs bg-secondary border border-border rounded-lg px-2 h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-foreground focus:outline-none focus:ring-1 focus:ring-primary max-w-[140px] truncate"
                 aria-label="Selecionar serviço do catálogo"
               >
                 {eligibleItems.map((item) => (
@@ -352,7 +352,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-400" />
+              <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               Experimentação
             </CardTitle>
             <CardDescription className="text-xs truncate">
@@ -376,7 +376,7 @@ export function MarketingOpportunitiesTab({
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full sm:flex-1 text-xs h-10 gap-1.5"
+                className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5"
                 disabled={!activeItemId}
                 onClick={() => {
                   setInspectPage(1);
@@ -393,7 +393,7 @@ export function MarketingOpportunitiesTab({
               {isCrecheAdmin && (
                 <Button
                   size="sm"
-                  className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
+                  className="w-full sm:flex-1 text-xs h-11 min-h-[44px] gap-1.5 font-medium"
                   disabled={!activeItemId || (neverUsedData?.count ?? 0) === 0}
                   onClick={() => handleStartCampaign("NEVER_USED_SERVICE", undefined, activeItemId, neverUsedData?.count ?? 0)}
                 >
@@ -467,7 +467,7 @@ export function MarketingOpportunitiesTab({
                   size="sm"
                   disabled={inspectPage <= 1}
                   onClick={() => setInspectPage((p) => Math.max(1, p - 1))}
-                  className="h-8 gap-1"
+                  className="h-11 sm:h-9 min-h-[44px] sm:min-h-0 px-3 gap-1"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" /> Anterior
                 </Button>
@@ -479,7 +479,7 @@ export function MarketingOpportunitiesTab({
                   size="sm"
                   disabled={inspectPage >= inspectData.totalPages}
                   onClick={() => setInspectPage((p) => Math.min(inspectData.totalPages, p + 1))}
-                  className="h-8 gap-1"
+                  className="h-11 sm:h-9 min-h-[44px] sm:min-h-0 px-3 gap-1"
                 >
                   Próxima <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
@@ -489,14 +489,14 @@ export function MarketingOpportunitiesTab({
             <div className="pt-4 flex flex-col sm:flex-row justify-end gap-2 border-t border-border">
               <Button
                 variant="outline"
-                className="h-11"
+                className="h-11 min-h-[44px]"
                 onClick={() => setInspectModal(null)}
               >
                 Fechar
               </Button>
               {isCrecheAdmin && (inspectData?.count ?? 0) > 0 && (
                 <Button
-                  className="h-11 gap-1.5 font-semibold"
+                  className="h-11 min-h-[44px] gap-1.5 font-semibold"
                   onClick={() =>
                     handleStartCampaign(
                       inspectModal.opportunityType,
