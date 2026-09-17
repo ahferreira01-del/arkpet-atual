@@ -19,9 +19,20 @@ function parseCrecheId(req: Request): number {
 }
 
 export function resolveTargetTutorId(
-  user: { id: number; role: string },
-  queryTutorId?: unknown
+  user: { id: number; role: string; crecheId?: number | null },
+  queryTutorId?: unknown,
+  routeCrecheId?: number
 ): number {
+  if (user.role === "master_admin") {
+    throw new CrecheCampaignForbiddenError(
+      "Acesso não autorizado: master_admin não possui acesso direto a ofertas comerciais sem sessão de suporte ativa."
+    );
+  }
+  if (routeCrecheId != null && user.crecheId !== undefined && user.crecheId !== routeCrecheId) {
+    throw new CrecheCampaignForbiddenError(
+      "Acesso negado: usuário não pertence a esta creche."
+    );
+  }
   if (user.role === "tutor") {
     // IDOR defense: if tutor supplies a query tutorId differing from their own session id, reject with 403
     if (queryTutorId != null && Number(queryTutorId) !== user.id) {
@@ -31,7 +42,7 @@ export function resolveTargetTutorId(
     }
     return user.id;
   }
-  if (user.role === "creche_admin" || user.role === "staff" || user.role === "master_admin") {
+  if (user.role === "creche_admin" || user.role === "staff") {
     const qTutorId = queryTutorId ? Number(queryTutorId) : null;
     if (!qTutorId || Number.isNaN(qTutorId) || qTutorId <= 0) {
       throw new CrecheCampaignValidationError("O parâmetro tutorId é obrigatório para visualização administrativa.");
@@ -54,7 +65,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       throw Object.assign(new Error("Não autenticado."), { status: 401 });
     }
 
-    const targetTutorId = resolveTargetTutorId(user, req.query.tutorId);
+    const targetTutorId = resolveTargetTutorId(user, req.query.tutorId, crecheId);
 
     const result = await TutorCommercialExperienceService.getTutorCommercialOffers(
       crecheId,

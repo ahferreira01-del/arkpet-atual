@@ -51,10 +51,26 @@ describe("CrecheMarketingOpportunityService — Unit & RBAC Tests (R37.D)", () =
         CrecheMarketingOpportunityService.assertCanMutate("master_admin")
       ).toThrow(CrecheCampaignForbiddenError);
     });
+
+    it("denies master_admin from viewing opportunities with 403 Forbidden", () => {
+      expect(() =>
+        CrecheMarketingOpportunityService.assertCanView("master_admin")
+      ).toThrow(CrecheCampaignForbiddenError);
+    });
   });
 
-  describe("2. Draft Materialization & Validation Rules", () => {
-    it("fails closed when target audience is empty", async () => {
+  describe("2. PII Minimization & Email Masking", () => {
+    it("masks emails preserving only initial and terminal characters of the username", async () => {
+      const { maskEmail } = await import("../services/crecheMarketingOpportunity.service.js");
+      expect(maskEmail("maria@petlover.com")).toBe("m***a@petlover.com");
+      expect(maskEmail("jo@example.com")).toBe("j***@example.com");
+      expect(maskEmail("a@example.com")).toBe("a***@example.com");
+      expect(maskEmail("invalid-email")).toBe("***");
+    });
+  });
+
+  describe("3. Draft Materialization & Validation Rules", () => {
+    it("fails closed when target audience is empty (422 Unprocessable Entity)", async () => {
       const mockClient = {};
 
       vi.spyOn(CrecheMarketingOpportunityService as any, "resolveAllOpportunityTutorIds").mockResolvedValueOnce({
@@ -112,6 +128,7 @@ describe("CrecheMarketingOpportunityService — Unit & RBAC Tests (R37.D)", () =
       expect(campaign.id).toBe(999);
       expect(campaign.status).toBe("DRAFT");
       expect(campaign.audienceType).toBe("SELECTED_TUTORS");
+      expect(campaign.finalSelectedTutorCount).toBe(2);
 
       // Verify CrecheCampaignService.createDraft received the full materialized tutor list
       expect(mockCreateDraft).toHaveBeenCalledWith(
@@ -122,13 +139,77 @@ describe("CrecheMarketingOpportunityService — Unit & RBAC Tests (R37.D)", () =
           selectedTutorIds: [101, 102],
           itemIds: [501],
           usageLimitType: "ONCE_PER_TUTOR",
-          usageLimitPerTutor: 1,
+          usageLimitPerTutor: null,
         }),
         undefined
       );
 
       // Verify audit insertion occurred
       expect(mockAuditInsert).toHaveBeenCalled();
+    });
+
+    it("respects complete campaign configuration supplied by wizard while materializing audience at save time", async () => {
+      vi.spyOn(CrecheMarketingOpportunityService as any, "resolveAllOpportunityTutorIds").mockResolvedValueOnce({
+        tutorIds: [201, 202, 203],
+        criteria: { days: 30 },
+      });
+
+      const mockAuditInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+      const mockClient = {
+        insert: mockAuditInsert,
+      };
+
+      const mockCreateDraft = vi.spyOn(CrecheCampaignService, "createDraft").mockResolvedValueOnce({
+        id: 888,
+        crecheId: 1,
+        name: "Desconto Especial Novos Tutores",
+        benefitType: "FIXED_DISCOUNT",
+        status: "DRAFT",
+        audienceType: "SELECTED_TUTORS",
+      } as any);
+
+      const result = await CrecheMarketingOpportunityService.createCampaignDraftFromOpportunity({
+        crecheId: 1,
+        opportunityType: "NEW_TUTORS",
+        days: 30,
+        previewCount: 2, // e.g. preview had 2, now resolved to 3
+        campaign: {
+          name: "Desconto Especial Novos Tutores",
+          benefitType: "FIXED_DISCOUNT",
+          fixedDiscountAmount: "25.00",
+          itemIds: [301, 302],
+          conditionInteractionPolicy: "ALLOW_IF_BETTER",
+          usageLimitType: "N_PER_TUTOR",
+          usageLimitPerTutor: 3,
+          priority: 200,
+          validFrom: new Date("2026-10-01T00:00:00Z"),
+          validUntil: new Date("2026-10-31T23:59:59Z"),
+        },
+        actor: { userId: 10, role: "creche_admin", source: "http" },
+        client: mockClient,
+      });
+
+      expect(result.id).toBe(888);
+      expect(result.previewCount).toBe(2);
+      expect(result.finalSelectedTutorCount).toBe(3);
+
+      expect(mockCreateDraft).toHaveBeenCalledWith(
+        1,
+        { userId: 10, role: "creche_admin", source: "http" },
+        expect.objectContaining({
+          name: "Desconto Especial Novos Tutores",
+          benefitType: "FIXED_DISCOUNT",
+          fixedDiscountCents: 2500,
+          audienceType: "SELECTED_TUTORS",
+          selectedTutorIds: [201, 202, 203],
+          itemIds: [301, 302],
+          conditionInteractionPolicy: "ALLOW_IF_BETTER",
+          usageLimitType: "N_PER_TUTOR",
+          usageLimitPerTutor: 3,
+          priority: 200,
+        }),
+        undefined
+      );
     });
   });
 });

@@ -7,6 +7,9 @@ import {
   petsTable,
   crechePromotionalCampaignAuditsTable,
   type CrechePromotionalCampaign,
+  type CampaignBenefitType,
+  type CampaignUsageLimitType,
+  type CampaignInteractionPolicy,
 } from "@workspace/db/schema";
 import { eq, and, inArray, sql, desc, asc } from "drizzle-orm";
 import {
@@ -18,6 +21,20 @@ import {
   CrecheCampaignService,
   type ActorContext,
 } from "./crecheCampaign.service.js";
+import {
+  getBusinessDate,
+  getPreviousCalendarDay,
+  getBusinessDayStartInstant,
+} from "../lib/date.js";
+
+export function maskEmail(email: string): string {
+  if (!email || !email.includes("@")) return "***";
+  const [localPart, domain] = email.split("@");
+  if (localPart.length <= 2) {
+    return `${localPart.charAt(0)}***@${domain}`;
+  }
+  return `${localPart.charAt(0)}***${localPart.charAt(localPart.length - 1)}@${domain}`;
+}
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -71,6 +88,23 @@ export interface CreateDraftFromOpportunityParams {
   days?: number;
   catalogueItemId?: number;
   campaignName?: string;
+  campaign?: {
+    name?: string;
+    description?: string;
+    benefitType?: CampaignBenefitType;
+    percentageBps?: number | null;
+    fixedDiscountCents?: number | null;
+    fixedDiscountAmount?: string | null;
+    fixedPromotionalPriceCents?: number | null;
+    itemIds?: number[];
+    conditionInteractionPolicy?: CampaignInteractionPolicy;
+    usageLimitType?: CampaignUsageLimitType;
+    usageLimitPerTutor?: number | null;
+    priority?: number;
+    validFrom?: Date | string;
+    validUntil?: Date | string;
+  };
+  previewCount?: number;
   actor: ActorContext;
   idempotencyKey?: string;
   client?: any;
@@ -80,13 +114,18 @@ export interface CreateDraftFromOpportunityParams {
 
 export class CrecheMarketingOpportunityService {
   /**
-   * RBAC: creche_admin and staff can view opportunities. Tutors are forbidden.
+   * RBAC: creche_admin and staff can view opportunities. Master admin and tutors are forbidden.
    */
   static assertCanView(role: string): void {
+    if (role === "master_admin") {
+      throw new CrecheCampaignForbiddenError(
+        "Acesso não autorizado: master_admin não possui acesso direto ao CRM de oportunidades sem sessão de suporte ativa."
+      );
+    }
     if (role === "tutor") {
       throw new CrecheCampaignForbiddenError("Tutores não possuem acesso ao CRM de oportunidades.");
     }
-    if (role !== "creche_admin" && role !== "staff" && role !== "master_admin") {
+    if (role !== "creche_admin" && role !== "staff") {
       throw new CrecheCampaignForbiddenError("Acesso restrito à gestão da creche.");
     }
   }
@@ -104,9 +143,11 @@ export class CrecheMarketingOpportunityService {
   /**
    * INACTIVE_TUTORS:
    * Active tutors belonging to crecheId who:
-   * 1. Registered prior to cutoff (createdAt < now - N days)
-   * 2. Have NO upcoming/current bookings (status IN ('confirmed', 'active') with startDate >= CURRENT_DATE)
-   * 3. Have NO completed bookings on or after cutoff (checkOutTime or startDate >= now - N days)
+   * 1. Registered prior to cutoff (createdAt < cutoffStartInstant)
+   * 2. Have NO active ongoing bookings (status = 'active')
+   * 3. Have NO upcoming/current confirmed bookings (status = 'confirmed' with endDate or startDate >= businessToday)
+   * 4. Have NO completed bookings on or after cutoff (checkOutTime::date, endDate::date, or startDate::date >= cutoffDateStr)
+   * Cancelled and cancel_requested bookings do NOT count as activity.
    */
   static async getInactiveTutors(
     params: GetInactiveTutorsParams
@@ -117,27 +158,35 @@ export class CrecheMarketingOpportunityService {
     const safePageSize = Math.max(1, Math.min(100, Math.floor(pageSize)));
     const offset = (safePage - 1) * safePageSize;
 
-    const cutoffDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+    const businessToday = getBusinessDate("America/Sao_Paulo");
+    const cutoffDateStr = getPreviousCalendarDay(businessToday, safeDays);
+    const cutoffStartInstant = getBusinessDayStartInstant(cutoffDateStr, "America/Sao_Paulo");
 
     // SQL conditions for inactive tutors
     const inactiveWhere = sql`
       ${usersTable.crecheId} = ${crecheId}
       AND ${usersTable.role} = 'tutor'
       AND ${usersTable.isActive} = true
-      AND ${usersTable.createdAt} < ${cutoffDate}
+      AND ${usersTable.createdAt} < ${cutoffStartInstant}
       AND NOT EXISTS (
         SELECT 1 FROM ${bookingsTable} b
         WHERE b.tutor_id = ${usersTable.id}
           AND b.creche_id = ${crecheId}
-          AND b.status IN ('confirmed', 'active')
-          AND b.start_date >= CURRENT_DATE
+          AND b.status = 'active'
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM ${bookingsTable} b
+        WHERE b.tutor_id = ${usersTable.id}
+          AND b.creche_id = ${crecheId}
+          AND b.status = 'confirmed'
+          AND COALESCE(b.end_date, b.start_date) >= ${businessToday}::date
       )
       AND NOT EXISTS (
         SELECT 1 FROM ${bookingsTable} b
         WHERE b.tutor_id = ${usersTable.id}
           AND b.creche_id = ${crecheId}
           AND b.status = 'completed'
-          AND COALESCE(b.check_out_time, b.start_date::timestamp) >= ${cutoffDate}
+          AND COALESCE(b.check_out_time::date, b.end_date::date, b.start_date::date) >= ${cutoffDateStr}::date
       )
     `;
 
@@ -157,7 +206,7 @@ export class CrecheMarketingOpportunityService {
         email: usersTable.email,
         createdAt: usersTable.createdAt,
         lastCompletedDate: sql<Date | null>`(
-          SELECT MAX(COALESCE(b.check_out_time, b.start_date::timestamp))
+          SELECT MAX(COALESCE(b.check_out_time, b.end_date::timestamp, b.start_date::timestamp))
           FROM ${bookingsTable} b
           WHERE b.tutor_id = ${usersTable.id}
             AND b.creche_id = ${crecheId}
@@ -193,7 +242,7 @@ export class CrecheMarketingOpportunityService {
       return {
         tutorId: r.id,
         tutorName: r.name,
-        email: r.email,
+        email: maskEmail(r.email),
         petNames,
         lastActivityDate,
         registeredAt: new Date(r.createdAt).toISOString(),
@@ -204,7 +253,7 @@ export class CrecheMarketingOpportunityService {
     return {
       opportunityType: "INACTIVE_TUTORS",
       count: totalCount,
-      criteria: { days: safeDays, cutoffDate: cutoffDate.toISOString() },
+      criteria: { days: safeDays, cutoffDate: cutoffStartInstant.toISOString(), cutoffDateStr, businessToday },
       items,
       page: safePage,
       pageSize: safePageSize,
@@ -214,7 +263,7 @@ export class CrecheMarketingOpportunityService {
 
   /**
    * NEW_TUTORS:
-   * Active tutors registered within the last N days (createdAt >= now - N days).
+   * Active tutors registered within the last N days (createdAt >= cutoffStartInstant).
    */
   static async getNewTutors(
     params: GetNewTutorsParams
@@ -225,13 +274,15 @@ export class CrecheMarketingOpportunityService {
     const safePageSize = Math.max(1, Math.min(100, Math.floor(pageSize)));
     const offset = (safePage - 1) * safePageSize;
 
-    const cutoffDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+    const businessToday = getBusinessDate("America/Sao_Paulo");
+    const cutoffDateStr = getPreviousCalendarDay(businessToday, safeDays);
+    const cutoffStartInstant = getBusinessDayStartInstant(cutoffDateStr, "America/Sao_Paulo");
 
     const newWhere = sql`
       ${usersTable.crecheId} = ${crecheId}
       AND ${usersTable.role} = 'tutor'
       AND ${usersTable.isActive} = true
-      AND ${usersTable.createdAt} >= ${cutoffDate}
+      AND ${usersTable.createdAt} >= ${cutoffStartInstant}
     `;
 
     const [countResult] = await client
@@ -264,7 +315,7 @@ export class CrecheMarketingOpportunityService {
       return {
         tutorId: r.id,
         tutorName: r.name,
-        email: r.email,
+        email: maskEmail(r.email),
         petNames,
         registeredAt: new Date(r.createdAt).toISOString(),
         reason: `Cadastrado há ${daysSince} dias`,
@@ -274,7 +325,7 @@ export class CrecheMarketingOpportunityService {
     return {
       opportunityType: "NEW_TUTORS",
       count: totalCount,
-      criteria: { days: safeDays, cutoffDate: cutoffDate.toISOString() },
+      criteria: { days: safeDays, cutoffDate: cutoffStartInstant.toISOString(), cutoffDateStr, businessToday },
       items,
       page: safePage,
       pageSize: safePageSize,
@@ -333,6 +384,7 @@ export class CrecheMarketingOpportunityService {
           AND b2.status = 'completed'
           AND bs.catalogue_item_id = ${safeItemId}
           AND bs.status != 'cancelled'
+          AND (bs.status = 'confirmed' OR bs.charged = true OR bs.consumed_credit = true)
       )
     `;
 
@@ -364,7 +416,7 @@ export class CrecheMarketingOpportunityService {
       return {
         tutorId: r.id,
         tutorName: r.name,
-        email: r.email,
+        email: maskEmail(r.email),
         petNames,
         registeredAt: new Date(r.createdAt).toISOString(),
         reason: `Nunca utilizou o serviço "${item.name}"`,
@@ -393,7 +445,9 @@ export class CrecheMarketingOpportunityService {
   ): Promise<{ tutorIds: number[]; criteria: Record<string, unknown> }> {
     if (opportunityType === "INACTIVE_TUTORS") {
       const safeDays = Math.max(1, Math.min(365, Math.floor(options.days ?? 60)));
-      const cutoffDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+      const businessToday = getBusinessDate("America/Sao_Paulo");
+      const cutoffDateStr = getPreviousCalendarDay(businessToday, safeDays);
+      const cutoffStartInstant = getBusinessDayStartInstant(cutoffDateStr, "America/Sao_Paulo");
 
       const rows = await client
         .select({ id: usersTable.id })
@@ -402,32 +456,40 @@ export class CrecheMarketingOpportunityService {
           ${usersTable.crecheId} = ${crecheId}
           AND ${usersTable.role} = 'tutor'
           AND ${usersTable.isActive} = true
-          AND ${usersTable.createdAt} < ${cutoffDate}
+          AND ${usersTable.createdAt} < ${cutoffStartInstant}
           AND NOT EXISTS (
             SELECT 1 FROM ${bookingsTable} b
             WHERE b.tutor_id = ${usersTable.id}
               AND b.creche_id = ${crecheId}
-              AND b.status IN ('confirmed', 'active')
-              AND b.start_date >= CURRENT_DATE
+              AND b.status = 'active'
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ${bookingsTable} b
+            WHERE b.tutor_id = ${usersTable.id}
+              AND b.creche_id = ${crecheId}
+              AND b.status = 'confirmed'
+              AND COALESCE(b.end_date, b.start_date) >= ${businessToday}::date
           )
           AND NOT EXISTS (
             SELECT 1 FROM ${bookingsTable} b
             WHERE b.tutor_id = ${usersTable.id}
               AND b.creche_id = ${crecheId}
               AND b.status = 'completed'
-              AND COALESCE(b.check_out_time, b.start_date::timestamp) >= ${cutoffDate}
+              AND COALESCE(b.check_out_time::date, b.end_date::date, b.start_date::date) >= ${cutoffDateStr}::date
           )
         `);
 
       return {
         tutorIds: rows.map((r: any) => r.id),
-        criteria: { days: safeDays, cutoffDate: cutoffDate.toISOString() },
+        criteria: { days: safeDays, cutoffDate: cutoffStartInstant.toISOString(), cutoffDateStr, businessToday },
       };
     }
 
     if (opportunityType === "NEW_TUTORS") {
       const safeDays = Math.max(1, Math.min(365, Math.floor(options.days ?? 30)));
-      const cutoffDate = new Date(Date.now() - safeDays * 24 * 60 * 60 * 1000);
+      const businessToday = getBusinessDate("America/Sao_Paulo");
+      const cutoffDateStr = getPreviousCalendarDay(businessToday, safeDays);
+      const cutoffStartInstant = getBusinessDayStartInstant(cutoffDateStr, "America/Sao_Paulo");
 
       const rows = await client
         .select({ id: usersTable.id })
@@ -436,12 +498,12 @@ export class CrecheMarketingOpportunityService {
           ${usersTable.crecheId} = ${crecheId}
           AND ${usersTable.role} = 'tutor'
           AND ${usersTable.isActive} = true
-          AND ${usersTable.createdAt} >= ${cutoffDate}
+          AND ${usersTable.createdAt} >= ${cutoffStartInstant}
         `);
 
       return {
         tutorIds: rows.map((r: any) => r.id),
-        criteria: { days: safeDays, cutoffDate: cutoffDate.toISOString() },
+        criteria: { days: safeDays, cutoffDate: cutoffStartInstant.toISOString(), cutoffDateStr, businessToday },
       };
     }
 
@@ -486,6 +548,7 @@ export class CrecheMarketingOpportunityService {
               AND b2.status = 'completed'
               AND bs.catalogue_item_id = ${safeItemId}
               AND bs.status != 'cancelled'
+              AND (bs.status = 'confirmed' OR bs.charged = true OR bs.consumed_credit = true)
           )
         `);
 
@@ -501,32 +564,30 @@ export class CrecheMarketingOpportunityService {
   /**
    * Materializes an opportunity into a DRAFT campaign with SELECTED_TUTORS audience.
    * - Requires creche_admin role
-   * - Blocks empty audiences fail-closed
+   * - Blocks empty audiences fail-closed (422)
+   * - Recomputes audience server-side at save time
    * - Does NOT publish
    * - Does NOT send notifications
    */
   static async createCampaignDraftFromOpportunity(
     params: CreateDraftFromOpportunityParams
-  ): Promise<CrechePromotionalCampaign> {
+  ): Promise<CrechePromotionalCampaign & { previewCount: number; finalSelectedTutorCount: number }> {
     const {
       crecheId,
       opportunityType,
       days,
       catalogueItemId,
       campaignName,
+      campaign: campaignInput,
       actor,
       idempotencyKey,
       client = db,
     } = params;
 
     // RBAC: Only creche_admin can create campaigns
-    if (actor.role !== "creche_admin") {
-      throw new CrecheCampaignForbiddenError(
-        "Apenas administradores de creche podem criar campanhas a partir de oportunidades."
-      );
-    }
+    this.assertCanMutate(actor.role);
 
-    // Materialize target audience
+    // Materialize target audience at this exact instant
     const { tutorIds, criteria } = await this.resolveAllOpportunityTutorIds(
       crecheId,
       opportunityType,
@@ -540,22 +601,23 @@ export class CrecheMarketingOpportunityService {
       );
     }
 
-    // Determine default eligible item(s)
-    let targetItemIds: number[] = [];
-    if (opportunityType === "NEVER_USED_SERVICE" && catalogueItemId) {
-      targetItemIds = [catalogueItemId];
-    } else {
-      // Pick all available services and day_use items of the creche
-      const availableItems = await client
-        .select({ id: catalogueItemsTable.id })
-        .from(catalogueItemsTable)
-        .where(
-          and(
-            eq(catalogueItemsTable.crecheId, crecheId),
-            sql`${catalogueItemsTable.type} IN ('service', 'day_use')`
-          )
-        );
-      targetItemIds = availableItems.map((i: any) => i.id);
+    // Determine target item(s)
+    let targetItemIds: number[] = campaignInput?.itemIds ?? [];
+    if (targetItemIds.length === 0) {
+      if (opportunityType === "NEVER_USED_SERVICE" && catalogueItemId) {
+        targetItemIds = [catalogueItemId];
+      } else {
+        const availableItems = await client
+          .select({ id: catalogueItemsTable.id })
+          .from(catalogueItemsTable)
+          .where(
+            and(
+              eq(catalogueItemsTable.crecheId, crecheId),
+              sql`${catalogueItemsTable.type} IN ('service', 'day_use')`
+            )
+          );
+        targetItemIds = availableItems.map((i: any) => i.id);
+      }
     }
 
     if (targetItemIds.length === 0) {
@@ -575,14 +637,36 @@ export class CrecheMarketingOpportunityService {
       defaultName = `Experimente ${itemName}`;
     }
 
-    const finalName = campaignName?.trim() || defaultName;
+    const finalName = campaignInput?.name?.trim() || campaignName?.trim() || defaultName;
+    const description =
+      campaignInput?.description ||
+      `Campanha criada a partir da oportunidade CRM: ${opportunityType}. Público materializado: ${tutorIds.length} tutores selecionados.`;
 
-    // Validity window: [now, now + 30 days]
-    const validFrom = new Date();
-    const validUntil = new Date();
-    validUntil.setDate(validUntil.getDate() + 30);
+    const validFrom = campaignInput?.validFrom ? new Date(campaignInput.validFrom) : new Date();
+    let validUntil: Date;
+    if (campaignInput?.validUntil) {
+      validUntil = new Date(campaignInput.validUntil);
+    } else {
+      validUntil = new Date();
+      validUntil.setDate(validUntil.getDate() + 30);
+    }
 
-    const description = `Campanha criada a partir da oportunidade CRM: ${opportunityType}. Público materializado: ${tutorIds.length} tutores selecionados.`;
+    const benefitType: CampaignBenefitType = campaignInput?.benefitType || "PERCENTAGE_DISCOUNT";
+    const percentageBps =
+      benefitType === "PERCENTAGE_DISCOUNT" ? (campaignInput?.percentageBps ?? 1500) : null;
+    let fixedDiscountCents = campaignInput?.fixedDiscountCents ?? null;
+    if (benefitType === "FIXED_DISCOUNT" && fixedDiscountCents == null && campaignInput?.fixedDiscountAmount) {
+      fixedDiscountCents = Math.round(parseFloat(campaignInput.fixedDiscountAmount) * 100);
+    }
+    const fixedPromotionalPriceCents = campaignInput?.fixedPromotionalPriceCents ?? null;
+
+    const conditionInteractionPolicy: CampaignInteractionPolicy =
+      campaignInput?.conditionInteractionPolicy || "EXCLUDE_IF_TUTOR_CONDITION";
+    const usageLimitType: CampaignUsageLimitType =
+      campaignInput?.usageLimitType || "ONCE_PER_TUTOR";
+    const usageLimitPerTutor =
+      campaignInput?.usageLimitPerTutor ?? (usageLimitType === "N_PER_TUTOR" ? 1 : null);
+    const priority = campaignInput?.priority ?? 100;
 
     // Create draft campaign via authoritative campaign service
     const campaign = await CrecheCampaignService.createDraft(
@@ -591,22 +675,24 @@ export class CrecheMarketingOpportunityService {
       {
         name: finalName,
         description,
-        benefitType: "PERCENTAGE_DISCOUNT",
-        percentageBps: 1500, // 15% OFF initial template
+        benefitType,
+        percentageBps,
+        fixedDiscountCents,
+        fixedPromotionalPriceCents,
         audienceType: "SELECTED_TUTORS",
         selectedTutorIds: tutorIds,
         itemIds: targetItemIds,
-        conditionInteractionPolicy: "EXCLUDE_IF_TUTOR_CONDITION",
-        usageLimitType: "ONCE_PER_TUTOR",
-        usageLimitPerTutor: 1,
-        priority: 100,
+        conditionInteractionPolicy,
+        usageLimitType,
+        usageLimitPerTutor,
+        priority,
         validFrom,
         validUntil,
       },
       idempotencyKey
     );
 
-    // Record domain audit for CRM opportunity materialization
+    // Record domain audit for CRM opportunity materialization (PII minimized)
     await client.insert(crechePromotionalCampaignAuditsTable).values({
       crecheId,
       campaignId: campaign.id,
@@ -624,7 +710,10 @@ export class CrecheMarketingOpportunityService {
       },
     });
 
-    return campaign;
+    return Object.assign(campaign, {
+      previewCount: params.previewCount ?? tutorIds.length,
+      finalSelectedTutorCount: tutorIds.length,
+    });
   }
 
   /**

@@ -138,6 +138,13 @@ export default function CrecheCampaignsPage() {
   const [formReason, setFormReason] = useState("");
   const [previewData, setPreviewData] = useState<any>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [opportunityContext, setOpportunityContext] = useState<{
+    opportunityType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE";
+    criteria: Record<string, any>;
+    suggestedName: string;
+    defaultItemId?: number;
+    previewCount: number;
+  } | null>(null);
 
   const { data, isLoading } = useCampaigns(crecheId, statusFilter, searchTerm);
   const { data: eligibleItems = [] } = useCatalogueItems(crecheId);
@@ -148,6 +155,7 @@ export default function CrecheCampaignsPage() {
 
   const resetWizard = () => {
     setWizardStep(1);
+    setOpportunityContext(null);
     setFormName("");
     setFormDesc("");
     setFormBenefitType("PERCENTAGE_DISCOUNT");
@@ -230,40 +238,88 @@ export default function CrecheCampaignsPage() {
       const fixedCents = formBenefitType === "FIXED_DISCOUNT" ? Math.round(parseFloat(formFixedDiscount || "0") * 100) : null;
       const promoPriceCents = formBenefitType === "FIXED_PROMOTIONAL_PRICE" ? Math.round(parseFloat(formFixedPrice || "0") * 100) : null;
 
-      // 1. Create Draft
-      const res = await fetch(`/api/creches/${crecheId}/campaigns`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "x-idempotency-key": `camp-create-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        },
-        body: JSON.stringify({
-          name: formName.trim(),
-          description: formDesc.trim() || null,
-          benefitType: formBenefitType,
-          percentageBps: bps,
-          fixedDiscountCents: fixedCents,
-          fixedPromotionalPriceCents: promoPriceCents,
-          audienceType: formAudienceType,
-          selectedTutorIds: formSelectedTutorIds,
-          itemIds: formItemIds,
-          conditionInteractionPolicy: formInteractionPolicy,
-          usageLimitType: formUsageLimitType,
-          usageLimitPerTutor: formUsageLimitType === "N_PER_TUTOR" ? parseInt(formUsageLimitPerTutor, 10) : null,
-          priority: parseInt(formPriority, 10) || 100,
-          validFrom: new Date(formValidFrom).toISOString(),
-          validUntil: new Date(formValidUntil).toISOString(),
-          reason: formReason.trim() || "Criação de campanha",
-        }),
-      });
+      let created: any;
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Erro ao salvar campanha");
+      if (opportunityContext) {
+        // Canonical save flow from CRM Opportunity:
+        // Audience is materialized server-side at save time
+        const res = await fetch(`/api/creches/${crecheId}/marketing/opportunities/create-draft`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "x-idempotency-key": `crm-camp-${opportunityContext.opportunityType}-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          },
+          body: JSON.stringify({
+            opportunityType: opportunityContext.opportunityType,
+            days: opportunityContext.criteria.days,
+            catalogueItemId: opportunityContext.criteria.catalogueItemId,
+            previewCount: opportunityContext.previewCount,
+            campaign: {
+              name: formName.trim(),
+              description: formDesc.trim() || undefined,
+              benefitType: formBenefitType,
+              percentageBps: bps,
+              fixedDiscountAmount: formBenefitType === "FIXED_DISCOUNT" ? formFixedDiscount : null,
+              itemIds: formItemIds,
+              conditionInteractionPolicy: formInteractionPolicy,
+              usageLimitType: formUsageLimitType === "ONCE_PER_TUTOR" ? "ONCE_PER_TUTOR" : (formUsageLimitType === "N_PER_TUTOR" ? "PER_TUTOR" : "UNLIMITED"),
+              usageLimitPerTutor: formUsageLimitType === "N_PER_TUTOR" ? parseInt(formUsageLimitPerTutor, 10) : (formUsageLimitType === "ONCE_PER_TUTOR" ? 1 : null),
+              priority: parseInt(formPriority, 10) || 100,
+              validFrom: new Date(formValidFrom).toISOString(),
+              validUntil: new Date(formValidUntil).toISOString(),
+            },
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Erro ao salvar campanha a partir da oportunidade.");
+        }
+        const data = await res.json();
+        created = data.campaign;
+
+        if (data.previewCount != null && data.finalSelectedTutorCount != null && data.previewCount !== data.finalSelectedTutorCount) {
+          toast({
+            title: "Público recalculado",
+            description: `${data.finalSelectedTutorCount} tutores vinculados à campanha (prévia anterior: ${data.previewCount}).`,
+          });
+        }
+      } else {
+        // Regular Campaign Wizard Creation
+        const res = await fetch(`/api/creches/${crecheId}/campaigns`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+            "x-idempotency-key": `camp-create-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+          },
+          body: JSON.stringify({
+            name: formName.trim(),
+            description: formDesc.trim() || null,
+            benefitType: formBenefitType,
+            percentageBps: bps,
+            fixedDiscountCents: fixedCents,
+            fixedPromotionalPriceCents: promoPriceCents,
+            audienceType: formAudienceType,
+            selectedTutorIds: formSelectedTutorIds,
+            itemIds: formItemIds,
+            conditionInteractionPolicy: formInteractionPolicy,
+            usageLimitType: formUsageLimitType,
+            usageLimitPerTutor: formUsageLimitType === "N_PER_TUTOR" ? parseInt(formUsageLimitPerTutor, 10) : null,
+            priority: parseInt(formPriority, 10) || 100,
+            validFrom: new Date(formValidFrom).toISOString(),
+            validUntil: new Date(formValidUntil).toISOString(),
+            reason: formReason.trim() || "Criação de campanha",
+          }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Erro ao salvar campanha");
+        }
+        created = await res.json();
       }
-
-      const created = await res.json();
 
       // 2. If immediate publish requested
       if (shouldPublish) {
@@ -290,6 +346,7 @@ export default function CrecheCampaignsPage() {
 
       qc.invalidateQueries({ queryKey: ["creche-campaigns", crecheId] });
       setWizardOpen(false);
+      setOpportunityContext(null);
       resetWizard();
     } catch (err: any) {
       toast({ title: "Erro na Operação", description: err.message, variant: "destructive" });
@@ -439,6 +496,17 @@ export default function CrecheCampaignsPage() {
           crecheId={crecheId}
           isCrecheAdmin={isCrecheAdmin}
           eligibleItems={eligibleItems}
+          onStartCampaignFromOpportunity={(ctx) => {
+            resetWizard();
+            setOpportunityContext(ctx);
+            setFormName(ctx.suggestedName);
+            setFormAudienceType("SELECTED_TUTORS");
+            if (ctx.defaultItemId) {
+              setFormItemIds([ctx.defaultItemId]);
+            }
+            setMainTab("campaigns");
+            setWizardOpen(true);
+          }}
           onDraftCreated={() => {
             setMainTab("campaigns");
             qc.invalidateQueries({ queryKey: ["creche-campaigns", crecheId] });
@@ -885,6 +953,18 @@ export default function CrecheCampaignsPage() {
                 <h4 className="font-semibold text-sm text-foreground">Passo 4: Público-Alvo</h4>
                 <p className="text-xs text-muted-foreground">Defina quem terá elegibilidade automática para usufruir da campanha.</p>
               </div>
+
+              {opportunityContext && (
+                <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 text-xs text-primary flex items-start gap-2.5">
+                  <Sparkles className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold">Público Originado de Oportunidade CRM</span>
+                    <p className="mt-0.5 text-muted-foreground text-[11px]">
+                      Esta campanha foi iniciada a partir de oportunidade ({opportunityContext.previewCount} tutores elegíveis na prévia). A lista definitiva de tutores participantes será materializada e vinculada pelo servidor no momento do salvamento do rascunho.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div

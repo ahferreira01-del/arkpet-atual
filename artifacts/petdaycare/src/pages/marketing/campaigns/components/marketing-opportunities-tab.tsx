@@ -19,11 +19,20 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+export interface OpportunityContextParams {
+  opportunityType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE";
+  criteria: Record<string, any>;
+  suggestedName: string;
+  defaultItemId?: number;
+  previewCount: number;
+}
+
 interface MarketingOpportunitiesTabProps {
   crecheId: number;
   isCrecheAdmin: boolean;
   eligibleItems: any[];
-  onDraftCreated: () => void;
+  onDraftCreated?: () => void;
+  onStartCampaignFromOpportunity: (params: OpportunityContextParams) => void;
 }
 
 export function MarketingOpportunitiesTab({
@@ -31,6 +40,7 @@ export function MarketingOpportunitiesTab({
   isCrecheAdmin,
   eligibleItems,
   onDraftCreated,
+  onStartCampaignFromOpportunity,
 }: MarketingOpportunitiesTabProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -125,58 +135,36 @@ export function MarketingOpportunitiesTab({
     },
   });
 
-  // Mutation: Create Draft from Opportunity
-  const createDraftMutation = useMutation({
-    mutationFn: async (payload: {
-      opportunityType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE";
-      days?: number;
-      catalogueItemId?: number;
-    }) => {
-      const res = await fetch(
-        `/api/creches/${crecheId}/marketing/opportunities/create-draft`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-            "x-idempotency-key": `crm-draft-${payload.opportunityType}-${Date.now()}`,
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Erro ao criar rascunho de campanha.");
-      }
-      return res.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Rascunho de Campanha Criado!",
-        description: `Campanha "${data.campaign.name}" criada com público selecionado (${data.campaign.audienceType}). Configure descontos e publique quando desejar.`,
-      });
-      qc.invalidateQueries({ queryKey: ["creche-campaigns", crecheId] });
-      setInspectModal(null);
-      onDraftCreated();
-    },
-    onError: (err: any) => {
-      toast({
-        title: "Não foi possível criar a campanha",
-        description: err.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleCreateDraft = (
+  const handleStartCampaign = (
     type: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE",
     daysVal?: number,
-    itemIdVal?: number
+    itemIdVal?: number,
+    countVal?: number
   ) => {
-    createDraftMutation.mutate({
+    let suggestedName = "";
+    let criteria: Record<string, any> = {};
+    let defaultItemId: number | undefined = undefined;
+
+    if (type === "INACTIVE_TUTORS") {
+      suggestedName = `Reativação — Inativos ${daysVal ?? inactiveDays} dias`;
+      criteria = { days: daysVal ?? inactiveDays };
+    } else if (type === "NEW_TUTORS") {
+      suggestedName = `Boas-vindas — Novos Tutores (${daysVal ?? newDays} dias)`;
+      criteria = { days: daysVal ?? newDays };
+    } else {
+      const itemName = eligibleItems.find((i) => i.id === (itemIdVal || activeItemId))?.name || "Serviço";
+      suggestedName = `Experimente ${itemName}`;
+      defaultItemId = itemIdVal || activeItemId || undefined;
+      criteria = { catalogueItemId: defaultItemId };
+    }
+
+    setInspectModal(null);
+    onStartCampaignFromOpportunity({
       opportunityType: type,
-      days: daysVal,
-      catalogueItemId: itemIdVal,
+      criteria,
+      suggestedName,
+      defaultItemId,
+      previewCount: countVal ?? 0,
     });
   };
 
@@ -261,8 +249,8 @@ export function MarketingOpportunitiesTab({
                 <Button
                   size="sm"
                   className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
-                  disabled={createDraftMutation.isPending || (inactiveData?.count ?? 0) === 0}
-                  onClick={() => handleCreateDraft("INACTIVE_TUTORS", inactiveDays)}
+                  disabled={(inactiveData?.count ?? 0) === 0}
+                  onClick={() => handleStartCampaign("INACTIVE_TUTORS", inactiveDays, undefined, inactiveData?.count ?? 0)}
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
                   Criar campanha
@@ -332,8 +320,8 @@ export function MarketingOpportunitiesTab({
                 <Button
                   size="sm"
                   className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
-                  disabled={createDraftMutation.isPending || (newData?.count ?? 0) === 0}
-                  onClick={() => handleCreateDraft("NEW_TUTORS", newDays)}
+                  disabled={(newData?.count ?? 0) === 0}
+                  onClick={() => handleStartCampaign("NEW_TUTORS", newDays, undefined, newData?.count ?? 0)}
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
                   Criar campanha
@@ -406,8 +394,8 @@ export function MarketingOpportunitiesTab({
                 <Button
                   size="sm"
                   className="w-full sm:flex-1 text-xs h-10 gap-1.5 font-medium"
-                  disabled={createDraftMutation.isPending || !activeItemId || (neverUsedData?.count ?? 0) === 0}
-                  onClick={() => handleCreateDraft("NEVER_USED_SERVICE", undefined, activeItemId)}
+                  disabled={!activeItemId || (neverUsedData?.count ?? 0) === 0}
+                  onClick={() => handleStartCampaign("NEVER_USED_SERVICE", undefined, activeItemId, neverUsedData?.count ?? 0)}
                 >
                   <PlusCircle className="h-3.5 w-3.5" />
                   Criar campanha
@@ -509,20 +497,16 @@ export function MarketingOpportunitiesTab({
               {isCrecheAdmin && (inspectData?.count ?? 0) > 0 && (
                 <Button
                   className="h-11 gap-1.5 font-semibold"
-                  disabled={createDraftMutation.isPending}
                   onClick={() =>
-                    handleCreateDraft(
+                    handleStartCampaign(
                       inspectModal.opportunityType,
                       inspectModal.days,
-                      inspectModal.catalogueItemId
+                      inspectModal.catalogueItemId,
+                      inspectData.count
                     )
                   }
                 >
-                  {createDraftMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <PlusCircle className="h-4 w-4" />
-                  )}
+                  <PlusCircle className="h-4 w-4" />
                   Criar campanha ({inspectData.count} tutores)
                 </Button>
               )}

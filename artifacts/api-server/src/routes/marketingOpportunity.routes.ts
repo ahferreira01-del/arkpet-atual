@@ -26,6 +26,7 @@ function getActor(req: Request) {
   return {
     userId: user.id,
     role: user.role,
+    crecheId: user.crecheId,
     source: "http" as const,
     requestId: (req.headers["x-request-id"] as string) || undefined,
   };
@@ -44,14 +45,22 @@ function getIdempotencyKey(req: Request): string | undefined {
 
 /**
  * Common RBAC check for CRM opportunity read endpoints:
- * creche_admin and staff can view opportunities. Tutors get 403.
+ * creche_admin and staff can view opportunities. Master admin and tutors get 403.
  */
-function assertCanReadOpportunities(actor: { role: string }) {
+function assertCanReadOpportunities(actor: { role: string; crecheId?: number | null }, crecheId: number) {
+  if (actor.role === "master_admin") {
+    throw new CrecheCampaignForbiddenError(
+      "Acesso não autorizado: master_admin não possui acesso direto ao CRM de oportunidades sem sessão de suporte ativa."
+    );
+  }
   if (actor.role === "tutor") {
     throw new CrecheCampaignForbiddenError("Tutores não possuem acesso ao CRM de oportunidades.");
   }
-  if (actor.role !== "creche_admin" && actor.role !== "staff" && actor.role !== "master_admin") {
+  if (actor.role !== "creche_admin" && actor.role !== "staff") {
     throw new CrecheCampaignForbiddenError("Acesso restrito à gestão da creche.");
+  }
+  if (actor.crecheId != null && actor.crecheId !== crecheId) {
+    throw new CrecheCampaignForbiddenError("Acesso negado: usuário não pertence a esta creche.");
   }
 }
 
@@ -63,7 +72,7 @@ router.get("/inactive", async (req: Request, res: Response, next: NextFunction) 
   try {
     const crecheId = parseCrecheId(req);
     const actor = getActor(req);
-    assertCanReadOpportunities(actor);
+    assertCanReadOpportunities(actor, crecheId);
 
     const days = req.query.days ? Number(req.query.days) : 60;
     const page = req.query.page ? Number(req.query.page) : 1;
@@ -94,7 +103,7 @@ router.get("/new", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const crecheId = parseCrecheId(req);
     const actor = getActor(req);
-    assertCanReadOpportunities(actor);
+    assertCanReadOpportunities(actor, crecheId);
 
     const days = req.query.days ? Number(req.query.days) : 30;
     const page = req.query.page ? Number(req.query.page) : 1;
@@ -125,7 +134,7 @@ router.get("/never-used", async (req: Request, res: Response, next: NextFunction
   try {
     const crecheId = parseCrecheId(req);
     const actor = getActor(req);
-    assertCanReadOpportunities(actor);
+    assertCanReadOpportunities(actor, crecheId);
 
     const catalogueItemId = req.query.catalogueItemId ? Number(req.query.catalogueItemId) : null;
     if (!catalogueItemId || Number.isNaN(catalogueItemId) || catalogueItemId <= 0) {
@@ -154,14 +163,19 @@ router.get("/never-used", async (req: Request, res: Response, next: NextFunction
 
 /**
  * POST /api/creches/:crecheId/marketing/opportunities/create-draft
- * Creates a DRAFT campaign with SELECTED_TUTORS materialized from an opportunity.
- * Strictly creche_admin only (staff and tutor get 403).
+ * Creates a DRAFT campaign with SELECTED_TUTORS materialized server-side from an opportunity.
+ * Strictly creche_admin only (staff, master_admin and tutor get 403).
  */
 router.post("/create-draft", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const crecheId = parseCrecheId(req);
     const actor = getActor(req);
 
+    if (actor.role === "master_admin") {
+      throw new CrecheCampaignForbiddenError(
+        "Acesso não autorizado: master_admin não possui permissão para criar campanhas operacionais sem sessão de suporte ativa."
+      );
+    }
     if (actor.role === "tutor") {
       throw new CrecheCampaignForbiddenError("Tutores não possuem acesso à criação de campanhas.");
     }
@@ -171,26 +185,34 @@ router.post("/create-draft", async (req: Request, res: Response, next: NextFunct
     if (actor.role !== "creche_admin") {
       throw new CrecheCampaignForbiddenError("Apenas o administrador da creche pode criar campanhas a partir de oportunidades.");
     }
+    if (actor.crecheId != null && actor.crecheId !== crecheId) {
+      throw new CrecheCampaignForbiddenError("Acesso negado: usuário não pertence a esta creche.");
+    }
 
-    const { opportunityType, days, catalogueItemId, campaignName } = req.body || {};
+    const { opportunityType, days, catalogueItemId, campaignName, campaign, previewCount } = req.body || {};
     if (!opportunityType || !["INACTIVE_TUTORS", "NEW_TUTORS", "NEVER_USED_SERVICE"].includes(opportunityType)) {
       throw new CrecheCampaignValidationError(
         "opportunityType deve ser 'INACTIVE_TUTORS', 'NEW_TUTORS' ou 'NEVER_USED_SERVICE'."
       );
     }
 
-    if (opportunityType === "NEVER_USED_SERVICE" && (!catalogueItemId || Number.isNaN(Number(catalogueItemId)))) {
+    const safeDays = days != null ? Number(days) : (campaign?.criteria?.days != null ? Number(campaign.criteria.days) : undefined);
+    const safeItemId = catalogueItemId != null ? Number(catalogueItemId) : (campaign?.criteria?.catalogueItemId != null ? Number(campaign.criteria.catalogueItemId) : undefined);
+
+    if (opportunityType === "NEVER_USED_SERVICE" && (!safeItemId || Number.isNaN(Number(safeItemId)))) {
       throw new CrecheCampaignValidationError("catalogueItemId é obrigatório para a oportunidade NEVER_USED_SERVICE.");
     }
 
     const idempotencyKey = getIdempotencyKey(req);
 
-    const campaign = await CrecheMarketingOpportunityService.createCampaignDraftFromOpportunity({
+    const result = await CrecheMarketingOpportunityService.createCampaignDraftFromOpportunity({
       crecheId,
       opportunityType,
-      days: days ? Number(days) : undefined,
-      catalogueItemId: catalogueItemId ? Number(catalogueItemId) : undefined,
-      campaignName,
+      days: safeDays,
+      catalogueItemId: safeItemId,
+      campaignName: campaignName || campaign?.name,
+      campaign,
+      previewCount: previewCount != null ? Number(previewCount) : undefined,
       actor,
       idempotencyKey,
     });
@@ -198,7 +220,9 @@ router.post("/create-draft", async (req: Request, res: Response, next: NextFunct
     res.status(201).json({
       success: true,
       message: "Rascunho de campanha criado com sucesso a partir da oportunidade.",
-      campaign,
+      campaign: result,
+      previewCount: result.previewCount,
+      finalSelectedTutorCount: result.finalSelectedTutorCount,
     });
   } catch (err: any) {
     if (err instanceof CrecheCampaignError || err.status) {

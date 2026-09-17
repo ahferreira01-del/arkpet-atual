@@ -113,6 +113,89 @@ describe("Marketing Opportunities & Commercial Visual States (R37.D)", () => {
         expect(screen.getByRole("heading", { name: /Experimentação/i })).toBeInTheDocument();
       });
     });
+
+    it("opens prefilled campaign wizard when clicking 'Criar campanha' on an opportunity card", async () => {
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/creches/1/marketing/campaigns")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ campaigns: [] }),
+          });
+        }
+        if (url.includes("/opportunities/inactive")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                opportunityType: "INACTIVE_TUTORS",
+                count: 5,
+                criteria: { days: 60 },
+                items: [],
+                page: 1,
+                pageSize: 20,
+                totalPages: 1,
+              }),
+          });
+        }
+        if (url.includes("/opportunities/new")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                opportunityType: "NEW_TUTORS",
+                count: 3,
+                criteria: { days: 30 },
+                items: [],
+                page: 1,
+                pageSize: 20,
+                totalPages: 1,
+              }),
+          });
+        }
+        if (url.includes("/opportunities/never-used")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                opportunityType: "NEVER_USED_SERVICE",
+                count: 2,
+                criteria: { catalogueItemId: 10 },
+                items: [],
+                page: 1,
+                pageSize: 20,
+                totalPages: 1,
+              }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({}),
+        });
+      });
+
+      renderWithProviders(<CampaignsPage />);
+
+      // Switch to opportunities tab
+      const oppTab = screen.getByRole("button", { name: /Oportunidades/i });
+      fireEvent.click(oppTab);
+
+      // Wait for cards to render and button to be enabled once query resolves
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: /Tutores Inativos/i })).toBeInTheDocument();
+        const firstCreateBtn = screen.getAllByRole("button", { name: /Criar campanha/i })[0];
+        expect(firstCreateBtn).not.toBeDisabled();
+      });
+
+      // Click first "Criar campanha" (for Inactive Tutors)
+      const createButtons = screen.getAllByRole("button", { name: /Criar campanha/i });
+      fireEvent.click(createButtons[0]);
+
+      // Verify wizard opened and name is prefilled
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: /Nova Campanha Promocional/i })).toBeInTheDocument();
+        expect(screen.getByDisplayValue(/Reativação — Inativos 60 dias/i)).toBeInTheDocument();
+      });
+    });
   });
 
   describe("2. Booking List Commercial Visual States", () => {
