@@ -18,6 +18,7 @@ import {
   Info,
   CheckCircle2,
 } from "lucide-react";
+import { CrmOriginCampaignsSection } from "./crm-origin-campaigns-section";
 
 export interface OpportunityContextParams {
   opportunityType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE";
@@ -33,6 +34,7 @@ interface MarketingOpportunitiesTabProps {
   eligibleItems: any[];
   onDraftCreated?: () => void;
   onStartCampaignFromOpportunity: (params: OpportunityContextParams) => void;
+  onViewCampaign?: (campaignId: number) => void;
 }
 
 export function MarketingOpportunitiesTab({
@@ -41,6 +43,7 @@ export function MarketingOpportunitiesTab({
   eligibleItems,
   onDraftCreated,
   onStartCampaignFromOpportunity,
+  onViewCampaign,
 }: MarketingOpportunitiesTabProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -405,6 +408,12 @@ export function MarketingOpportunitiesTab({
           </CardContent>
         </Card>
       </div>
+
+      {/* CRM Originated Campaigns Performance Section */}
+      <CrmOriginCampaignsSection
+        crecheId={crecheId}
+        onViewCampaign={onViewCampaign}
+      />
 
       {/* Inspect Modal */}
       {inspectModal && (

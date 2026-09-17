@@ -34,6 +34,8 @@ import { ptBR } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { MarketingOpportunitiesTab } from "./components/marketing-opportunities-tab";
+import { CampaignMetricsSection } from "./components/campaign-metrics-section";
+import { CampaignOverviewMetricsCard } from "./components/campaign-overview-metrics-card";
 
 // ─── API Hooks ────────────────────────────────────────────────────────────────
 
@@ -511,51 +513,17 @@ export default function CrecheCampaignsPage() {
             setMainTab("campaigns");
             qc.invalidateQueries({ queryKey: ["creche-campaigns", crecheId] });
           }}
+          onViewCampaign={(campId) => {
+            setDetailCampaignId(campId);
+          }}
         />
       ) : (
         <>
-          {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="bg-card/50 border-border/50 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Ativas</p>
-              <p className="text-2xl font-bold text-emerald-400 mt-1">{kpis.active}</p>
-            </div>
-            <CheckCircle2 className="h-8 w-8 text-emerald-400/20" />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50 border-border/50 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Agendadas</p>
-              <p className="text-2xl font-bold text-blue-400 mt-1">{kpis.scheduled}</p>
-            </div>
-            <Clock className="h-8 w-8 text-blue-400/20" />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50 border-border/50 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Pausadas</p>
-              <p className="text-2xl font-bold text-amber-400 mt-1">{kpis.paused}</p>
-            </div>
-            <PauseCircle className="h-8 w-8 text-amber-400/20" />
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card/50 border-border/50 shadow-sm">
-          <CardContent className="p-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground uppercase font-medium tracking-wider">Encerradas</p>
-              <p className="text-2xl font-bold text-neutral-400 mt-1">{kpis.ended + kpis.revoked}</p>
-            </div>
-            <XCircle className="h-8 w-8 text-neutral-400/20" />
-          </CardContent>
-        </Card>
-      </div>
+          {/* Commercial Performance Overview */}
+          <CampaignOverviewMetricsCard
+            crecheId={crecheId}
+            isCrecheAdmin={isCrecheAdmin}
+          />
 
       {/* Filters & Search */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -1358,6 +1326,12 @@ export default function CrecheCampaignsPage() {
                 ))}
               </div>
             </div>
+
+            {/* Commercial Metrics & Conversion */}
+            <CampaignMetricsSection
+              crecheId={crecheId}
+              campaignId={detailCampaign.id}
+            />
           </div>
         ) : (
           <div className="py-8 text-center text-muted-foreground text-xs">Carregando detalhes...</div>
