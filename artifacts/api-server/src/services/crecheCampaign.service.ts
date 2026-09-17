@@ -228,85 +228,137 @@ export class CrecheCampaignService {
 
     const payloadHash = hashPayload(payload);
 
-    return db.transaction(async (tx) => {
-      // Check existing operation
-      const [existing] = await tx
-        .select()
-        .from(crechePromotionalCampaignOperationsTable)
-        .where(
-          and(
-            eq(crechePromotionalCampaignOperationsTable.crecheId, crecheId),
-            eq(crechePromotionalCampaignOperationsTable.idempotencyKey, idempotencyKey)
+    const executeTransaction = async (): Promise<T> => {
+      return db.transaction(async (tx) => {
+        // Check existing operation
+        const [existing] = await tx
+          .select()
+          .from(crechePromotionalCampaignOperationsTable)
+          .where(
+            and(
+              eq(crechePromotionalCampaignOperationsTable.crecheId, crecheId),
+              eq(crechePromotionalCampaignOperationsTable.idempotencyKey, idempotencyKey)
+            )
           )
-        )
-        .limit(1);
+          .limit(1);
 
-      if (existing) {
-        if (existing.operationType !== operationType) {
-          throw new CrecheCampaignConflictError(
-            `Chave de idempotência reutilizada para operação incompatível: esperava ${existing.operationType}, recebeu ${operationType}.`
-          );
+        if (existing) {
+          if (existing.operationType !== operationType) {
+            throw new CrecheCampaignConflictError(
+              `Chave de idempotência reutilizada para operação incompatível: esperava ${existing.operationType}, recebeu ${operationType}.`
+            );
+          }
+          if (existing.payloadHash !== payloadHash) {
+            throw new CrecheCampaignConflictError(
+              "Chave de idempotência reutilizada com payload divergente."
+            );
+          }
+          if (existing.status === "SUCCEEDED" && existing.responseJson) {
+            return existing.responseJson as T;
+          }
+          if (existing.status === "IN_PROGRESS") {
+            throw new CrecheCampaignConflictError(
+              "Operação concorrente com a mesma chave de idempotência já está em processamento."
+            );
+          }
         }
-        if (existing.payloadHash !== payloadHash) {
-          throw new CrecheCampaignConflictError(
-            "Chave de idempotência reutilizada com payload divergente."
-          );
+
+        // Reserve operation in IN_PROGRESS state
+        let opId: number;
+        if (!existing) {
+          const [insertedOp] = await tx
+            .insert(crechePromotionalCampaignOperationsTable)
+            .values({
+              crecheId,
+              campaignId: campaignIdForOp,
+              idempotencyKey,
+              operationType,
+              payloadHash,
+              status: "IN_PROGRESS",
+            })
+            .returning();
+          opId = insertedOp.id;
+        } else {
+          opId = existing.id;
         }
-        if (existing.status === "SUCCEEDED" && existing.responseJson) {
-          return existing.responseJson as T;
+
+        try {
+          const { result, campaignId } = await operationFn(tx);
+
+          // Mark SUCCEEDED and link campaignId
+          await tx
+            .update(crechePromotionalCampaignOperationsTable)
+            .set({
+              status: "SUCCEEDED",
+              campaignId,
+              responseJson: result as any,
+              updatedAt: new Date(),
+            })
+            .where(eq(crechePromotionalCampaignOperationsTable.id, opId));
+
+          return result;
+        } catch (err) {
+          await tx
+            .update(crechePromotionalCampaignOperationsTable)
+            .set({
+              status: "FAILED",
+              updatedAt: new Date(),
+            })
+            .where(eq(crechePromotionalCampaignOperationsTable.id, opId));
+          throw err;
         }
-        if (existing.status === "IN_PROGRESS") {
-          throw new CrecheCampaignConflictError(
-            "Operação concorrente com a mesma chave de idempotência já está em processamento."
-          );
+      });
+    };
+
+    try {
+      return await executeTransaction();
+    } catch (err: any) {
+      const isUniqueCollision =
+        err.code === "23505" ||
+        err?.cause?.code === "23505" ||
+        (typeof err.message === "string" &&
+          (err.message.includes("creche_promotional_ops_creche_key_idx") ||
+            err.message.includes("creche_promotional_campaign_operations")));
+
+      if (isUniqueCollision) {
+        // A concurrent transaction reserved the key simultaneously.
+        // Poll briefly for the concurrent operation to reach terminal state.
+        for (let i = 0; i < 20; i++) {
+          await new Promise((r) => setTimeout(r, 100));
+          const [resolvedOp] = await db
+            .select()
+            .from(crechePromotionalCampaignOperationsTable)
+            .where(
+              and(
+                eq(crechePromotionalCampaignOperationsTable.crecheId, crecheId),
+                eq(crechePromotionalCampaignOperationsTable.idempotencyKey, idempotencyKey)
+              )
+            )
+            .limit(1);
+
+          if (resolvedOp) {
+            if (resolvedOp.payloadHash !== payloadHash) {
+              throw new CrecheCampaignConflictError(
+                "Chave de idempotência reutilizada com payload divergente."
+              );
+            }
+            if (resolvedOp.status === "SUCCEEDED" && resolvedOp.responseJson) {
+              return resolvedOp.responseJson as T;
+            }
+            if (resolvedOp.status === "FAILED") {
+              throw new CrecheCampaignConflictError(
+                "A operação concorrente falhou durante o processamento."
+              );
+            }
+          }
         }
+
+        throw new CrecheCampaignConflictError(
+          "Operação concorrente com a mesma chave de idempotência já está em processamento."
+        );
       }
-
-      // Reserve operation in IN_PROGRESS state
-      let opId: number;
-      if (!existing) {
-        const [insertedOp] = await tx
-          .insert(crechePromotionalCampaignOperationsTable)
-          .values({
-            crecheId,
-            campaignId: campaignIdForOp,
-            idempotencyKey,
-            operationType,
-            payloadHash,
-            status: "IN_PROGRESS",
-          })
-          .returning();
-        opId = insertedOp.id;
-      } else {
-        opId = existing.id;
-      }
-
-      try {
-        const { result, campaignId } = await operationFn(tx);
-
-        // Mark SUCCEEDED and link campaignId
-        await tx
-          .update(crechePromotionalCampaignOperationsTable)
-          .set({
-            status: "SUCCEEDED",
-            campaignId,
-            responseJson: result as any,
-            updatedAt: new Date(),
-          })
-          .where(eq(crechePromotionalCampaignOperationsTable.id, opId));
-
-        return result;
-      } catch (err) {
-        await tx
-          .update(crechePromotionalCampaignOperationsTable)
-          .set({
-            status: "FAILED",
-            updatedAt: new Date(),
-          })
-          .where(eq(crechePromotionalCampaignOperationsTable.id, opId));
-        throw err;
-      }
-    });
+      throw err;
+    }
   }
 
   // ─── CRUD & Lifecycle Operations ───────────────────────────────────────────

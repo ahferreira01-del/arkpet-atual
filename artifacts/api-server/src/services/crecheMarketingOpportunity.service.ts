@@ -145,9 +145,9 @@ export class CrecheMarketingOpportunityService {
    * Active tutors belonging to crecheId who:
    * 1. Registered prior to cutoff (createdAt < cutoffStartInstant)
    * 2. Have NO active ongoing bookings (status = 'active')
-   * 3. Have NO upcoming/current confirmed bookings (status = 'confirmed' with endDate or startDate >= businessToday)
+   * 3. Have NO upcoming/current confirmed or cancel_requested bookings (status IN ('confirmed', 'cancel_requested') with endDate or startDate >= businessToday)
    * 4. Have NO completed bookings on or after cutoff (checkOutTime::date, endDate::date, or startDate::date >= cutoffDateStr)
-   * Cancelled and cancel_requested bookings do NOT count as activity.
+   * Cancelled bookings and past uncompleted bookings do NOT count as activity.
    */
   static async getInactiveTutors(
     params: GetInactiveTutorsParams
@@ -167,7 +167,7 @@ export class CrecheMarketingOpportunityService {
       ${usersTable.crecheId} = ${crecheId}
       AND ${usersTable.role} = 'tutor'
       AND ${usersTable.isActive} = true
-      AND ${usersTable.createdAt} < ${cutoffStartInstant}
+      AND ${usersTable.createdAt} < ${cutoffStartInstant.toISOString()}::timestamp
       AND NOT EXISTS (
         SELECT 1 FROM ${bookingsTable} b
         WHERE b.tutor_id = ${usersTable.id}
@@ -178,7 +178,7 @@ export class CrecheMarketingOpportunityService {
         SELECT 1 FROM ${bookingsTable} b
         WHERE b.tutor_id = ${usersTable.id}
           AND b.creche_id = ${crecheId}
-          AND b.status = 'confirmed'
+          AND b.status IN ('confirmed', 'cancel_requested')
           AND COALESCE(b.end_date, b.start_date) >= ${businessToday}::date
       )
       AND NOT EXISTS (
@@ -282,7 +282,7 @@ export class CrecheMarketingOpportunityService {
       ${usersTable.crecheId} = ${crecheId}
       AND ${usersTable.role} = 'tutor'
       AND ${usersTable.isActive} = true
-      AND ${usersTable.createdAt} >= ${cutoffStartInstant}
+      AND ${usersTable.createdAt} >= ${cutoffStartInstant.toISOString()}::timestamp
     `;
 
     const [countResult] = await client
@@ -456,7 +456,7 @@ export class CrecheMarketingOpportunityService {
           ${usersTable.crecheId} = ${crecheId}
           AND ${usersTable.role} = 'tutor'
           AND ${usersTable.isActive} = true
-          AND ${usersTable.createdAt} < ${cutoffStartInstant}
+          AND ${usersTable.createdAt} < ${cutoffStartInstant.toISOString()}::timestamp
           AND NOT EXISTS (
             SELECT 1 FROM ${bookingsTable} b
             WHERE b.tutor_id = ${usersTable.id}
@@ -467,7 +467,7 @@ export class CrecheMarketingOpportunityService {
             SELECT 1 FROM ${bookingsTable} b
             WHERE b.tutor_id = ${usersTable.id}
               AND b.creche_id = ${crecheId}
-              AND b.status = 'confirmed'
+              AND b.status IN ('confirmed', 'cancel_requested')
               AND COALESCE(b.end_date, b.start_date) >= ${businessToday}::date
           )
           AND NOT EXISTS (
@@ -498,7 +498,7 @@ export class CrecheMarketingOpportunityService {
           ${usersTable.crecheId} = ${crecheId}
           AND ${usersTable.role} = 'tutor'
           AND ${usersTable.isActive} = true
-          AND ${usersTable.createdAt} >= ${cutoffStartInstant}
+          AND ${usersTable.createdAt} >= ${cutoffStartInstant.toISOString()}::timestamp
         `);
 
       return {
@@ -642,14 +642,14 @@ export class CrecheMarketingOpportunityService {
       campaignInput?.description ||
       `Campanha criada a partir da oportunidade CRM: ${opportunityType}. Público materializado: ${tutorIds.length} tutores selecionados.`;
 
-    const validFrom = campaignInput?.validFrom ? new Date(campaignInput.validFrom) : new Date();
-    let validUntil: Date;
-    if (campaignInput?.validUntil) {
-      validUntil = new Date(campaignInput.validUntil);
-    } else {
-      validUntil = new Date();
-      validUntil.setDate(validUntil.getDate() + 30);
-    }
+    const businessToday = getBusinessDate("America/Sao_Paulo");
+    const validFrom = campaignInput?.validFrom
+      ? new Date(campaignInput.validFrom)
+      : getBusinessDayStartInstant(businessToday, "America/Sao_Paulo");
+
+    const validUntil = campaignInput?.validUntil
+      ? new Date(campaignInput.validUntil)
+      : getBusinessDayStartInstant(getPreviousCalendarDay(businessToday, -30), "America/Sao_Paulo");
 
     const benefitType: CampaignBenefitType = campaignInput?.benefitType || "PERCENTAGE_DISCOUNT";
     const percentageBps =
