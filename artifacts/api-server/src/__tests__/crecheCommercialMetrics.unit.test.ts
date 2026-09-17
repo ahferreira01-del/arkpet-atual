@@ -382,6 +382,43 @@ describe("CrecheCommercialMetricsService — Unit Tests (R37.E)", () => {
       expect(Number.isNaN(detail.utilizationRatePercentage)).toBe(false);
     });
 
+    it("returns null utilizationRatePercentage when campaign status is DRAFT even if audience > 0", async () => {
+      mockDrizzle([
+        [{
+          id: 103,
+          crecheId: 1,
+          name: "Campanha Rascunho com Publico",
+          status: "DRAFT",
+          benefitType: "PERCENTAGE_DISCOUNT",
+          audienceType: "SELECTED_TUTORS",
+        }],
+        [{ count: 25 }], // audience = 25
+        [],
+        [],
+        [{ count: 0 }],
+        [{ count: 0 }],
+        [],
+        [],
+      ]);
+
+      const adminActor: MetricsActorContext = {
+        userId: 10,
+        role: "creche_admin",
+        crecheId: 1,
+        source: "http",
+      };
+
+      const detail = await CrecheCommercialMetricsService.getCampaignDetailMetrics(
+        1,
+        103,
+        adminActor
+      );
+
+      expect(detail.status).toBe("DRAFT");
+      expect(detail.currentSelectedAudienceSize).toBe(25);
+      expect(detail.utilizationRatePercentage).toBeNull();
+    });
+
     it("throws 404 when campaign is not found in the creche", async () => {
       mockDrizzle([
         [], // campaign not found
@@ -431,6 +468,8 @@ describe("CrecheCommercialMetricsService — Unit Tests (R37.E)", () => {
 
       expect(metrics.conditionsCount.total).toBe(4);
       expect(metrics.conditionsCount.expiredByTimeCount).toBe(1);
+      expect(metrics.conditionsCount.persistedActiveCount).toBe(2);
+      expect(metrics.conditionsCount.effectiveActiveCount).toBe(1);
       expect(metrics.conditionsCount.activeCount).toBe(1);
       expect(metrics.conditionsCount.revokedCount).toBe(1);
       expect(metrics.conditionsCount.scheduledCount).toBe(1);
@@ -504,9 +543,48 @@ describe("CrecheCommercialMetricsService — Unit Tests (R37.E)", () => {
 
       expect(crmMetrics.campaigns[0].campaignId).toBe(201);
       expect(crmMetrics.campaigns[0].opportunityType).toBe("INACTIVE_TUTORS");
+      expect(crmMetrics.campaigns[0].sourceAuthority).toBe("STRUCTURED_AFTER_STATE");
       expect(crmMetrics.campaigns[0].crmAudienceAtCreation).toBe(15);
       expect(crmMetrics.campaigns[0].finalChargedAmountCents).toBe(8000);
       expect(crmMetrics.campaigns[0].discountGrantedCents).toBe(2000);
+    });
+
+    it("falls back to LEGACY_REASON_FALLBACK when afterState lacks opportunityType", async () => {
+      const mockAudits = [
+        {
+          campaignId: 301,
+          action: "CAMPAIGN_DRAFT_CREATED_FROM_OPPORTUNITY",
+          reason: "Criada a partir de oportunidade CRM (NEVER_USED_SERVICE: 90 dias)",
+          afterState: null,
+          createdAt: new Date(),
+        },
+      ];
+
+      mockDrizzle([
+        mockAudits,
+        [{ id: 301, crecheId: 1, name: "Legado", status: "ACTIVE" }],
+        [{ count: 5 }],
+        [{ count: 0 }],
+        [{ count: 0 }],
+        [],
+        [],
+      ]);
+
+      const adminActor: MetricsActorContext = {
+        userId: 10,
+        role: "creche_admin",
+        crecheId: 1,
+        source: "http",
+      };
+
+      const crmMetrics = await CrecheCommercialMetricsService.getCrmOriginMetrics(
+        1,
+        adminActor
+      );
+
+      expect(crmMetrics.totalCampaignsCreatedFromOpportunity).toBe(1);
+      expect(crmMetrics.campaigns[0].opportunityType).toBe("NEVER_USED_SERVICE");
+      expect(crmMetrics.campaigns[0].sourceAuthority).toBe("LEGACY_REASON_FALLBACK");
     });
   });
 

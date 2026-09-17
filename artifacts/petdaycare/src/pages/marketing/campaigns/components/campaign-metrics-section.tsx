@@ -76,12 +76,12 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
       <div className="flex items-center justify-between">
         <h4 className="font-semibold text-sm text-foreground flex items-center gap-1.5">
           <TrendingUp className="h-4 w-4 text-primary" />
-          Métricas e Conversão da Campanha
+          Desempenho e Utilização da Campanha
         </h4>
         <span className="text-[10px] text-muted-foreground">Fonte da Verdade</span>
       </div>
 
-      {/* Audience & Conversion Summary */}
+      {/* Audience & Utilization Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/40 space-y-1">
           <span className="text-[11px] text-muted-foreground">Público da Campanha:</span>
@@ -117,8 +117,12 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
         </div>
 
         <div className="p-2.5 rounded-lg bg-secondary/30 border border-border/40 space-y-1">
-          <span className="text-[11px] text-muted-foreground">Taxa de Adesão:</span>
-          {data.utilizationRatePercentage != null ? (
+          <span className="text-[11px] text-muted-foreground">Taxa de Utilização:</span>
+          {data.status === "DRAFT" ? (
+            <p className="text-[11px] text-muted-foreground italic">
+              N/D (Rascunho)
+            </p>
+          ) : data.utilizationRatePercentage != null ? (
             <p className="font-bold text-emerald-400 text-sm">
               {data.utilizationRatePercentage.toFixed(1)}%
             </p>
@@ -150,7 +154,7 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
             <span className="font-bold text-emerald-400">{red.appliedCount ?? 0}</span>
           </div>
           <div className="p-2 rounded bg-background/50 flex flex-col">
-            <span className="text-muted-foreground">Liberados/Expirados</span>
+            <span className="text-muted-foreground">Reservas liberadas</span>
             <span className="font-bold text-neutral-400">{red.releasedCount ?? 0}</span>
           </div>
         </div>

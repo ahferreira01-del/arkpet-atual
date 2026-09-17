@@ -128,7 +128,7 @@ export function CampaignOverviewMetricsCard({
                 {isLoading ? "..." : apps?.redemptionsFirstAppliedCount ?? 0}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {apps?.uniqueTutorsAppliedCount ?? 0} tutores aderiram
+                {apps?.uniqueTutorsAppliedCount ?? 0} tutores aplicaram
               </p>
             </div>
             <CheckCircle2 className="h-7 w-7 text-emerald-400/20" />

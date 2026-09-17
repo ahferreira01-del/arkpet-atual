@@ -66,7 +66,7 @@ export function CrmOriginCampaignsSection({
     return (
       <div className="p-8 flex items-center justify-center text-xs text-muted-foreground gap-2">
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        Carregando histórico de conversão das oportunidades...
+        Carregando histórico de utilização das campanhas...
       </div>
     );
   }
@@ -100,7 +100,7 @@ export function CrmOriginCampaignsSection({
             Campanhas Geradas a Partir do CRM ({data?.totalCampaignsCreatedFromOpportunity || 0})
           </h3>
           <p className="text-xs text-muted-foreground">
-            Acompanhe o retorno e os resgates de campanhas originadas em oportunidades.
+            Acompanhe o uso e os resgates de campanhas originadas em oportunidades.
           </p>
         </div>
 
@@ -148,7 +148,7 @@ export function CrmOriginCampaignsSection({
                     </p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Adesão:</span>
+                    <span className="text-muted-foreground">Tutores que Utilizaram:</span>
                     <p className="font-semibold text-emerald-400">
                       {c.uniqueTutorsApplied} aplicaram
                     </p>
@@ -157,7 +157,7 @@ export function CrmOriginCampaignsSection({
 
                 {c.hasFinancialAccess && c.finalChargedAmountCents != null && (
                   <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/30">
-                    <span className="text-muted-foreground">Cobrado / Desconto:</span>
+                    <span className="text-muted-foreground">Valor Faturado / Desconto:</span>
                     <span className="font-semibold text-foreground">
                       {formatCents(c.finalChargedAmountCents)}{" "}
                       <span className="text-primary text-[10px]">

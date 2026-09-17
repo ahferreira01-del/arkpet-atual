@@ -138,7 +138,9 @@ export interface TutorConditionMetricsResult {
   conditionsCount: {
     total: number;
     scheduledCount: number;
-    activeCount: number;
+    activeCount: number; // Effective active count (temporally active)
+    persistedActiveCount: number; // Persisted status='ACTIVE' count
+    effectiveActiveCount: number; // Temporally effective active count (status='ACTIVE' & validUntil > businessNow)
     revokedCount: number;
     expiredByTimeCount: number; // Derived reporting state: validUntil <= businessNow and not revoked/cancelled
   };
@@ -158,6 +160,7 @@ export interface CrmOriginCampaignItem {
   campaignName: string;
   status: CampaignStatus;
   opportunityType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE" | "UNKNOWN";
+  sourceAuthority: "STRUCTURED_AFTER_STATE" | "LEGACY_REASON_FALLBACK";
   createdAt: string;
   currentSelectedAudienceSize: number;
   crmAudienceAtCreation: number | null;
@@ -513,10 +516,10 @@ export class CrecheCommercialMetricsService {
 
     const uniqueTutorsAppliedCount = uniqueAppliedRow?.count || 0;
 
-    // Utilization rate percentage: only valid if audience is known
+    // Utilization rate percentage: only valid if audience is known and campaign is not in DRAFT
     let utilizationRatePercentage: number | null = null;
     const denominator = crmAudienceAtCreation ?? currentSelectedAudienceSize;
-    if (denominator != null && denominator > 0) {
+    if (campaign.status !== "DRAFT" && denominator != null && denominator > 0) {
       utilizationRatePercentage = Math.round((uniqueTutorsAppliedCount / denominator) * 10000) / 100;
     }
 
@@ -581,7 +584,8 @@ export class CrecheCommercialMetricsService {
       .where(eq(tutorCommercialConditionsTable.crecheId, crecheId));
 
     let scheduledCount = 0;
-    let activeCount = 0;
+    let persistedActiveCount = 0;
+    let effectiveActiveCount = 0;
     let revokedCount = 0;
     let expiredByTimeCount = 0;
 
@@ -590,10 +594,12 @@ export class CrecheCommercialMetricsService {
         revokedCount++;
       } else if (c.validUntil && new Date(c.validUntil) <= businessNow) {
         expiredByTimeCount++;
+        if (c.status === "ACTIVE") persistedActiveCount++;
       } else if (c.status === "SCHEDULED" || new Date(c.validFrom) > businessNow) {
         scheduledCount++;
       } else if (c.status === "ACTIVE") {
-        activeCount++;
+        persistedActiveCount++;
+        effectiveActiveCount++;
       }
     }
 
@@ -696,7 +702,9 @@ export class CrecheCommercialMetricsService {
       conditionsCount: {
         total: conditionRows.length,
         scheduledCount,
-        activeCount,
+        activeCount: effectiveActiveCount, // Temporally active conditions
+        persistedActiveCount,
+        effectiveActiveCount,
         revokedCount,
         expiredByTimeCount,
       },
@@ -762,17 +770,22 @@ export class CrecheCommercialMetricsService {
 
       if (!camp) continue;
 
-      // Extract opportunityType
+      // Extract opportunityType and sourceAuthority
       let oppType: "INACTIVE_TUTORS" | "NEW_TUTORS" | "NEVER_USED_SERVICE" | "UNKNOWN" = "UNKNOWN";
+      let sourceAuthority: "STRUCTURED_AFTER_STATE" | "LEGACY_REASON_FALLBACK" = "STRUCTURED_AFTER_STATE";
       const afterState = audit.afterState as any;
       if (afterState?.opportunityType) {
         oppType = afterState.opportunityType;
+        sourceAuthority = "STRUCTURED_AFTER_STATE";
       } else if (audit.reason.includes("INACTIVE_TUTORS")) {
         oppType = "INACTIVE_TUTORS";
+        sourceAuthority = "LEGACY_REASON_FALLBACK";
       } else if (audit.reason.includes("NEW_TUTORS")) {
         oppType = "NEW_TUTORS";
+        sourceAuthority = "LEGACY_REASON_FALLBACK";
       } else if (audit.reason.includes("NEVER_USED_SERVICE")) {
         oppType = "NEVER_USED_SERVICE";
+        sourceAuthority = "LEGACY_REASON_FALLBACK";
       }
 
       if (oppType === "INACTIVE_TUTORS") inactiveCount++;
@@ -840,6 +853,7 @@ export class CrecheCommercialMetricsService {
         campaignName: camp.name,
         status: camp.status as CampaignStatus,
         opportunityType: oppType,
+        sourceAuthority,
         createdAt: audit.createdAt.toISOString(),
         currentSelectedAudienceSize,
         crmAudienceAtCreation,
