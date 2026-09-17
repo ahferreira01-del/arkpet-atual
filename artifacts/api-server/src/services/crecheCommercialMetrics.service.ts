@@ -518,7 +518,7 @@ export class CrecheCommercialMetricsService {
 
     // Utilization rate percentage: only valid if audience is known and campaign is not in DRAFT
     let utilizationRatePercentage: number | null = null;
-    const denominator = crmAudienceAtCreation ?? currentSelectedAudienceSize;
+    const denominator = currentSelectedAudienceSize ?? crmAudienceAtCreation;
     if (campaign.status !== "DRAFT" && denominator != null && denominator > 0) {
       utilizationRatePercentage = Math.round((uniqueTutorsAppliedCount / denominator) * 10000) / 100;
     }

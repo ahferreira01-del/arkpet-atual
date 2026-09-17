@@ -59,6 +59,8 @@ export interface CreateCampaignInput {
   validFrom: string | Date;
   validUntil: string | Date;
   reason?: string;
+  auditAction?: string;
+  auditAfterState?: any;
 }
 
 export interface UpdateDraftCampaignInput {
@@ -472,12 +474,12 @@ export class CrecheCampaignService {
         await tx.insert(crechePromotionalCampaignAuditsTable).values({
           crecheId,
           campaignId: campaign.id,
-          action: "CAMPAIGN_CREATED",
+          action: input.auditAction || "CAMPAIGN_CREATED",
           actorUserId: actor.userId,
           actorRole: actor.role,
           reason: input.reason?.trim() || "Criação de campanha",
           beforeState: null,
-          afterState: { ...campaign, itemIds: items.map((i: any) => i.id), tutorIds: validTutorIds },
+          afterState: input.auditAfterState || { ...campaign, itemIds: items.map((i: any) => i.id), tutorIds: validTutorIds },
           requestId: actor.requestId,
         });
 

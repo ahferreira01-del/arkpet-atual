@@ -688,6 +688,7 @@ export class CrecheMarketingOpportunityService {
         priority,
         validFrom,
         validUntil,
+        reason: `Criada a partir de oportunidade CRM ${opportunityType}`,
       },
       idempotencyKey
     );
@@ -699,15 +700,15 @@ export class CrecheMarketingOpportunityService {
       action: "CAMPAIGN_DRAFT_CREATED_FROM_OPPORTUNITY" as any,
       actorUserId: actor.userId,
       actorRole: actor.role,
-      actorSource: actor.source || "http",
       reason: `Criada a partir de oportunidade CRM ${opportunityType}`,
-      payloadAfter: {
+      beforeState: null,
+      afterState: {
         opportunityType,
         criteria,
         selectedTutorCount: tutorIds.length,
-        campaignId: campaign.id,
         name: finalName,
       },
+      requestId: actor.requestId,
     });
 
     return Object.assign(campaign, {
