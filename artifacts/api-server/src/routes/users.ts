@@ -7,6 +7,10 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { hashPassword } from "../lib/auth.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
 import { logFinancialAudit } from "../services/audit.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
 
 const userRoleEnum = z.enum(["master_admin", "creche_admin", "staff", "tutor"]);
 
@@ -80,26 +84,48 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
     return;
   }
   const normalizedEmail = String(email).trim().toLowerCase();
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
-  if (existing) {
-    res.status(409).json({ error: "Email já está em uso" });
-    return;
-  }
   const assignedCrecheId = req.user?.role === "creche_admin" ? req.user.crecheId : (crecheId ?? null);
-  const [user] = await db.insert(usersTable).values({
-    name, email: normalizedEmail,
-    passwordHash: hashPassword(password),
-    role, crecheId: assignedCrecheId,
-    mustChangePassword: true,
-    isActive: true,
-    cpf: cpf ? encrypt(cpf) : null,
-    phone: phone ? encrypt(phone) : null,
-  }).returning();
-  res.status(201).json({
-    id: user.id, name: user.name, email: user.email, role: user.role,
-    crecheId: user.crecheId, avatarUrl: user.avatarUrl, isActive: user.isActive,
-    mustChangePassword: user.mustChangePassword, createdAt: user.createdAt,
-  });
+
+  try {
+    const user = await db.transaction(async (tx) => {
+      if (assignedCrecheId != null) {
+        await acquireTenantOperationalLock(assignedCrecheId, tx);
+      }
+
+      const [existing] = await tx.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
+      if (existing) {
+        throw new Error("email_exists");
+      }
+
+      const [newUser] = await tx.insert(usersTable).values({
+        name, email: normalizedEmail,
+        passwordHash: hashPassword(password),
+        role, crecheId: assignedCrecheId,
+        mustChangePassword: true,
+        isActive: true,
+        cpf: cpf ? encrypt(cpf) : null,
+        phone: phone ? encrypt(phone) : null,
+      }).returning();
+
+      return newUser;
+    });
+
+    res.status(201).json({
+      id: user.id, name: user.name, email: user.email, role: user.role,
+      crecheId: user.crecheId, avatarUrl: user.avatarUrl, isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword, createdAt: user.createdAt,
+    });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err.message === "email_exists") {
+      res.status(409).json({ error: "Email já está em uso" });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao criar usuário" });
+  }
 });
 
 // GET single user

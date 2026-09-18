@@ -7,6 +7,7 @@ import { InvoiceRepository } from "../repositories/invoice.repository.js";
 import { TransactionRepository } from "../repositories/transaction.repository.js";
 import { hasOverdueInvoices, BillingService } from "./billing.js";
 import { TutorCommercialPricingService } from "./tutorCommercialPricing.js";
+import { acquireTenantOperationalLock } from "./tenantLifecycleLock.js";
 
 export interface PosItem {
   catalogueItemId: number;
@@ -73,6 +74,8 @@ export class PosService {
 
     try {
       return await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
         // Double-check existingOp under transaction in case of concurrent fast-path race
         const [txExistingOp] = await tx
           .select()

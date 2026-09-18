@@ -6,6 +6,7 @@ import { eq, and, ne, desc, isNull, isNotNull, inArray, lt, sql } from "drizzle-
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUsers } from "../lib/push.js";
+import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
 
 const sendMessageSchema = z.object({
   tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
@@ -339,94 +340,113 @@ router.get("/", async (req: AuthRequest, res) => {
 // Body: { tutorId, petId?, content, mediaUrl? }
 // ─────────────────────────────────────────────────────────────
 router.post("/", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
+  try {
+    if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+    const crecheId = parseInt(String(req.params.crecheId));
 
-  const parsed = sendMessageSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
-    return;
-  }
-  const { tutorId, petId, content, mediaUrl } = parsed.data;
-
-  // Validate target tutor authorization
-  const validated = await validateTargetTutor(crecheId, tutorId, req.user);
-  if (!validated.ok) {
-    res.status(validated.status).json({ error: validated.error });
-    return;
-  }
-  const targetTutorId = validated.tutorId;
-
-  // Validate petId if supplied: must belong to targetTutorId and crecheId
-  let petName: string | null = null;
-  const parsedPetId = petId ?? null;
-  if (parsedPetId) {
-    const [pet] = await db
-      .select({ id: petsTable.id, name: petsTable.name })
-      .from(petsTable)
-      .where(and(
-        eq(petsTable.id, parsedPetId),
-        eq(petsTable.crecheId, crecheId),
-        eq(petsTable.tutorId, targetTutorId),
-      ))
-      .limit(1);
-
-    if (!pet) {
-      res.status(400).json({ error: "Pet inválido ou não pertence a este tutor nesta creche" });
+    const parsed = sendMessageSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
       return;
     }
-    petName = pet.name;
-  }
+    const { tutorId, petId, content, mediaUrl } = parsed.data;
 
-  // Insert message with authenticated user as senderId
-  const [msg] = await db.insert(chatMessagesTable).values({
-    crecheId,
-    tutorId: targetTutorId,
-    petId: parsedPetId,
-    senderId: req.user.id,
-    content: content ? content.trim() : "",
-    mediaUrl: mediaUrl ?? null,
-  }).returning();
-
-  const safeContent = content ? content.trim() : null;
-  const preview = safeContent && safeContent.length > 60 ? safeContent.slice(0, 57) + "..." : safeContent;
-  const pushTitle = petName
-    ? `💬 ${req.user.name} → ${petName}`
-    : `💬 ${req.user.name}`;
-
-  const pushPayload = {
-    title: pushTitle,
-    body: preview || "Enviou uma mídia.",
-    tag: `chat-${crecheId}-tutor-${targetTutorId}`,
-    data: { type: "chat", crecheId, tutorId: targetTutorId, petId: parsedPetId ?? null },
-  };
-
-  if (req.user.role === "tutor") {
-    // Tutor sends → notify all staff + admin in the creche
-    const staffAndAdmin = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(and(
-        eq(usersTable.crecheId, crecheId),
-        ne(usersTable.id, req.user.id),
-        ne(usersTable.role, "tutor"),
-      ));
-    if (staffAndAdmin.length) {
-      sendPushToUsers(staffAndAdmin.map((u) => u.id), pushPayload).catch(() => {});
+    // Validate target tutor authorization
+    const validated = await validateTargetTutor(crecheId, tutorId, req.user);
+    if (!validated.ok) {
+      res.status(validated.status).json({ error: validated.error });
+      return;
     }
-  } else {
-    // Staff/admin sends → notify the tutor only
-    if (targetTutorId !== req.user.id) {
-      sendPushToUsers([targetTutorId], pushPayload).catch(() => {});
-    }
-  }
+    const targetTutorId = validated.tutorId;
 
-  res.status(201).json({
-    ...msg,
-    senderName: req.user.name,
-    senderRole: req.user.role,
-    petName,
-  });
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      // Validate petId if supplied: must belong to targetTutorId and crecheId
+      let petName: string | null = null;
+      const parsedPetId = petId ?? null;
+      if (parsedPetId) {
+        const [pet] = await tx
+          .select({ id: petsTable.id, name: petsTable.name })
+          .from(petsTable)
+          .where(and(
+            eq(petsTable.id, parsedPetId),
+            eq(petsTable.crecheId, crecheId),
+            eq(petsTable.tutorId, targetTutorId),
+          ))
+          .limit(1);
+
+        if (!pet) {
+          return { status: 400, error: "Pet inválido ou não pertence a este tutor nesta creche" };
+        }
+        petName = pet.name;
+      }
+
+      // Insert message with authenticated user as senderId
+      const [msg] = await tx.insert(chatMessagesTable).values({
+        crecheId,
+        tutorId: targetTutorId,
+        petId: parsedPetId,
+        senderId: req.user!.id,
+        content: content ? content.trim() : "",
+        mediaUrl: mediaUrl ?? null,
+      }).returning();
+
+      return { status: 201, msg, petName, targetTutorId, parsedPetId };
+    });
+
+    if (result.status !== 201) {
+      res.status(result.status!).json({ error: result.error });
+      return;
+    }
+
+    const { msg, petName, parsedPetId } = result;
+    const safeContent = content ? content.trim() : null;
+    const preview = safeContent && safeContent.length > 60 ? safeContent.slice(0, 57) + "..." : safeContent;
+    const pushTitle = petName
+      ? `💬 ${req.user.name} → ${petName}`
+      : `💬 ${req.user.name}`;
+
+    const pushPayload = {
+      title: pushTitle,
+      body: preview || "Enviou uma mídia.",
+      tag: `chat-${crecheId}-tutor-${targetTutorId}`,
+      data: { type: "chat", crecheId, tutorId: targetTutorId, petId: parsedPetId ?? null },
+    };
+
+    if (req.user.role === "tutor") {
+      // Tutor sends → notify all staff + admin in the creche
+      const staffAndAdmin = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(and(
+          eq(usersTable.crecheId, crecheId),
+          ne(usersTable.id, req.user.id),
+          ne(usersTable.role, "tutor"),
+        ));
+      if (staffAndAdmin.length) {
+        sendPushToUsers(staffAndAdmin.map((u) => u.id), pushPayload).catch(() => {});
+      }
+    } else {
+      // Staff/admin sends → notify the tutor only
+      if (targetTutorId !== req.user.id) {
+        sendPushToUsers([targetTutorId], pushPayload).catch(() => {});
+      }
+    }
+
+    res.status(201).json({
+      ...msg,
+      senderName: req.user.name,
+      senderRole: req.user.role,
+      petName,
+    });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao enviar mensagem" });
+  }
 });
 
 export default router;

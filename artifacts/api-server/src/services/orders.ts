@@ -33,6 +33,7 @@ import { releasePurchasedCredits } from "./credits.js";
 import { sendLowStockAlertEmail } from "./email.js";
 import { getBusinessDate } from "../lib/date.js";
 import { createHash } from "crypto";
+import { acquireTenantOperationalLock } from "./tenantLifecycleLock.js";
 
 export interface CreateOrderItem {
   catalogueItemId: number;
@@ -106,6 +107,8 @@ export async function createOrder(
 
   try {
     await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
       // Double check dentro da transação contra race condition
       const [txExistingOp] = await tx
         .select()
@@ -416,6 +419,8 @@ export async function cancelOrder(params: {
     : [];
 
   await db.transaction(async (tx) => {
+    await acquireTenantOperationalLock(crecheId, tx);
+
     // Payment uses tutor advisory → invoice → order. Cancellation must acquire
     // the same tutor lock before its order row to avoid invoice/order AB/BA.
     await BillingService.acquireTutorFinancialLock(crecheId, order.tutorId, tx);

@@ -9,6 +9,10 @@ import { logFinancialAudit } from "../../services/audit.js";
 import { sendLowStockAlertEmail } from "../../services/email.js";
 import { requireFinancialAccess } from "./middleware.js";
 import { financialLog } from "../../lib/logger.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../../services/tenantLifecycleLock.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -86,53 +90,66 @@ router.post(
         reorderThreshold, creditsAmount, category, sku, barcode, costPrice, mediaUrls,
       } = req.body;
 
-      const existing = await CatalogueRepository.findActiveByName(crecheId, name);
-      if (existing) {
-        res.status(409).json({ error: `Já existe um item ativo com o nome "${name}" no catálogo.` });
-        return;
-      }
+      const newItem = await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
 
-      const newItem = await CatalogueRepository.create({
-        crecheId,
-        name,
-        type,
-        description,
-        category,
-        sku,
-        barcode,
-        costPrice,
-        mediaUrls: mediaUrls ?? [],
-        basePrice: price,
-        priceSmall: pricingBySize?.small ?? price,
-        priceMedium: pricingBySize?.medium ?? price,
-        priceLarge: pricingBySize?.large ?? price,
-        stockQuantity: stockQuantity ?? 0,
-        minStockAlert: reorderThreshold ?? 5,
-        creditsAmount: type === "package" ? creditsAmount : null,
-      });
+        const existing = await CatalogueRepository.findActiveByName(crecheId, name, undefined, tx);
+        if (existing) {
+          throw Object.assign(new Error(`Já existe um item ativo com o nome "${name}" no catálogo.`), { status: 409 });
+        }
 
-      if (stockQuantity && stockQuantity > 0) {
-        await CatalogueRepository.createStockTransaction({
+        const created = await CatalogueRepository.create({
           crecheId,
-          itemId: newItem.id,
-          quantity: stockQuantity,
-          type: "in",
-          reason: "Estoque inicial",
-          userId: req.user!.id,
-        });
-      }
+          name,
+          type,
+          description,
+          category,
+          sku,
+          barcode,
+          costPrice,
+          mediaUrls: mediaUrls ?? [],
+          basePrice: price,
+          priceSmall: pricingBySize?.small ?? price,
+          priceMedium: pricingBySize?.medium ?? price,
+          priceLarge: pricingBySize?.large ?? price,
+          stockQuantity: stockQuantity ?? 0,
+          minStockAlert: reorderThreshold ?? 5,
+          creditsAmount: type === "package" ? creditsAmount : null,
+        }, tx);
 
-      await logFinancialAudit({
-        crecheId,
-        userId: req.user!.id,
-        action: "stock_adjustment",
-        referenceId: newItem.id,
-        referenceType: "catalogue_items",
-        details: `Criou item de catálogo: ${newItem.name}`,
+        if (stockQuantity && stockQuantity > 0) {
+          await CatalogueRepository.createStockTransaction({
+            crecheId,
+            itemId: created.id,
+            quantity: stockQuantity,
+            type: "in",
+            reason: "Estoque inicial",
+            userId: req.user!.id,
+          }, tx);
+        }
+
+        await logFinancialAudit({
+          crecheId,
+          userId: req.user!.id,
+          action: "stock_adjustment",
+          referenceId: created.id,
+          referenceType: "catalogue_items",
+          details: `Criou item de catálogo: ${created.name}`,
+        }, tx);
+
+        return created;
       });
 
       res.json(newItem);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
+      if (err.status === 409) {
+        res.status(409).json({ error: err.message });
+        return;
+      }
       next(err);
     }
   }
@@ -169,6 +186,8 @@ router.put(
       let updated: any;
 
       await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
         updated = await CatalogueRepository.update(itemId, crecheId, {
           name,
           type,
@@ -227,7 +246,11 @@ router.put(
       });
 
       res.json(updated);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       next(err);
     }
   }
@@ -248,6 +271,8 @@ router.post(
       let updatedItem: any;
 
       await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
         const lockedItem = await CatalogueRepository.findByIdAndCrecheForUpdate(itemId, crecheId, tx);
         if (!lockedItem) {
           throw Object.assign(new Error("Item não encontrado."), { status: 404 });
@@ -307,6 +332,10 @@ router.post(
         })();
       }
     } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       if (err.status === 404) {
         res.status(404).json({ error: err.message });
       } else if (err.status === 400 || (err.message && err.message.includes("Estoque"))) {
@@ -365,9 +394,16 @@ router.delete(
     try {
       const crecheId = Number(req.params.crecheId);
       const itemId = Number(req.params.itemId);
-      await CatalogueRepository.delete(itemId, crecheId);
+      await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+        await CatalogueRepository.delete(itemId, crecheId, tx);
+      });
       res.json({ ok: true });
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       next(err);
     }
   }

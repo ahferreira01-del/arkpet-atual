@@ -11,6 +11,7 @@ import { sendSelfSignupWelcomeEmail, sendPasswordResetEmail } from "../services/
 import { passwordResetTokensTable } from "@workspace/db/schema";
 import { loginLimiter, sensitiveLimiter } from "../middlewares/rateLimit.js";
 import { getAppBaseUrl } from "../lib/config.js";
+import { provisionTenant } from "../services/tenantProvisioning.js";
 
 const router = Router();
 
@@ -35,6 +36,25 @@ router.post("/login", loginLimiter, async (req, res) => {
     res.status(403).json({ error: "Conta desativada. Contate o administrador." });
     return;
   }
+
+  // Block login if user belongs to an archived tenant (non-master)
+  if (user.crecheId != null && user.role !== "master_admin") {
+    const [creche] = await db
+      .select({ status: crechesTable.status })
+      .from(crechesTable)
+      .where(eq(crechesTable.id, user.crecheId))
+      .limit(1);
+
+    if (creche && creche.status === "archived") {
+      res.status(403).json({
+        error: "tenant_archived",
+        code: "tenant_archived",
+        message: "Esta creche foi arquivada. Acesso bloqueado.",
+      });
+      return;
+    }
+  }
+
   // Transparently upgrade legacy SHA-256 hashes to bcrypt on successful login.
   if (needsRehash(user.passwordHash)) {
     try {
@@ -55,6 +75,7 @@ router.post("/login", loginLimiter, async (req, res) => {
       role: user.role,
       crecheId: user.crecheId,
       avatarUrl: user.avatarUrl,
+      isPrimaryOwner: user.isPrimaryOwner,
       mustChangePassword: user.mustChangePassword,
       createdAt: user.createdAt,
     },
@@ -120,49 +141,18 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
     return;
   }
 
-  const [trialPlan] = await db.select().from(plansTable).where(eq(plansTable.name, "Trial")).limit(1);
-  if (!trialPlan) {
-    res.status(500).json({ error: "Plano de trial não configurado. Contate o suporte." });
-    return;
-  }
-
-  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
   try {
-    const result = await db.transaction(async (tx) => {
-      const [user] = await tx.insert(usersTable).values({
-        name: name.trim(),
-        email: normalizedEmail,
-        passwordHash: hashPassword(password),
-        role: "creche_admin",
-        mustChangePassword: false,
-        isActive: true,
-        cpf: cpf ? encrypt(cpf) : null,
-        phone: phone ? encrypt(phone) : null,
-      }).returning();
-
-      const [creche] = await tx.insert(crechesTable).values({
-        name: crecheName.trim(),
-        address: crecheAddress?.trim() || "",
-        phone: crechePhone?.trim() || "",
-        email: normalizedEmail,
-        adminId: user.id,
-        status: "active",
-      }).returning();
-
-      const [updatedUser] = await tx.update(usersTable)
-        .set({ crecheId: creche.id })
-        .where(eq(usersTable.id, user.id))
-        .returning();
-
-      const [subscription] = await tx.insert(subscriptionsTable).values({
-        crecheId: creche.id,
-        planId: trialPlan.id,
-        status: "trial",
-        trialEndsAt,
-      }).returning();
-
-      return { user: updatedUser, creche, subscription };
+    const result = await provisionTenant({
+      name: crecheName.trim(),
+      address: crecheAddress?.trim() || "",
+      phone: crechePhone?.trim() || "",
+      email: normalizedEmail,
+      adminName: name.trim(),
+      adminEmail: normalizedEmail,
+      adminPassword: password,
+      adminCpf: cpf || null,
+      adminPhone: phone || null,
+      reason: "Autocadastro público de creche (trial)",
     });
 
     sendSelfSignupWelcomeEmail({
@@ -183,19 +173,18 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
         role: result.user.role,
         crecheId: result.user.crecheId,
         avatarUrl: result.user.avatarUrl,
+        isPrimaryOwner: result.user.isPrimaryOwner,
         mustChangePassword: result.user.mustChangePassword,
         createdAt: result.user.createdAt,
       },
     });
-  } catch (err) {
-    // Handle the race where two concurrent signups pass the email precheck and
-    // collide on the users.email unique constraint (Postgres 23505).
+  } catch (err: any) {
     if ((err as { code?: string })?.code === "23505") {
       res.status(409).json({ error: "Este e-mail já está cadastrado." });
       return;
     }
-    console.error("[auth] register-creche failed:", err);
-    res.status(500).json({ error: "Não foi possível concluir o cadastro. Tente novamente." });
+    console.error("[register-creche] error:", err);
+    res.status(500).json({ error: err.message || "Erro ao cadastrar creche." });
   }
 });
 

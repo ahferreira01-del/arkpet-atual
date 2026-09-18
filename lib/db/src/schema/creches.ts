@@ -2,7 +2,7 @@ import { pgTable, serial, text, integer, timestamp, pgEnum, boolean, numeric } f
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const crecheStatusEnum = pgEnum("creche_status", ["active", "inactive"]);
+export const crecheStatusEnum = pgEnum("creche_status", ["active", "inactive", "archived"]);
 export const crecheDeliveryTypeEnum = pgEnum("creche_delivery_type", ["fixed", "on_demand"]);
 
 export const crechesTable = pgTable("creches", {
@@ -27,8 +27,9 @@ export const crechesTable = pgTable("creches", {
   pixName: text("pix_name"),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
-export const insertCrecheSchema = createInsertSchema(crechesTable).omit({ id: true, createdAt: true });
+export const insertCrecheSchema = createInsertSchema(crechesTable).omit({ id: true, createdAt: true, deletedAt: true });
 export type InsertCreche = z.infer<typeof insertCrecheSchema>;
 export type Creche = typeof crechesTable.$inferSelect;

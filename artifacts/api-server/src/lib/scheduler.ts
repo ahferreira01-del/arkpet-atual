@@ -1,14 +1,15 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { db } from "@workspace/db";
-import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable } from "@workspace/db/schema";
+import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable, crechesTable } from "@workspace/db/schema";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { financialLog } from "./logger.js";
 import { medicationsTable } from "@workspace/db/schema";
-import { and, eq, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
+import { and, eq, ne, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
 import { cancelOrder } from "../services/orders.js";
 import { recoverStaleGatewayEvents, recoverAndProcessStaleGatewayEvents } from "../services/gatewayEvents.js";
 import { dispatchWebhookBusinessLogic } from "./webhookHandlers.js";
+import { acquireTenantOperationalLock } from "../services/tenantLifecycleLock.js";
 
 export const SAO_PAULO_TZ = "America/Sao_Paulo";
 export const DAILY_TASK_GENERATION_LOCK_KEY = 999_100_001;
@@ -260,6 +261,26 @@ export async function generateDailyTasks() {
 
       if (!pets.length) return;
 
+      // Filter out archived creches and acquire Level 1 Shared Lock per active creche
+      const candidateCrecheIds = [...new Set(pets.map((p) => p.crecheId))];
+      const creches = await tx.select({ id: crechesTable.id, status: crechesTable.status })
+        .from(crechesTable)
+        .where(inArray(crechesTable.id, candidateCrecheIds));
+
+      const activeCrecheIds = new Set<number>();
+      for (const creche of creches) {
+        if (creche.status === "archived") continue;
+        try {
+          await acquireTenantOperationalLock(creche.id, tx);
+          activeCrecheIds.add(creche.id);
+        } catch {
+          // If tenant was archived concurrently, skip task generation for this creche
+        }
+      }
+
+      const activePets = pets.filter((p) => activeCrecheIds.has(p.crecheId));
+      if (!activePets.length) return;
+
       const existingTasks = await tx.select({
         petId: tasksTable.petId,
         type: tasksTable.type,
@@ -319,7 +340,7 @@ export async function generateDailyTasks() {
         existingMedCounts.set(key, (existingMedCounts.get(key) || 0) + 1);
       }
 
-      for (const pet of pets) {
+      for (const pet of activePets) {
         const feeding: Array<{ time: string; amount?: string; notes?: string }> =
           Array.isArray(pet.feedingSchedule) ? pet.feedingSchedule as any : [];
         for (const f of feeding) {
@@ -666,10 +687,13 @@ export async function applyScheduledPlanChanges() {
         scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
       })
       .from(subscriptionsTable)
+      .innerJoin(crechesTable, eq(subscriptionsTable.crecheId, crechesTable.id))
       .where(
         and(
           isNotNull(subscriptionsTable.scheduledPlanId),
           lte(subscriptionsTable.currentPeriodEnd, now),
+          ne(subscriptionsTable.status, "suspended"),
+          ne(crechesTable.status, "archived"),
         ),
       );
 

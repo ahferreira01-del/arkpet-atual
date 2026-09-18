@@ -7,6 +7,7 @@ import { ExpenseRepository } from "../repositories/expense.repository.js";
 import { TransactionRepository } from "../repositories/transaction.repository.js";
 import { logFinancialAudit } from "./audit.js";
 import { getBusinessDate } from "../lib/date.js";
+import { acquireTenantOperationalLock } from "./tenantLifecycleLock.js";
 
 export class ExpenseService {
   /**
@@ -20,6 +21,7 @@ export class ExpenseService {
     paymentMethod: string = "cash"
   ) {
     return db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
       const expense = await ExpenseRepository.markPaid(id, crecheId, tx);
       if (!expense) return null; // already paid or not found — idempotent
 

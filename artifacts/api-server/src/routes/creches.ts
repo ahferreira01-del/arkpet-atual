@@ -8,6 +8,17 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { hashPassword } from "../lib/auth.js";
 import { sendWelcomeEmail } from "../services/email.js";
 import { encrypt, decrypt } from "../lib/crypto.js";
+import {
+  provisionTenant,
+  archiveTenant,
+  restoreTenant,
+  TenantProvisioningError,
+  TenantArchiveBlockedError,
+} from "../services/tenantProvisioning.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
 
 const staffRoleEnum = z.enum(["creche_admin", "staff"]);
 
@@ -17,9 +28,10 @@ const createCrecheSchema = z.object({
   phone: z.string().min(1, "phone é obrigatório"),
   email: z.string().email("email inválido"),
   maxCapacity: z.number().int().positive().optional(),
-  adminEmail: z.string().email("adminEmail inválido").optional().nullable(),
-  adminName: z.string().optional().nullable(),
-  adminPassword: z.string().optional().nullable(),
+  adminEmail: z.string().email("adminEmail é obrigatório e deve ser válido"),
+  adminName: z.string().min(1, "adminName é obrigatório"),
+  adminPassword: z.string().min(6, "adminPassword deve ter no mínimo 6 caracteres"),
+  reason: z.string().optional().nullable(),
 });
 
 const CANONICAL_LOGO_REGEX =
@@ -50,6 +62,7 @@ const updateCrecheSchema = z.object({
     .regex(/^\d{1,8}$/, "deliveryFee deve ser um número inteiro de centavos não-negativo (máx 8 dígitos)")
     .optional(),
   auditEnabled: z.boolean().optional(),
+  reason: z.string().optional().nullable(),
 });
 
 const addStaffSchema = z.object({
@@ -192,39 +205,77 @@ router.post("/", requireRole("master_admin"), async (req: AuthRequest, res) => {
     res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
     return;
   }
-  const { name, address, phone, email, maxCapacity, adminEmail, adminName, adminPassword } = parsed.data;
-  const [creche] = await db.insert(crechesTable).values({
-    name, address, phone, email, maxCapacity: maxCapacity || 20,
-  }).returning();
+  const { name, address, phone, email, maxCapacity, adminEmail, adminName, adminPassword, reason } = parsed.data;
 
-  if (adminEmail) {
-    const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, adminEmail)).limit(1);
-    if (existing) {
-      await db.update(usersTable).set({ crecheId: creche.id, role: "creche_admin" }).where(eq(usersTable.id, existing.id));
-      await db.update(crechesTable).set({ adminId: existing.id }).where(eq(crechesTable.id, creche.id));
-    } else if (adminName && adminPassword) {
-      const [newAdmin] = await db.insert(usersTable).values({
-        name: adminName, email: adminEmail,
-        passwordHash: hashPassword(adminPassword),
-        role: "creche_admin", crecheId: creche.id,
-        mustChangePassword: true, isActive: true,
-      }).returning();
-      await db.update(crechesTable).set({ adminId: newAdmin.id }).where(eq(crechesTable.id, creche.id));
-      // Send welcome email to new creche admin
-      sendWelcomeEmail({ name: adminName, email: adminEmail, role: "creche_admin", tempPassword: adminPassword, crecheName: name }).catch(() => {});
-    }
+  const [existingUser] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, adminEmail.trim().toLowerCase()))
+    .limit(1);
+
+  if (existingUser) {
+    res.status(409).json({ error: "E-mail de administrador já cadastrado" });
+    return;
   }
-  res.status(201).json(creche);
+
+  try {
+    const result = await provisionTenant({
+      name,
+      address,
+      phone,
+      email,
+      maxCapacity,
+      adminName,
+      adminEmail,
+      adminPassword,
+      reason: reason || "Criação direta de creche pelo Master Admin",
+      actorId: req.user?.id,
+      actorRole: req.user?.role,
+      actorEmail: req.user?.email,
+      actorType: "user",
+    });
+    res.status(201).json(result.creche);
+  } catch (error: any) {
+    if (error instanceof TenantProvisioningError) {
+      res.status(error.statusCode).json({ error: error.message, code: error.code });
+      return;
+    }
+    if (error?.code === "23505") {
+      res.status(409).json({ error: "Conflito ao criar creche ou administrador" });
+      return;
+    }
+    res.status(500).json({ error: error.message || "Erro ao criar creche" });
+  }
 });
 
 router.delete("/:crecheId", requireRole("master_admin"), async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));
-  const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
-  if (!creche) { res.status(404).json({ error: "Creche não encontrada" }); return; }
-  // Dissociate users before deleting so foreign-key constraints don't block
-  await db.update(usersTable).set({ crecheId: null as any }).where(eq(usersTable.crecheId, id));
-  await db.delete(crechesTable).where(eq(crechesTable.id, id));
-  res.json({ ok: true });
+  try {
+    const result = await archiveTenant({
+      crecheId: id,
+      actorId: req.user?.id,
+      actorRole: req.user?.role,
+      actorEmail: req.user?.email,
+      actorType: "user",
+      reason: req.body?.reason || "Arquivamento de creche pelo Master Admin",
+    });
+    res.status(200).json({ ok: true, creche: result });
+  } catch (error: any) {
+    if (error instanceof TenantArchiveBlockedError) {
+      res.status(409).json({
+        error: error.message,
+        code: error.code,
+        blockers: error.blockers,
+        details: error.blockers[0]?.details,
+      });
+      return;
+    }
+    if (error instanceof TenantProvisioningError) {
+      res.status(error.statusCode).json({ error: error.message, code: error.code });
+      return;
+    }
+    res.status(500).json({ error: error.message || "Erro ao arquivar creche" });
+  }
 });
 
 router.get("/:crecheId", async (req: AuthRequest, res) => {
@@ -244,6 +295,55 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
+
+  const [currentCreche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
+  if (!currentCreche) {
+    res.status(404).json({ error: "Creche not found" });
+    return;
+  }
+
+  // Handle archived tenant checks & restoration
+  if (currentCreche.status === "archived") {
+    if (req.user?.role !== "master_admin") {
+      res.status(403).json({
+        error: "tenant_archived",
+        code: "tenant_archived",
+        message: "Esta creche está arquivada e não pode ser modificada por administradores locais.",
+      });
+      return;
+    }
+
+    if (req.body.status === "active") {
+      try {
+        const result = await restoreTenant({
+          crecheId: id,
+          actorId: req.user.id,
+          actorRole: req.user.role,
+          actorEmail: req.user.email,
+          actorType: "user",
+          reason: req.body.reason || "Reativação de creche pelo Master Admin",
+        });
+        res.json(result);
+        return;
+      } catch (err: any) {
+        if (err instanceof TenantProvisioningError) {
+          res.status(err.statusCode).json({ error: err.message, code: err.code });
+          return;
+        }
+        res.status(500).json({ error: err.message || "Erro ao restaurar creche" });
+        return;
+      }
+    } else {
+      res.status(400).json({ error: "Apenas a reativação (status: active) é permitida para creches arquivadas" });
+      return;
+    }
+  }
+
+  if (req.user?.role === "creche_admin" && req.body.status === "archived") {
+    res.status(403).json({ error: "Apenas Master Admin pode arquivar uma creche" });
+    return;
+  }
+
   const parsed = updateCrecheSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
@@ -352,24 +452,64 @@ router.post("/:crecheId/staff", requireRole("master_admin", "creche_admin"), asy
     return;
   }
   const { email, name, role, password } = parsed.data;
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  if (existing) {
-    await db.update(usersTable).set({ crecheId: id, role }).where(eq(usersTable.id, existing.id));
-    const [updated] = await db.select().from(usersTable).where(eq(usersTable.id, existing.id)).limit(1);
-    res.status(201).json({ id: updated.id, name: updated.name, email: updated.email, role: updated.role, crecheId: updated.crecheId, avatarUrl: updated.avatarUrl, createdAt: updated.createdAt });
-    return;
+
+  try {
+    const user = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(id, tx);
+
+      const [existing] = await tx
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.email, email.trim().toLowerCase()))
+        .limit(1);
+
+      if (existing) {
+        await tx.update(usersTable).set({ crecheId: id, role }).where(eq(usersTable.id, existing.id));
+        const [updated] = await tx.select().from(usersTable).where(eq(usersTable.id, existing.id)).limit(1);
+        return updated;
+      }
+
+      if (!name) {
+        throw new Error("name_required");
+      }
+
+      const [newUser] = await tx
+        .insert(usersTable)
+        .values({
+          name,
+          email: email.trim().toLowerCase(),
+          passwordHash: hashPassword(password ?? "password123"),
+          role,
+          crecheId: id,
+          mustChangePassword: true,
+          isActive: true,
+        })
+        .returning();
+
+      return newUser;
+    });
+
+    sendWelcomeEmail({ name: user.name, email: user.email, role: user.role, tempPassword: password || "password123" }).catch(() => {});
+    res.status(201).json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      crecheId: user.crecheId,
+      avatarUrl: user.avatarUrl,
+      createdAt: user.createdAt,
+    });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err.message === "name_required") {
+      res.status(400).json({ error: "name é obrigatório ao criar um novo staff" });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao adicionar staff" });
   }
-  if (!name) {
-    res.status(400).json({ error: "name é obrigatório ao criar um novo staff" });
-    return;
-  }
-  const [user] = await db.insert(usersTable).values({
-    name, email, passwordHash: hashPassword(password ?? "password123"), role, crecheId: id,
-    mustChangePassword: true, isActive: true,
-  }).returning();
-  // Send welcome email (non-blocking)
-  sendWelcomeEmail({ name: user.name, email: user.email, role: user.role, tempPassword: password || "password123" }).catch(() => {});
-  res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role, crecheId: user.crecheId, avatarUrl: user.avatarUrl, createdAt: user.createdAt });
 });
 
 export default router;

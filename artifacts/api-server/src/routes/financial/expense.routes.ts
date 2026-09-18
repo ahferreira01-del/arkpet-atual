@@ -2,10 +2,12 @@ import { Router, type Response, type NextFunction } from "express";
 import { authenticate, type AuthRequest } from "../../middlewares/authenticate.js";
 import { validate } from "../../middlewares/validate.js";
 import { z } from "zod";
+import { db } from "@workspace/db";
 import { ExpenseRepository } from "../../repositories/expense.repository.js";
 import { ExpenseService } from "../../services/expense.js";
 import { logFinancialAudit } from "../../services/audit.js";
 import { requireFinancialAccess } from "./middleware.js";
+import { acquireTenantOperationalLock, TenantArchivedError } from "../../services/tenantLifecycleLock.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -40,27 +42,38 @@ router.post(
     try {
       const crecheId = Number(req.params.crecheId);
       const data = req.body;
-      const expense = await ExpenseRepository.create({
-        crecheId,
-        description: data.description,
-        category: data.category,
-        amount: data.amount.toString(),
-        dueDate: new Date(data.dueDate).toISOString().split("T")[0],
-        supplier: data.supplier,
-        notes: data.notes,
-      });
 
-      await logFinancialAudit({
-        crecheId,
-        userId: req.user!.id,
-        action: "manual_payment_register",
-        referenceId: expense.id,
-        referenceType: "expenses",
-        details: `Despesa criada: ${data.description}`,
+      const expense = await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
+        const created = await ExpenseRepository.create({
+          crecheId,
+          description: data.description,
+          category: data.category,
+          amount: data.amount.toString(),
+          dueDate: new Date(data.dueDate).toISOString().split("T")[0],
+          supplier: data.supplier,
+          notes: data.notes,
+        }, tx);
+
+        await logFinancialAudit({
+          crecheId,
+          userId: req.user!.id,
+          action: "manual_payment_register",
+          referenceId: created.id,
+          referenceType: "expenses",
+          details: `Despesa criada: ${data.description}`,
+        }, tx);
+
+        return created;
       });
 
       res.status(201).json(expense);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       next(err);
     }
   }
@@ -77,13 +90,17 @@ router.put(
       const id = Number(req.params.id);
       const data = req.body;
 
-      const expense = await ExpenseRepository.update(id, crecheId, {
-        description: data.description,
-        category: data.category,
-        amount: data.amount.toString(),
-        dueDate: new Date(data.dueDate).toISOString().split("T")[0],
-        supplier: data.supplier,
-        notes: data.notes,
+      const expense = await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
+        return ExpenseRepository.update(id, crecheId, {
+          description: data.description,
+          category: data.category,
+          amount: data.amount.toString(),
+          dueDate: new Date(data.dueDate).toISOString().split("T")[0],
+          supplier: data.supplier,
+          notes: data.notes,
+        }, tx);
       });
 
       if (!expense) {
@@ -101,7 +118,11 @@ router.put(
       }
 
       res.json(expense);
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       next(err);
     }
   }
@@ -120,7 +141,11 @@ router.post("/:id/pay", async (req: AuthRequest, res: Response, next: NextFuncti
 
     await ExpenseService.pay(id, crecheId, req.user!.id, req.body?.paymentMethod || "cash");
     res.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
     next(err);
   }
 });
@@ -132,7 +157,22 @@ router.delete("/:id", async (req: AuthRequest, res: Response, next: NextFunction
     const crecheId = Number(req.params.crecheId);
     const id = Number(req.params.id);
 
-    const deleted = await ExpenseRepository.delete(id, crecheId);
+    const deleted = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      const del = await ExpenseRepository.delete(id, crecheId, tx);
+      if (del) {
+        await logFinancialAudit({
+          crecheId,
+          userId: req.user!.id,
+          action: "invoice_void",
+          referenceId: id,
+          referenceType: "expenses",
+          details: "Despesa excluída.",
+        }, tx);
+      }
+      return del;
+    });
 
     if (!deleted) {
       const existing = await ExpenseRepository.findByIdAndCreche(id, crecheId);
@@ -148,17 +188,12 @@ router.delete("/:id", async (req: AuthRequest, res: Response, next: NextFunction
       return;
     }
 
-    await logFinancialAudit({
-      crecheId,
-      userId: req.user!.id,
-      action: "invoice_void",
-      referenceId: id,
-      referenceType: "expenses",
-      details: "Despesa excluída.",
-    });
-
     res.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
     next(err);
   }
 });

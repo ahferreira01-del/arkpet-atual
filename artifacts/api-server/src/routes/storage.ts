@@ -56,6 +56,21 @@ async function resolveUploadCrecheId(
   }
 
   if (req.user.crecheId != null && req.user.crecheId > 0) {
+    const [targetCreche] = await db
+      .select({ id: crechesTable.id, status: crechesTable.status })
+      .from(crechesTable)
+      .where(eq(crechesTable.id, req.user.crecheId))
+      .limit(1);
+
+    if (targetCreche && targetCreche.status === "archived") {
+      res.status(403).json({
+        error: "tenant_archived",
+        code: "tenant_archived",
+        message: "Esta creche foi arquivada. Uploads desabilitados.",
+      });
+      return { ok: false };
+    }
+
     return { ok: true, crecheId: String(req.user.crecheId) };
   }
 

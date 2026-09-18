@@ -12,7 +12,7 @@ import {
   stripeRecurringFor,
   type BillingInterval,
 } from "@workspace/db";
-import { eq, and, count, isNull } from "drizzle-orm";
+import { eq, and, count, isNull, sql } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
 
@@ -1581,6 +1581,153 @@ export async function ensureCrechePromotionalCampaignSchema() {
   console.log("[startup] creche promotional campaigns foundation: schema verificado (idempotente).");
 }
 
+export interface PrimaryOwnerBackfillReport {
+  assignedCount: number;
+  skippedAlreadyAssigned: number;
+  unresolvedAmbiguous: { crecheId: number; crecheName: string; adminCount: number }[];
+  unresolvedNoAdmin: { crecheId: number; crecheName: string }[];
+}
+
+export async function ensureTenantIntegritySchema() {
+  await db.execute(sql`
+    DO $$
+    BEGIN
+      -- Add 'archived' to creche_status enum if not already present
+      BEGIN
+        ALTER TYPE creche_status ADD VALUE IF NOT EXISTS 'archived';
+      EXCEPTION
+        WHEN duplicate_object THEN NULL;
+      END;
+
+      -- Add deleted_at TIMESTAMPTZ to creches table
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'creches' AND column_name = 'deleted_at'
+      ) THEN
+        ALTER TABLE creches ADD COLUMN deleted_at TIMESTAMPTZ;
+      END IF;
+
+      -- Add is_primary_owner to users table
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'users' AND column_name = 'is_primary_owner'
+      ) THEN
+        ALTER TABLE users ADD COLUMN is_primary_owner BOOLEAN NOT NULL DEFAULT FALSE;
+      END IF;
+
+      -- Ensure partial unique index for primary owner
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_indexes
+        WHERE tablename = 'users' AND indexname = 'users_creche_primary_owner_unique_idx'
+      ) THEN
+        CREATE UNIQUE INDEX users_creche_primary_owner_unique_idx
+          ON users (creche_id)
+          WHERE is_primary_owner = TRUE AND creche_id IS NOT NULL;
+      END IF;
+    END $$;
+  `);
+  console.log("[startup] tenant integrity schema: verificado (idempotente).");
+}
+
+export async function backfillPrimaryOwners(): Promise<PrimaryOwnerBackfillReport> {
+  const report: PrimaryOwnerBackfillReport = {
+    assignedCount: 0,
+    skippedAlreadyAssigned: 0,
+    unresolvedAmbiguous: [],
+    unresolvedNoAdmin: [],
+  };
+
+  const creches = await db.select().from(crechesTable);
+
+  for (const creche of creches) {
+    // Check if creche already has a primary owner
+    const [existingOwner] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.crecheId, creche.id),
+          eq(usersTable.isPrimaryOwner, true)
+        )
+      )
+      .limit(1);
+
+    if (existingOwner) {
+      report.skippedAlreadyAssigned++;
+      continue;
+    }
+
+    // Get active admins for this creche
+    const admins = await db
+      .select({
+        id: usersTable.id,
+        name: usersTable.name,
+        email: usersTable.email,
+      })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.crecheId, creche.id),
+          eq(usersTable.role, "creche_admin"),
+          eq(usersTable.isActive, true)
+        )
+      );
+
+    if (admins.length === 1) {
+      // Category A: SAFE_SINGLE_ADMIN
+      await db
+        .update(usersTable)
+        .set({ isPrimaryOwner: true })
+        .where(eq(usersTable.id, admins[0].id));
+      report.assignedCount++;
+    } else if (admins.length > 1) {
+      // Check for Category B: DETERMINISTIC_OWNER_EVIDENCE (admin_id match)
+      const matchingAdmins = creche.adminId
+        ? admins.filter((a) => a.id === creche.adminId)
+        : [];
+
+      if (matchingAdmins.length === 1) {
+        // Deterministic match on creche.adminId
+        await db
+          .update(usersTable)
+          .set({ isPrimaryOwner: true })
+          .where(eq(usersTable.id, matchingAdmins[0].id));
+        report.assignedCount++;
+      } else {
+        // Category C: AMBIGUOUS_MULTIPLE_ADMINS
+        // NEVER automatically assign, NEVER pick earliest created_at
+        report.unresolvedAmbiguous.push({
+          crecheId: creche.id,
+          crecheName: creche.name,
+          adminCount: admins.length,
+        });
+      }
+    } else {
+      // Category D: NO_ACTIVE_ADMIN
+      report.unresolvedNoAdmin.push({
+        crecheId: creche.id,
+        crecheName: creche.name,
+      });
+    }
+  }
+
+  if (report.unresolvedAmbiguous.length > 0 || report.unresolvedNoAdmin.length > 0) {
+    console.warn(
+      `[startup] Backfill Primary Owners: ${report.assignedCount} atribuídos, ` +
+      `${report.skippedAlreadyAssigned} já tinham dono, ` +
+      `${report.unresolvedAmbiguous.length} ambíguos (não atribuídos), ` +
+      `${report.unresolvedNoAdmin.length} sem admin ativo (não atribuídos).`
+    );
+  } else {
+    console.log(
+      `[startup] Backfill Primary Owners: ${report.assignedCount} atribuídos, ` +
+      `${report.skippedAlreadyAssigned} já tinham dono.`
+    );
+  }
+
+  return report;
+}
+
 export async function initializeDatabase() {
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
@@ -1598,6 +1745,9 @@ export async function initializeDatabase() {
   await ensureTutorCommercialSchema();
   // Phase R37.C1: idempotent creche promotional campaigns schema (runs in all environments)
   await ensureCrechePromotionalCampaignSchema();
+  // Phase R38.A: idempotent tenant integrity schema & safe primary owner backfill
+  await ensureTenantIntegritySchema();
+  await backfillPrimaryOwners();
 
   await seedPlans();
 

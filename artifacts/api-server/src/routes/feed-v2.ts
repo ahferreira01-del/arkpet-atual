@@ -16,6 +16,7 @@ import { PushFeedNotificationService } from "../lib/notifications/PushFeedNotifi
 import type { IFeedNotificationService } from "../lib/notifications/IFeedNotificationService.js";
 import { parseCanonicalPrivateObjectPath } from "../lib/objectAuthorization.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -497,51 +498,61 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 
   // Persist event + pet relations in a transaction
-  const [event] = await db.transaction(async (tx) => {
-    const [newEvent] = await tx
-      .insert(timelineEventsTable)
-      .values({
-        crecheId,
-        authorId: userId,
-        type: resolvedType as any,
-        content:  content?.trim() || null,
-        mediaUrl:  canonicalMediaUrl || null,
-        mediaType: (mediaType as any) || null,
-      })
-      .returning();
+  try {
+    const [event] = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-    if (uniquePetIds.length > 0) {
-      await tx.insert(timelineEventPetsTable).values(
-        uniquePetIds.map((petId) => ({ eventId: newEvent.id, petId })),
-      );
+      const [newEvent] = await tx
+        .insert(timelineEventsTable)
+        .values({
+          crecheId,
+          authorId: userId,
+          type: resolvedType as any,
+          content:  content?.trim() || null,
+          mediaUrl:  canonicalMediaUrl || null,
+          mediaType: (mediaType as any) || null,
+        })
+        .returning();
+
+      if (uniquePetIds.length > 0) {
+        await tx.insert(timelineEventPetsTable).values(
+          uniquePetIds.map((petId) => ({ eventId: newEvent.id, petId })),
+        );
+      }
+
+      return [newEvent];
+    });
+
+    // Build full DTO so the frontend can prepend immediately without a second GET
+    const pets = await db
+      .select({ petId: petsTable.id, petName: petsTable.name })
+      .from(timelineEventPetsTable)
+      .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
+      .where(eq(timelineEventPetsTable.eventId, event.id));
+
+    const dto = await buildPostDTO(
+      { ...event, authorName: req.user.name },
+      pets,
+      0, 0, 0, false,
+    );
+
+    // HTTP 201 sent immediately — push notifications dispatched after
+    res.status(201).json({ post: dto });
+
+    notificationService.onPostPublished({
+      postId:     event.id,
+      type:       event.type,
+      authorName: req.user.name,
+      crecheId,
+      petIds:     uniquePetIds,
+    });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
     }
-
-    return [newEvent];
-  });
-
-  // Build full DTO so the frontend can prepend immediately without a second GET
-  const pets = await db
-    .select({ petId: petsTable.id, petName: petsTable.name })
-    .from(timelineEventPetsTable)
-    .innerJoin(petsTable, eq(timelineEventPetsTable.petId, petsTable.id))
-    .where(eq(timelineEventPetsTable.eventId, event.id));
-
-  const dto = await buildPostDTO(
-    { ...event, authorName: req.user.name },
-    pets,
-    0, 0, 0, false,
-  );
-
-  // HTTP 201 sent immediately — push notifications dispatched after
-  res.status(201).json({ post: dto });
-
-  notificationService.onPostPublished({
-    postId:     event.id,
-    type:       event.type,
-    authorName: req.user.name,
-    crecheId,
-    petIds:     uniquePetIds,
-  });
+    res.status(500).json({ error: err.message || "Erro ao publicar no feed" });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -639,30 +650,46 @@ router.patch("/:id", async (req: AuthRequest, res) => {
 // DELETE /:id — Delete post (staff / creche_admin / master_admin)
 // ─────────────────────────────────────────────────────────────────────────────
 router.delete("/:id", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
-  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+  try {
+    if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+    if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
 
-  const crecheId = parseInt(String(req.params.crecheId), 10);
-  const eventId  = parseInt(String(req.params.id), 10);
+    const crecheId = parseInt(String(req.params.crecheId), 10);
+    const eventId  = parseInt(String(req.params.id), 10);
 
-  const [existing] = await db
-    .select({ id: timelineEventsTable.id })
-    .from(timelineEventsTable)
-    .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
-    .limit(1);
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  if (!existing) { res.status(404).json({ error: "Publicação não encontrada" }); return; }
+      const [existing] = await tx
+        .select({ id: timelineEventsTable.id })
+        .from(timelineEventsTable)
+        .where(and(eq(timelineEventsTable.id, eventId), eq(timelineEventsTable.crecheId, crecheId)))
+        .limit(1);
 
-  // Wrap all deletes in a transaction to prevent orphans
-  await db.transaction(async (tx) => {
-    await tx.delete(timelineEventPetsTable).where(eq(timelineEventPetsTable.eventId, eventId));
-    await tx.delete(timelineLikesTable).where(eq(timelineLikesTable.eventId, eventId));
-    await tx.delete(timelineViewsTable).where(eq(timelineViewsTable.eventId, eventId));
-    await tx.delete(timelineCommentsTable).where(eq(timelineCommentsTable.eventId, eventId));
-    await tx.delete(timelineEventsTable).where(eq(timelineEventsTable.id, eventId));
-  });
+      if (!existing) { return { status: 404, error: "Publicação não encontrada" }; }
 
-  res.json({ ok: true });
+      await tx.delete(timelineEventPetsTable).where(eq(timelineEventPetsTable.eventId, eventId));
+      await tx.delete(timelineLikesTable).where(eq(timelineLikesTable.eventId, eventId));
+      await tx.delete(timelineViewsTable).where(eq(timelineViewsTable.eventId, eventId));
+      await tx.delete(timelineCommentsTable).where(eq(timelineCommentsTable.eventId, eventId));
+      await tx.delete(timelineEventsTable).where(eq(timelineEventsTable.id, eventId));
+
+      return { status: 200, ok: true };
+    });
+
+    if (result.status !== 200) {
+      res.status(result.status!).json({ error: result.error });
+      return;
+    }
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao excluir publicação" });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

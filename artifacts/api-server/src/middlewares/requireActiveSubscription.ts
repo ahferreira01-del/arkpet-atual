@@ -1,6 +1,6 @@
 import { Response, NextFunction } from "express";
 import { db } from "@workspace/db";
-import { subscriptionsTable } from "@workspace/db/schema";
+import { subscriptionsTable, crechesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import type { AuthRequest } from "./authenticate.js";
 
@@ -48,6 +48,22 @@ export async function requireActiveSubscription(
     return;
   }
 
+  // Check if tenant is archived (defense-in-depth route guard)
+  const [creche] = await db
+    .select({ status: crechesTable.status })
+    .from(crechesTable)
+    .where(eq(crechesTable.id, crecheId))
+    .limit(1);
+
+  if (creche && creche.status === "archived") {
+    res.status(403).json({
+      error: "tenant_archived",
+      code: "tenant_archived",
+      message: "Esta creche foi arquivada. Operações desabilitadas.",
+    });
+    return;
+  }
+
   const [sub] = await db
     .select({ status: subscriptionsTable.status, trialEndsAt: subscriptionsTable.trialEndsAt })
     .from(subscriptionsTable)
@@ -77,7 +93,7 @@ export async function requireActiveSubscription(
   // Hard-blocked statuses.
   if (BLOCKED_STATUSES.has(sub.status)) {
     res.status(402).json({
-      error: "subscription_inactive",
+      error: sub.status === "suspended" ? "subscription_suspended" : "subscription_inactive",
       message: "A assinatura da creche está inativa. Regularize o pagamento para continuar.",
       status: sub.status,
     });

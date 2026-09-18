@@ -1,4 +1,5 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum, boolean , index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, boolean, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -16,12 +17,16 @@ export const usersTable = pgTable("users", {
   phone: text("phone"), // Encrypted with AES-256-GCM
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
+  isPrimaryOwner: boolean("is_primary_owner").notNull().default(false),
   mensalidadeDia: integer("mensalidade_dia"),
   passwordChangedAt: timestamp("password_changed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
   index("users_creche_idx").on(t.crecheId),
-  index("users_role_idx").on(t.role)
+  index("users_role_idx").on(t.role),
+  uniqueIndex("users_creche_primary_owner_unique_idx")
+    .on(t.crecheId)
+    .where(sql`is_primary_owner = true AND creche_id IS NOT NULL`),
 ]);
 
 export const insertUserSchema = createInsertSchema(usersTable).omit({ id: true, createdAt: true });

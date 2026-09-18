@@ -6,6 +6,7 @@ import { eq, and, gte, lte } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
+import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
 
 const completeTaskSchema = z.object({
   notes: z.string().optional().nullable(),
@@ -78,144 +79,206 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", requireRole("staff", "creche_admin", "master_admin"), async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const parsed = createTaskSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
-    return;
-  }
-  const { petId, assignedToId, type, title, description, scheduledFor, priority } = parsed.data;
-
-  // Validate pet belongs to target creche
-  if (petId) {
-    const [pet] = await db.select({ id: petsTable.id })
-      .from(petsTable)
-      .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-      .limit(1);
-    if (!pet) {
-      res.status(404).json({ error: "Pet não encontrado" });
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const parsed = createTaskSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
       return;
     }
-  }
+    const { petId, assignedToId, type, title, description, scheduledFor, priority } = parsed.data;
 
-  // Validate assigned staff belongs to target creche
-  if (assignedToId) {
-    const [assignedUser] = await db.select({ id: usersTable.id })
-      .from(usersTable)
-      .where(and(eq(usersTable.id, assignedToId), eq(usersTable.crecheId, crecheId)))
-      .limit(1);
-    if (!assignedUser) {
-      res.status(404).json({ error: "Funcionário não encontrado" });
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      // Validate pet belongs to target creche
+      if (petId) {
+        const [pet] = await tx.select({ id: petsTable.id })
+          .from(petsTable)
+          .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+          .limit(1);
+        if (!pet) {
+          return { status: 404, error: "Pet não encontrado" };
+        }
+      }
+
+      // Validate assigned staff belongs to target creche
+      if (assignedToId) {
+        const [assignedUser] = await tx.select({ id: usersTable.id })
+          .from(usersTable)
+          .where(and(eq(usersTable.id, assignedToId), eq(usersTable.crecheId, crecheId)))
+          .limit(1);
+        if (!assignedUser) {
+          return { status: 404, error: "Funcionário não encontrado" };
+        }
+      }
+
+      const [task] = await tx.insert(tasksTable).values({
+        crecheId, petId, assignedToId, type, title, description,
+        scheduledFor, priority: priority || "medium",
+      }).returning();
+
+      return { status: 201, task };
+    });
+
+    if (result.status !== 201) {
+      res.status(result.status!).json({ error: result.error });
       return;
     }
+
+    const task = result.task!;
+    // Notify assigned staff member
+    if (assignedToId && assignedToId !== req.user?.id) {
+      const typeLabels: Record<string, string> = {
+        feeding: "Alimentação",
+        medication: "Medicação",
+        grooming: "Banho/Tosa",
+        walk: "Passeio",
+        checkup: "Avaliação",
+        other: "Tarefa",
+      };
+      const label = typeLabels[type] ?? "Tarefa";
+      sendPushToUser(assignedToId, {
+        title: `📋 Nova tarefa: ${label}`,
+        body: title || `Você recebeu uma nova tarefa de ${label}.`,
+        tag: `task-assigned-${task.id}`,
+        data: { type: "task", taskId: task.id, petId: task.petId ?? undefined, crecheId },
+      }).catch(() => {});
+    }
+
+    res.status(201).json({ ...task, petName: null, assignedToName: null });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao criar tarefa" });
   }
-
-  const [task] = await db.insert(tasksTable).values({
-    crecheId, petId, assignedToId, type, title, description,
-    scheduledFor, priority: priority || "medium",
-  }).returning();
-
-  // Notify assigned staff member
-  if (assignedToId && assignedToId !== req.user?.id) {
-    const typeLabels: Record<string, string> = {
-      feeding: "Alimentação",
-      medication: "Medicação",
-      grooming: "Banho/Tosa",
-      walk: "Passeio",
-      checkup: "Avaliação",
-      other: "Tarefa",
-    };
-    const label = typeLabels[type] ?? "Tarefa";
-    sendPushToUser(assignedToId, {
-      title: `📋 Nova tarefa: ${label}`,
-      body: title || `Você recebeu uma nova tarefa de ${label}.`,
-      tag: `task-assigned-${task.id}`,
-      data: { type: "task", taskId: task.id, petId: task.petId ?? undefined, crecheId },
-    }).catch(() => {});
-  }
-
-  res.status(201).json({ ...task, petName: null, assignedToName: null });
 });
 
 // Batch-complete all pending tasks for a specific pet on today's date only.
 // We intentionally scope to today so that tasks pre-generated for future days
 // (e.g. a multi-day stay) are NOT marked done when the pet checks out today.
 router.post("/complete-by-pet/:petId", requireRole("staff", "creche_admin", "master_admin"), async (req: AuthRequest, res) => {
-  // No body fields used; validate that nothing unexpected causes issues
-  z.object({}).passthrough().safeParse(req.body ?? {});
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
+  try {
+    // No body fields used; validate that nothing unexpected causes issues
+    z.object({}).passthrough().safeParse(req.body ?? {});
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
 
-  // Validate pet belongs to target creche
-  const [pet] = await db.select({ id: petsTable.id })
-    .from(petsTable)
-    .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-    .limit(1);
-  if (!pet) {
-    res.status(404).json({ error: "Pet não encontrado" });
-    return;
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      // Validate pet belongs to target creche
+      const [pet] = await tx.select({ id: petsTable.id })
+        .from(petsTable)
+        .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+        .limit(1);
+      if (!pet) {
+        return { status: 404, error: "Pet não encontrado" };
+      }
+
+      const { startOfDay, endOfDay } = brazilToday();
+
+      const updated = await tx.update(tasksTable).set({
+        status: "completed",
+        completedAt: new Date(),
+        completedBy: req.user?.name,
+        notes: "Concluído automaticamente no check-out.",
+      }).where(
+        and(
+          eq(tasksTable.crecheId, crecheId),
+          eq(tasksTable.petId, petId),
+          eq(tasksTable.status, "pending"),
+          gte(tasksTable.scheduledFor, startOfDay),
+          lte(tasksTable.scheduledFor, endOfDay),
+        )
+      ).returning({ id: tasksTable.id });
+
+      return { status: 200, completed: updated.length };
+    });
+
+    if (result.status !== 200) {
+      res.status(result.status!).json({ error: result.error });
+      return;
+    }
+
+    res.json({ completed: result.completed });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao concluir tarefas por pet" });
   }
-
-  const { startOfDay, endOfDay } = brazilToday();
-
-  const updated = await db.update(tasksTable).set({
-    status: "completed",
-    completedAt: new Date(),
-    completedBy: req.user?.name,
-    notes: "Concluído automaticamente no check-out.",
-  }).where(
-    and(
-      eq(tasksTable.crecheId, crecheId),
-      eq(tasksTable.petId, petId),
-      eq(tasksTable.status, "pending"),
-      gte(tasksTable.scheduledFor, startOfDay),
-      lte(tasksTable.scheduledFor, endOfDay),
-    )
-  ).returning({ id: tasksTable.id });
-
-  res.json({ completed: updated.length });
 });
 
 router.post("/:taskId/complete", requireRole("staff", "creche_admin", "master_admin"), async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const taskId = parseInt(String(req.params.taskId));
-  const parsedComplete = completeTaskSchema.safeParse(req.body ?? {});
-  if (!parsedComplete.success) {
-    res.status(400).json({ error: "Dados inválidos", details: parsedComplete.error.flatten().fieldErrors });
-    return;
-  }
-  const { notes } = parsedComplete.data;
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const taskId = parseInt(String(req.params.taskId));
+    const parsedComplete = completeTaskSchema.safeParse(req.body ?? {});
+    if (!parsedComplete.success) {
+      res.status(400).json({ error: "Dados inválidos", details: parsedComplete.error.flatten().fieldErrors });
+      return;
+    }
+    const { notes } = parsedComplete.data;
 
-  // 1. Attempt atomic transition: pending -> completed
-  const [task] = await db.update(tasksTable).set({
-    status: "completed",
-    completedAt: new Date(),
-    completedBy: req.user?.name,
-    notes,
-  }).where(
-    and(
-      eq(tasksTable.id, taskId),
-      eq(tasksTable.crecheId, crecheId),
-      eq(tasksTable.status, "pending"),
-    )
-  ).returning();
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  if (task) {
-    // First completion: notify creche admins
-    const [details] = await db.select({
-      title: tasksTable.title,
-      type: tasksTable.type,
-      petId: tasksTable.petId,
-      assignedToId: tasksTable.assignedToId,
-      assignedToName: usersTable.name,
-      petName: petsTable.name,
-    }).from(tasksTable)
-      .leftJoin(usersTable, and(eq(tasksTable.assignedToId, usersTable.id), eq(usersTable.crecheId, crecheId)))
-      .leftJoin(petsTable, and(eq(tasksTable.petId, petsTable.id), eq(petsTable.crecheId, crecheId)))
-      .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
-      .limit(1);
+      // 1. Attempt atomic transition: pending -> completed
+      const [task] = await tx.update(tasksTable).set({
+        status: "completed",
+        completedAt: new Date(),
+        completedBy: req.user?.name,
+        notes,
+      }).where(
+        and(
+          eq(tasksTable.id, taskId),
+          eq(tasksTable.crecheId, crecheId),
+          eq(tasksTable.status, "pending"),
+        )
+      ).returning();
 
-    if (details) {
+      if (task) {
+        // First completion: notify creche admins
+        const [details] = await tx.select({
+          title: tasksTable.title,
+          type: tasksTable.type,
+          petId: tasksTable.petId,
+          assignedToId: tasksTable.assignedToId,
+          assignedToName: usersTable.name,
+          petName: petsTable.name,
+        }).from(tasksTable)
+          .leftJoin(usersTable, and(eq(tasksTable.assignedToId, usersTable.id), eq(usersTable.crecheId, crecheId)))
+          .leftJoin(petsTable, and(eq(tasksTable.petId, petsTable.id), eq(petsTable.crecheId, crecheId)))
+          .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
+          .limit(1);
+
+        return { status: 200, task, details, isNewCompletion: true };
+      }
+
+      // 2. If no row was updated, check if the task already exists in this creche
+      const [existing] = await tx.select()
+        .from(tasksTable)
+        .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
+        .limit(1);
+
+      if (!existing) {
+        return { status: 404, error: "Tarefa não encontrada" };
+      }
+
+      return { status: 200, task: existing, isNewCompletion: false };
+    });
+
+    if (result.status !== 200) {
+      res.status(result.status!).json({ error: result.error });
+      return;
+    }
+
+    if (result.isNewCompletion && result.details) {
+      const details = result.details;
       const typeLabels: Record<string, string> = {
         feeding: "Alimentação", medication: "Medicação", grooming: "Banho/Tosa",
         walk: "Passeio", checkup: "Avaliação", other: "Tarefa",
@@ -225,28 +288,19 @@ router.post("/:taskId/complete", requireRole("staff", "creche_admin", "master_ad
       sendPushToRole(crecheId, "creche_admin", {
         title: `✅ Tarefa concluída: ${label}${petName}`,
         body: `${req.user?.name ?? "Staff"} concluiu "${details.title ?? label}".`,
-        tag: `task-done-${task.id}`,
-        data: { type: "task", taskId: task.id, petId: details.petId ?? undefined, crecheId },
+        tag: `task-done-${result.task!.id}`,
+        data: { type: "task", taskId: result.task!.id, petId: details.petId ?? undefined, crecheId },
       }).catch(() => {});
     }
 
-    res.json({ ...task, petName: null, assignedToName: null });
-    return;
+    res.json({ ...result.task, petName: null, assignedToName: null });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao concluir tarefa" });
   }
-
-  // 2. If no row was updated, check if the task already exists in this creche
-  const [existing] = await db.select()
-    .from(tasksTable)
-    .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
-    .limit(1);
-
-  if (!existing) {
-    res.status(404).json({ error: "Tarefa não encontrada" });
-    return;
-  }
-
-  // 3. Task is already completed: return existing completed task without side effects (Idempotent 200)
-  res.json({ ...existing, petName: null, assignedToName: null });
 });
 
 export default router;

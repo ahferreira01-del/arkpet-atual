@@ -41,6 +41,10 @@ import {
 import { BookingServicesRepository } from "../repositories/booking-services.repository.js";
 import { TutorCommercialPricingService } from "../services/tutorCommercialPricing.js";
 import { CrecheCampaignReservationService } from "../services/crecheCampaignReservation.service.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
 
 // ── Domain error helper ────────────────────────────────────────────────────────
 // Creates an Error with an explicit HTTP status code so catch blocks can
@@ -315,6 +319,8 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
 
   try {
     const enriched = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
       const [pet] = await tx
         .select()
         .from(petsTable)
@@ -607,6 +613,8 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
 
   try {
     const enriched = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
       // Discover the tutor without locking a row, then serialize every financial
       // mutation for this creche+tutor before taking booking/credit/invoice locks.
       const [bookingIdentity] = await tx
@@ -1285,153 +1293,159 @@ router.post("/:bookingId/checkin", requireRole("staff", "creche_admin", "master_
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
 
-  const [row] = await db
-    .select({
-      booking: bookingsTable,
-      catalogueItemType: catalogueItemsTable.type,
-    })
-    .from(bookingsTable)
-    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.id, bookingId),
-      ),
-    )
-    .limit(1);
-  if (!row) {
-    res.status(404).json({ error: "Reserva não encontrada" });
-    return;
-  }
-  const existingBooking = row.booking;
-  const isCurrentService = isServiceBookingBackend(existingBooking.type, row.catalogueItemType);
-  if (existingBooking.status !== "confirmed") {
-    res
-      .status(400)
-      .json({ error: "Apenas reservas confirmadas podem realizar check-in." });
-    return;
-  }
+  try {
+    const booking = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  // Check for expired rabies vaccine
-  const { vaccinesTable } = await import("@workspace/db/schema");
-  const { ilike, or, lte } = await import("drizzle-orm");
-  const [expiredVaccine] = await db
-    .select()
-    .from(vaccinesTable)
-    .where(
-      and(
-        eq(vaccinesTable.petId, existingBooking.petId),
-        or(
-          ilike(vaccinesTable.name, "%antirr%"),
-          ilike(vaccinesTable.name, "%raiva%"),
-        ),
-        lte(vaccinesTable.nextDueDate, getBusinessDate()),
-      ),
-    )
-    .limit(1);
+      const [row] = await tx
+        .select({
+          booking: bookingsTable,
+          catalogueItemType: catalogueItemsTable.type,
+        })
+        .from(bookingsTable)
+        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
+        .where(
+          and(
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.id, bookingId),
+          ),
+        )
+        .limit(1);
+      if (!row) {
+        throw clientError("Reserva não encontrada", 404);
+      }
+      const existingBooking = row.booking;
+      const isCurrentService = isServiceBookingBackend(existingBooking.type, row.catalogueItemType);
+      if (existingBooking.status !== "confirmed") {
+        throw clientError("Apenas reservas confirmadas podem realizar check-in.", 400);
+      }
 
-  if (expiredVaccine) {
-    res.status(403).json({
-      error:
-        "Vacina antirrábica vencida. Check-in bloqueado por razões de saúde e segurança.",
-      code: "VACCINE_EXPIRED",
+      // Check for expired rabies vaccine
+      const { vaccinesTable } = await import("@workspace/db/schema");
+      const { ilike, or, lte } = await import("drizzle-orm");
+      const [expiredVaccine] = await tx
+        .select()
+        .from(vaccinesTable)
+        .where(
+          and(
+            eq(vaccinesTable.petId, existingBooking.petId),
+            or(
+              ilike(vaccinesTable.name, "%antirr%"),
+              ilike(vaccinesTable.name, "%raiva%"),
+            ),
+            lte(vaccinesTable.nextDueDate, getBusinessDate()),
+          ),
+        )
+        .limit(1);
+
+      if (expiredVaccine) {
+        const err = new Error("Vacina antirrábica vencida. Check-in bloqueado por razões de saúde e segurança.") as any;
+        err.status = 403;
+        err.code = "VACCINE_EXPIRED";
+        throw err;
+      }
+
+      // Block if pet already has an active check-in of the SAME SEMANTIC CLASS
+      const activeBookings = await tx
+        .select({
+          id: bookingsTable.id,
+          type: bookingsTable.type,
+          catalogueItemType: catalogueItemsTable.type,
+        })
+        .from(bookingsTable)
+        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
+        .where(
+          and(
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.petId, existingBooking.petId),
+            eq(bookingsTable.status, "active"),
+          ),
+        );
+
+      let skipPhysicalCheckin = false;
+
+      if (activeBookings.length > 0) {
+        const hasSameSemanticTypeActive = activeBookings.some((ab) =>
+          isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
+        );
+
+        if (hasSameSemanticTypeActive) {
+          throw clientError("Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.", 409);
+        }
+
+        // Different semantic classes are active (e.g. Presence + Service)
+        // The pet is already physically present, so skip incrementing occupancy
+        skipPhysicalCheckin = true;
+      }
+
+      // Proceed: check-in + clear on-the-way state
+      const [updatedBooking] = await tx
+        .update(bookingsTable)
+        .set({
+          status: "active",
+          checkInTime: new Date(),
+          onTheWayType: null,
+          onTheWayEtaMinutes: null,
+          onTheWayAt: null,
+        })
+        .where(
+          and(
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.id, bookingId),
+          ),
+        )
+        .returning();
+
+      if (!skipPhysicalCheckin) {
+        await tx
+          .update(petsTable)
+          .set({ isCheckedIn: true })
+          .where(eq(petsTable.id, updatedBooking.petId));
+        await tx
+          .update(crechesTable)
+          .set({
+            currentOccupancy: tx.$count(
+              petsTable,
+              and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
+            ) as any,
+          })
+          .where(eq(crechesTable.id, crecheId));
+      }
+
+      return updatedBooking;
     });
-    return;
-  }
 
-  // Block if pet already has an active check-in of the SAME SEMANTIC CLASS
-  const activeBookings = await db
-    .select({
-      id: bookingsTable.id,
-      type: bookingsTable.type,
-      catalogueItemType: catalogueItemsTable.type,
-    })
-    .from(bookingsTable)
-    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.petId, existingBooking.petId),
-        eq(bookingsTable.status, "active"),
-      ),
-    );
+    const enriched = await getBookingWithNames(booking);
 
-  let skipPhysicalCheckin = false;
+    // Generate tasks for this pet today (fire-and-forget)
+    import("../lib/scheduler.js")
+      .then(({ generateTasksForPetToday }) => {
+        generateTasksForPetToday(booking.petId, crecheId).catch(() => {});
+      })
+      .catch(() => {});
 
-  if (activeBookings.length > 0) {
-    const hasSameSemanticTypeActive = activeBookings.some((ab) =>
-      isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
-    );
-
-    if (hasSameSemanticTypeActive) {
-      res
-        .status(409)
-        .json({
-          error:
-            "Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.",
-        });
-      return;
+    // Notify tutor of check-in
+    if (booking.tutorId) {
+      sendPushToUser(booking.tutorId, {
+        title: `🐾 ${enriched.petName ?? "Seu pet"} fez check-in!`,
+        body: `${enriched.petName ?? "Seu pet"} chegou à creche com segurança.`,
+        tag: `checkin-${booking.id}`,
+        data: { type: "checkin", bookingId: booking.id, petId: booking.petId },
+      }).catch(() => {});
     }
 
-    // Different semantic classes are active (e.g. Presence + Service)
-    // The pet is already physically present, so skip incrementing occupancy
-    skipPhysicalCheckin = true;
+    res.json(enriched);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
+      res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao realizar check-in" });
   }
-
-  // Proceed: check-in + clear on-the-way state
-  const [booking] = await db
-    .update(bookingsTable)
-    .set({
-      status: "active",
-      checkInTime: new Date(),
-      onTheWayType: null,
-      onTheWayEtaMinutes: null,
-      onTheWayAt: null,
-    })
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.id, bookingId),
-      ),
-    )
-    .returning();
-
-  if (!skipPhysicalCheckin) {
-    await db
-      .update(petsTable)
-      .set({ isCheckedIn: true })
-      .where(eq(petsTable.id, booking.petId));
-    await db
-      .update(crechesTable)
-      .set({
-        currentOccupancy: db.$count(
-          petsTable,
-          and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
-        ) as any,
-      })
-      .where(eq(crechesTable.id, crecheId));
-  }
-
-  const enriched = await getBookingWithNames(booking);
-
-  // Generate tasks for this pet today (fire-and-forget)
-  import("../lib/scheduler.js")
-    .then(({ generateTasksForPetToday }) => {
-      generateTasksForPetToday(booking.petId, crecheId).catch(() => {});
-    })
-    .catch(() => {});
-
-  // Notify tutor of check-in
-  if (booking.tutorId) {
-    sendPushToUser(booking.tutorId, {
-      title: `🐾 ${enriched.petName ?? "Seu pet"} fez check-in!`,
-      body: `${enriched.petName ?? "Seu pet"} chegou à creche com segurança.`,
-      tag: `checkin-${booking.id}`,
-      data: { type: "checkin", bookingId: booking.id, petId: booking.petId },
-    }).catch(() => {});
-  }
-
-  res.json(enriched);
 });
 
 router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
@@ -1468,6 +1482,8 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
 
     // Engine Financeira
     const completedBooking = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
       await BillingService.acquireTutorFinancialLock(
         crecheId,
         existing.tutorId,
@@ -1593,109 +1609,123 @@ router.post("/:bookingId/complete-service", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
   const bookingId = parseInt(String(req.params.bookingId));
 
-  const [row] = await db
-    .select({
-      booking: bookingsTable,
-      catalogueItemType: catalogueItemsTable.type,
-    })
-    .from(bookingsTable)
-    .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.id, bookingId),
-      ),
-    )
-    .limit(1);
+  try {
+    const booking = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  if (!row) {
-    res.status(404).json({ error: "Reserva não encontrada" });
-    return;
-  }
-
-  if (!isServiceBookingBackend(row.booking.type, row.catalogueItemType)) {
-    res.status(400).json({ error: "Apenas serviços podem ser finalizados via complete-service." });
-    return;
-  }
-
-  const [booking] = await db
-    .update(bookingsTable)
-    .set({
-      status: "completed",
-      checkOutTime: new Date(),
-    })
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.id, bookingId),
-      ),
-    )
-    .returning();
-
-  // If no other active booking exists for this pet, release it from the creche
-  const [otherActive] = await db
-    .select({ id: bookingsTable.id })
-    .from(bookingsTable)
-    .where(
-      and(
-        eq(bookingsTable.crecheId, crecheId),
-        eq(bookingsTable.petId, booking.petId),
-        eq(bookingsTable.status, "active"),
-      ),
-    )
-    .limit(1);
-
-  if (!otherActive) {
-    await db
-      .update(petsTable)
-      .set({ isCheckedIn: false })
-      .where(eq(petsTable.id, booking.petId));
-    await db
-      .update(crechesTable)
-      .set({
-        currentOccupancy: db.$count(
-          petsTable,
+      const [row] = await tx
+        .select({
+          booking: bookingsTable,
+          catalogueItemType: catalogueItemsTable.type,
+        })
+        .from(bookingsTable)
+        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
+        .where(
           and(
-            eq(petsTable.crecheId, crecheId),
-            eq(petsTable.isCheckedIn, true),
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.id, bookingId),
           ),
-        ) as any,
-      })
-      .where(eq(crechesTable.id, crecheId));
+        )
+        .limit(1);
+
+      if (!row) {
+        throw clientError("Reserva não encontrada", 404);
+      }
+
+      if (!isServiceBookingBackend(row.booking.type, row.catalogueItemType)) {
+        throw clientError("Apenas serviços podem ser finalizados via complete-service.", 400);
+      }
+
+      const [updatedBooking] = await tx
+        .update(bookingsTable)
+        .set({
+          status: "completed",
+          checkOutTime: new Date(),
+        })
+        .where(
+          and(
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.id, bookingId),
+          ),
+        )
+        .returning();
+
+      // If no other active booking exists for this pet, release it from the creche
+      const [otherActive] = await tx
+        .select({ id: bookingsTable.id })
+        .from(bookingsTable)
+        .where(
+          and(
+            eq(bookingsTable.crecheId, crecheId),
+            eq(bookingsTable.petId, updatedBooking.petId),
+            eq(bookingsTable.status, "active"),
+          ),
+        )
+        .limit(1);
+
+      if (!otherActive) {
+        await tx
+          .update(petsTable)
+          .set({ isCheckedIn: false })
+          .where(eq(petsTable.id, updatedBooking.petId));
+        await tx
+          .update(crechesTable)
+          .set({
+            currentOccupancy: tx.$count(
+              petsTable,
+              and(
+                eq(petsTable.crecheId, crecheId),
+                eq(petsTable.isCheckedIn, true),
+              ),
+            ) as any,
+          })
+          .where(eq(crechesTable.id, crecheId));
+      }
+
+      return updatedBooking;
+    });
+
+    const enriched = await getBookingWithNames(booking);
+
+    // Notify tutor that the specific service was completed (pet stays)
+    if (booking.tutorId) {
+      const typeLabels: Record<string, string> = {
+        banho: "Banho",
+        hospedagem_banho: "Hospedagem + Banho",
+        visita: "Visita",
+        day_use: "Day Use",
+        lodging: "Hospedagem",
+        pacote_4dias: "Pacote 4 Dias",
+        pacote_8dias: "Pacote 8 Dias",
+        pacote_20dias: "Pacote 20 Dias",
+        visita_taxi: "Visita + Táxi",
+        creche_taxi: "Creche + Táxi",
+      };
+      const serviceLabel = typeLabels[booking.type] ??
+        String(booking.type)
+          .split("_")
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      sendPushToUser(booking.tutorId, {
+        title: `✅ ${serviceLabel} concluído — ${enriched.petName ?? "Seu pet"}`,
+        body: `O serviço de ${serviceLabel} de ${enriched.petName ?? "seu pet"} foi finalizado. O pet continua na creche.`,
+        tag: `service-done-${booking.id}`,
+        data: { type: "booking", bookingId: booking.id, petId: booking.petId },
+      }).catch(() => {});
+    }
+
+    res.json(enriched);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao finalizar serviço" });
   }
-
-  const enriched = await getBookingWithNames(booking);
-
-  // Notify tutor that the specific service was completed (pet stays)
-  if (booking.tutorId) {
-    const typeLabels: Record<string, string> = {
-      banho: "Banho",
-      hospedagem_banho: "Hospedagem + Banho",
-      visita: "Visita",
-      day_use: "Day Use",
-      lodging: "Hospedagem",
-      pacote_4dias: "Pacote 4 Dias",
-      pacote_8dias: "Pacote 8 Dias",
-      pacote_20dias: "Pacote 20 Dias",
-      visita_taxi: "Visita + Táxi",
-      creche_taxi: "Creche + Táxi",
-    };
-    // Convert unknown slugs (e.g. "banho_tosa", "creche_diaria") into human-readable
-    // labels so push notifications and invoice descriptions are never shown as raw slugs.
-    const serviceLabel = typeLabels[booking.type] ??
-      String(booking.type)
-        .split("_")
-        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-    sendPushToUser(booking.tutorId, {
-      title: `✅ ${serviceLabel} concluído — ${enriched.petName ?? "Seu pet"}`,
-      body: `O serviço de ${serviceLabel} de ${enriched.petName ?? "seu pet"} foi finalizado. O pet continua na creche.`,
-      tag: `service-done-${booking.id}`,
-      data: { type: "booking", bookingId: booking.id, petId: booking.petId },
-    }).catch(() => {});
-  }
-
-  res.json(enriched);
 });
 
 // ==========================================
@@ -1760,84 +1790,96 @@ router.post("/:bookingId/consumables", async (req: AuthRequest, res) => {
   const { itemId, quantity } = req.body;
 
   try {
-    const [booking] = await db
-      .select()
-      .from(bookingsTable)
-      .where(
-        and(
-          eq(bookingsTable.id, bookingId),
-          eq(bookingsTable.crecheId, crecheId),
-        ),
-      );
-    if (!booking) {
-      res.status(404).json({ error: "Reserva não encontrada" });
-      return;
-    }
+    const consumable = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-    const [item] = await db
-      .select()
-      .from(catalogueItemsTable)
-      .where(
-        and(
-          eq(catalogueItemsTable.id, itemId),
-          eq(catalogueItemsTable.crecheId, crecheId),
-        ),
-      );
-    if (!item) {
-      res.status(404).json({ error: "Item não encontrado no catálogo" });
-      return;
-    }
-
-    let petSize: string | null = null;
-    if (item.type === "service") {
-      const [pet] = await db
+      const [booking] = await tx
         .select()
-        .from(petsTable)
-        .where(eq(petsTable.id, booking.petId));
-      if (pet && pet.size) {
-        petSize = pet.size;
+        .from(bookingsTable)
+        .where(
+          and(
+            eq(bookingsTable.id, bookingId),
+            eq(bookingsTable.crecheId, crecheId),
+          ),
+        );
+      if (!booking) {
+        throw clientError("Reserva não encontrada", 404);
       }
-    }
 
-    const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
-      crecheId,
-      booking.tutorId,
-      itemId,
-      { petSize, quantity: quantity || 1 }
-    );
-    const price = Number(resolved.effectiveUnitPrice);
+      const [item] = await tx
+        .select()
+        .from(catalogueItemsTable)
+        .where(
+          and(
+            eq(catalogueItemsTable.id, itemId),
+            eq(catalogueItemsTable.crecheId, crecheId),
+          ),
+        );
+      if (!item) {
+        throw clientError("Item não encontrado no catálogo", 404);
+      }
 
-    const [consumable] = await db
-      .insert(bookingConsumablesTable)
-      .values({
-        bookingId,
-        itemId,
-        quantity: quantity || 1,
-        chargedPrice: String(price),
-        addedBy: req.user!.id,
-      })
-      .returning();
+      let petSize: string | null = null;
+      if (item.type === "service") {
+        const [pet] = await tx
+          .select()
+          .from(petsTable)
+          .where(eq(petsTable.id, booking.petId));
+        if (pet && pet.size) {
+          petSize = pet.size;
+        }
+      }
 
-    if (item.type === "product" && item.trackStock) {
-      await db
-        .update(catalogueItemsTable)
-        .set({
-          stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${quantity || 1}`,
-        })
-        .where(eq(catalogueItemsTable.id, itemId));
-
-      await logFinancialAudit({
+      const resolved = await TutorCommercialPricingService.resolveItemPriceForTutor(
         crecheId,
-        userId: req.user!.id,
-        action: "stock_adjustment",
-        referenceId: itemId,
-        referenceType: "catalogue_items",
-        details: `Estoque reduzido em ${quantity || 1} para consumo na reserva #${bookingId}`,
-      }, db);
-    }
+        booking.tutorId,
+        itemId,
+        { petSize, quantity: quantity || 1 }
+      );
+      const price = Number(resolved.effectiveUnitPrice);
+
+      const [createdConsumable] = await tx
+        .insert(bookingConsumablesTable)
+        .values({
+          bookingId,
+          itemId,
+          quantity: quantity || 1,
+          chargedPrice: String(price),
+          addedBy: req.user!.id,
+        })
+        .returning();
+
+      if (item.type === "product" && item.trackStock) {
+        await tx
+          .update(catalogueItemsTable)
+          .set({
+            stockQuantity: sql`${catalogueItemsTable.stockQuantity} - ${quantity || 1}`,
+          })
+          .where(eq(catalogueItemsTable.id, itemId));
+
+        await logFinancialAudit({
+          crecheId,
+          userId: req.user!.id,
+          action: "stock_adjustment",
+          referenceId: itemId,
+          referenceType: "catalogue_items",
+          details: `Estoque reduzido em ${quantity || 1} para consumo na reserva #${bookingId}`,
+        }, tx);
+      }
+
+      return createdConsumable;
+    });
 
     res.json(consumable);
-  } catch (err: unknown) {
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
+      res.status(err.status).json({ error: err.message });
+      return;
+    }
     res.status(500).json({ error: String(err) });
   }
 });
@@ -1849,31 +1891,40 @@ router.delete(
       res.status(403).json({ error: "Apenas staff" });
       return;
     }
+    const crecheId = parseInt(String(req.params.crecheId));
     const consumableId = parseInt(String(req.params.consumableId));
 
     try {
-      const [consumable] = await db
-        .delete(bookingConsumablesTable)
-        .where(eq(bookingConsumablesTable.id, consumableId))
-        .returning();
+      await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
 
-      if (consumable) {
-        const [item] = await db
-          .select()
-          .from(catalogueItemsTable)
-          .where(eq(catalogueItemsTable.id, consumable.itemId));
-        if (item && item.type === "product" && item.trackStock) {
-          await db
-            .update(catalogueItemsTable)
-            .set({
-              stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${consumable.quantity}`,
-            })
+        const [consumable] = await tx
+          .delete(bookingConsumablesTable)
+          .where(eq(bookingConsumablesTable.id, consumableId))
+          .returning();
+
+        if (consumable) {
+          const [item] = await tx
+            .select()
+            .from(catalogueItemsTable)
             .where(eq(catalogueItemsTable.id, consumable.itemId));
+          if (item && item.type === "product" && item.trackStock) {
+            await tx
+              .update(catalogueItemsTable)
+              .set({
+                stockQuantity: sql`${catalogueItemsTable.stockQuantity} + ${consumable.quantity}`,
+              })
+              .where(eq(catalogueItemsTable.id, consumable.itemId));
+          }
         }
-      }
+      });
 
       res.json({ ok: true });
-    } catch (err: unknown) {
+    } catch (err: any) {
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+        return;
+      }
       res.status(500).json({ error: String(err) });
     }
   },

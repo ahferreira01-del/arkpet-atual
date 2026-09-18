@@ -6,6 +6,7 @@ import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { checkPetLimit } from "../middlewares/checkPetLimit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
+import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -85,16 +86,33 @@ router.get("/", async (req: AuthRequest, res) => {
 });
 
 router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
-  const [pet] = await db.insert(petsTable).values({
-    crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
-    weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
-  }).returning();
-  const [tutor] = tutorId
-    ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1)
-    : [{ name: null }];
-  res.status(201).json({ ...pet, tutorName: tutor?.name ?? null });
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
+
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      const [pet] = await tx.insert(petsTable).values({
+        crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
+        weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
+      }).returning();
+
+      const [tutor] = tutorId
+        ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1)
+        : [{ name: null }];
+
+      return { ...pet, tutorName: tutor?.name ?? null };
+    });
+
+    res.status(201).json(result);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao criar pet" });
+  }
 });
 
 router.get("/by-qr/:token", async (req: AuthRequest, res) => {
@@ -187,61 +205,80 @@ router.get("/:petId", async (req: AuthRequest, res) => {
 });
 
 router.put("/:petId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
 
-  // Verify pet existence and ownership
-  const findConditions = [eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId)];
-  if (req.user?.role === "tutor") {
-    findConditions.push(eq(petsTable.tutorId, req.user.id));
-  }
-  const [existingPet] = await db.select().from(petsTable).where(and(...findConditions)).limit(1);
-  if (!existingPet) {
-    res.status(404).json({ error: "Pet not found" });
-    return;
-  }
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status, isCastrated } = req.body;
-  const updates: Record<string, unknown> = {};
+      // Verify pet existence and ownership
+      const findConditions = [eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId)];
+      if (req.user?.role === "tutor") {
+        findConditions.push(eq(petsTable.tutorId, req.user.id));
+      }
+      const [existingPet] = await tx.select().from(petsTable).where(and(...findConditions)).limit(1);
+      if (!existingPet) {
+        return { notFound: true };
+      }
 
-  // Profile fields: permitted for tutor, staff, creche_admin, master_admin
-  if (name !== undefined) updates.name = name;
-  if (breed !== undefined) updates.breed = breed;
-  if (birthDate !== undefined) updates.birthDate = birthDate;
-  if (weight !== undefined) updates.weight = weight;
-  if (color !== undefined) updates.color = color;
-  if (temperament !== undefined) updates.temperament = temperament;
-  if (allergies !== undefined) updates.allergies = allergies;
-  if (specialNeeds !== undefined) updates.specialNeeds = specialNeeds;
-  if (photoUrl !== undefined) updates.photoUrl = photoUrl;
-  if (isCastrated !== undefined) updates.isCastrated = isCastrated;
+      const { name, breed, birthDate, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status, isCastrated } = req.body;
+      const updates: Record<string, unknown> = {};
 
-  // Operational fields: restricted to staff, creche_admin, master_admin
-  const isOperationalRole = ["staff", "creche_admin", "master_admin"].includes(req.user?.role ?? "");
-  if (isOperationalRole) {
-    if (feedingSchedule !== undefined) updates.feedingSchedule = feedingSchedule;
-    if (walkSchedule !== undefined) updates.walkSchedule = walkSchedule;
-    if (status !== undefined) updates.status = status;
-  }
+      // Profile fields: permitted for tutor, staff, creche_admin, master_admin
+      if (name !== undefined) updates.name = name;
+      if (breed !== undefined) updates.breed = breed;
+      if (birthDate !== undefined) updates.birthDate = birthDate;
+      if (weight !== undefined) updates.weight = weight;
+      if (color !== undefined) updates.color = color;
+      if (temperament !== undefined) updates.temperament = temperament;
+      if (allergies !== undefined) updates.allergies = allergies;
+      if (specialNeeds !== undefined) updates.specialNeeds = specialNeeds;
+      if (photoUrl !== undefined) updates.photoUrl = photoUrl;
+      if (isCastrated !== undefined) updates.isCastrated = isCastrated;
 
-  let pet = existingPet;
-  if (Object.keys(updates).length > 0) {
-    const [updated] = await db.update(petsTable).set(updates)
-      .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId))).returning();
-    if (updated) pet = updated;
-  }
+      // Operational fields: restricted to staff, creche_admin, master_admin
+      const isOperationalRole = ["staff", "creche_admin", "master_admin"].includes(req.user?.role ?? "");
+      if (isOperationalRole) {
+        if (feedingSchedule !== undefined) updates.feedingSchedule = feedingSchedule;
+        if (walkSchedule !== undefined) updates.walkSchedule = walkSchedule;
+        if (status !== undefined) updates.status = status;
+      }
 
-  const [tutor] = pet?.tutorId
-    ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pet.tutorId)).limit(1)
-    : [{ name: null }];
-  res.json({ ...pet, tutorName: tutor?.name ?? null });
+      let pet = existingPet;
+      if (Object.keys(updates).length > 0) {
+        const [updated] = await tx.update(petsTable).set(updates)
+          .where(and(eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId))).returning();
+        if (updated) pet = updated;
+      }
 
-  // Fire-and-forget: if a care plan changed while the pet is checked in,
-  // regenerate today's tasks immediately so staff see them without waiting for midnight.
-  if (isOperationalRole && pet?.isCheckedIn && (feedingSchedule !== undefined || walkSchedule !== undefined)) {
-    import("../lib/scheduler.js")
-      .then(({ generateTasksForPetToday }) => generateTasksForPetToday(petId, crecheId))
-      .catch((err: unknown) => console.error("[pets] plan task regen failed:", err));
+      const [tutor] = pet?.tutorId
+        ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pet.tutorId)).limit(1)
+        : [{ name: null }];
+
+      return { pet, tutorName: tutor?.name ?? null, isOperationalRole, isCheckedIn: pet?.isCheckedIn, feedingSchedule, walkSchedule };
+    });
+
+    if (result.notFound) {
+      res.status(404).json({ error: "Pet not found" });
+      return;
+    }
+
+    res.json({ ...result.pet, tutorName: result.tutorName });
+
+    // Fire-and-forget: if a care plan changed while the pet is checked in,
+    // regenerate today's tasks immediately so staff see them without waiting for midnight.
+    if (result.isOperationalRole && result.isCheckedIn && (result.feedingSchedule !== undefined || result.walkSchedule !== undefined)) {
+      import("../lib/scheduler.js")
+        .then(({ generateTasksForPetToday }) => generateTasksForPetToday(petId, crecheId))
+        .catch((err: unknown) => console.error("[pets] plan task regen failed:", err));
+    }
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao atualizar pet" });
   }
 });
 
@@ -257,16 +294,29 @@ router.get("/:petId/vaccines", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/vaccines", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const hasAccess = await verifyPetAccess(crecheId, petId, req.user);
-  if (!hasAccess) { res.status(404).json({ error: "Pet not found" }); return; }
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
+    const hasAccess = await verifyPetAccess(crecheId, petId, req.user);
+    if (!hasAccess) { res.status(404).json({ error: "Pet not found" }); return; }
 
-  const { name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl } = req.body;
-  const [vaccine] = await db.insert(vaccinesTable).values({
-    petId, crecheId, name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl,
-  }).returning();
-  res.status(201).json(vaccine);
+    const { name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl } = req.body;
+    const vaccine = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+      const [v] = await tx.insert(vaccinesTable).values({
+        petId, crecheId, name, appliedDate, nextDueDate, veterinarian, notes, receiptUrl,
+      }).returning();
+      return v;
+    });
+
+    res.status(201).json(vaccine);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao registrar vacina" });
+  }
 });
 
 router.get("/:petId/medications", async (req: AuthRequest, res) => {
@@ -281,49 +331,79 @@ router.get("/:petId/medications", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/medications", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const hasAccess = await verifyPetAccess(crecheId, petId, req.user);
-  if (!hasAccess) { res.status(404).json({ error: "Pet not found" }); return; }
+  try {
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
+    const hasAccess = await verifyPetAccess(crecheId, petId, req.user);
+    if (!hasAccess) { res.status(404).json({ error: "Pet not found" }); return; }
 
-  const { name, dosage, frequency, startDate, endDate, times, notes } = req.body;
-  const [med] = await db.insert(medicationsTable).values({
-    petId, crecheId, name, dosage, frequency, startDate, endDate, times: times || [], notes,
-  }).returning();
+    const { name, dosage, frequency, startDate, endDate, times, notes } = req.body;
 
-  // If pet is checked in, trigger today's task regeneration
-  const [pet] = await db.select({ isCheckedIn: petsTable.isCheckedIn })
-    .from(petsTable)
-    .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-    .limit(1);
+    const { med, isCheckedIn } = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  if (pet?.isCheckedIn) {
-    import("../lib/scheduler.js")
-      .then(({ generateTasksForPetToday }) => generateTasksForPetToday(petId, crecheId))
-      .catch((err: unknown) => console.error("[pets] medication task regen failed:", err));
+      const [m] = await tx.insert(medicationsTable).values({
+        petId, crecheId, name, dosage, frequency, startDate, endDate, times: times || [], notes,
+      }).returning();
+
+      // If pet is checked in, trigger today's task regeneration
+      const [pet] = await tx.select({ isCheckedIn: petsTable.isCheckedIn })
+        .from(petsTable)
+        .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+        .limit(1);
+
+      return { med: m, isCheckedIn: pet?.isCheckedIn };
+    });
+
+    if (isCheckedIn) {
+      import("../lib/scheduler.js")
+        .then(({ generateTasksForPetToday }) => generateTasksForPetToday(petId, crecheId))
+        .catch((err: unknown) => console.error("[pets] medication task regen failed:", err));
+    }
+
+    res.status(201).json(med);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao registrar medicação" });
   }
-
-  res.status(201).json(med);
 });
 
 router.post("/:petId/medications/:medicationId/administer", async (req: AuthRequest, res) => {
-  if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const medicationId = parseInt(String(req.params.medicationId));
-  const { administeredBy, notes } = req.body;
-  const [med] = await db.update(medicationsTable).set({
-    lastAdministered: new Date(),
-    administeredBy: administeredBy || req.user?.name,
-    notes,
-  }).where(and(
-    eq(medicationsTable.id, medicationId),
-    eq(medicationsTable.petId, petId),
-    eq(medicationsTable.crecheId, crecheId)
-  )).returning();
-  res.json(med);
-});
+  try {
+    if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
+    const medicationId = parseInt(String(req.params.medicationId));
+    const { administeredBy, notes } = req.body;
 
+    const med = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      const [m] = await tx.update(medicationsTable).set({
+        lastAdministered: new Date(),
+        administeredBy: administeredBy || req.user?.name,
+        notes,
+      }).where(and(
+        eq(medicationsTable.id, medicationId),
+        eq(medicationsTable.petId, petId),
+        eq(medicationsTable.crecheId, crecheId)
+      )).returning();
+
+      return m;
+    });
+
+    res.json(med);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao administrar medicação" });
+  }
+});
 
 router.get("/:petId/walks", async (req: AuthRequest, res) => {
   const crecheId = parseInt(String(req.params.crecheId));
@@ -353,70 +433,116 @@ router.get("/:petId/walks", async (req: AuthRequest, res) => {
 });
 
 router.post("/:petId/walks", async (req: AuthRequest, res) => {
-  if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const { db: dbConn } = await import("@workspace/db");
-  const { walksTable } = await import("@workspace/db/schema");
-  const { staffId, notes } = req.body;
-  const [walk] = await dbConn.insert(walksTable).values({
-    petId, crecheId, staffId: staffId || req.user?.id, notes, startTime: new Date(),
-  }).returning();
-  res.status(201).json({ ...walk, staffName: req.user?.name });
+  try {
+    if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
+    const { walksTable } = await import("@workspace/db/schema");
+    const { staffId, notes } = req.body;
+
+    const walk = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      const [w] = await tx.insert(walksTable).values({
+        petId, crecheId, staffId: staffId || req.user?.id, notes, startTime: new Date(),
+      }).returning();
+      return w;
+    });
+
+    res.status(201).json({ ...walk, staffName: req.user?.name });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao registrar passeio" });
+  }
 });
 
 router.post("/:petId/walks/:walkId/end", async (req: AuthRequest, res) => {
-  if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
-  const walkId = parseInt(String(req.params.walkId));
-  const { db: dbConn } = await import("@workspace/db");
-  const { walksTable } = await import("@workspace/db/schema");
-  const now = new Date();
-  const [existing] = await dbConn.select().from(walksTable).where(eq(walksTable.id, walkId)).limit(1);
-  const duration = existing ? Math.round((now.getTime() - new Date(existing.startTime).getTime()) / 60000) : 0;
-  const [walk] = await dbConn.update(walksTable).set({
-    endTime: now, status: "completed", durationMinutes: duration,
-  }).where(and(eq(walksTable.id, walkId), eq(walksTable.petId, petId), eq(walksTable.crecheId, crecheId))).returning();
-  res.json({ ...walk, staffName: req.user?.name });
+  try {
+    if (req.user?.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
+    const walkId = parseInt(String(req.params.walkId));
+    const { walksTable } = await import("@workspace/db/schema");
+    const now = new Date();
+
+    const walk = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
+      const [existing] = await tx.select().from(walksTable).where(eq(walksTable.id, walkId)).limit(1);
+      const duration = existing ? Math.round((now.getTime() - new Date(existing.startTime).getTime()) / 60000) : 0;
+      const [w] = await tx.update(walksTable).set({
+        endTime: now, status: "completed", durationMinutes: duration,
+      }).where(and(eq(walksTable.id, walkId), eq(walksTable.petId, petId), eq(walksTable.crecheId, crecheId))).returning();
+      return w;
+    });
+
+    res.json({ ...walk, staffName: req.user?.name });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao finalizar passeio" });
+  }
 });
 
 // Force-checkout: libera um pet preso (isCheckedIn=true sem reserva ativa).
 // Útil quando complete-service ou outro bug deixou o pet travado na creche.
 router.post("/:petId/force-checkout", async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
+  try {
+    if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+    if (req.user.role === "tutor") { res.status(403).json({ error: "Sem permissão" }); return; }
+    const crecheId = parseInt(String(req.params.crecheId));
+    const petId = parseInt(String(req.params.petId));
 
-  const [pet] = await db.select({ id: petsTable.id, isCheckedIn: petsTable.isCheckedIn })
-    .from(petsTable)
-    .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-    .limit(1);
+    const result = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
 
-  if (!pet) { res.status(404).json({ error: "Pet não encontrado" }); return; }
-  if (!pet.isCheckedIn) { res.status(400).json({ error: "Pet não está marcado como presente" }); return; }
+      const [pet] = await tx.select({ id: petsTable.id, isCheckedIn: petsTable.isCheckedIn })
+        .from(petsTable)
+        .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
+        .limit(1);
 
-  // Only allow if there's no active booking (if there is, use regular checkout)
-  const [activeBooking] = await db.select({ id: bookingsTable.id })
-    .from(bookingsTable)
-    .where(and(
-      eq(bookingsTable.crecheId, crecheId),
-      eq(bookingsTable.petId, petId),
-      eq(bookingsTable.status, "active"),
-    )).limit(1);
+      if (!pet) return { status: 404, error: "Pet não encontrado" };
+      if (!pet.isCheckedIn) return { status: 400, error: "Pet não está marcado como presente" };
 
-  if (activeBooking) {
-    res.status(409).json({ error: "Pet possui reserva ativa. Use o check-out normal." });
-    return;
+      // Only allow if there's no active booking (if there is, use regular checkout)
+      const [activeBooking] = await tx.select({ id: bookingsTable.id })
+        .from(bookingsTable)
+        .where(and(
+          eq(bookingsTable.crecheId, crecheId),
+          eq(bookingsTable.petId, petId),
+          eq(bookingsTable.status, "active"),
+        )).limit(1);
+
+      if (activeBooking) {
+        return { status: 409, error: "Pet possui reserva ativa. Use o check-out normal." };
+      }
+
+      await tx.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, petId));
+      await tx.update(crechesTable).set({
+        currentOccupancy: tx.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any,
+      }).where(eq(crechesTable.id, crecheId));
+
+      return { status: 200, ok: true, petId };
+    });
+
+    if (result.status !== 200) {
+      res.status(result.status!).json({ error: result.error });
+      return;
+    }
+
+    res.json({ ok: true, petId: result.petId });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro no force-checkout" });
   }
-
-  await db.update(petsTable).set({ isCheckedIn: false }).where(eq(petsTable.id, petId));
-  await db.update(crechesTable).set({
-    currentOccupancy: db.$count(petsTable, and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true))) as any,
-  }).where(eq(crechesTable.id, crecheId));
-
-  res.json({ ok: true, petId });
 });
 
 export default router;

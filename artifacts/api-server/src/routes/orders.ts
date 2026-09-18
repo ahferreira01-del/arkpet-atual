@@ -23,6 +23,10 @@ import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.
 import { validate } from "../middlewares/validate.js";
 import { z } from "zod";
 import { createOrder, cancelOrder, dispatchLowStockAlerts } from "../services/orders.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
 import { sendPushToRole, sendPushToUser } from "../lib/push.js";
 
 const router = Router({ mergeParams: true });
@@ -210,6 +214,8 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
     }
 
     const updatedOrder = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+
       const [locked] = await tx
         .select()
         .from(ordersTable)
@@ -250,6 +256,10 @@ router.put("/:orderId/status", requireCrecheAccess, validate(updateStatusSchema)
       data: { type: "order_status", orderId, crecheId },
     }).catch(() => {});
   } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
     if (err.status === 409 || err.message?.includes("não pode avançar") || err.message?.includes("cancelados")) {
       res.status(409).json({ error: err.message });
     } else {

@@ -10,6 +10,7 @@ import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { type FinancialDomainEvent } from "./events.js";
 import { financialLog } from "../lib/logger.js";
 import { eq, and, count, inArray } from "drizzle-orm";
+import { acquireTenantOperationalLock } from "./tenantLifecycleLock.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos públicos do CreditService
@@ -169,6 +170,51 @@ export async function releasePurchasedCredits(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// addManualCredits
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function addManualCredits(params: {
+  crecheId: number;
+  tutorId: number;
+  totalCredits: number;
+  maxPetsPerDay?: number;
+  expirationDate?: string | null;
+  userId: number;
+  tx?: any;
+}) {
+  const runner = async (txClient: any) => {
+    await acquireTenantOperationalLock(params.crecheId, txClient);
+
+    const credits = await CreditRepository.createPackageCredits({
+      crecheId: params.crecheId,
+      tutorId: params.tutorId,
+      totalCredits: params.totalCredits,
+      usedCredits: 0,
+      maxPetsPerDay: params.maxPetsPerDay || 1,
+      expirationDate: params.expirationDate
+        ? new Date(params.expirationDate).toISOString().split("T")[0]
+        : null,
+    }, txClient);
+
+    await logFinancialAudit({
+      crecheId: params.crecheId,
+      userId: params.userId,
+      action: "credits_purchase",
+      referenceId: credits.id,
+      referenceType: "tutor_credits",
+      details: `Pacote de ${params.totalCredits} créditos adquirido pelo tutor ${params.tutorId}.`,
+    }, txClient);
+
+    return credits;
+  };
+
+  if (params.tx) {
+    return runner(params.tx);
+  }
+  return db.transaction(runner);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // consumePackageCredits
 //
 // Fase 14: adicionada verificação de idempotência — se bookingCreditsTable já
@@ -184,6 +230,8 @@ export async function consumePackageCredits(
   packageMaxPets: number,
   tx: any
 ): Promise<ConsumePackageCreditsResult> {
+  await acquireTenantOperationalLock(crecheId, tx);
+
   // ── Fase 14: Idempotência ────────────────────────────────────────────────
   const existing = await CreditRepository.findBookingCredits(bookingId, tx);
 
@@ -284,6 +332,8 @@ export async function consumeServiceCreditsForBooking(
   userId: number,
   tx: any
 ): Promise<number> {
+  await acquireTenantOperationalLock(crecheId, tx);
+
   if (catalogueItem.type !== "service") return daysToBill;
 
   // ── Fase 14: Idempotência ────────────────────────────────────────────────

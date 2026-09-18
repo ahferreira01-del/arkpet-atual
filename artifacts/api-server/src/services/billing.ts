@@ -12,6 +12,7 @@ import { financialLog } from "../lib/logger.js";
 import { getBusinessDate } from "../lib/date.js";
 import { ordersTable } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { acquireTenantOperationalLock } from "./tenantLifecycleLock.js";
 
 export class StateConflictError extends Error {
   readonly status = 409;
@@ -82,6 +83,8 @@ async function lockInvoiceForMutation(
   crecheId: number,
   tx: any
 ) {
+  await acquireTenantOperationalLock(crecheId, tx);
+
   const snapshot = await InvoiceRepository.findByIdAndCreche(invoiceId, crecheId, tx);
   if (!snapshot) return null;
 
@@ -547,6 +550,8 @@ export class BillingService {
     const businessDate = getBusinessDate();
 
     const executeLogic = async (txClient: any) => {
+      await acquireTenantOperationalLock(params.crecheId, txClient);
+
       let invoiceId: number;
       let hintedInvoice:
         | Awaited<ReturnType<typeof InvoiceRepository.findById>>
