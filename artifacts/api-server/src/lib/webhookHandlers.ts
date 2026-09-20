@@ -8,6 +8,11 @@ import { applyFinancialStripeEvent } from "./financialSync.js";
 import { claimGatewayEvent, finalizeGatewayEvent } from "../services/gatewayEvents.js";
 import { handlePlatformServicePaymentWebhook } from "../services/platformServices.js";
 
+import { db } from "@workspace/db";
+import { billingWebhookErrorsTable } from "@workspace/db/schema";
+import { sql } from "drizzle-orm";
+import { UnknownStripePriceError } from "./subscriptionSync.js";
+
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
 /**
@@ -32,7 +37,7 @@ export async function dispatchWebhookBusinessLogic(event: any): Promise<void> {
 }
 
 export class WebhookHandlers {
-  static async processWebhook(payload: Buffer, signature: string): Promise<void> {
+  static async processWebhook(payload: Buffer, signature: string): Promise<any> {
     if (!Buffer.isBuffer(payload)) {
       throw new Error(
         "STRIPE WEBHOOK ERROR: payload deve ser um Buffer. " +
@@ -82,15 +87,55 @@ export class WebhookHandlers {
     const claim = await claimGatewayEvent(event, "stripe");
     if (!claim.shouldProcess) {
       console.log(`[webhook] Gateway event ${event?.id} (${event?.type}) skipped: ${claim.reason}`);
-      return;
+      return { statusCode: 200, skipped: true, reason: claim.reason };
     }
 
     try {
       // Apply the lifecycle transition to the app subscription.
-      // Errors propagate so the route returns non-2xx and Stripe retries.
       await dispatchWebhookBusinessLogic(event);
       await finalizeGatewayEvent(event.id, "processed", undefined, "stripe");
+      return { statusCode: 200, received: true };
     } catch (err: any) {
+      // TC-STP-03 & TC-STP-13: Catch unmapped Stripe Price IDs, insert/upsert into billing_webhook_errors table
+      if (err instanceof UnknownStripePriceError || err?.code === "UNKNOWN_STRIPE_PRICE") {
+        const stripePriceId = (err as any).stripePriceId ?? event.data?.object?.items?.data?.[0]?.price?.id ?? null;
+        const customerId = typeof event.data?.object?.customer === "string" ? event.data.object.customer : event.data?.object?.customer?.id ?? null;
+        const subId = typeof event.data?.object?.subscription === "string" ? event.data.object.subscription : event.data?.object?.id ?? null;
+
+        await db
+          .insert(billingWebhookErrorsTable)
+          .values({
+            eventId: event.id,
+            eventType: event.type,
+            stripePriceId,
+            stripeSubscriptionId: subId,
+            customerId,
+            rawPayload: event,
+            errorCode: "UNKNOWN_STRIPE_PRICE",
+            errorMessage: err.message,
+            status: "PENDING_RECONCILIATION",
+            attemptCount: 0,
+            retryCount: 0,
+            lastSeenAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: billingWebhookErrorsTable.eventId,
+            set: {
+              retryCount: sql`${billingWebhookErrorsTable.retryCount} + 1`,
+              lastSeenAt: sql`NOW()`,
+            },
+          });
+
+        await finalizeGatewayEvent(
+          event.id,
+          "ignored",
+          "Unknown Stripe price ID logged to billing_webhook_errors for administrative reconciliation.",
+          "stripe",
+        );
+
+        return { statusCode: 202, received: true, status: "pending_reconciliation" };
+      }
+
       const isRetryable = !(err instanceof SyntaxError || (err as any)?.code === "INVALID_EVENT");
       await finalizeGatewayEvent(
         event.id,

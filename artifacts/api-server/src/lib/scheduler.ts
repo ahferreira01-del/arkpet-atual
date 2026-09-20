@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { db } from "@workspace/db";
+import { db, INTERVAL_MONTHS, type BillingInterval } from "@workspace/db";
+
 import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable, crechesTable } from "@workspace/db/schema";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { financialLog } from "./logger.js";
@@ -683,8 +684,13 @@ export async function applyScheduledPlanChanges() {
         id: subscriptionsTable.id,
         crecheId: subscriptionsTable.crecheId,
         scheduledPlanId: subscriptionsTable.scheduledPlanId,
+        scheduledPlanVersionId: subscriptionsTable.scheduledPlanVersionId,
+        scheduledPlanVersionPriceId: subscriptionsTable.scheduledPlanVersionPriceId,
+        scheduledPriceCents: subscriptionsTable.scheduledPriceCents,
+        scheduledStripePriceId: subscriptionsTable.scheduledStripePriceId,
         scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
         scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
+        currentPeriodEnd: subscriptionsTable.currentPeriodEnd,
       })
       .from(subscriptionsTable)
       .innerJoin(crechesTable, eq(subscriptionsTable.crecheId, crechesTable.id))
@@ -701,13 +707,29 @@ export async function applyScheduledPlanChanges() {
     console.log(`[scheduler] Aplicando ${pending.length} mudança(s) de plano agendada(s)...`);
 
     for (const sub of pending) {
+      // Calculate NEW period end from the effective boundary (scheduledPeriodEnd):
+      // current_period_end = scheduled_period_end + INTERVAL_MONTHS[scheduled_billing_interval]
+      const interval = (sub.scheduledBillingInterval as BillingInterval) ?? "month";
+      const boundaryDate = sub.scheduledPeriodEnd ?? sub.currentPeriodEnd ?? now;
+      const newPeriodEnd = new Date(boundaryDate);
+      const monthsToAdd = INTERVAL_MONTHS[interval] ?? 1;
+      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + monthsToAdd);
+
       await db
         .update(subscriptionsTable)
         .set({
           planId: sub.scheduledPlanId!,
+          planVersionId: sub.scheduledPlanVersionId ?? null,
+          planVersionPriceId: sub.scheduledPlanVersionPriceId ?? null,
+          contractedPriceCents: sub.scheduledPriceCents ?? null,
+          contractedStripePriceId: sub.scheduledStripePriceId ?? null,
           billingInterval: sub.scheduledBillingInterval,
-          currentPeriodEnd: sub.scheduledPeriodEnd,
+          currentPeriodEnd: newPeriodEnd,
           scheduledPlanId: null,
+          scheduledPlanVersionId: null,
+          scheduledPlanVersionPriceId: null,
+          scheduledPriceCents: null,
+          scheduledStripePriceId: null,
           scheduledBillingInterval: null,
           scheduledPeriodEnd: null,
           status: "active",
@@ -715,7 +737,7 @@ export async function applyScheduledPlanChanges() {
         })
         .where(eq(subscriptionsTable.id, sub.id));
 
-      console.log(`[scheduler] Plano aplicado para crecheId=${sub.crecheId}: planId=${sub.scheduledPlanId}`);
+      console.log(`[scheduler] Plano aplicado para crecheId=${sub.crecheId}: planId=${sub.scheduledPlanId}, versionId=${sub.scheduledPlanVersionId}`);
     }
   } catch (err) {
     console.error("[scheduler] erro ao aplicar planos agendados:", err);

@@ -10,7 +10,7 @@ import {
   type CustomerCommercialCondition,
 } from "@workspace/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
-import { calculateEffectivePrice, PricingEngineError } from "./pricingEngine.js";
+import { calculateEffectivePrice, resolveSaaSSubscriptionPrice, PricingEngineError } from "./pricingEngine.js";
 import { resolveCatalogPlanPrice, normalizeBillingInterval, CatalogPriceResolutionError } from "./catalogPricing.js";
 import { logCommercialAudit } from "./commercialAudit.js";
 import {
@@ -542,9 +542,23 @@ export async function acceptProposal(params: AcceptProposalParams): Promise<Acce
       .limit(1);
 
     if (plan) {
-      const resolved = await resolveCatalogPlanPrice(plan, snapshot.billingInterval ?? "month", dbClient);
+      let catalogPriceCents: number;
+      try {
+        const resolved = await resolveSaaSSubscriptionPrice({
+          crecheId: params.crecheId,
+          planId: snapshot.planId,
+          interval: snapshot.billingInterval ?? "month",
+          referenceDate: now,
+          dbClient,
+        });
+        catalogPriceCents = resolved.basePriceCents;
+      } catch {
+        const cat = await resolveCatalogPlanPrice(plan, snapshot.billingInterval ?? "month", dbClient);
+        catalogPriceCents = cat.catalogPriceCents;
+      }
+
       const calc = calculateEffectivePrice({
-        catalogPriceCents: resolved.catalogPriceCents,
+        catalogPriceCents,
         pricingOverrideType: "percentage",
         pricingOverrideValue: snapshot.pricingOverrideValue ?? 0,
       });

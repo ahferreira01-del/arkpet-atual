@@ -9,12 +9,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   Building2, Plus, MapPin, Phone, Users, Mail,
   Pencil, ToggleLeft, ToggleRight, Trash2, CreditCard,
-  RotateCcw, Archive, AlertCircle,
+  RotateCcw, Archive, AlertCircle, Layers,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { CommercialSupportModal } from "./commercial-support-modal";
+import { PlanVersioningModal } from "./PlanVersioningModal";
 
 export default function AdminCreches() {
   const queryClient = useQueryClient();
@@ -31,6 +32,7 @@ export default function AdminCreches() {
   const [archiving, setArchiving] = useState(false);
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const [supportCreche, setSupportCreche] = useState<any | null>(null);
+  const [planVersioningOpen, setPlanVersioningOpen] = useState(false);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -170,9 +172,14 @@ export default function AdminCreches() {
         description="Gerencie todas as unidades da rede ArkPet."
         icon={Building2}
         action={
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Nova Creche</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setPlanVersioningOpen(true)}>
+              <Layers className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Versões de Planos</span>
+            </Button>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <Plus className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Nova Creche</span>
+            </Button>
+          </div>
         }
       />
 
@@ -600,6 +607,15 @@ export default function AdminCreches() {
           isOpen={Boolean(supportCreche)}
           onClose={() => setSupportCreche(null)}
           creche={supportCreche}
+        />
+      )}
+
+      {/* ── Plan Versioning Modal (R38.B) ── */}
+      {planVersioningOpen && (
+        <PlanVersioningModal
+          isOpen={planVersioningOpen}
+          onClose={() => setPlanVersioningOpen(false)}
+          plan={{ id: 1, name: "Starter" }}
         />
       )}
     </div>

@@ -5,6 +5,18 @@
 import Stripe from "stripe";
 import type { StripeSync } from "stripe-replit-sync";
 
+export function assertSafeStripeCredentials(key?: string): void {
+  const effectiveKey = key ?? process.env.STRIPE_SECRET_KEY ?? process.env.STRIPE_RESTRICTED_KEY;
+  if (effectiveKey) {
+    const trimmed = effectiveKey.trim();
+    if (trimmed.startsWith("sk_live_") || trimmed.startsWith("rk_live_")) {
+      throw new Error(
+        "[FATAL SECURITY ASSERTION] Live Stripe API keys (sk_live_/rk_live_) detected in test/non-production execution. Aborting immediately without mutation.",
+      );
+    }
+  }
+}
+
 async function getCredentials(): Promise<{ publishableKey: string; secretKey: string }> {
   // Try Replit connector first
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
@@ -52,6 +64,9 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
   const publishableKey = process.env.STRIPE_PUBLISHABLE_KEY;
 
   if (secretKey && publishableKey) {
+    if (process.env.NODE_ENV === "test" || process.env.VITEST || process.env.R38A_INTEGRATION_TESTS) {
+      assertSafeStripeCredentials(secretKey);
+    }
     return { publishableKey, secretKey };
   }
 

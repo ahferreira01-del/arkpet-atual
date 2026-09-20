@@ -306,6 +306,7 @@ export default function Billing() {
   }
 
   const currentInterval = subscription?.billingInterval as Interval | null | undefined;
+  const sub = subscription as any;
 
   return (
     <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto pb-24">
@@ -323,17 +324,37 @@ export default function Billing() {
                <CalendarClock className="h-6 w-6 text-primary" />
             </div>
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center flex-wrap gap-2">
                 <span className={cn("text-[11px] font-semibold px-2.5 py-0.5 rounded-full border", statusInfo.className)}>
                   • {statusInfo.label}
                 </span>
+                {sub?.isGrandfathered && (
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-amber-500/15 text-amber-600 border-amber-500/30">
+                    Contrato Legado Preservado (Grandfathered)
+                  </span>
+                )}
+                {sub?.commercialBindingStatus === "unresolved_legacy_contract" && (
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-purple-500/15 text-purple-600 border-purple-500/30">
+                    Contrato Legado em Revisão
+                  </span>
+                )}
               </div>
               <h2 className="text-xl font-display font-bold text-foreground flex items-center flex-wrap gap-2">
                 {subscription?.plan?.name ?? "Plano gratuito"}
                 <span className="text-[13px] font-medium text-muted-foreground font-sans">
                   · até {subscription?.plan?.petLimit ?? 0} pets
                 </span>
+                {sub?.contractedPriceCents !== null && sub?.contractedPriceCents !== undefined && (
+                  <span className="text-[13px] font-medium text-foreground">
+                    · {formatBrl(sub.contractedPriceCents)}
+                  </span>
+                )}
               </h2>
+              {sub?.isGrandfathered && sub?.activeCatalogPriceCents && (
+                <div className="text-xs text-muted-foreground">
+                  Preço Vigente no Catálogo: {formatBrl(sub.activeCatalogPriceCents)}
+                </div>
+              )}
               <p className="text-[13px] text-muted-foreground flex items-center gap-1 font-medium">
                 {status === "trial"
                   ? `Teste termina em ${formatDate(subscription?.trialEndsAt)}`
@@ -358,6 +379,42 @@ export default function Billing() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Scheduled Plan Change Banner (R38.B) */}
+      {sub?.scheduledPlanId && (
+        <Card className="bg-amber-500/5 border border-amber-500/30 rounded-[20px] shadow-sm">
+          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <CalendarClock className="h-5 w-5 text-amber-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  Mudança de Plano Agendada
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  O plano será alterado para <strong>{sub?.scheduledPlanInfo?.name ?? "Novo Plano"}</strong> a partir de <strong>{formatDate(sub?.scheduledPeriodEnd ?? subscription?.currentPeriodEnd)}</strong>
+                  {sub?.scheduledPriceCents ? ` pelo valor de ${formatBrl(sub.scheduledPriceCents)}` : ""}.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={async () => {
+                try {
+                  await fetch(`${apiBase}/api/billing/scheduled`, { method: "DELETE", credentials: "include" });
+                  queryClient.invalidateQueries();
+                  toast({ title: "Agendamento cancelado", description: "A mudança de plano agendada foi cancelada." });
+                } catch {
+                  toast({ title: "Erro", description: "Não foi possível cancelar o agendamento.", variant: "destructive" });
+                }
+              }}
+            >
+              Cancelar Mudança
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* SEÇÃO: ATUALIZAÇÕES COMERCIAIS (R36.H) */}
       {isAdmin && commercialNotifications.length > 0 && (

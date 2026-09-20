@@ -5,13 +5,42 @@
 // remains the source of truth for those transitions.
 import { db } from "@workspace/db";
 import { BILLING_INTERVALS, INTERVAL_MONTHS, type BillingInterval } from "@workspace/db";
-import { subscriptionsTable, plansTable, planPricesTable, customerCommercialConditionsTable } from "@workspace/db/schema";
+import {
+  subscriptionsTable,
+  plansTable,
+  planPricesTable,
+  planVersionsTable,
+  planVersionPricesTable,
+  customerCommercialConditionsTable,
+} from "@workspace/db/schema";
 import { eq, and, or, isNull, lte } from "drizzle-orm";
 import { logCommercialAudit } from "../services/commercialAudit.js";
 import { getUncachableStripeClient } from "./stripeClient.js";
 import { resolveCatalogPlanPrice } from "../services/catalogPricing.js";
-import { calculateEffectivePrice } from "../services/pricingEngine.js";
+import { calculateEffectivePrice, resolveSaaSSubscriptionPrice } from "../services/pricingEngine.js";
 import { reconcileBenefitCycleAdvancement } from "../services/commercialCampaigns.js";
+
+export class UnknownStripePriceError extends Error {
+  public stripePriceId: string;
+  public code: string = "UNKNOWN_STRIPE_PRICE";
+
+  constructor(priceId: string) {
+    super(`Unknown Stripe price ID: ${priceId}`);
+    this.name = "UnknownStripePriceError";
+    this.stripePriceId = priceId;
+  }
+}
+
+export interface ResolvedPlanByPrice {
+  planId: number;
+  interval: BillingInterval;
+  isCustom?: boolean;
+  conditionId?: number;
+  planVersionId?: number;
+  planVersionPriceId?: number;
+  isGrandfathered?: boolean;
+  priceBrl?: number;
+}
 
 // Shared downgrade detection: returns true if planId is cheaper than the
 // creche's currently active plan and the current paid period has not yet ended.
@@ -108,27 +137,79 @@ async function findAppSubscription(opts: {
 }
 
 // Resolves a Stripe price id to the app plan + billing interval it represents.
-// Prefers plan_prices (multi-interval); falls back to legacy monthly price on plans,
-// and then to R36 customer commercial conditions for agreement-scoped custom Prices.
+// Queries plan_version_prices across all version statuses (ACTIVE, SUPERSEDED, ARCHIVED),
+// falls back to plan_prices, plans, and customer commercial conditions.
 export async function resolvePlanByPrice(
   priceId?: string | null,
-): Promise<{ planId: number; interval: BillingInterval; isCustom?: boolean; conditionId?: number } | null> {
+): Promise<ResolvedPlanByPrice | null> {
   if (!priceId) return null;
+
+  // 1. Check plan_version_prices across all version statuses (TC-STP-01, TC-STP-02)
+  try {
+    const [pvpRow] = await db
+      .select({
+        versionPriceId: planVersionPricesTable.id,
+        planVersionId: planVersionPricesTable.planVersionId,
+        interval: planVersionPricesTable.interval,
+        priceBrl: planVersionPricesTable.priceBrl,
+        planId: planVersionsTable.planId,
+        versionStatus: planVersionsTable.status,
+      })
+      .from(planVersionPricesTable)
+      .innerJoin(
+        planVersionsTable,
+        eq(planVersionPricesTable.planVersionId, planVersionsTable.id),
+      )
+      .where(eq(planVersionPricesTable.stripePriceId, priceId))
+      .limit(1);
+
+    if (pvpRow) {
+      const isGrandfathered =
+        pvpRow.versionStatus === "SUPERSEDED" || pvpRow.versionStatus === "ARCHIVED";
+      return {
+        planId: pvpRow.planId,
+        interval: pvpRow.interval as BillingInterval,
+        planVersionId: pvpRow.planVersionId,
+        planVersionPriceId: pvpRow.versionPriceId,
+        isGrandfathered,
+        priceBrl: pvpRow.priceBrl,
+      };
+    }
+  } catch (err) {
+    // If table query fails, continue to fallbacks
+  }
+
+  // 2. Fallback to planPricesTable
   const [pp] = await db
-    .select({ planId: planPricesTable.planId, interval: planPricesTable.interval })
+    .select({ planId: planPricesTable.planId, interval: planPricesTable.interval, priceBrl: planPricesTable.priceBrl })
     .from(planPricesTable)
     .where(eq(planPricesTable.stripePriceId, priceId))
     .limit(1);
-  if (pp) return { planId: pp.planId, interval: pp.interval as BillingInterval };
+  if (pp) {
+    return {
+      planId: pp.planId,
+      interval: pp.interval as BillingInterval,
+      priceBrl: pp.priceBrl,
+      isGrandfathered: false,
+    };
+  }
 
+  // 3. Fallback to plansTable
   const [plan] = await db
-    .select({ id: plansTable.id })
+    .select({ id: plansTable.id, priceBrl: plansTable.priceBrl })
     .from(plansTable)
     .where(eq(plansTable.stripePriceId, priceId))
     .limit(1);
-  if (plan) return { planId: plan.id, interval: "month" };
+  if (plan) {
+    return {
+      planId: plan.id,
+      interval: "month",
+      priceBrl: plan.priceBrl,
+      isGrandfathered: false,
+    };
+  }
 
-  // R36 agreement-scoped custom commercial condition check (Section 25, 26)
+  // 4. R36 agreement-scoped custom commercial condition check
   const [customCond] = await db
     .select()
     .from(customerCommercialConditionsTable)
@@ -144,10 +225,12 @@ export async function resolvePlanByPrice(
       interval,
       isCustom: true,
       conditionId: customCond.id,
+      priceBrl: customCond.lastSynchronizedAmountCents ?? customCond.snapshotBasePriceCents ?? 0,
+      isGrandfathered: false,
     };
   }
 
-  return null;
+  throw new UnknownStripePriceError(priceId);
 }
 
 // Order-safe commit. Stripe does NOT guarantee ordered webhook delivery (and
@@ -229,10 +312,19 @@ export async function handleSubscriptionEvent(
   const incomingPriceId = currentItem?.price?.id;
   const actualStripeAmountCents = currentItem?.price?.unit_amount;
 
-  const resolved = await resolvePlanByPrice(incomingPriceId);
-  if (resolved) {
+  if (incomingPriceId) {
+    const resolved = await resolvePlanByPrice(incomingPriceId);
+    if (!resolved) {
+      throw new UnknownStripePriceError(incomingPriceId);
+    }
     updates.planId = resolved.planId;
     updates.billingInterval = resolved.interval;
+    if (resolved.planVersionId) {
+      updates.planVersionId = resolved.planVersionId;
+      updates.planVersionPriceId = resolved.planVersionPriceId ?? null;
+      updates.contractedPriceCents = resolved.priceBrl ?? actualStripeAmountCents ?? null;
+      updates.contractedStripePriceId = incomingPriceId;
+    }
     if (resolved.isCustom && resolved.conditionId) {
       // Section 8: Check if active percentage condition has drifted from current catalog price
       let shouldMarkDivergent = false;
@@ -421,14 +513,23 @@ async function handlePaymentIntentSucceeded(pi: any, eventCreatedMs: number): Pr
   const { isDowngrade } = await isDowngradeScenario(appSub, planId);
 
   if (isDowngrade) {
-    // Keep the current (higher) plan active; queue the cheaper plan.
-    const scheduledPeriodEnd = new Date(appSub.currentPeriodEnd!);
-    scheduledPeriodEnd.setMonth(scheduledPeriodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+    // Keep the current (higher) plan active; queue the cheaper plan for when it expires.
+    // Under R38.B, scheduled_period_end = currentPeriodEnd (the effective execution boundary).
+    const targetPricing = await resolveSaaSSubscriptionPrice({
+      crecheId,
+      planId,
+      interval,
+      referenceDate: appSub.currentPeriodEnd,
+    }).catch(() => null);
 
     await commit(appSub, eventCreatedMs, {
       scheduledPlanId: planId,
+      scheduledPlanVersionId: targetPricing?.planVersionId ?? null,
+      scheduledPlanVersionPriceId: targetPricing?.planVersionPriceId ?? null,
+      scheduledPriceCents: targetPricing?.finalPriceCents ?? null,
+      scheduledStripePriceId: targetPricing?.stripePriceId ?? null,
       scheduledBillingInterval: interval,
-      scheduledPeriodEnd,
+      scheduledPeriodEnd: appSub.currentPeriodEnd,
       stripeCustomerId: customerId ?? appSub.stripeCustomerId,
     });
 

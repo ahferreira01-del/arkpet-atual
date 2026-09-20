@@ -39,41 +39,40 @@ export async function seedPlans() {
     await db.insert(plansTable).values(insertValues);
     console.log(`[startup] ${PLAN_DEFINITIONS.length} planos criados.`);
   } else {
-    // Subsequent boots: apply corrections by id (renames, repricing). Idempotent.
-    let changed = 0;
+    // Subsequent boots: strictly non-destructive.
+    // Preserves catalog versioning and prevents historical price rewrites.
+    const existingPlans = await db.select().from(plansTable);
+    let differences = 0;
     for (const def of PLAN_DEFINITIONS) {
-      const result = await db
-        .update(plansTable)
-        .set({ name: def.name, petLimit: def.petLimit, priceBrl: def.priceBrl, description: def.description })
-        .where(eq(plansTable.id, def.id));
-      if ((result as any).rowCount > 0) changed++;
+      const match = existingPlans.find((p) => p.id === def.id || p.name.toLowerCase() === def.name.toLowerCase());
+      if (match) {
+        if (match.priceBrl !== def.priceBrl || match.petLimit !== def.petLimit) {
+          differences++;
+          console.log(
+            `[startup] Aviso: Plano "${match.name}" em código difere da projeção no banco (código: R$ ${def.priceBrl / 100}, banco: R$ ${match.priceBrl / 100}). Versões imutáveis preservadas.`,
+          );
+        }
+      }
     }
-    console.log(`[startup] Planos verificados — ${changed} plano(s) sincronizados.`);
+    console.log(`[startup] Planos verificados — ${existingPlans.length} plano(s) sincronizados.`);
   }
 
   await seedPlanPrices();
 }
 
-// Ensures every paid plan has a plan_prices row per interval and that the stored
-// price_brl / discount_pct match the current billing constants. Idempotent:
-// inserts missing rows, updates stale ones, deactivates Enterprise prices.
+// Ensures every paid plan has a plan_prices row per interval.
+// Additive only: inserts missing interval rows without mutating existing published prices.
 async function seedPlanPrices() {
   const plans = await db.select().from(plansTable);
   let created = 0;
-  let updated = 0;
 
   for (const plan of plans) {
     if (plan.priceBrl === 0) {
-      // Free/sob-consulta plans (Trial, Enterprise): deactivate all interval prices.
-      await db
-        .update(planPricesTable)
-        .set({ isActive: false })
-        .where(eq(planPricesTable.planId, plan.id));
       continue;
     }
 
     for (const interval of BILLING_INTERVALS) {
-      const expectedPrice   = computeIntervalPrice(plan.priceBrl, interval);
+      const expectedPrice = computeIntervalPrice(plan.priceBrl, interval);
       const expectedDiscount = INTERVAL_DISCOUNT_PCT[interval];
 
       const [existing] = await db
@@ -83,31 +82,19 @@ async function seedPlanPrices() {
 
       if (!existing) {
         await db.insert(planPricesTable).values({
-          planId: plan.id, interval,
+          planId: plan.id,
+          interval,
           priceBrl: expectedPrice,
           discountPct: expectedDiscount,
           isActive: true,
         });
         created++;
-      } else if (
-        Number(existing.priceBrl) !== expectedPrice ||
-        existing.discountPct      !== expectedDiscount ||
-        !existing.isActive
-      ) {
-        // Price or discount changed: clear the stale Stripe price ID so
-        // seedStripePrices() creates a fresh one for the new amount.
-        await db
-          .update(planPricesTable)
-          .set({ priceBrl: expectedPrice, discountPct: expectedDiscount, isActive: true, stripePriceId: null })
-          .where(and(eq(planPricesTable.planId, plan.id), eq(planPricesTable.interval, interval)));
-        updated++;
       }
     }
   }
 
   if (created > 0) console.log(`[startup] ${created} preço(s) de plano criados.`);
-  if (updated > 0) console.log(`[startup] ${updated} preço(s) de plano atualizados.`);
-  if (created === 0 && updated === 0) console.log(`[startup] Preços de plano verificados — sem alterações.`);
+  console.log(`[startup] Preços de plano verificados — sem alterações.`);
 }
 
 // Syncs Stripe products + prices for every paid plan interval.

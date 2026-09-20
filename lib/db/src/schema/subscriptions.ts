@@ -35,6 +35,16 @@ export const subscriptionsTable = pgTable("subscriptions", {
   // The new period end calculated from the point when the scheduled plan starts
   // (i.e. currentPeriodEnd + intervalMonths of the scheduled plan).
   scheduledPeriodEnd: timestamp("scheduled_period_end"),
+  // R38.B Plan Catalog Versioning & Grandfathering snapshots
+  planVersionId: integer("plan_version_id"),
+  planVersionPriceId: integer("plan_version_price_id"),
+  contractedPriceCents: integer("contracted_price_cents"),
+  contractedStripePriceId: text("contracted_stripe_price_id"),
+  // Scheduled change versioning snapshots (OPEN-04 Option A)
+  scheduledPlanVersionId: integer("scheduled_plan_version_id"),
+  scheduledPlanVersionPriceId: integer("scheduled_plan_version_price_id"),
+  scheduledPriceCents: integer("scheduled_price_cents"),
+  scheduledStripePriceId: text("scheduled_stripe_price_id"),
 });
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true });

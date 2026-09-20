@@ -11,6 +11,8 @@ import {
 import {
   plansTable,
   planPricesTable,
+  planVersionsTable,
+  planVersionPricesTable,
   subscriptionsTable,
   crechesTable,
   petsTable,
@@ -22,6 +24,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { getUncachableStripeClient } from "../lib/stripeClient.js";
 import { resolvePlanByPrice } from "../lib/subscriptionSync.js";
+import { resolveSaaSSubscriptionPrice } from "../services/pricingEngine.js";
 import { getAppBaseUrl } from "../lib/config.js";
 import { sensitiveLimiter } from "../middlewares/rateLimit.js";
 import {
@@ -141,7 +144,15 @@ router.get("/subscription", async (req: AuthRequest, res) => {
       pastDueSince: subscriptionsTable.pastDueSince,
       stripeSubscriptionId: subscriptionsTable.stripeSubscriptionId,
       stripeCustomerId: subscriptionsTable.stripeCustomerId,
+      planVersionId: subscriptionsTable.planVersionId,
+      planVersionPriceId: subscriptionsTable.planVersionPriceId,
+      contractedPriceCents: subscriptionsTable.contractedPriceCents,
+      contractedStripePriceId: subscriptionsTable.contractedStripePriceId,
       scheduledPlanId: subscriptionsTable.scheduledPlanId,
+      scheduledPlanVersionId: subscriptionsTable.scheduledPlanVersionId,
+      scheduledPlanVersionPriceId: subscriptionsTable.scheduledPlanVersionPriceId,
+      scheduledPriceCents: subscriptionsTable.scheduledPriceCents,
+      scheduledStripePriceId: subscriptionsTable.scheduledStripePriceId,
       scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
       scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
       plan: {
@@ -175,7 +186,76 @@ router.get("/subscription", async (req: AuthRequest, res) => {
     .from(petsTable)
     .where(eq(petsTable.crecheId, crecheId));
 
-  res.json({ ...row, petCount: petCountRow?.total ?? 0 });
+  // Category 05: Unresolved Legacy Contract (TC-GF-08)
+  const isUnresolvedLegacy = row.planVersionId == null && row.contractedPriceCents == null;
+  const commercialBindingStatus = isUnresolvedLegacy ? "unresolved_legacy_contract" : "bound";
+
+  // Resolve active catalog price for this plan & interval
+  let activeCatalogPriceCents = row.plan.priceBrl;
+  let activeVersion: any = null;
+  try {
+    const [actVer] = await db
+      .select()
+      .from(planVersionsTable)
+      .where(and(eq(planVersionsTable.planId, row.planId), eq(planVersionsTable.status, "ACTIVE")))
+      .limit(1);
+
+    if (actVer) {
+      activeVersion = actVer;
+      const targetInterval = row.billingInterval ?? "month";
+      const [actPrice] = await db
+        .select()
+        .from(planVersionPricesTable)
+        .where(
+          and(
+            eq(planVersionPricesTable.planVersionId, actVer.id),
+            eq(planVersionPricesTable.interval, targetInterval),
+          ),
+        )
+        .limit(1);
+
+      if (actPrice) {
+        activeCatalogPriceCents = actPrice.priceBrl;
+      } else {
+        activeCatalogPriceCents = actVer.priceBrl;
+      }
+    }
+  } catch {
+    // fallback to plansTable.priceBrl
+  }
+
+  let isGrandfathered: boolean | null = null;
+  if (isUnresolvedLegacy) {
+    isGrandfathered = null;
+  } else if (row.planVersionId) {
+    if (activeVersion && activeVersion.id !== row.planVersionId) {
+      isGrandfathered = true;
+    } else {
+      const [boundVer] = await db
+        .select({ status: planVersionsTable.status })
+        .from(planVersionsTable)
+        .where(eq(planVersionsTable.id, row.planVersionId))
+        .limit(1);
+      isGrandfathered = boundVer ? (boundVer.status === "SUPERSEDED" || boundVer.status === "ARCHIVED") : false;
+    }
+  } else {
+    isGrandfathered = false;
+  }
+
+  const contractedPriceCents = isUnresolvedLegacy ? null : (row.contractedPriceCents ?? row.plan.priceBrl);
+  const priceCents = isUnresolvedLegacy ? null : contractedPriceCents;
+  const billingInterval = isUnresolvedLegacy && !row.billingInterval ? null : row.billingInterval;
+
+  res.json({
+    ...row,
+    priceCents,
+    contractedPriceCents,
+    billingInterval,
+    isGrandfathered,
+    activeCatalogPriceCents,
+    commercialBindingStatus,
+    petCount: petCountRow?.total ?? 0,
+  });
 });
 
 // GET /billing/saved-card — returns the card (brand + last4) saved on the active Stripe
@@ -575,7 +655,12 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
       res.status(400).json({ error: "Não foi possível identificar o plano da sessão." });
       return;
     }
-    const resolved = await resolvePlanByPrice(purchasedPriceId);
+    let resolved;
+    try {
+      resolved = await resolvePlanByPrice(purchasedPriceId);
+    } catch {
+      resolved = null;
+    }
     if (!resolved) {
       res.status(400).json({ error: "Plano correspondente não encontrado." });
       return;
@@ -593,18 +678,41 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
       .limit(1);
     const oldStripeSubId = prevSub?.stripeSubscriptionId ?? null;
 
-    await db
-      .update(subscriptionsTable)
-      .set({
-        planId: resolved.planId,
-        billingInterval: resolved.interval,
-        status: "active",
-        stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-        stripeSubscriptionId: newStripeSubId ?? undefined,
-        currentPeriodEnd: stripeSubscription ? readPeriodEnd(stripeSubscription) : undefined,
-        pastDueSince: null,
-      })
-      .where(eq(subscriptionsTable.crecheId, crecheId));
+    try {
+      await db
+        .update(subscriptionsTable)
+        .set({
+          planId: resolved.planId,
+          planVersionId: resolved.planVersionId ?? null,
+          planVersionPriceId: resolved.planVersionPriceId ?? null,
+          contractedPriceCents: resolved.priceBrl ?? null,
+          contractedStripePriceId: purchasedPriceId,
+          billingInterval: resolved.interval,
+          status: "active",
+          stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
+          stripeSubscriptionId: newStripeSubId ?? undefined,
+          currentPeriodEnd: stripeSubscription ? readPeriodEnd(stripeSubscription) : undefined,
+          pastDueSince: null,
+          scheduledPlanId: null,
+          scheduledPlanVersionId: null,
+          scheduledPlanVersionPriceId: null,
+          scheduledPriceCents: null,
+          scheduledStripePriceId: null,
+          scheduledBillingInterval: null,
+          scheduledPeriodEnd: null,
+        })
+        .where(eq(subscriptionsTable.crecheId, crecheId));
+    } catch (dbErr: any) {
+      // TC-STP-18: Case C resilience — Stripe succeeds, local DB fails.
+      // Return HTTP 202 sync_pending so UI knows payment succeeded and webhook will converge state.
+      console.error("[billing/confirm] Local DB update failed after successful Stripe payment:", dbErr);
+      res.status(202).json({
+        ok: true,
+        sync_pending: true,
+        message: "Pagamento confirmado pelo gateway. Sincronização em andamento.",
+      });
+      return;
+    }
 
     // Cancel the old subscription in Stripe when a new one replaced it.
     if (oldStripeSubId && newStripeSubId && oldStripeSubId !== newStripeSubId) {
@@ -668,16 +776,24 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
 
     if (isDowngrade) {
       // Keep current (higher) plan active; queue the cheaper plan for when it expires.
-      // The new period starts from currentPeriodEnd and lasts interval months.
-      const scheduledPeriodEnd = new Date(currentSub!.currentPeriodEnd!);
-      scheduledPeriodEnd.setMonth(scheduledPeriodEnd.getMonth() + INTERVAL_MONTHS[interval]);
+      // Under R38.B, scheduled_period_end = currentSub.currentPeriodEnd (the effective boundary).
+      const targetPricing = await resolveSaaSSubscriptionPrice({
+        crecheId,
+        planId,
+        interval,
+        referenceDate: currentSub!.currentPeriodEnd,
+      }).catch(() => null);
 
       await db
         .update(subscriptionsTable)
         .set({
           scheduledPlanId: planId,
+          scheduledPlanVersionId: targetPricing?.planVersionId ?? null,
+          scheduledPlanVersionPriceId: targetPricing?.planVersionPriceId ?? null,
+          scheduledPriceCents: targetPricing?.finalPriceCents ?? null,
+          scheduledStripePriceId: targetPricing?.stripePriceId ?? null,
           scheduledBillingInterval: interval,
-          scheduledPeriodEnd,
+          scheduledPeriodEnd: currentSub!.currentPeriodEnd,
           stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
         })
         .where(eq(subscriptionsTable.crecheId, crecheId));
@@ -685,6 +801,13 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
       console.log(`[billing] Downgrade agendado para crecheId=${crecheId}: planId=${planId} a partir de ${currentSub!.currentPeriodEnd!.toISOString()}`);
     } else {
       // Upgrade or first activation — apply immediately and clear any pending schedule.
+      const targetPricing = await resolveSaaSSubscriptionPrice({
+        crecheId,
+        planId,
+        interval,
+        referenceDate: now,
+      }).catch(() => null);
+
       const periodEnd = new Date();
       periodEnd.setMonth(periodEnd.getMonth() + INTERVAL_MONTHS[interval]);
 
@@ -692,6 +815,10 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
         .update(subscriptionsTable)
         .set({
           planId,
+          planVersionId: targetPricing?.planVersionId ?? null,
+          planVersionPriceId: targetPricing?.planVersionPriceId ?? null,
+          contractedPriceCents: targetPricing?.finalPriceCents ?? plan.priceBrl,
+          contractedStripePriceId: targetPricing?.stripePriceId ?? null,
           billingInterval: interval,
           status: "active",
           stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
@@ -699,6 +826,10 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
           currentPeriodEnd: periodEnd,
           pastDueSince: null,
           scheduledPlanId: null,
+          scheduledPlanVersionId: null,
+          scheduledPlanVersionPriceId: null,
+          scheduledPriceCents: null,
+          scheduledStripePriceId: null,
           scheduledBillingInterval: null,
           scheduledPeriodEnd: null,
         })

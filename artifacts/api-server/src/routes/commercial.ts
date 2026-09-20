@@ -12,10 +12,13 @@ import {
   assignedCommercialBenefitsTable,
   benefitCycleConsumptionsTable,
   platformServiceRequestsTable,
+  billingWebhookErrorsTable,
 } from "@workspace/db/schema";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, sql } from "drizzle-orm";
 import { authenticate, requireRole, type AuthRequest } from "../middlewares/authenticate.js";
 import { countActivePetsForCreche } from "../middlewares/checkPetLimit.js";
+import { PlanVersionService, PlanVersionError } from "../services/planVersionService.js";
+import { dispatchWebhookBusinessLogic } from "../lib/webhookHandlers.js";
 import {
   createProposal,
   updateDraftProposal,
@@ -2849,6 +2852,260 @@ commercialRouter.post(
       res.json({ success: true, markedCount: count });
     } catch (err: any) {
       res.status(500).json({ error: "MARK_ALL_READ_ERROR", message: err.message });
+    }
+  },
+);
+
+// ─── R38.B Plan Versioning Routes ────────────────────────────────────────────
+
+commercialRouter.get(
+  "/plans/:planId/versions",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      if (!planId || Number.isNaN(planId)) {
+        res.status(400).json({ error: "Invalid planId." });
+        return;
+      }
+      const versions = await PlanVersionService.getVersions(planId);
+      res.json({ versions });
+    } catch (err: any) {
+      res.status(500).json({ error: "GET_VERSIONS_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.post(
+  "/plans/:planId/versions",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      if (!planId || Number.isNaN(planId)) {
+        res.status(400).json({ error: "Invalid planId." });
+        return;
+      }
+      const { petLimit, priceBrl, prices, features, versionName, versionNumber } = req.body;
+      const result = await PlanVersionService.createDraftVersion({
+        planId,
+        versionNumber,
+        versionName,
+        petLimit: Number(petLimit),
+        priceBrl: priceBrl !== undefined ? Number(priceBrl) : undefined,
+        features,
+        prices,
+        userId: req.user?.id,
+      });
+      res.status(201).json(result);
+    } catch (err: any) {
+      if (err instanceof PlanVersionError) {
+        res.status(err.statusCode).json({ error: err.code, message: err.message });
+        return;
+      }
+      res.status(500).json({ error: "CREATE_VERSION_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.put(
+  "/plans/:planId/versions/:versionNumber",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      const versionNumber = Number(req.params.versionNumber);
+      if (!planId || Number.isNaN(planId) || !versionNumber || Number.isNaN(versionNumber)) {
+        res.status(400).json({ error: "Invalid planId or versionNumber." });
+        return;
+      }
+      const { petLimit, priceBrl, prices, features, versionName } = req.body;
+      const result = await PlanVersionService.updateDraftVersion({
+        planId,
+        versionNumber,
+        versionName,
+        petLimit: petLimit !== undefined ? Number(petLimit) : undefined,
+        priceBrl: priceBrl !== undefined ? Number(priceBrl) : undefined,
+        features,
+        prices,
+      });
+      res.json(result);
+    } catch (err: any) {
+      if (err instanceof PlanVersionError) {
+        res.status(err.statusCode).json({ error: err.code, message: err.message });
+        return;
+      }
+      res.status(500).json({ error: "UPDATE_VERSION_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.delete(
+  "/plans/:planId/versions/:versionNumber",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      const versionNumber = Number(req.params.versionNumber);
+      if (!planId || Number.isNaN(planId) || !versionNumber || Number.isNaN(versionNumber)) {
+        res.status(400).json({ error: "Invalid planId or versionNumber." });
+        return;
+      }
+      await PlanVersionService.deleteDraftVersion(planId, versionNumber);
+      res.status(204).send();
+    } catch (err: any) {
+      if (err instanceof PlanVersionError) {
+        res.status(err.statusCode).json({ error: err.code, message: err.message });
+        return;
+      }
+      res.status(500).json({ error: "DELETE_VERSION_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.post(
+  "/plans/:planId/versions/:versionNumber/activate",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      const versionNumber = Number(req.params.versionNumber);
+      if (!planId || Number.isNaN(planId) || !versionNumber || Number.isNaN(versionNumber)) {
+        res.status(400).json({ error: "Invalid planId or versionNumber." });
+        return;
+      }
+      const { changeReason } = req.body;
+      if (!changeReason || typeof changeReason !== "string" || !changeReason.trim()) {
+        res.status(400).json({
+          error: "ERR_CHANGE_REASON_REQUIRED",
+          message: "Motivo da alteração é obrigatório para ativar uma versão.",
+        });
+        return;
+      }
+
+      const result = await PlanVersionService.activateVersion({
+        planId,
+        versionNumber,
+        userId: req.user?.id ?? 1,
+        changeReason: changeReason.trim(),
+      });
+      res.json({ success: true, version: result });
+    } catch (err: any) {
+      if (err instanceof PlanVersionError) {
+        res.status(err.statusCode).json({ error: err.code, message: err.message });
+        return;
+      }
+      if (err?.code === "23505" || err?.message?.includes("idx_plan_versions_one_active_per_plan")) {
+        res.status(409).json({
+          error: "ERR_CONCURRENT_VERSION_ACTIVATION",
+          message: "Conflito de ativação concorrente de versão.",
+        });
+        return;
+      }
+      res.status(500).json({ error: "ACTIVATE_VERSION_ERROR", message: err.message });
+    }
+  },
+);
+
+commercialRouter.post(
+  "/plans/:planId/versions/:versionNumber/archive",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const planId = Number(req.params.planId);
+      const versionNumber = Number(req.params.versionNumber);
+      if (!planId || Number.isNaN(planId) || !versionNumber || Number.isNaN(versionNumber)) {
+        res.status(400).json({ error: "Invalid planId or versionNumber." });
+        return;
+      }
+      const result = await PlanVersionService.archiveVersion(planId, versionNumber);
+      res.json({ success: true, version: result });
+    } catch (err: any) {
+      if (err instanceof PlanVersionError) {
+        res.status(err.statusCode).json({ error: err.code, message: err.message });
+        return;
+      }
+      res.status(500).json({ error: "ARCHIVE_VERSION_ERROR", message: err.message });
+    }
+  },
+);
+
+// ─── R38.B Webhook Replay Route (Atomic CAS Claim) ───────────────────────────
+
+commercialRouter.post(
+  "/billing-webhooks/:id/replay",
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errorId = Number(req.params.id);
+      if (!errorId || Number.isNaN(errorId)) {
+        res.status(400).json({ error: "Invalid webhook error id." });
+        return;
+      }
+
+      // TC-STP-14, 15, 16, 17: Atomic CAS claim PENDING_RECONCILIATION -> PROCESSING
+      const [claimed] = await db
+        .update(billingWebhookErrorsTable)
+        .set({
+          status: "PROCESSING",
+          attemptCount: sql`${billingWebhookErrorsTable.attemptCount} + 1`,
+          lastAttemptAt: sql`NOW()`,
+        })
+        .where(
+          and(
+            eq(billingWebhookErrorsTable.id, errorId),
+            eq(billingWebhookErrorsTable.status, "PENDING_RECONCILIATION"),
+          ),
+        )
+        .returning();
+
+      if (!claimed) {
+        const [existing] = await db
+          .select()
+          .from(billingWebhookErrorsTable)
+          .where(eq(billingWebhookErrorsTable.id, errorId))
+          .limit(1);
+
+        if (!existing) {
+          res.status(404).json({ error: "Webhook error not found." });
+          return;
+        }
+
+        res.status(409).json({
+          error: "replay_not_claimable",
+          message: `Webhook error is in status '${existing.status}' and cannot be claimed for replay.`,
+          status: existing.status,
+        });
+        return;
+      }
+
+      try {
+        await dispatchWebhookBusinessLogic(claimed.rawPayload);
+
+        const [resolved] = await db
+          .update(billingWebhookErrorsTable)
+          .set({
+            status: "RESOLVED",
+            resolvedAt: sql`NOW()`,
+            resolvedBy: req.user?.email ?? "master_admin",
+            resolutionNote: "Replayed successfully via admin endpoint",
+          })
+          .where(eq(billingWebhookErrorsTable.id, errorId))
+          .returning();
+
+        res.json({ success: true, status: "RESOLVED", error: resolved });
+      } catch (dispatchErr: any) {
+        // TC-STP-16: Failed replay increments attempt_count and resets to PENDING or FAILED_FINAL
+        const nextStatus = claimed.attemptCount >= 5 ? "FAILED_FINAL" : "PENDING_RECONCILIATION";
+        await db
+          .update(billingWebhookErrorsTable)
+          .set({
+            status: nextStatus,
+            errorMessage: dispatchErr?.message ?? String(dispatchErr),
+          })
+          .where(eq(billingWebhookErrorsTable.id, errorId));
+
+        res.status(500).json({
+          error: "replay_failed",
+          message: dispatchErr?.message ?? String(dispatchErr),
+          status: nextStatus,
+        });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: "REPLAY_ERROR", message: err.message });
     }
   },
 );

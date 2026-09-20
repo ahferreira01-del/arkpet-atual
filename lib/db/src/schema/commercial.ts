@@ -1,5 +1,5 @@
 import { pgTable, serial, text, integer, timestamp, varchar, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { crechesTable } from "./creches";
@@ -630,3 +630,29 @@ export const insertCommercialNotificationSchema = createInsertSchema(commercialN
 });
 export type InsertCommercialNotification = z.infer<typeof insertCommercialNotificationSchema>;
 export type CommercialNotification = typeof commercialNotificationsTable.$inferSelect;
+
+// 12. Commercial Relations (Proposal Provenance Integration - R38.B)
+export const customerCommercialConditionsRelations = relations(
+  customerCommercialConditionsTable,
+  ({ one }) => ({
+    creche: one(crechesTable, {
+      fields: [customerCommercialConditionsTable.crecheId],
+      references: [crechesTable.id],
+    }),
+    agreement: one(commercialAgreementsTable, {
+      fields: [customerCommercialConditionsTable.agreementId],
+      references: [commercialAgreementsTable.id],
+    }),
+  }),
+);
+
+export const commercialAgreementsRelations = relations(
+  commercialAgreementsTable,
+  ({ one, many }) => ({
+    creche: one(crechesTable, {
+      fields: [commercialAgreementsTable.crecheId],
+      references: [crechesTable.id],
+    }),
+    conditions: many(customerCommercialConditionsTable),
+  }),
+);

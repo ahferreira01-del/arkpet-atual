@@ -15,3 +15,7 @@ export * from "./financial";
 export * from "./commercial";
 export * from "./tutorCommercial";
 export * from "./crechePromotionalCampaign";
+export * from "./planVersions";
+export * from "./planVersionPrices";
+export * from "./unresolvedSubscriptionVersions";
+export * from "./billingWebhookErrors";
