@@ -38,15 +38,30 @@ function formatCentsToBRL(cents: number | null | undefined): string {
   }).format(cents / 100);
 }
 
+function formatStorageBytes(bytes?: number | null): string {
+  if (bytes === null || bytes === undefined || isNaN(bytes)) return "—";
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const val = bytes / Math.pow(k, i);
+  return `${val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 })} ${sizes[i]}`;
+}
+
 export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningModalProps) {
   const [versions, setVersions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
+  const isEnterprise = plan?.name?.toLowerCase() === "enterprise";
+
   // Form states for creating a new draft
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [petLimit, setPetLimit] = useState<number>(plan?.petLimit ?? 30);
+  const [staffLimit, setStaffLimit] = useState<number>(3);
+  const [isUnlimitedStaff, setIsUnlimitedStaff] = useState<boolean>(isEnterprise);
+  const [storageGiB, setStorageGiB] = useState<number>(isEnterprise ? 100 : 5);
   const [monthPrice, setMonthPrice] = useState<number>(plan?.priceBrl ? plan.priceBrl / 100 : 99);
   const [quarterPrice, setQuarterPrice] = useState<number>(0);
   const [semesterPrice, setSemesterPrice] = useState<number>(0);
@@ -85,8 +100,13 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
       setActivatingVersionNumber(null);
       setChangeReason("");
       setActionSuccess(null);
+      const isEnt = plan?.name?.toLowerCase() === "enterprise";
+      setIsUnlimitedStaff(isEnt);
+      setStaffLimit(isEnt ? 0 : 3);
+      setStorageGiB(isEnt ? 100 : 5);
+      setPetLimit(plan.petLimit ?? 30);
     }
-  }, [isOpen, plan?.id, fetchVersions]);
+  }, [isOpen, plan?.id, plan?.name, plan?.petLimit, fetchVersions]);
 
   const handleCreateDraft = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,12 +127,17 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
         prices.push({ interval: "year", priceBrl: Math.round(yearPrice * 100) });
       }
 
+      const resolvedStaffLimit = isUnlimitedStaff ? null : Number(staffLimit);
+      const resolvedStorageBytesLimit = Math.round(Number(storageGiB) * 1024 * 1024 * 1024);
+
       const res = await fetch(`/api/commercial/plans/${plan.id}/versions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           petLimit: Number(petLimit),
+          staffLimit: resolvedStaffLimit,
+          storageBytesLimit: resolvedStorageBytesLimit,
           priceBrl: Math.round(monthPrice * 100),
           versionName: versionName.trim() || undefined,
           prices,
@@ -296,6 +321,52 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-muted-foreground">Limite de Equipe (Staff)</label>
+                      {isEnterprise && (
+                        <label className="text-xs flex items-center gap-1 cursor-pointer text-primary">
+                          <input
+                            type="checkbox"
+                            checked={isUnlimitedStaff}
+                            onChange={(e) => setIsUnlimitedStaff(e.target.checked)}
+                            className="rounded"
+                          />
+                          <span>Ilimitado</span>
+                        </label>
+                      )}
+                    </div>
+                    {isUnlimitedStaff ? (
+                      <Input
+                        disabled
+                        value="Ilimitado (NULL)"
+                        className="bg-muted text-muted-foreground mt-1"
+                      />
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={staffLimit}
+                        onChange={(e) => setStaffLimit(Number(e.target.value))}
+                        required={!isUnlimitedStaff}
+                        className="mt-1"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Limite Armazenamento (GiB)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={storageGiB}
+                      onChange={(e) => setStorageGiB(Number(e.target.value))}
+                      required
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="text-xs font-medium text-muted-foreground">Mensal (R$)</label>
@@ -460,7 +531,11 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
                         {statusBadge}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Limite: <strong className="text-foreground">{ver.petLimit} pets</strong>
+                        Limite Pets: <strong className="text-foreground">{ver.petLimit} pets</strong>
+                        {" • "}
+                        Equipe: <strong className="text-foreground">{ver.staffLimit === null ? "Ilimitado" : `${ver.staffLimit} membros`}</strong>
+                        {" • "}
+                        Armazenamento: <strong className="text-foreground">{formatStorageBytes(ver.storageBytesLimit)}</strong>
                         {" • "}
                         Preço Base: <strong className="text-foreground">{formatCentsToBRL(ver.priceBrl)}</strong>
                       </div>

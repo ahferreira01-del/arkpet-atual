@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, pgEnum, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { billingIntervalEnum } from "./plans";
@@ -45,6 +45,8 @@ export const subscriptionsTable = pgTable("subscriptions", {
   scheduledPlanVersionPriceId: integer("scheduled_plan_version_price_id"),
   scheduledPriceCents: integer("scheduled_price_cents"),
   scheduledStripePriceId: text("scheduled_stripe_price_id"),
+  // R38.C Unified Entitlements scheduled change status
+  scheduledStatus: varchar("scheduled_status", { length: 50 }),
 });
 
 export const insertSubscriptionSchema = createInsertSchema(subscriptionsTable).omit({ id: true, createdAt: true });

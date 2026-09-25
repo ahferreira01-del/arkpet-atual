@@ -3,10 +3,10 @@ import { db } from "@workspace/db";
 import { petsTable, usersTable, vaccinesTable, medicationsTable, crechesTable, bookingsTable } from "@workspace/db/schema";
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
-import { checkPetLimit } from "../middlewares/checkPetLimit.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
+import { checkQuota, checkCreationQuota } from "../services/entitlementsService.js";
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
@@ -85,17 +85,31 @@ router.get("/", async (req: AuthRequest, res) => {
   res.json({ items, total: items.length });
 });
 
-router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthRequest, res) => {
+router.post("/", requireActiveSubscription, async (req: AuthRequest, res) => {
   try {
     const crecheId = parseInt(String(req.params.crecheId));
-    const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule } = req.body;
+    const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status } = req.body;
 
     const result = await db.transaction(async (tx) => {
       await acquireTenantOperationalLock(crecheId, tx);
 
+      const targetStatus = status || "active";
+      if (targetStatus === "active") {
+        const quota = await checkCreationQuota(tx, { crecheId, resource: "pets", requestedDelta: 1 });
+        if (!quota.allowed) {
+          const err: any = new Error(quota.enforcementReason ?? `Pet limit of ${quota.limit} reached. Current active: ${quota.used}.`);
+          err.code = "PET_LIMIT_EXCEEDED";
+          err.statusCode = 403;
+          err.current = quota.used;
+          err.limit = quota.limit;
+          throw err;
+        }
+      }
+
       const [pet] = await tx.insert(petsTable).values({
         crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
         weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
+        status: targetStatus,
       }).returning();
 
       const [tutor] = tutorId
@@ -109,6 +123,16 @@ router.post("/", requireActiveSubscription, checkPetLimit, async (req: AuthReque
   } catch (err: any) {
     if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err?.code === "PET_LIMIT_EXCEEDED" || err?.statusCode === 403) {
+      res.status(403).json({
+        error: "PET_LIMIT_EXCEEDED",
+        code: "PET_LIMIT_EXCEEDED",
+        message: err.message,
+        current: err.current,
+        limit: err.limit,
+      });
       return;
     }
     res.status(500).json({ error: err.message || "Erro ao criar pet" });
@@ -245,6 +269,18 @@ router.put("/:petId", async (req: AuthRequest, res) => {
         if (status !== undefined) updates.status = status;
       }
 
+      if (existingPet.status !== "active" && updates.status === "active") {
+        const quota = await checkCreationQuota(tx, { crecheId, resource: "pets", requestedDelta: 1 });
+        if (!quota.allowed) {
+          const err: any = new Error(quota.enforcementReason ?? `Pet limit of ${quota.limit} reached. Current active: ${quota.used}.`);
+          err.code = "PET_LIMIT_EXCEEDED";
+          err.statusCode = 403;
+          err.current = quota.used;
+          err.limit = quota.limit;
+          throw err;
+        }
+      }
+
       let pet = existingPet;
       if (Object.keys(updates).length > 0) {
         const [updated] = await tx.update(petsTable).set(updates)
@@ -276,6 +312,16 @@ router.put("/:petId", async (req: AuthRequest, res) => {
   } catch (err: any) {
     if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err?.code === "PET_LIMIT_EXCEEDED" || err?.statusCode === 403) {
+      res.status(403).json({
+        error: "PET_LIMIT_EXCEEDED",
+        code: "PET_LIMIT_EXCEEDED",
+        message: err.message,
+        current: err.current,
+        limit: err.limit,
+      });
       return;
     }
     res.status(500).json({ error: err.message || "Erro ao atualizar pet" });

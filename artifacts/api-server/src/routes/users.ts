@@ -11,6 +11,7 @@ import {
   acquireTenantOperationalLock,
   TenantArchivedError,
 } from "../services/tenantLifecycleLock.js";
+import { checkQuota, checkCreationQuota } from "../services/entitlementsService.js";
 
 const userRoleEnum = z.enum(["master_admin", "creche_admin", "staff", "tutor"]);
 
@@ -97,6 +98,18 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
         throw new Error("email_exists");
       }
 
+      if (assignedCrecheId != null && ["creche_admin", "staff"].includes(role)) {
+        const quota = await checkCreationQuota(tx, { crecheId: assignedCrecheId, resource: "staff", requestedDelta: 1 });
+        if (!quota.allowed) {
+          const err: any = new Error(quota.enforcementReason ?? `Staff limit of ${quota.limit} reached. Current active staff + invitations: ${quota.used}.`);
+          err.code = "STAFF_LIMIT_EXCEEDED";
+          err.statusCode = 403;
+          err.current = quota.used;
+          err.limit = quota.limit;
+          throw err;
+        }
+      }
+
       const [newUser] = await tx.insert(usersTable).values({
         name, email: normalizedEmail,
         passwordHash: hashPassword(password),
@@ -118,6 +131,16 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
   } catch (err: any) {
     if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err?.code === "STAFF_LIMIT_EXCEEDED" || err?.statusCode === 403) {
+      res.status(403).json({
+        error: "STAFF_LIMIT_EXCEEDED",
+        code: "STAFF_LIMIT_EXCEEDED",
+        message: err.message,
+        current: err.current,
+        limit: err.limit,
+      });
       return;
     }
     if (err.message === "email_exists") {
@@ -286,17 +309,60 @@ router.put("/:userId", async (req: AuthRequest, res) => {
     }
   }
 
-  let user = targetUser;
-  if (Object.keys(updates).length > 0) {
-    const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
-    user = updated;
-  }
+  try {
+    const wasCounted = Boolean(targetUser.isActive && ["creche_admin", "staff"].includes(targetUser.role) && targetUser.crecheId != null);
+    const effRole = updates.role !== undefined ? updates.role : targetUser.role;
+    const effActive = updates.isActive !== undefined ? updates.isActive : targetUser.isActive;
+    const effCrecheId = updates.crecheId !== undefined ? updates.crecheId : targetUser.crecheId;
+    const willBeCounted = Boolean(effActive && ["creche_admin", "staff"].includes(effRole as string) && effCrecheId != null);
 
-  res.json({
-    id: user.id, name: user.name, email: user.email, role: user.role,
-    crecheId: user.crecheId, avatarUrl: user.avatarUrl, isActive: user.isActive,
-    mustChangePassword: user.mustChangePassword, createdAt: user.createdAt,
-  });
+    const user = await db.transaction(async (tx) => {
+      if (effCrecheId != null) {
+        await acquireTenantOperationalLock(Number(effCrecheId), tx);
+      }
+
+      if (willBeCounted && (!wasCounted || targetUser.crecheId !== effCrecheId)) {
+        const quota = await checkCreationQuota(tx, { crecheId: Number(effCrecheId), resource: "staff", requestedDelta: 1 });
+        if (!quota.allowed) {
+          const err: any = new Error(quota.enforcementReason ?? `Staff limit of ${quota.limit} reached. Current active staff + invitations: ${quota.used}.`);
+          err.code = "STAFF_LIMIT_EXCEEDED";
+          err.statusCode = 403;
+          err.current = quota.used;
+          err.limit = quota.limit;
+          throw err;
+        }
+      }
+
+      let updatedUser = targetUser;
+      if (Object.keys(updates).length > 0) {
+        const [updated] = await tx.update(usersTable).set(updates).where(eq(usersTable.id, userId)).returning();
+        if (updated) updatedUser = updated;
+      }
+      return updatedUser;
+    });
+
+    res.json({
+      id: user.id, name: user.name, email: user.email, role: user.role,
+      crecheId: user.crecheId, avatarUrl: user.avatarUrl, isActive: user.isActive,
+      mustChangePassword: user.mustChangePassword, createdAt: user.createdAt,
+    });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    if (err?.code === "STAFF_LIMIT_EXCEEDED" || err?.statusCode === 403) {
+      res.status(403).json({
+        error: "STAFF_LIMIT_EXCEEDED",
+        code: "STAFF_LIMIT_EXCEEDED",
+        message: err.message,
+        current: err.current,
+        limit: err.limit,
+      });
+      return;
+    }
+    res.status(500).json({ error: err.message || "Erro ao atualizar usuário" });
+  }
 });
 
 // DELETE (deactivate) user

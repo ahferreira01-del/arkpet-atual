@@ -2884,13 +2884,15 @@ commercialRouter.post(
         res.status(400).json({ error: "Invalid planId." });
         return;
       }
-      const { petLimit, priceBrl, prices, features, versionName, versionNumber } = req.body;
+      const { petLimit, priceBrl, prices, features, versionName, versionNumber, staffLimit, storageBytesLimit } = req.body;
       const result = await PlanVersionService.createDraftVersion({
         planId,
         versionNumber,
         versionName,
         petLimit: Number(petLimit),
         priceBrl: priceBrl !== undefined ? Number(priceBrl) : undefined,
+        staffLimit: staffLimit !== undefined ? (staffLimit === null ? null : Number(staffLimit)) : undefined,
+        storageBytesLimit: storageBytesLimit !== undefined ? Number(storageBytesLimit) : undefined,
         features,
         prices,
         userId: req.user?.id,
@@ -2916,12 +2918,14 @@ commercialRouter.put(
         res.status(400).json({ error: "Invalid planId or versionNumber." });
         return;
       }
-      const { petLimit, priceBrl, prices, features, versionName } = req.body;
+      const { petLimit, priceBrl, prices, features, versionName, staffLimit, storageBytesLimit } = req.body;
       const result = await PlanVersionService.updateDraftVersion({
         planId,
         versionNumber,
         versionName,
         petLimit: petLimit !== undefined ? Number(petLimit) : undefined,
+        staffLimit: staffLimit !== undefined ? (staffLimit === null ? null : Number(staffLimit)) : undefined,
+        storageBytesLimit: storageBytesLimit !== undefined ? Number(storageBytesLimit) : undefined,
         priceBrl: priceBrl !== undefined ? Number(priceBrl) : undefined,
         features,
         prices,

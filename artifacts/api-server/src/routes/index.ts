@@ -1,7 +1,7 @@
 import { Router } from "express";
 import healthRouter from "./health.js";
 import authRouter from "./auth.js";
-import crechesRouter from "./creches.js";
+import crechesRouter, { acceptInvitationHandler } from "./creches.js";
 import petsRouter from "./pets.js";
 import bookingsRouter from "./bookings.js";
 import tasksRouter from "./tasks.js";
@@ -36,6 +36,11 @@ router.use(healthRouter);
 router.use(storageRouter);
 router.use("/auth", authRouter);
 router.use("/commercial", commercialRouter);
+
+// ── R38.C3 DEC-C3-SCOPE-01: Public invitation acceptance endpoint ──────────
+// Mounted BEFORE the central authenticate / requireActiveSubscription gate
+// because invited staff members do not yet possess an active ArkPet user account or JWT.
+router.post("/creches/:crecheId/invitations/:invitationId/accept", acceptInvitationHandler);
 
 // ── Central subscription gate ─────────────────────────────────────────────────
 // Applies to every /creches/:crecheId/* route (all tenant operational endpoints).

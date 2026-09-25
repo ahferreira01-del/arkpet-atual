@@ -268,6 +268,8 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
       const versionObj = res.body.version ?? res.body;
       expect(versionObj).toBeDefined();
       expect(versionObj.status).toBe("DRAFT");
+      expect(versionObj.staffLimit).toBe(10);
+      expect(Number(versionObj.storageBytesLimit)).toBe(32212254720);
       expect(versionObj.effectiveFrom).toBeNull();
       expect(versionObj.effectiveUntil).toBeNull();
       createdDraftVersionNumber = versionObj.versionNumber;
@@ -338,8 +340,8 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
     it("TC-VER-05: Reject Overlapping Active Versions", async () => {
       await expectDbError(
         db.execute(sql`
-          INSERT INTO plan_versions (plan_id, version_number, status, pet_limit, price_brl, effective_from)
-          VALUES (${testProPlan.id}, 999, 'ACTIVE', 100, 50000, NOW());
+          INSERT INTO plan_versions (plan_id, version_number, status, pet_limit, staff_limit, storage_bytes_limit, price_brl, effective_from)
+          VALUES (${testProPlan.id}, 999, 'ACTIVE', 100, 10, 32212254720, 50000, NOW());
         `),
         /23505|duplicate key|unique constraint/i
       );
@@ -353,6 +355,7 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
         .orderBy(desc(planVersionsTable.versionNumber))
         .limit(1);
 
+      // A & E & F: Legacy call omits staff/storage -> clones from ACTIVE Pro version (staff=10, storage=32212254720)
       const draft = await PlanVersionService.createDraftVersion({
         planId: testProPlan.id,
         versionName: "Auto Seq Test",
@@ -363,9 +366,123 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
       });
 
       expect(draft.versionNumber).toBe(latest.versionNumber + 1);
+      expect(draft.staffLimit).toBe(10);
+      expect(Number(draft.storageBytesLimit)).toBe(32212254720);
+      expect(Number(draft.storageBytesLimit)).toBeGreaterThan(0);
 
       // Clean up this draft
       await PlanVersionService.deleteDraftVersion(testProPlan.id, draft.versionNumber);
+
+      // B: Explicit storageBytesLimit overrides inherited storage
+      const draftExplicitStorage = await PlanVersionService.createDraftVersion({
+        planId: testProPlan.id,
+        versionName: "Explicit Storage Test",
+        petLimit: 100,
+        storageBytesLimit: 50000000000,
+        userId: masterAdminUser.id,
+      });
+      expect(Number(draftExplicitStorage.storageBytesLimit)).toBe(50000000000);
+      expect(draftExplicitStorage.staffLimit).toBe(10); // inherited from ACTIVE
+      await PlanVersionService.deleteDraftVersion(testProPlan.id, draftExplicitStorage.versionNumber);
+
+      // C: Explicit finite staffLimit overrides inherited staff
+      const draftExplicitStaff = await PlanVersionService.createDraftVersion({
+        planId: testProPlan.id,
+        versionName: "Explicit Staff Test",
+        petLimit: 100,
+        staffLimit: 15,
+        userId: masterAdminUser.id,
+      });
+      expect(draftExplicitStaff.staffLimit).toBe(15);
+      expect(Number(draftExplicitStaff.storageBytesLimit)).toBe(32212254720); // inherited from ACTIVE
+      await PlanVersionService.deleteDraftVersion(testProPlan.id, draftExplicitStaff.versionNumber);
+
+      // D: Missing values + no ACTIVE version -> ERR_ENTITLEMENT_INPUT_REQUIRED
+      const [dummyPlan] = await db
+        .insert(plansTable)
+        .values({ name: `No Active Plan ${Date.now()}`, priceBrl: 1000, petLimit: 10 })
+        .returning();
+      try {
+        let noActiveThrew = false;
+        try {
+          await PlanVersionService.createDraftVersion({
+            planId: dummyPlan.id,
+            petLimit: 10,
+          });
+        } catch (err: any) {
+          noActiveThrew = true;
+          expect(err.code).toBe("ERR_ENTITLEMENT_INPUT_REQUIRED");
+        }
+        expect(noActiveThrew).toBe(true);
+      } finally {
+        await db.delete(plansTable).where(eq(plansTable.id, dummyPlan.id));
+      }
+
+      // F: Starter legacy omission preserves finite staff (staff=3, not null/unlimited)
+      const starterDraft = await PlanVersionService.createDraftVersion({
+        planId: testStarterPlan.id,
+        versionName: "Starter Legacy Omission Test",
+        petLimit: 20,
+      });
+      expect(starterDraft.staffLimit).toBe(3);
+      expect(starterDraft.staffLimit).not.toBeNull();
+      expect(Number(starterDraft.storageBytesLimit)).toBe(5368709120);
+      await PlanVersionService.deleteDraftVersion(testStarterPlan.id, starterDraft.versionNumber);
+
+      // Explicit NULL staff on non-Enterprise must be rejected
+      let staffNullThrew = false;
+      try {
+        await PlanVersionService.createDraftVersion({
+          planId: testStarterPlan.id,
+          petLimit: 20,
+          staffLimit: null,
+        });
+      } catch (err: any) {
+        staffNullThrew = true;
+        expect(err.code).toBe("ERR_INVALID_STAFF_LIMIT");
+      }
+      expect(staffNullThrew).toBe(true);
+
+      // G: Enterprise inheritance preserves staffLimit = NULL
+      const [entPlan] = await db
+        .select()
+        .from(plansTable)
+        .where(sql`LOWER(name) LIKE '%enterprise%'`)
+        .limit(1);
+      if (entPlan) {
+        const entDraft = await PlanVersionService.createDraftVersion({
+          planId: entPlan.id,
+          versionName: "Enterprise Legacy Test",
+          petLimit: 999999,
+        });
+        expect(entDraft.staffLimit).toBeNull();
+        expect(Number(entDraft.storageBytesLimit)).toBe(107374182400);
+        await PlanVersionService.deleteDraftVersion(entPlan.id, entDraft.versionNumber);
+      }
+
+      // Section 8: Activation safety rejects draft with invalid storage (<= 0)
+      const activationSafetyDraft = await PlanVersionService.createDraftVersion({
+        planId: testStarterPlan.id,
+        versionName: "Activation Safety Draft",
+        petLimit: 20,
+      });
+      await db.execute(sql`
+        UPDATE plan_versions SET storage_bytes_limit = 0 WHERE id = ${activationSafetyDraft.id}
+      `);
+      let actSafetyThrew = false;
+      try {
+        await PlanVersionService.activateVersion({
+          planId: testStarterPlan.id,
+          versionNumber: activationSafetyDraft.versionNumber,
+          userId: masterAdminUser.id,
+          changeReason: "Activation safety test",
+        });
+      } catch (err: any) {
+        actSafetyThrew = true;
+        expect(err.code).toBe("ERR_INVALID_ENTITLEMENT_TUPLE");
+      }
+      expect(actSafetyThrew).toBe(true);
+      await PlanVersionService.deleteDraftVersion(testStarterPlan.id, activationSafetyDraft.versionNumber);
     });
 
     it("TC-VER-07: Allowed SUPERSEDED -> ARCHIVED Transition", async () => {
@@ -523,6 +640,8 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
         versionName: "v1 superseded",
         status: "SUPERSEDED",
         petLimit: 10,
+        staffLimit: 3, // Synthetic test fixture data for delete barrier test
+        storageBytesLimit: 5368709120, // Synthetic test fixture data for delete barrier test (5 GiB)
         priceBrl: 10000,
         effectiveFrom: new Date(Date.now() - 86400000),
         effectiveUntil: new Date(),
@@ -1555,6 +1674,8 @@ describe("R38.B Plan Versioning, Grandfathering & Pricing Engine Suite", { timeo
         versionName: `CNC Race Plan ${ts} v1`,
         status: "ACTIVE",
         petLimit: 20,
+        staffLimit: 5, // Synthetic test fixture data for concurrency race test
+        storageBytesLimit: 16106127360, // Synthetic test fixture data for concurrency race test (15 GiB)
         priceBrl: 15000,
         effectiveFrom: new Date(),
       });

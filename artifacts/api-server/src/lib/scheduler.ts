@@ -1,16 +1,46 @@
 import cron, { type ScheduledTask } from "node-cron";
 import { db, INTERVAL_MONTHS, type BillingInterval } from "@workspace/db";
 
-import { tasksTable, petsTable, usersTable, bookingsTable, subscriptionsTable, invoicesTable, ordersTable, financialOutboxTable, crechesTable } from "@workspace/db/schema";
+import {
+  tasksTable,
+  petsTable,
+  usersTable,
+  bookingsTable,
+  subscriptionsTable,
+  invoicesTable,
+  ordersTable,
+  financialOutboxTable,
+  crechesTable,
+  medicationsTable,
+  planVersionsTable,
+  crecheInvitationsTable,
+  storageFilesTable,
+  tenantStorageLedgerTable,
+} from "@workspace/db/schema";
 import { OutboxRepository } from "../repositories/outbox.repository.js";
 import { financialLog } from "./logger.js";
-import { medicationsTable } from "@workspace/db/schema";
+
 import { and, eq, ne, gte, lte, isNotNull, inArray, or, isNull, sql } from "drizzle-orm";
 import { sendPushToUser, sendPushToRole } from "./push.js";
 import { cancelOrder } from "../services/orders.js";
 import { recoverStaleGatewayEvents, recoverAndProcessStaleGatewayEvents } from "../services/gatewayEvents.js";
 import { dispatchWebhookBusinessLogic } from "./webhookHandlers.js";
-import { acquireTenantOperationalLock } from "../services/tenantLifecycleLock.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
+import {
+  getPetUsage,
+  getStaffUsage,
+  getStorageUsage,
+  claimExpiredStorageReservation,
+  finalizeExpiredStorageReservation,
+  finalizeRejectedOverflowFile,
+  finalizeStorageFileDeletion,
+} from "../services/entitlementsService.js";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage.js";
+
+const objectStorageService = new ObjectStorageService();
 
 export const SAO_PAULO_TZ = "America/Sao_Paulo";
 export const DAILY_TASK_GENERATION_LOCK_KEY = 999_100_001;
@@ -691,12 +721,18 @@ export async function applyScheduledPlanChanges() {
         scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
         scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
         currentPeriodEnd: subscriptionsTable.currentPeriodEnd,
+        scheduledStatus: subscriptionsTable.scheduledStatus,
       })
       .from(subscriptionsTable)
       .innerJoin(crechesTable, eq(subscriptionsTable.crecheId, crechesTable.id))
       .where(
         and(
           isNotNull(subscriptionsTable.scheduledPlanId),
+          isNotNull(subscriptionsTable.scheduledPlanVersionId),
+          or(
+            eq(subscriptionsTable.scheduledStatus, "PENDING"),
+            isNull(subscriptionsTable.scheduledStatus),
+          ),
           lte(subscriptionsTable.currentPeriodEnd, now),
           ne(subscriptionsTable.status, "suspended"),
           ne(crechesTable.status, "archived"),
@@ -704,40 +740,113 @@ export async function applyScheduledPlanChanges() {
       );
 
     if (!pending.length) return;
-    console.log(`[scheduler] Aplicando ${pending.length} mudança(s) de plano agendada(s)...`);
+    console.log(`[scheduler] Verificando e aplicando ${pending.length} mudança(s) de plano agendada(s)...`);
 
     for (const sub of pending) {
-      // Calculate NEW period end from the effective boundary (scheduledPeriodEnd):
-      // current_period_end = scheduled_period_end + INTERVAL_MONTHS[scheduled_billing_interval]
-      const interval = (sub.scheduledBillingInterval as BillingInterval) ?? "month";
-      const boundaryDate = sub.scheduledPeriodEnd ?? sub.currentPeriodEnd ?? now;
-      const newPeriodEnd = new Date(boundaryDate);
-      const monthsToAdd = INTERVAL_MONTHS[interval] ?? 1;
-      newPeriodEnd.setMonth(newPeriodEnd.getMonth() + monthsToAdd);
+      try {
+        await db.transaction(async (tx) => {
+          // 1. Acquire tenant operational lock
+          await acquireTenantOperationalLock(sub.crecheId, tx);
 
-      await db
-        .update(subscriptionsTable)
-        .set({
-          planId: sub.scheduledPlanId!,
-          planVersionId: sub.scheduledPlanVersionId ?? null,
-          planVersionPriceId: sub.scheduledPlanVersionPriceId ?? null,
-          contractedPriceCents: sub.scheduledPriceCents ?? null,
-          contractedStripePriceId: sub.scheduledStripePriceId ?? null,
-          billingInterval: sub.scheduledBillingInterval,
-          currentPeriodEnd: newPeriodEnd,
-          scheduledPlanId: null,
-          scheduledPlanVersionId: null,
-          scheduledPlanVersionPriceId: null,
-          scheduledPriceCents: null,
-          scheduledStripePriceId: null,
-          scheduledBillingInterval: null,
-          scheduledPeriodEnd: null,
-          status: "active",
-          pastDueSince: null,
-        })
-        .where(eq(subscriptionsTable.id, sub.id));
+          // 2. Reload subscription FOR UPDATE
+          const [currentSub] = await tx
+            .select()
+            .from(subscriptionsTable)
+            .where(eq(subscriptionsTable.id, sub.id))
+            .for("update");
 
-      console.log(`[scheduler] Plano aplicado para crecheId=${sub.crecheId}: planId=${sub.scheduledPlanId}, versionId=${sub.scheduledPlanVersionId}`);
+          if (!currentSub) return;
+
+          // Re-verify eligibility
+          if (
+            !currentSub.scheduledPlanVersionId ||
+            !currentSub.scheduledPlanId ||
+            (currentSub.scheduledStatus !== "PENDING" && currentSub.scheduledStatus !== null)
+          ) {
+            return;
+          }
+
+          if (currentSub.currentPeriodEnd && new Date(currentSub.currentPeriodEnd) > now) {
+            return;
+          }
+
+          // 3. Resolve target plan version quotas
+          const [targetVersion] = await tx
+            .select()
+            .from(planVersionsTable)
+            .where(eq(planVersionsTable.id, currentSub.scheduledPlanVersionId))
+            .limit(1);
+
+          if (!targetVersion) {
+            console.error(`[scheduler] Target plan version ${currentSub.scheduledPlanVersionId} not found for subscription ${sub.id}`);
+            return;
+          }
+
+          // 4. Defensive pre-flight revalidation
+          const petUsage = await getPetUsage(tx, sub.crecheId);
+          const staffUsage = await getStaffUsage(tx, sub.crecheId);
+          const storageUsage = await getStorageUsage(tx, sub.crecheId);
+
+          const petExceeded = petUsage > targetVersion.petLimit;
+          const staffExceeded = targetVersion.staffLimit !== null && staffUsage > targetVersion.staffLimit;
+          const storageExceeded = storageUsage.usedBytes > targetVersion.storageBytesLimit;
+
+          if (petExceeded || staffExceeded || storageExceeded) {
+            // Over-quota drift! Transition to FAILED_OVER_QUOTA and retain current active plan
+            await tx
+              .update(subscriptionsTable)
+              .set({
+                scheduledStatus: "FAILED_OVER_QUOTA",
+              })
+              .where(eq(subscriptionsTable.id, sub.id));
+
+            console.warn(
+              `[scheduler] Scheduled downgrade FAILED_OVER_QUOTA for crecheId=${sub.crecheId} (pets: ${petUsage}/${targetVersion.petLimit}, staff: ${staffUsage}/${targetVersion.staffLimit}, storage: ${storageUsage.usedBytes}/${targetVersion.storageBytesLimit})`
+            );
+            return;
+          }
+
+          // 5. Pre-flight passed: calculate newPeriodEnd and apply terms
+          const interval = (currentSub.scheduledBillingInterval as BillingInterval) ?? "month";
+          const boundaryDate = currentSub.scheduledPeriodEnd ?? currentSub.currentPeriodEnd ?? now;
+          const newPeriodEnd = new Date(boundaryDate);
+          const monthsToAdd = INTERVAL_MONTHS[interval] ?? 1;
+          newPeriodEnd.setMonth(newPeriodEnd.getMonth() + monthsToAdd);
+
+          await tx
+            .update(subscriptionsTable)
+            .set({
+              planId: currentSub.scheduledPlanId!,
+              planVersionId: currentSub.scheduledPlanVersionId,
+              planVersionPriceId: currentSub.scheduledPlanVersionPriceId ?? null,
+              contractedPriceCents: currentSub.scheduledPriceCents ?? null,
+              contractedStripePriceId: currentSub.scheduledStripePriceId ?? null,
+              billingInterval: currentSub.scheduledBillingInterval,
+              currentPeriodEnd: newPeriodEnd,
+              // Atomically clear all 8 scheduled fields
+              scheduledPlanId: null,
+              scheduledPlanVersionId: null,
+              scheduledPlanVersionPriceId: null,
+              scheduledPriceCents: null,
+              scheduledStripePriceId: null,
+              scheduledBillingInterval: null,
+              scheduledPeriodEnd: null,
+              scheduledStatus: null,
+              status: "active",
+              pastDueSince: null,
+            })
+            .where(eq(subscriptionsTable.id, sub.id));
+
+          console.log(
+            `[scheduler] Plano aplicado com sucesso para crecheId=${sub.crecheId}: planId=${currentSub.scheduledPlanId}, versionId=${currentSub.scheduledPlanVersionId}`
+          );
+        });
+      } catch (err: any) {
+        if (err instanceof TenantArchivedError || (err && (err as any).code === "tenant_archived")) {
+          continue;
+        }
+        console.error(`[scheduler] erro ao aplicar plano agendado para subId=${sub.id}:`, err);
+      }
     }
   } catch (err) {
     console.error("[scheduler] erro ao aplicar planos agendados:", err);
@@ -753,7 +862,255 @@ export function startScheduledPlanChangeApplicator() {
   );
   // Also apply on startup in case the server was down when a change was due.
   applyScheduledPlanChanges();
+  startInvitationExpirationWorker();
+  startStorageCleanupWorker();
   console.log("[scheduler] Scheduled plan change applicator started.");
+}
+
+// ─── Invitation Expiration Worker (R38.C4) ───────────────────────────────────
+// Runs periodically to transition pending invitations that have passed expiresAt
+// into 'expired' status via atomic CAS.
+
+export async function expirePendingInvitations(): Promise<number> {
+  try {
+    const now = new Date();
+    const expired = await db
+      .update(crecheInvitationsTable)
+      .set({
+        status: "expired",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(crecheInvitationsTable.status, "pending"),
+          lte(crecheInvitationsTable.expiresAt, now),
+        ),
+      )
+      .returning({ id: crecheInvitationsTable.id });
+
+    if (expired.length > 0) {
+      console.log(`[scheduler] ${expired.length} convite(s) pendente(s) expirado(s).`);
+    }
+    return expired.length;
+  } catch (err) {
+    console.error("[scheduler] Erro ao expirar convites pendentes:", err);
+    return 0;
+  }
+}
+
+export function startInvitationExpirationWorker(): void {
+  registerCronTask(
+    cron.schedule("*/15 * * * *", async () => {
+      await expirePendingInvitations();
+    }, { timezone: SAO_PAULO_TZ })
+  );
+  expirePendingInvitations();
+  console.log("[scheduler] Invitation expiration worker started (every 15 minutes).");
+}
+
+// ─── Unified Storage Cleanup Worker (R38.C4) ─────────────────────────────────
+// Cleans up:
+// 1. Expired reservations ('reserved' with reservationExpiresAt <= now)
+// 2. Stuck 'expired_cleanup_deleting' older than 5 minutes
+// 3. Rejected overflows ('rejected_overflow_deleting')
+// 4. Stuck normal deletions ('deleting' older than 5 minutes)
+// Adheres strictly to Cloud-I/O rule: never holds DB locks while calling GCS.
+
+let storageCleanupRunning = false;
+
+export async function cleanupStorageFiles(): Promise<{
+  expiredCount: number;
+  stuckExpiredCount: number;
+  rejectedOverflowCount: number;
+  stuckDeletingCount: number;
+}> {
+  if (storageCleanupRunning) {
+    return { expiredCount: 0, stuckExpiredCount: 0, rejectedOverflowCount: 0, stuckDeletingCount: 0 };
+  }
+  storageCleanupRunning = true;
+  let expiredCount = 0;
+  let stuckExpiredCount = 0;
+  let rejectedOverflowCount = 0;
+  let stuckDeletingCount = 0;
+
+  try {
+    const now = new Date();
+    const cutoff5m = new Date(Date.now() - 5 * 60 * 1000);
+
+    // 1. Expired reservations: 'reserved' with reservationExpiresAt <= now
+    const expiredReservations = await db
+      .select({
+        id: storageFilesTable.id,
+        crecheId: storageFilesTable.crecheId,
+        fileKey: storageFilesTable.fileKey,
+      })
+      .from(storageFilesTable)
+      .where(
+        and(
+          eq(storageFilesTable.status, "reserved"),
+          lte(storageFilesTable.reservationExpiresAt, now),
+        ),
+      )
+      .limit(50);
+
+    for (const file of expiredReservations) {
+      try {
+        // Step 1: Claim for cleanup in DB transaction
+        await db.transaction(async (tx) => {
+          await claimExpiredStorageReservation(tx, file.id);
+        });
+
+        // Step 2: Physical deletion outside DB transaction (Cloud-I/O rule)
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(file.fileKey);
+          await objectStorageService.deleteObject(objectFile);
+        } catch (err: any) {
+          if (!(err instanceof ObjectNotFoundError)) {
+            console.warn(`[scheduler] GCS deletion warning for expired reservation ${file.fileKey}:`, err);
+          }
+        }
+
+        // Step 3: Finalize in DB transaction under operational lock
+        await db.transaction(async (tx) => {
+          await acquireTenantOperationalLock(file.crecheId, tx);
+          await finalizeExpiredStorageReservation(tx, file.id);
+        });
+
+        expiredCount++;
+      } catch (err: any) {
+        if (err instanceof TenantArchivedError || (err && (err as any).code === "tenant_archived")) continue;
+        console.error(`[scheduler] Error cleaning expired reservation ${file.id}:`, err);
+      }
+    }
+
+    // 2. Stuck 'expired_cleanup_deleting' older than 5m
+    const stuckExpired = await db
+      .select({
+        id: storageFilesTable.id,
+        crecheId: storageFilesTable.crecheId,
+        fileKey: storageFilesTable.fileKey,
+      })
+      .from(storageFilesTable)
+      .where(
+        and(
+          eq(storageFilesTable.status, "expired_cleanup_deleting"),
+          lte(storageFilesTable.updatedAt, cutoff5m),
+        ),
+      )
+      .limit(50);
+
+    for (const file of stuckExpired) {
+      try {
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(file.fileKey);
+          await objectStorageService.deleteObject(objectFile);
+        } catch (err: any) {
+          if (!(err instanceof ObjectNotFoundError)) {
+            console.warn(`[scheduler] GCS deletion warning for stuck expired cleanup ${file.fileKey}:`, err);
+          }
+        }
+
+        await db.transaction(async (tx) => {
+          await acquireTenantOperationalLock(file.crecheId, tx);
+          await finalizeExpiredStorageReservation(tx, file.id);
+        });
+
+        stuckExpiredCount++;
+      } catch (err: any) {
+        if (err instanceof TenantArchivedError || (err && (err as any).code === "tenant_archived")) continue;
+        console.error(`[scheduler] Error cleaning stuck expired cleanup ${file.id}:`, err);
+      }
+    }
+
+    // 3. Rejected overflows: 'rejected_overflow_deleting'
+    const rejectedOverflows = await db
+      .select({
+        id: storageFilesTable.id,
+        crecheId: storageFilesTable.crecheId,
+        fileKey: storageFilesTable.fileKey,
+      })
+      .from(storageFilesTable)
+      .where(eq(storageFilesTable.status, "rejected_overflow_deleting"))
+      .limit(50);
+
+    for (const file of rejectedOverflows) {
+      try {
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(file.fileKey);
+          await objectStorageService.deleteObject(objectFile);
+        } catch (err: any) {
+          if (!(err instanceof ObjectNotFoundError)) {
+            console.warn(`[scheduler] GCS deletion warning for rejected overflow ${file.fileKey}:`, err);
+          }
+        }
+
+        await db.transaction(async (tx) => {
+          await acquireTenantOperationalLock(file.crecheId, tx);
+          await finalizeRejectedOverflowFile(tx, file.id);
+        });
+
+        rejectedOverflowCount++;
+      } catch (err: any) {
+        if (err instanceof TenantArchivedError || (err && (err as any).code === "tenant_archived")) continue;
+        console.error(`[scheduler] Error cleaning rejected overflow ${file.id}:`, err);
+      }
+    }
+
+    // 4. Stuck normal deletions: 'deleting' older than 5m
+    const stuckDeleting = await db
+      .select({
+        id: storageFilesTable.id,
+        crecheId: storageFilesTable.crecheId,
+        fileKey: storageFilesTable.fileKey,
+      })
+      .from(storageFilesTable)
+      .where(
+        and(
+          eq(storageFilesTable.status, "deleting"),
+          lte(storageFilesTable.updatedAt, cutoff5m),
+        ),
+      )
+      .limit(50);
+
+    for (const file of stuckDeleting) {
+      try {
+        try {
+          const objectFile = await objectStorageService.getObjectEntityFile(file.fileKey);
+          await objectStorageService.deleteObject(objectFile);
+        } catch (err: any) {
+          if (!(err instanceof ObjectNotFoundError)) {
+            console.warn(`[scheduler] GCS deletion warning for stuck deleting ${file.fileKey}:`, err);
+          }
+        }
+
+        await db.transaction(async (tx) => {
+          await acquireTenantOperationalLock(file.crecheId, tx);
+          await finalizeStorageFileDeletion(tx, file.id);
+        });
+
+        stuckDeletingCount++;
+      } catch (err: any) {
+        if (err instanceof TenantArchivedError || (err && (err as any).code === "tenant_archived")) continue;
+        console.error(`[scheduler] Error finalizing stuck deleting file ${file.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[scheduler] Error during storage files cleanup:", err);
+  } finally {
+    storageCleanupRunning = false;
+  }
+
+  return { expiredCount, stuckExpiredCount, rejectedOverflowCount, stuckDeletingCount };
+}
+
+export function startStorageCleanupWorker(): void {
+  registerCronTask(
+    cron.schedule("*/10 * * * *", async () => {
+      await cleanupStorageFiles();
+    }, { timezone: SAO_PAULO_TZ })
+  );
+  cleanupStorageFiles();
+  console.log("[scheduler] Storage cleanup worker started (every 10 minutes).");
 }
 
 // ─── Auto-suspend past_due ────────────────────────────────────────────────────
@@ -848,7 +1205,6 @@ export function startTrialExpirationJob() {
 }
 
 // ─── Auto-delete old Pix receipts (90 days LGPD) ──────────────────────────────
-import { ObjectStorageService } from "./objectStorage.js";
 // invoicesTable já importado no topo do arquivo — não re-importar aqui
 
 // Fase 14: flag de concorrência para evitar execução paralela

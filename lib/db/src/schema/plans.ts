@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, timestamp, pgEnum, unique, bigint } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -13,6 +13,8 @@ export const plansTable = pgTable("plans", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   petLimit: integer("pet_limit").notNull(),
+  staffLimit: integer("staff_limit"),
+  storageBytesLimit: bigint("storage_bytes_limit", { mode: "number" }),
   // Monthly base price (centavos). Source of truth from which the longer
   // intervals are derived. Kept for backward compatibility and base display.
   priceBrl: integer("price_brl").notNull(),
@@ -42,7 +44,10 @@ export const planPricesTable = pgTable(
 
 export const insertPlanSchema = createInsertSchema(plansTable).omit({ id: true, createdAt: true });
 export type InsertPlan = z.infer<typeof insertPlanSchema>;
-export type Plan = typeof plansTable.$inferSelect;
+export type Plan = Omit<typeof plansTable.$inferSelect, "staffLimit" | "storageBytesLimit"> & {
+  staffLimit?: number | null;
+  storageBytesLimit?: number | null;
+};
 
 export const insertPlanPriceSchema = createInsertSchema(planPricesTable).omit({ id: true, createdAt: true });
 export type InsertPlanPrice = z.infer<typeof insertPlanPriceSchema>;

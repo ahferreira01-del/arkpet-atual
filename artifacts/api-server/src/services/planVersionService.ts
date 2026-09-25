@@ -34,6 +34,8 @@ export interface CreateDraftVersionInput {
   versionName?: string | null;
   petLimit: number;
   priceBrl?: number; // base reference price in centavos
+  staffLimit?: number | null;
+  storageBytesLimit?: number;
   features?: any;
   prices?: PlanVersionPriceInput[];
   userId?: number;
@@ -45,6 +47,8 @@ export interface UpdateDraftVersionInput {
   versionNumber: number;
   versionName?: string | null;
   petLimit?: number;
+  staffLimit?: number | null;
+  storageBytesLimit?: number;
   priceBrl?: number;
   features?: any;
   prices?: PlanVersionPriceInput[];
@@ -187,6 +191,106 @@ export class PlanVersionService {
       throw new PlanVersionError("ERR_INVALID_PRICE", "Base price in centavos must be non-negative.", 400);
     }
 
+    // R38.C Compatibility Bridge: Resolve Entitlements (staffLimit & storageBytesLimit)
+    // Query CURRENT ACTIVE plan_version as the sole inheritance source (NOT mutable plans table)
+    const [activeVersion] = await dbClient
+      .select({
+        staffLimit: planVersionsTable.staffLimit,
+        storageBytesLimit: planVersionsTable.storageBytesLimit,
+      })
+      .from(planVersionsTable)
+      .where(
+        and(
+          eq(planVersionsTable.planId, input.planId),
+          eq(planVersionsTable.status, "ACTIVE"),
+        ),
+      )
+      .limit(1);
+
+    const isEnterprisePlan = (plan.name ?? "").toLowerCase().includes("enterprise");
+
+    // 1. Resolve staffLimit
+    let resolvedStaffLimit: number | null;
+    const staffLimitSupplied = input.staffLimit !== undefined;
+
+    if (staffLimitSupplied) {
+      if (input.staffLimit === null) {
+        if (!isEnterprisePlan) {
+          throw new PlanVersionError(
+            "ERR_INVALID_STAFF_LIMIT",
+            "Unlimited staff (NULL) is only allowed for Enterprise tier.",
+            400,
+          );
+        }
+        resolvedStaffLimit = null;
+      } else {
+        if (
+          typeof input.staffLimit !== "number" ||
+          !Number.isInteger(input.staffLimit) ||
+          input.staffLimit < 0
+        ) {
+          throw new PlanVersionError(
+            "ERR_INVALID_STAFF_LIMIT",
+            "Staff limit must be a non-negative integer.",
+            400,
+          );
+        }
+        resolvedStaffLimit = input.staffLimit;
+      }
+    } else {
+      // Legacy omission -> inherit from CURRENT ACTIVE plan_version
+      if (!activeVersion) {
+        throw new PlanVersionError(
+          "ERR_ENTITLEMENT_INPUT_REQUIRED",
+          `Cannot inherit staffLimit: no ACTIVE plan version exists for planId ${input.planId}. Explicit staffLimit and storageBytesLimit are required.`,
+          400,
+        );
+      }
+      resolvedStaffLimit = activeVersion.staffLimit;
+    }
+
+    // 2. Resolve storageBytesLimit
+    let resolvedStorageBytesLimit: number;
+    const storageBytesSupplied = input.storageBytesLimit !== undefined;
+
+    if (storageBytesSupplied) {
+      if (
+        typeof input.storageBytesLimit !== "number" ||
+        !Number.isInteger(input.storageBytesLimit) ||
+        input.storageBytesLimit <= 0
+      ) {
+        throw new PlanVersionError(
+          "ERR_INVALID_STORAGE_LIMIT",
+          "Storage bytes limit must be a positive integer.",
+          400,
+        );
+      }
+      resolvedStorageBytesLimit = input.storageBytesLimit;
+    } else {
+      // Legacy omission -> inherit from CURRENT ACTIVE plan_version
+      if (!activeVersion) {
+        throw new PlanVersionError(
+          "ERR_ENTITLEMENT_INPUT_REQUIRED",
+          `Cannot inherit storageBytesLimit: no ACTIVE plan version exists for planId ${input.planId}. Explicit staffLimit and storageBytesLimit are required.`,
+          400,
+        );
+      }
+      resolvedStorageBytesLimit = Number(activeVersion.storageBytesLimit);
+    }
+
+    // Final validation: resolved storage must be strictly positive integer
+    if (
+      typeof resolvedStorageBytesLimit !== "number" ||
+      !Number.isInteger(resolvedStorageBytesLimit) ||
+      resolvedStorageBytesLimit <= 0
+    ) {
+      throw new PlanVersionError(
+        "ERR_INVALID_STORAGE_LIMIT",
+        "Resolved storageBytesLimit must be a positive integer.",
+        400,
+      );
+    }
+
     const [createdVersion] = await dbClient
       .insert(planVersionsTable)
       .values({
@@ -195,6 +299,8 @@ export class PlanVersionService {
         versionName,
         status: "DRAFT",
         petLimit: input.petLimit,
+        staffLimit: resolvedStaffLimit,
+        storageBytesLimit: resolvedStorageBytesLimit,
         priceBrl,
         features: input.features ?? plan.features ?? null,
         effectiveFrom: null,
@@ -266,6 +372,35 @@ export class PlanVersionService {
         throw new PlanVersionError("ERR_INVALID_PET_LIMIT", "Pet limit must be a positive integer.", 400);
       }
       updates.petLimit = input.petLimit;
+    }
+    if (input.staffLimit !== undefined) {
+      if (
+        input.staffLimit !== null &&
+        (typeof input.staffLimit !== "number" ||
+          !Number.isInteger(input.staffLimit) ||
+          input.staffLimit < 0)
+      ) {
+        throw new PlanVersionError(
+          "ERR_INVALID_STAFF_LIMIT",
+          "Staff limit must be a non-negative integer or null.",
+          400,
+        );
+      }
+      updates.staffLimit = input.staffLimit;
+    }
+    if (input.storageBytesLimit !== undefined) {
+      if (
+        typeof input.storageBytesLimit !== "number" ||
+        !Number.isInteger(input.storageBytesLimit) ||
+        input.storageBytesLimit <= 0
+      ) {
+        throw new PlanVersionError(
+          "ERR_INVALID_STORAGE_LIMIT",
+          "Storage bytes limit must be a positive integer.",
+          400,
+        );
+      }
+      updates.storageBytesLimit = input.storageBytesLimit;
     }
     if (input.priceBrl !== undefined) {
       if (typeof input.priceBrl !== "number" || input.priceBrl < 0) {
@@ -357,6 +492,16 @@ export class PlanVersionService {
       throw new PlanVersionError("ERR_VERSION_NOT_FOUND", "Plan version not found.", 404);
     }
 
+    const [plan] = await dbClient
+      .select()
+      .from(plansTable)
+      .where(eq(plansTable.id, input.planId))
+      .limit(1);
+
+    if (!plan) {
+      throw new PlanVersionError("ERR_PLAN_NOT_FOUND", `Plan with ID ${input.planId} not found.`, 404);
+    }
+
     if (version.status === "SUPERSEDED") {
       throw new PlanVersionError(
         "ERR_CANNOT_REACTIVATE_SUPERSEDED_VERSION",
@@ -381,6 +526,48 @@ export class PlanVersionService {
       throw new PlanVersionError(
         "ERR_INVALID_LIFECYCLE_TRANSITION",
         `Cannot activate version in status '${version.status}'. Must be 'DRAFT'.`,
+        400,
+      );
+    }
+
+    // Activation Safety (Section 8): Ensure persisted entitlement tuple is valid before activation
+    if (typeof version.petLimit !== "number" || version.petLimit <= 0) {
+      throw new PlanVersionError(
+        "ERR_INVALID_ENTITLEMENT_TUPLE",
+        "Version must have a positive petLimit before activation.",
+        400,
+      );
+    }
+
+    if (
+      version.storageBytesLimit === null ||
+      version.storageBytesLimit === undefined ||
+      Number(version.storageBytesLimit) <= 0
+    ) {
+      throw new PlanVersionError(
+        "ERR_INVALID_ENTITLEMENT_TUPLE",
+        "Version must have a positive storageBytesLimit before activation.",
+        400,
+      );
+    }
+
+    const isEnterprise = (plan.name ?? "").toLowerCase().includes("enterprise");
+    if (version.staffLimit === null) {
+      if (!isEnterprise) {
+        throw new PlanVersionError(
+          "ERR_INVALID_ENTITLEMENT_TUPLE",
+          "staffLimit NULL (unlimited) is only permitted for Enterprise tier.",
+          400,
+        );
+      }
+    } else if (
+      typeof version.staffLimit !== "number" ||
+      !Number.isInteger(version.staffLimit) ||
+      version.staffLimit < 0
+    ) {
+      throw new PlanVersionError(
+        "ERR_INVALID_ENTITLEMENT_TUPLE",
+        "staffLimit must be a non-negative integer or NULL for Enterprise.",
         400,
       );
     }

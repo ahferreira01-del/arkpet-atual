@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp, varchar, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, varchar, jsonb, uniqueIndex, index, bigint } from "drizzle-orm/pg-core";
 import { sql, relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -69,6 +69,8 @@ export const customerCommercialConditionsTable = pgTable(
     pricingOverrideType: varchar("pricing_override_type", { length: 50 }).default("none"),
     pricingOverrideValue: integer("pricing_override_value"), // fixed centavos or discount pct
     entitlementPetLimit: integer("entitlement_pet_limit"), // petLimit is the ONLY approved entitlement override
+    entitlementStaffLimit: integer("entitlement_staff_limit"),
+    entitlementStorageBytesLimit: bigint("entitlement_storage_bytes_limit", { mode: "number" }),
     validFrom: timestamp("valid_from").notNull().defaultNow(),
     validUntil: timestamp("valid_until"),
     status: varchar("status", { length: 30 }).notNull().default("draft"),

@@ -28,6 +28,17 @@ import { resolveSaaSSubscriptionPrice } from "../services/pricingEngine.js";
 import { getAppBaseUrl } from "../lib/config.js";
 import { sensitiveLimiter } from "../middlewares/rateLimit.js";
 import {
+  resolveEntitlements,
+  getPetUsage,
+  getStaffUsage,
+  getStorageUsage,
+  resolveStorageEnforcementMode,
+} from "../services/entitlementsService.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
+import {
   acceptProposal,
   declineProposal,
   CommercialProposalError,
@@ -155,6 +166,7 @@ router.get("/subscription", async (req: AuthRequest, res) => {
       scheduledStripePriceId: subscriptionsTable.scheduledStripePriceId,
       scheduledBillingInterval: subscriptionsTable.scheduledBillingInterval,
       scheduledPeriodEnd: subscriptionsTable.scheduledPeriodEnd,
+      scheduledStatus: subscriptionsTable.scheduledStatus,
       plan: {
         id: plansTable.id,
         name: plansTable.name,
@@ -189,6 +201,149 @@ router.get("/subscription", async (req: AuthRequest, res) => {
   // Category 05: Unresolved Legacy Contract (TC-GF-08)
   const isUnresolvedLegacy = row.planVersionId == null && row.contractedPriceCents == null;
   const commercialBindingStatus = isUnresolvedLegacy ? "unresolved_legacy_contract" : "bound";
+
+  // Resolve bound plan version entity
+  let planVersion: any = null;
+  if (row.planVersionId) {
+    const [pVer] = await db
+      .select()
+      .from(planVersionsTable)
+      .where(eq(planVersionsTable.id, row.planVersionId))
+      .limit(1);
+    planVersion = pVer ?? null;
+  }
+
+  // Resolve authoritative quotas (Pets, Staff, Storage)
+  let quotas: any = null;
+  try {
+    const ent = await resolveEntitlements(db, crecheId);
+    const petUsed = petCountRow?.total ?? 0;
+    const staffUsed = await getStaffUsage(db, crecheId);
+    const storageUsage = await getStorageUsage(db, crecheId);
+
+    const petLimit = ent.petLimit;
+    const petAvailable = Math.max(0, petLimit - petUsed);
+    const petPercent = petLimit > 0 ? Number(((petUsed * 100) / petLimit).toFixed(1)) : 0;
+    const petAllowed = petUsed <= petLimit;
+
+    let staffQuota: any;
+    if (ent.staffBypassed) {
+      staffQuota = {
+        used: staffUsed,
+        limit: null,
+        available: null,
+        percent: null,
+        allowed: true,
+        unlimited: false,
+        enforcementBypassed: true,
+        enforcementReason: "UNRESOLVED_LEGACY_CONTRACT",
+      };
+    } else if (ent.staffUnlimited) {
+      staffQuota = {
+        used: staffUsed,
+        limit: null,
+        available: null,
+        percent: null,
+        allowed: true,
+        unlimited: true,
+        enforcementBypassed: false,
+      };
+    } else {
+      const staffLimit = ent.staffLimit!;
+      const staffAvailable = Math.max(0, staffLimit - staffUsed);
+      const staffPercent = staffLimit > 0 ? Number(((staffUsed * 100) / staffLimit).toFixed(1)) : 0;
+      const staffAllowed = staffUsed <= staffLimit;
+      staffQuota = {
+        used: staffUsed,
+        limit: staffLimit,
+        available: staffAvailable,
+        percent: staffPercent,
+        allowed: staffAllowed,
+        unlimited: false,
+        enforcementBypassed: false,
+      };
+    }
+
+    const storageMode = resolveStorageEnforcementMode();
+
+    let storageQuota: any;
+    if (ent.storageBypassed) {
+      storageQuota = {
+        usedBytes: storageUsage.usedBytes,
+        reservedBytes: storageUsage.reservedBytes,
+        effectiveUsedBytes: storageUsage.effectiveUsedBytes,
+        limitBytes: null,
+        availableBytes: null,
+        percentUsed: null,
+        warning80: false,
+        hardBlocked: false,
+        allowed: true,
+        enforcementMode: storageMode,
+        enforcementBypassed: true,
+        enforcementReason: "UNRESOLVED_LEGACY_CONTRACT",
+      };
+    } else {
+      const storageLimit = ent.storageBytesLimit!;
+      const effUsed = storageUsage.effectiveUsedBytes;
+      const storageAvailable = Math.max(0, storageLimit - effUsed);
+      const storagePercent = storageLimit > 0 ? Number(((effUsed * 100) / storageLimit).toFixed(1)) : 0;
+      const warning80 = storageLimit > 0 ? effUsed >= Math.floor((storageLimit * 80) / 100) : false;
+      const hardBlocked = storageMode === "ENFORCE" && storageLimit > 0 && effUsed >= storageLimit;
+      const storageAllowed = effUsed <= storageLimit;
+      storageQuota = {
+        usedBytes: storageUsage.usedBytes,
+        reservedBytes: storageUsage.reservedBytes,
+        effectiveUsedBytes: effUsed,
+        limitBytes: storageLimit,
+        availableBytes: storageAvailable,
+        percentUsed: storagePercent,
+        warning80,
+        hardBlocked,
+        allowed: storageAllowed,
+        enforcementMode: storageMode,
+        enforcementBypassed: false,
+      };
+    }
+
+    quotas = {
+      pets: {
+        used: petUsed,
+        limit: petLimit,
+        available: petAvailable,
+        percent: petPercent,
+        allowed: petAllowed,
+      },
+      staff: staffQuota,
+      storage: storageQuota,
+    };
+  } catch (entErr) {
+    console.error("[billing/subscription] error resolving quotas:", entErr);
+  }
+
+  // Resolve scheduledChange for C6 UI
+  let scheduledChange: any = null;
+  if (row.scheduledPlanId || row.scheduledPlanVersionId) {
+    let targetVersion: any = null;
+    if (row.scheduledPlanVersionId) {
+      const [tVer] = await db
+        .select()
+        .from(planVersionsTable)
+        .where(eq(planVersionsTable.id, row.scheduledPlanVersionId))
+        .limit(1);
+      targetVersion = tVer;
+    }
+
+    scheduledChange = {
+      scheduledPlanId: row.scheduledPlanId,
+      scheduledPlanVersionId: row.scheduledPlanVersionId,
+      scheduledPlanName: row.scheduledPlanInfo?.name ?? null,
+      scheduledStatus: row.scheduledStatus ?? (row.scheduledPlanId && row.scheduledPlanVersionId ? "PENDING" : null),
+      effectiveAt: row.scheduledPeriodEnd ?? row.currentPeriodEnd,
+      targetPetLimit: targetVersion?.petLimit ?? row.scheduledPlanInfo?.petLimit ?? null,
+      targetStaffLimit: targetVersion?.staffLimit ?? null,
+      targetStorageBytes: targetVersion ? Number(targetVersion.storageBytesLimit) : null,
+    };
+  }
 
   // Resolve active catalog price for this plan & interval
   let activeCatalogPriceCents = row.plan.priceBrl;
@@ -248,6 +403,7 @@ router.get("/subscription", async (req: AuthRequest, res) => {
 
   res.json({
     ...row,
+    planVersion,
     priceCents,
     contractedPriceCents,
     billingInterval,
@@ -255,6 +411,8 @@ router.get("/subscription", async (req: AuthRequest, res) => {
     activeCatalogPriceCents,
     commercialBindingStatus,
     petCount: petCountRow?.total ?? 0,
+    quotas,
+    scheduledChange,
   });
 });
 
@@ -517,8 +675,13 @@ router.post("/checkout", sensitiveLimiter, requireRole("creche_admin"), async (r
               status: "active",
               pastDueSince: null,
               scheduledPlanId: null,
+              scheduledPlanVersionId: null,
+              scheduledPlanVersionPriceId: null,
+              scheduledPriceCents: null,
+              scheduledStripePriceId: null,
               scheduledBillingInterval: null,
               scheduledPeriodEnd: null,
+              scheduledStatus: null,
               ...(newPeriodEnd ? { currentPeriodEnd: newPeriodEnd } : {}),
             })
             .where(eq(subscriptionsTable.crecheId, crecheId));
@@ -700,6 +863,7 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
           scheduledStripePriceId: null,
           scheduledBillingInterval: null,
           scheduledPeriodEnd: null,
+          scheduledStatus: null,
         })
         .where(eq(subscriptionsTable.crecheId, crecheId));
     } catch (dbErr: any) {
@@ -775,14 +939,50 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
     const isDowngrade = hasActivePeriod && plan.priceBrl < (currentPlan?.priceBrl ?? 0);
 
     if (isDowngrade) {
-      // Keep current (higher) plan active; queue the cheaper plan for when it expires.
-      // Under R38.B, scheduled_period_end = currentSub.currentPeriodEnd (the effective boundary).
+      // Under R38.C4, validate DEC-12 pre-schedule gate under tenant operational lock
       const targetPricing = await resolveSaaSSubscriptionPrice({
         crecheId,
         planId,
         interval,
         referenceDate: currentSub!.currentPeriodEnd,
       }).catch(() => null);
+
+      const targetVersionId = targetPricing?.planVersionId;
+      if (targetVersionId) {
+        const [targetVer] = await db
+          .select()
+          .from(planVersionsTable)
+          .where(eq(planVersionsTable.id, targetVersionId))
+          .limit(1);
+
+        if (targetVer) {
+          const petUsage = await getPetUsage(db, crecheId);
+          const staffUsage = await getStaffUsage(db, crecheId);
+          const storageUsage = await getStorageUsage(db, crecheId);
+
+          const violations: Record<string, any> = {};
+          if (petUsage > targetVer.petLimit) {
+            violations.pets = { current: petUsage, target: targetVer.petLimit, excess: petUsage - targetVer.petLimit };
+          }
+          if (targetVer.staffLimit !== null && staffUsage > targetVer.staffLimit) {
+            violations.staff = { current: staffUsage, target: targetVer.staffLimit, excess: staffUsage - targetVer.staffLimit };
+          }
+          const targetBytes = Number(targetVer.storageBytesLimit);
+          if (storageUsage.effectiveUsedBytes > targetBytes) {
+            violations.storage = { currentBytes: storageUsage.effectiveUsedBytes, targetBytes, excessBytes: storageUsage.effectiveUsedBytes - targetBytes };
+          }
+
+          if (Object.keys(violations).length > 0) {
+            res.status(409).json({
+              error: "DOWNGRADE_USAGE_EXCEEDS_LIMITS",
+              code: "DOWNGRADE_USAGE_EXCEEDS_LIMITS",
+              message: "Downgrade blocked: Current tenant resource usage exceeds target plan limits.",
+              violations,
+            });
+            return;
+          }
+        }
+      }
 
       await db
         .update(subscriptionsTable)
@@ -794,6 +994,7 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
           scheduledStripePriceId: targetPricing?.stripePriceId ?? null,
           scheduledBillingInterval: interval,
           scheduledPeriodEnd: currentSub!.currentPeriodEnd,
+          scheduledStatus: "PENDING",
           stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
         })
         .where(eq(subscriptionsTable.crecheId, crecheId));
@@ -832,6 +1033,7 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
           scheduledStripePriceId: null,
           scheduledBillingInterval: null,
           scheduledPeriodEnd: null,
+          scheduledStatus: null,
         })
         .where(eq(subscriptionsTable.crecheId, crecheId));
     }
@@ -840,18 +1042,235 @@ router.post("/confirm", requireRole("creche_admin"), async (req: AuthRequest, re
   res.json({ ok: true, pending: false });
 });
 
-// DELETE /billing/scheduled — cancel a pending plan change.
+// Helper to clear all 8 scheduled snapshot fields under tenant lock
+async function cancelScheduledChangeInternal(crecheId: number) {
+  return await db.transaction(async (tx) => {
+    await acquireTenantOperationalLock(crecheId, tx);
+    await tx
+      .update(subscriptionsTable)
+      .set({
+        scheduledPlanId: null,
+        scheduledPlanVersionId: null,
+        scheduledPlanVersionPriceId: null,
+        scheduledPriceCents: null,
+        scheduledStripePriceId: null,
+        scheduledBillingInterval: null,
+        scheduledPeriodEnd: null,
+        scheduledStatus: null,
+      })
+      .where(eq(subscriptionsTable.crecheId, crecheId));
+    return { ok: true, message: "Agendamento cancelado com sucesso." };
+  });
+}
+
+// POST /billing/change-plan — request plan change with DEC-12 pre-schedule gate for downgrades
+router.post("/change-plan", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+
+  const planId = Number(req.body?.planId);
+  if (!Number.isInteger(planId)) {
+    res.status(400).json({ error: "planId inválido." });
+    return;
+  }
+
+  const targetInterval = (req.body?.interval ?? "month") as BillingInterval;
+  if (!BILLING_INTERVALS.includes(targetInterval)) {
+    res.status(400).json({ error: "Período de cobrança inválido." });
+    return;
+  }
+
+  const [targetPlan] = await db
+    .select()
+    .from(plansTable)
+    .where(and(eq(plansTable.id, planId), eq(plansTable.isActive, true)))
+    .limit(1);
+
+  if (!targetPlan) {
+    res.status(404).json({ error: "Plano não encontrado ou inativo." });
+    return;
+  }
+
+  // Resolve target plan version (active catalog version)
+  const [targetVersion] = await db
+    .select()
+    .from(planVersionsTable)
+    .where(and(eq(planVersionsTable.planId, planId), eq(planVersionsTable.status, "ACTIVE")))
+    .limit(1);
+
+  if (!targetVersion) {
+    res.status(400).json({ error: "Nenhuma versão ativa encontrada para este plano." });
+    return;
+  }
+
+  const [currentSub] = await db
+    .select()
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.crecheId, crecheId))
+    .limit(1);
+
+  if (!currentSub) {
+    res.status(404).json({ error: "Assinatura não encontrada." });
+    return;
+  }
+
+  const [currentPlan] = await db
+    .select()
+    .from(plansTable)
+    .where(eq(plansTable.id, currentSub.planId))
+    .limit(1);
+
+  const now = new Date();
+  const hasActivePeriod =
+    currentSub.status === "active" &&
+    currentSub.currentPeriodEnd != null &&
+    currentSub.currentPeriodEnd > now;
+
+  const isDowngrade = hasActivePeriod && targetPlan.priceBrl < (currentPlan?.priceBrl ?? 0);
+
+  if (isDowngrade) {
+    // ── DEC-12 DOWNGRADE PRE-SCHEDULE GATE ─────────────────────────────────
+    try {
+      const scheduledResult = await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(crecheId, tx);
+
+        const petUsage = await getPetUsage(tx, crecheId);
+        const staffUsage = await getStaffUsage(tx, crecheId);
+        const storageUsage = await getStorageUsage(tx, crecheId);
+
+        const violations: Record<string, any> = {};
+
+        // 1. Pets
+        if (petUsage > targetVersion.petLimit) {
+          violations.pets = {
+            current: petUsage,
+            target: targetVersion.petLimit,
+            excess: petUsage - targetVersion.petLimit,
+          };
+        }
+
+        // 2. Staff (Enterprise staffLimit === null never produces a violation)
+        if (targetVersion.staffLimit !== null && staffUsage > targetVersion.staffLimit) {
+          violations.staff = {
+            current: staffUsage,
+            target: targetVersion.staffLimit,
+            excess: staffUsage - targetVersion.staffLimit,
+          };
+        }
+
+        // 3. Storage
+        const targetStorageBytes = Number(targetVersion.storageBytesLimit);
+        if (storageUsage.effectiveUsedBytes > targetStorageBytes) {
+          violations.storage = {
+            currentBytes: storageUsage.effectiveUsedBytes,
+            targetBytes: targetStorageBytes,
+            excessBytes: storageUsage.effectiveUsedBytes - targetStorageBytes,
+          };
+        }
+
+        if (Object.keys(violations).length > 0) {
+          const err: any = new Error("Downgrade blocked: Current tenant resource usage exceeds target plan limits.");
+          err.code = "DOWNGRADE_USAGE_EXCEEDS_LIMITS";
+          err.statusCode = 409;
+          err.violations = violations;
+          throw err;
+        }
+
+        // Resolve snapshot pricing at effective boundary (currentPeriodEnd)
+        const targetPricing = await resolveSaaSSubscriptionPrice({
+          crecheId,
+          planId,
+          interval: targetInterval,
+          referenceDate: currentSub.currentPeriodEnd,
+        }).catch(() => null);
+
+        await tx
+          .update(subscriptionsTable)
+          .set({
+            scheduledPlanId: planId,
+            scheduledPlanVersionId: targetPricing?.planVersionId ?? targetVersion.id,
+            scheduledPlanVersionPriceId: targetPricing?.planVersionPriceId ?? null,
+            scheduledPriceCents: targetPricing?.finalPriceCents ?? null,
+            scheduledStripePriceId: targetPricing?.stripePriceId ?? null,
+            scheduledBillingInterval: targetInterval,
+            scheduledPeriodEnd: currentSub.currentPeriodEnd,
+            scheduledStatus: "PENDING",
+          })
+          .where(eq(subscriptionsTable.crecheId, crecheId));
+
+        return {
+          scheduled: true,
+          scheduledStatus: "PENDING",
+          effectiveAt: currentSub.currentPeriodEnd,
+          targetVersionId: targetPricing?.planVersionId ?? targetVersion.id,
+        };
+      });
+
+      res.json({ ok: true, ...scheduledResult });
+      return;
+    } catch (err: any) {
+      if (err.code === "DOWNGRADE_USAGE_EXCEEDS_LIMITS" || err.statusCode === 409) {
+        res.status(409).json({
+          error: "DOWNGRADE_USAGE_EXCEEDS_LIMITS",
+          code: "DOWNGRADE_USAGE_EXCEEDS_LIMITS",
+          message: err.message,
+          violations: err.violations ?? {},
+        });
+        return;
+      }
+      if (err instanceof TenantArchivedError || err?.code === "tenant_archived") {
+        res.status(403).json({ error: "tenant_archived", message: "Creche arquivada." });
+        return;
+      }
+      console.error("[billing/change-plan] error scheduling downgrade:", err);
+      res.status(500).json({ error: "Erro ao agendar downgrade", message: err.message });
+      return;
+    }
+  }
+
+  // Not a downgrade: respond with directUpgrade / checkout guidance
+  res.json({ ok: true, directUpgrade: false, message: "Use /checkout para upgrades ou ativações imediatas." });
+});
+
+// POST /billing/cancel-scheduled-change — cancel a pending plan change (R38.C4 canonical)
+router.post("/cancel-scheduled-change", requireRole("creche_admin"), async (req: AuthRequest, res) => {
+  const crecheId = req.user?.crecheId;
+  if (!crecheId) {
+    res.status(400).json({ error: "Usuário não está associado a uma creche." });
+    return;
+  }
+  try {
+    const result = await cancelScheduledChangeInternal(crecheId);
+    res.json(result);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", message: "Creche arquivada." });
+      return;
+    }
+    res.status(500).json({ error: "Erro ao cancelar agendamento", message: err.message });
+  }
+});
+
+// DELETE /billing/scheduled — cancel a pending plan change (preserved existing endpoint)
 router.delete("/scheduled", requireRole("creche_admin"), async (req: AuthRequest, res) => {
   const crecheId = req.user?.crecheId;
   if (!crecheId) {
     res.status(400).json({ error: "Usuário não está associado a uma creche." });
     return;
   }
-  await db
-    .update(subscriptionsTable)
-    .set({ scheduledPlanId: null, scheduledBillingInterval: null, scheduledPeriodEnd: null })
-    .where(eq(subscriptionsTable.crecheId, crecheId));
-  res.json({ ok: true });
+  try {
+    const result = await cancelScheduledChangeInternal(crecheId);
+    res.json(result);
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", message: "Creche arquivada." });
+      return;
+    }
+    res.status(500).json({ error: "Erro ao cancelar agendamento", message: err.message });
+  }
 });
 
 // POST /billing/portal — Stripe billing portal for self-service management.

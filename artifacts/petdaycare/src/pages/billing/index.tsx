@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { CreditCard, Check, Sparkles, Bell, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText, Wrench, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { CreditCard, Check, Sparkles, Bell, ExternalLink, ShieldCheck, RefreshCw, Zap, CalendarClock, X, Dog, QrCode, FileText, Wrench, AlertTriangle, CheckCircle, Info, HardDrive, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,16 @@ function formatDate(value?: string | null): string {
   return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
 }
 
+function formatStorageBytes(bytes?: number | null): string {
+  if (bytes === null || bytes === undefined || isNaN(bytes)) return "—";
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const val = bytes / Math.pow(k, i);
+  return `${val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 })} ${sizes[i]}`;
+}
+
 export default function Billing() {
   const { user } = useAuth();
   const [location, setLocation] = useLocation();
@@ -92,6 +102,8 @@ export default function Billing() {
   const portalMutation = useCreateBillingPortal();
   const [cancelingSchedule, setCancelingSchedule] = React.useState(false);
   const [pendingPlanId, setPendingPlanId] = React.useState<number | null>(null);
+  const [downgradeViolationsModalOpen, setDowngradeViolationsModalOpen] = React.useState(false);
+  const [downgradeViolations, setDowngradeViolations] = React.useState<any>(null);
   const queryClient = useQueryClient();
 
   const apiBase = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
@@ -255,7 +267,13 @@ export default function Billing() {
           }
           if (res.url) window.location.href = res.url;
         },
-        onError: (err: Error) => {
+        onError: (err: any) => {
+          const errorData = err?.data;
+          if (err?.status === 409 && (errorData?.code === "DOWNGRADE_USAGE_EXCEEDS_LIMITS" || errorData?.violations)) {
+            setDowngradeViolations(errorData.violations);
+            setDowngradeViolationsModalOpen(true);
+            return;
+          }
           toast({
             title: "Não foi possível iniciar o checkout",
             description: err?.message ?? "Tente novamente em instantes.",
@@ -380,41 +398,344 @@ export default function Billing() {
         </CardContent>
       </Card>
 
-      {/* Scheduled Plan Change Banner (R38.B) */}
-      {sub?.scheduledPlanId && (
-        <Card className="bg-amber-500/5 border border-amber-500/30 rounded-[20px] shadow-sm">
-          <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <CalendarClock className="h-5 w-5 text-amber-600 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Mudança de Plano Agendada
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  O plano será alterado para <strong>{sub?.scheduledPlanInfo?.name ?? "Novo Plano"}</strong> a partir de <strong>{formatDate(sub?.scheduledPeriodEnd ?? subscription?.currentPeriodEnd)}</strong>
-                  {sub?.scheduledPriceCents ? ` pelo valor de ${formatBrl(sub.scheduledPriceCents)}` : ""}.
-                </p>
+      {/* Unified Entitlement Quotas Section (R38.C) */}
+      {sub?.quotas && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Pets Quota Card */}
+          <Card className="bg-card border border-border rounded-[20px] shadow-sm">
+            <CardContent className="p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <Dog className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Pets Cadastrados</h3>
+                    <p className="text-[11px] text-muted-foreground">Capacidade da creche</p>
+                  </div>
+                </div>
+                {(() => {
+                  const pct = sub.quotas.pets.percent ?? 0;
+                  if (pct >= 100) {
+                    return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
+                  }
+                  if (pct >= 80) {
+                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                  }
+                  return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
+                })()}
               </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-              onClick={async () => {
-                try {
-                  await fetch(`${apiBase}/api/billing/scheduled`, { method: "DELETE", credentials: "include" });
-                  queryClient.invalidateQueries();
-                  toast({ title: "Agendamento cancelado", description: "A mudança de plano agendada foi cancelada." });
-                } catch {
-                  toast({ title: "Erro", description: "Não foi possível cancelar o agendamento.", variant: "destructive" });
-                }
-              }}
-            >
-              Cancelar Mudança
-            </Button>
-          </CardContent>
-        </Card>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs font-medium">
+                  <span className="text-muted-foreground">
+                    {sub.quotas.pets.used} / {sub.quotas.pets.limit} pets
+                  </span>
+                  <span className={cn(
+                    "font-semibold",
+                    sub.quotas.pets.percent >= 100 ? "text-destructive" : sub.quotas.pets.percent >= 80 ? "text-amber-600" : "text-foreground"
+                  )}>
+                    {sub.quotas.pets.percent}%
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full transition-all duration-300 rounded-full",
+                      sub.quotas.pets.percent >= 100 ? "bg-destructive" : sub.quotas.pets.percent >= 80 ? "bg-amber-500" : "bg-primary"
+                    )}
+                    style={{ width: `${Math.min(sub.quotas.pets.percent, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                {sub.quotas.pets.available > 0
+                  ? `${sub.quotas.pets.available} vaga(s) restante(s)`
+                  : "Nenhuma vaga disponível"}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Staff Quota Card */}
+          <Card className="bg-card border border-border rounded-[20px] shadow-sm">
+            <CardContent className="p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <Users className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Equipe e Convites</h3>
+                    <p className="text-[11px] text-muted-foreground">Administradores e funcionários</p>
+                  </div>
+                </div>
+                {(() => {
+                  const staff = sub.quotas.staff;
+                  if (staff.unlimited) {
+                    return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">Ilimitado</Badge>;
+                  }
+                  if (staff.enforcementBypassed || staff.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") {
+                    return <Badge className="bg-purple-500/15 text-purple-600 border-purple-500/30 text-[10px]">Em Revisão</Badge>;
+                  }
+                  const pct = staff.percent ?? 0;
+                  if (pct >= 100) {
+                    return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
+                  }
+                  if (pct >= 80) {
+                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                  }
+                  return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
+                })()}
+              </div>
+
+              {sub.quotas.staff.unlimited ? (
+                <div className="space-y-1 py-1">
+                  <p className="text-sm font-bold text-foreground">Acesso Ilimitado</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {sub.quotas.staff.used} membro(s) atualmente ativos no plano Enterprise
+                  </p>
+                </div>
+              ) : (sub.quotas.staff.enforcementBypassed || sub.quotas.staff.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") ? (
+                <div className="space-y-1 py-1">
+                  <p className="text-xs font-medium text-foreground">{sub.quotas.staff.used} membro(s) cadastrados</p>
+                  <p className="text-[11px] text-purple-600">
+                    Contrato legado sem limite formalizado. Em processo de revisão contratual.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-muted-foreground">
+                        {sub.quotas.staff.used} / {sub.quotas.staff.limit} membros
+                      </span>
+                      <span className={cn(
+                        "font-semibold",
+                        (sub.quotas.staff.percent ?? 0) >= 100 ? "text-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "text-amber-600" : "text-foreground"
+                      )}>
+                        {sub.quotas.staff.percent ?? 0}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-300 rounded-full",
+                          (sub.quotas.staff.percent ?? 0) >= 100 ? "bg-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "bg-amber-500" : "bg-primary"
+                        )}
+                        style={{ width: `${Math.min(sub.quotas.staff.percent ?? 0, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {(sub.quotas.staff.available ?? 0) > 0
+                      ? `${sub.quotas.staff.available} vaga(s) restante(s)`
+                      : "Limite de equipe atingido"}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Storage Quota Card */}
+          <Card className="bg-card border border-border rounded-[20px] shadow-sm">
+            <CardContent className="p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                    <HardDrive className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Armazenamento em Nuvem</h3>
+                    <p className="text-[11px] text-muted-foreground">Fotos, comprovantes e arquivos</p>
+                  </div>
+                </div>
+                {(() => {
+                  const storage = sub.quotas.storage;
+                  if (storage.enforcementBypassed || storage.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") {
+                    return <Badge className="bg-purple-500/15 text-purple-600 border-purple-500/30 text-[10px]">Em Revisão</Badge>;
+                  }
+                  if (storage.enforcementMode === "ENFORCE" && storage.hardBlocked) {
+                    return <Badge variant="destructive" className="text-[10px]">Bloqueado</Badge>;
+                  }
+                  const pct = storage.percent ?? 0;
+                  if (pct >= 100) {
+                    if (storage.enforcementMode === "AUDIT") {
+                      return <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30 text-[10px]">Monitoramento</Badge>;
+                    }
+                    if (storage.enforcementMode === "SHADOW") {
+                      return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Observação</Badge>;
+                    }
+                    return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
+                  }
+                  if (pct >= 80) {
+                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                  }
+                  return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
+                })()}
+              </div>
+
+              {(sub.quotas.storage.enforcementBypassed || sub.quotas.storage.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") ? (
+                <div className="space-y-1 py-1">
+                  <p className="text-xs font-medium text-foreground">
+                    {formatStorageBytes(sub.quotas.storage.usedBytes)} utilizados
+                  </p>
+                  <p className="text-[11px] text-purple-600">
+                    Contrato legado sem cota de armazenamento formalizada. Em avaliação técnica.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs font-medium">
+                      <span className="text-muted-foreground">
+                        {formatStorageBytes(sub.quotas.storage.usedBytes)} / {formatStorageBytes(sub.quotas.storage.limitBytes)}
+                      </span>
+                      <span className={cn(
+                        "font-semibold",
+                        sub.quotas.storage.hardBlocked ? "text-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "text-amber-600" : "text-foreground"
+                      )}>
+                        {sub.quotas.storage.percent}%
+                      </span>
+                    </div>
+                    <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn(
+                          "h-full transition-all duration-300 rounded-full",
+                          sub.quotas.storage.hardBlocked ? "bg-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "bg-amber-500" : "bg-primary"
+                        )}
+                        style={{ width: `${Math.min(sub.quotas.storage.percent, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>
+                      {sub.quotas.storage.availableBytes > 0
+                        ? `${formatStorageBytes(sub.quotas.storage.availableBytes)} disponíveis`
+                        : "Cota esgotada"}
+                    </span>
+                    <span className="text-[10px] uppercase font-mono tracking-wider opacity-70">
+                      Modo: {sub.quotas.storage.enforcementMode}
+                    </span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
+
+      {/* Scheduled Plan Change Banner (R38.B / R38.C) */}
+      {(sub?.scheduledChange || sub?.scheduledPlanId) && (() => {
+        const sc = sub?.scheduledChange;
+        const isFailedOverQuota = sc?.scheduledStatus === "FAILED_OVER_QUOTA";
+        const targetName = sc?.targetPlanName ?? sub?.scheduledPlanInfo?.name ?? "Novo Plano";
+        const targetVersion = sc?.targetPlanVersionNumber ? ` (v${sc.targetPlanVersionNumber})` : "";
+        const effectiveDateStr = formatDate(sc?.effectiveDate ?? sub?.scheduledPeriodEnd ?? subscription?.currentPeriodEnd);
+        const priceStr = sc?.targetPriceCents ? ` pelo valor de ${formatBrl(sc.targetPriceCents)}` : (sub?.scheduledPriceCents ? ` pelo valor de ${formatBrl(sub.scheduledPriceCents)}` : "");
+
+        if (isFailedOverQuota) {
+          return (
+            <Card className="bg-destructive/5 border border-destructive/30 rounded-[20px] shadow-sm">
+              <CardContent className="p-4 flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-destructive">
+                          Downgrade Agendado Não Aplicado — Limites Excedidos
+                        </p>
+                        <Badge variant="destructive" className="text-[10px] uppercase">
+                          Failed Over Quota
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        A mudança para <strong>{targetName}{targetVersion}</strong> prevista para {effectiveDateStr} não pôde ser aplicada porque o uso da creche excede as cotas do plano de destino. Sua assinatura atual permanece ativa.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10 shrink-0"
+                    onClick={async () => {
+                      try {
+                        await fetch(`${apiBase}/api/billing/scheduled`, { method: "DELETE", credentials: "include" });
+                        queryClient.invalidateQueries();
+                        toast({ title: "Agendamento cancelado", description: "O agendamento com falha de cota foi cancelado." });
+                      } catch {
+                        toast({ title: "Erro", description: "Não foi possível cancelar o agendamento.", variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Cancelar Agendamento
+                  </Button>
+                </div>
+
+                {sc?.violations && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-destructive/15 text-xs">
+                    {sc.violations.pets && (
+                      <div className="p-2 rounded bg-destructive/10 text-destructive-foreground">
+                        <span className="font-semibold">Pets:</span> {sc.violations.pets.current} / {sc.violations.pets.limit} (+{sc.violations.pets.excess} excedente)
+                      </div>
+                    )}
+                    {sc.violations.staff && (
+                      <div className="p-2 rounded bg-destructive/10 text-destructive-foreground">
+                        <span className="font-semibold">Equipe:</span> {sc.violations.staff.current} / {sc.violations.staff.limit} (+{sc.violations.staff.excess} excedente)
+                      </div>
+                    )}
+                    {sc.violations.storage && (
+                      <div className="p-2 rounded bg-destructive/10 text-destructive-foreground">
+                        <span className="font-semibold">Armazenamento:</span> {formatStorageBytes(sc.violations.storage.currentBytes)} / {formatStorageBytes(sc.violations.storage.limitBytes)} (+{formatStorageBytes(sc.violations.storage.excessBytes)} excedente)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        }
+
+        return (
+          <Card className="bg-amber-500/5 border border-amber-500/30 rounded-[20px] shadow-sm">
+            <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <CalendarClock className="h-5 w-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Mudança de Plano Agendada
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    O plano será alterado para <strong>{targetName}{targetVersion}</strong> a partir de <strong>{effectiveDateStr}</strong>{priceStr}.
+                  </p>
+                  {sc && (
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Cotas previstas: {sc.targetPetLimit} pets • {sc.targetStaffLimit !== null ? `${sc.targetStaffLimit} equipe` : "Equipe ilimitada"} • {formatStorageBytes(sc.targetStorageBytesLimit)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs text-destructive border-destructive/30 hover:bg-destructive/10 shrink-0"
+                onClick={async () => {
+                  try {
+                    await fetch(`${apiBase}/api/billing/scheduled`, { method: "DELETE", credentials: "include" });
+                    queryClient.invalidateQueries();
+                    toast({ title: "Agendamento cancelado", description: "A mudança de plano agendada foi cancelada." });
+                  } catch {
+                    toast({ title: "Erro", description: "Não foi possível cancelar o agendamento.", variant: "destructive" });
+                  }
+                }}
+              >
+                Cancelar Mudança
+              </Button>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* SEÇÃO: ATUALIZAÇÕES COMERCIAIS (R36.H) */}
       {isAdmin && commercialNotifications.length > 0 && (
@@ -1243,6 +1564,75 @@ export default function Billing() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Downgrade Incompatibility Modal (R38.C DEC-12) */}
+      <Modal
+        isOpen={downgradeViolationsModalOpen}
+        onClose={() => setDowngradeViolationsModalOpen(false)}
+        title="Downgrade Não Permitido — Uso Atual Excede Limites"
+      >
+        <div className="space-y-4 pt-2">
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl text-sm text-destructive flex items-start gap-2">
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">Não é possível agendar o downgrade no momento.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                O uso atual da sua creche excede as cotas do plano selecionado. Para realizar o downgrade, reduza o uso dos recursos abaixo:
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {downgradeViolations?.pets && (
+              <div className="p-3 bg-muted/50 rounded-xl border border-border flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Dog className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">Pets Ativos:</span>
+                </div>
+                <div>
+                  Uso Atual: <strong>{downgradeViolations.pets.current}</strong> · Limite do Plano: <strong>{downgradeViolations.pets.limit}</strong>
+                  <span className="text-destructive font-semibold ml-2">(+{downgradeViolations.pets.excess} excedente)</span>
+                </div>
+              </div>
+            )}
+
+            {downgradeViolations?.staff && (
+              <div className="p-3 bg-muted/50 rounded-xl border border-border flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">Membros da Equipe:</span>
+                </div>
+                <div>
+                  Uso Atual: <strong>{downgradeViolations.staff.current}</strong> · Limite do Plano: <strong>{downgradeViolations.staff.limit}</strong>
+                  <span className="text-destructive font-semibold ml-2">(+{downgradeViolations.staff.excess} excedente)</span>
+                </div>
+              </div>
+            )}
+
+            {downgradeViolations?.storage && (
+              <div className="p-3 bg-muted/50 rounded-xl border border-border flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">Armazenamento:</span>
+                </div>
+                <div>
+                  Uso Atual: <strong>{formatStorageBytes(downgradeViolations.storage.currentBytes)}</strong> · Limite: <strong>{formatStorageBytes(downgradeViolations.storage.limitBytes)}</strong>
+                  <span className="text-destructive font-semibold ml-2">(+{formatStorageBytes(downgradeViolations.storage.excessBytes)} excedente)</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button
+              onClick={() => setDowngradeViolationsModalOpen(false)}
+              className="px-6"
+            >
+              Entendido
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, integer, jsonb, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, integer, jsonb, timestamp, uniqueIndex, bigint } from "drizzle-orm/pg-core";
 import { sql, relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -24,6 +24,8 @@ export const planVersionsTable = pgTable(
     versionName: varchar("version_name", { length: 100 }),
     status: varchar("status", { length: 50 }).notNull().default("DRAFT"),
     petLimit: integer("pet_limit").notNull(),
+    staffLimit: integer("staff_limit"),
+    storageBytesLimit: bigint("storage_bytes_limit", { mode: "number" }).notNull(),
     // Base catalog reference price in centavos (R$)
     priceBrl: integer("price_brl").notNull().default(0),
     features: jsonb("features"),

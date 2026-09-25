@@ -15,6 +15,7 @@ import {
 import { eq, and, count, isNull, sql } from "drizzle-orm";
 import { hashPassword } from "./lib/auth.js";
 import { getStripeSync, getUncachableStripeClient } from "./lib/stripeClient.js";
+import { resolveStorageEnforcementMode } from "./services/entitlementsService.js";
 
 
 // Canonical plan definitions. Explicit IDs match the sequential serial assigned
@@ -1715,7 +1716,20 @@ export async function backfillPrimaryOwners(): Promise<PrimaryOwnerBackfillRepor
   return report;
 }
 
+/**
+ * Validates the storage enforcement mode during startup preflight.
+ * - In production: throws if mode is missing or invalid.
+ * - In non-production: defaults missing mode to "AUDIT"; throws if mode is invalid.
+ * Logs normalized mode without secrets.
+ */
+export function validateStorageEnforcementModePreflight(env: NodeJS.ProcessEnv = process.env): string {
+  const mode = resolveStorageEnforcementMode(env);
+  console.log(`[startup] Storage enforcement mode: ${mode}`);
+  return mode;
+}
+
 export async function initializeDatabase() {
+  validateStorageEnforcementModePreflight();
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
   await ensureOutboxSchema();
   // Task #103: add-on services schema (runs in all environments)

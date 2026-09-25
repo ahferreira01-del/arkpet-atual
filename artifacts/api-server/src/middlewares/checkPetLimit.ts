@@ -24,6 +24,13 @@ export async function countActivePetsForCreche(
   return Number(total);
 }
 
+/**
+ * Backward compatibility middleware for pet limit validation.
+ * NOTE (R38.C3): Live route mutations (POST /pets, PUT /pets/:petId) enforce pet quotas
+ * atomically inside the mutation transaction under acquireTenantOperationalLock(crecheId, tx)
+ * via checkQuota from entitlementsService. This middleware is preserved for backward
+ * compatibility and direct unit test assertions.
+ */
 export async function checkPetLimit(req: AuthRequest, res: Response, next: NextFunction) {
   if (req.user?.role === "master_admin") {
     next();

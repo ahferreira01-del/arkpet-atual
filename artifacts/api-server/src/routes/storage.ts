@@ -1,12 +1,13 @@
 import { Router, raw, type IRouter, type Request, type Response } from "express";
 import { Readable } from "stream";
+import { randomUUID } from "crypto";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { crechesTable, usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { crechesTable, usersTable, storageFilesTable } from "@workspace/db/schema";
+import { eq, and } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage.js";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { verifyMediaToken } from "../lib/mediaToken.js";
@@ -15,6 +16,19 @@ import {
   parseCanonicalPrivateObjectPath,
   canUserAccessPrivateResource,
 } from "../lib/objectAuthorization.js";
+import {
+  acquireTenantOperationalLock,
+  TenantArchivedError,
+} from "../services/tenantLifecycleLock.js";
+import {
+  createStorageReservation,
+  confirmStorageReservation,
+  claimStorageFileForDeletion,
+  finalizeStorageFileDeletion,
+  checkCreationQuota,
+  resolveStorageEnforcementMode,
+  EntitlementsError,
+} from "../services/entitlementsService.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -96,36 +110,28 @@ router.post("/storage/uploads/request-url", authenticate, async (req: AuthReques
   const resolved = await resolveUploadCrecheId(req, res);
   if (!resolved.ok || !resolved.crecheId) return;
 
-  try {
-    const { name, size, contentType } = parsed.data;
-    const uploadURL = await objectStorageService.getObjectEntityUploadURL(resolved.crecheId);
-    const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
-
-    res.json(
-      RequestUploadUrlResponse.parse({
-        uploadURL,
-        objectPath,
-        metadata: { name, size, contentType },
-      }),
-    );
-  } catch (error) {
-    console.error("Error generating upload URL", error);
-    res.status(500).json({ error: "Failed to generate upload URL" });
-  }
+  res.status(501).json({
+    error: "PRESIGNED_UPLOAD_REPLAY_UNSAFE",
+    code: "PRESIGNED_UPLOAD_REPLAY_UNSAFE",
+    message: "Presigned upload is unavailable with the current storage provider.",
+  });
 });
 
 /**
  * POST /storage/uploads/direct
  *
- * Upload a file directly through the API server to object storage.
- * Avoids the sidecar-signed URL (which returns 401 in production).
- * Client sends the raw file bytes as the request body with Content-Type set.
+ * Upload a file directly through the API server to object storage with atomic 3-phase accounting:
+ * Phase A: Reserve quota inside operational lock
+ * Phase B: Upload buffer to physical storage
+ * Phase C: Confirm reservation inside operational lock
  */
 router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type: "*/*", limit: "100mb" }), async (req: AuthRequest, res: Response) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
 
   const resolved = await resolveUploadCrecheId(req, res);
   if (!resolved.ok || !resolved.crecheId) return;
+
+  const crecheId = Number(resolved.crecheId);
 
   try {
     const contentType = (req.headers["content-type"] as string) || "application/octet-stream";
@@ -135,11 +141,77 @@ router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type:
       return;
     }
 
-    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType, String(req.user.id), resolved.crecheId);
+    const sizeBytes = buffer.length;
+    const mode = resolveStorageEnforcementMode();
+
+    // Phase A: Reservation inside operational lock (OPEN-C-01 / R38.C5)
+    const { file: reservedFile, quota } = await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+      const quota = await checkCreationQuota(tx, {
+        crecheId,
+        resource: "storage",
+        requestedDelta: sizeBytes,
+      });
+
+      if (mode === "ENFORCE" && !quota.allowed && !quota.enforcementBypassed) {
+        throw new EntitlementsError(
+          "ERR_STORAGE_QUOTA_EXCEEDED",
+          `Storage quota exceeded. Requested: ${sizeBytes} bytes, Available: ${quota.availableBytes ?? 0} bytes.`,
+          403,
+        );
+      }
+
+      const resResult = await createStorageReservation(tx, {
+        crecheId,
+        fileKey: `res_${randomUUID()}`,
+        requestedBytes: sizeBytes,
+        contentType,
+        enforceHardLimit: mode === "ENFORCE",
+      });
+
+      return { file: resResult.file, quota };
+    });
+
+    // Phase B: Upload to physical storage (outside lock / DB tx)
+    const objectPath = await objectStorageService.uploadBuffer(buffer, contentType, String(req.user.id), String(crecheId));
+
+    // Phase C: Confirmation inside operational lock
+    await db.transaction(async (tx) => {
+      await acquireTenantOperationalLock(crecheId, tx);
+      await tx
+        .update(storageFilesTable)
+        .set({ fileKey: objectPath })
+        .where(eq(storageFilesTable.id, reservedFile.id));
+
+      await confirmStorageReservation(tx, reservedFile.id, sizeBytes);
+    });
+
+    const effectiveLimit = quota.effectiveLimit ?? quota.limitBytes ?? quota.limit ?? null;
+    const isWarning80 =
+      effectiveLimit !== null &&
+      effectiveLimit > 0 &&
+      (quota.warning80 || (Number(quota.effectiveUsedBytes ?? quota.used ?? 0) + sizeBytes) >= Math.floor((effectiveLimit * 80) / 100));
+
+    if (isWarning80 && (mode === "SHADOW" || mode === "ENFORCE")) {
+      res.setHeader("X-ArkPet-Storage-Warning", "true");
+    }
+
     res.json({ objectPath });
-  } catch (err) {
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Uploads desabilitados." });
+      return;
+    }
+    if (err instanceof EntitlementsError || err?.code === "ERR_STORAGE_QUOTA_EXCEEDED" || err?.message?.includes("Storage quota exceeded")) {
+      res.status(403).json({
+        error: "STORAGE_QUOTA_EXCEEDED",
+        code: "STORAGE_QUOTA_EXCEEDED",
+        message: err.message,
+      });
+      return;
+    }
     console.error("Error uploading file directly", err);
-    res.status(500).json({ error: "Failed to upload file" });
+    res.status(500).json({ error: "Failed to upload file", message: err.message });
   }
 });
 
@@ -301,6 +373,89 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
     }
     console.error("Error serving object", error);
     res.status(500).json({ error: "Failed to serve object" });
+  }
+});
+
+/**
+ * DELETE /storage/objects/*path
+ *
+ * Deletes an object with CAS state management:
+ * 1. CAS transition 'confirmed' -> 'deleting' in DB under operational lock
+ * 2. Physical delete from object storage
+ * 3. Finalize CAS transition 'deleting' -> 'deleted' and decrement ledger under operational lock
+ */
+router.delete("/storage/objects/*path", authenticate, async (req: AuthRequest, res: Response) => {
+  if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
+
+  const raw = req.params.path;
+  const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+
+  const parsed = parseCanonicalPrivateObjectPath(wildcardPath);
+  if (!parsed.ok || !parsed.pathCrecheId || !parsed.canonicalObjectPath) {
+    res.status(403).json({ error: "Caminho de arquivo inválido ou não autorizado" });
+    return;
+  }
+
+  const { pathCrecheId, canonicalObjectPath } = parsed;
+
+  if (req.user.role !== "master_admin" && req.user.crecheId !== pathCrecheId) {
+    res.status(403).json({ error: "Sem acesso a este arquivo" });
+    return;
+  }
+
+  try {
+    // 1. Look up tracked file in storage_files
+    const [storageFile] = await db
+      .select()
+      .from(storageFilesTable)
+      .where(
+        and(
+          eq(storageFilesTable.crecheId, pathCrecheId),
+          eq(storageFilesTable.fileKey, canonicalObjectPath),
+        ),
+      )
+      .limit(1);
+
+    if (storageFile && storageFile.status === "confirmed") {
+      // Step 1: Claim for deletion under operational lock
+      await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(pathCrecheId, tx);
+        await claimStorageFileForDeletion(tx, storageFile.id);
+      });
+
+      // Step 2: Physical deletion
+      try {
+        const objectFile = await objectStorageService.getObjectEntityFile(canonicalObjectPath);
+        await objectStorageService.deleteObject(objectFile);
+      } catch (err: any) {
+        if (!(err instanceof ObjectNotFoundError)) {
+          console.error("Physical storage delete error (ignoring for idempotency):", err);
+        }
+      }
+
+      // Step 3: Finalize deletion under operational lock
+      await db.transaction(async (tx) => {
+        await acquireTenantOperationalLock(pathCrecheId, tx);
+        await finalizeStorageFileDeletion(tx, storageFile.id);
+      });
+    } else {
+      // Legacy untracked file or already deleted: physical delete if file exists
+      try {
+        const objectFile = await objectStorageService.getObjectEntityFile(canonicalObjectPath);
+        await objectStorageService.deleteObject(objectFile);
+      } catch (err: any) {
+        // Idempotent 404
+      }
+    }
+
+    res.json({ ok: true, message: "Arquivo excluído com sucesso" });
+  } catch (err: any) {
+    if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
+      res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
+      return;
+    }
+    console.error("Error deleting storage object", err);
+    res.status(500).json({ error: "Failed to delete file", message: err.message });
   }
 });
 
