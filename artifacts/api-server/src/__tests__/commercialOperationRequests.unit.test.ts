@@ -873,6 +873,17 @@ describe("R36.E1.1 — Commercial Operation Idempotency & Percentage Sync Final 
         }),
       } as any);
 
+      // 1b. resolvePlanByPrice queries planVersionPricesTable
+      vi.mocked(db.select).mockReturnValueOnce({
+        from: vi.fn().mockReturnValueOnce({
+          innerJoin: vi.fn().mockReturnValueOnce({
+            where: vi.fn().mockReturnValueOnce({
+              limit: vi.fn().mockResolvedValueOnce([]),
+            }),
+          }),
+        }),
+      } as any);
+
       // 2. resolvePlanByPrice queries planPricesTable
       vi.mocked(db.select).mockReturnValueOnce({
         from: vi.fn().mockReturnValueOnce({

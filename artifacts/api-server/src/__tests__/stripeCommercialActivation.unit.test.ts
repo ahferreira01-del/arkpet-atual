@@ -1165,6 +1165,13 @@ describe("R36.E & R36.E1 — Stripe Commercial Activation & Gateway Reconciliati
         } as any)
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValueOnce({
+            innerJoin: vi.fn().mockReturnValueOnce({
+              where: vi.fn().mockReturnValueOnce({ limit: vi.fn().mockResolvedValueOnce([]) }),
+            }),
+          }),
+        } as any)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValueOnce({
             where: vi.fn().mockReturnValueOnce({ limit: vi.fn().mockResolvedValueOnce([{ planId: 2, interval: "month" }]) }),
           }),
         } as any);
