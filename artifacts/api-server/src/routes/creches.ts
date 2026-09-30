@@ -382,75 +382,84 @@ router.put("/:crecheId", requireRole("master_admin", "creche_admin"), async (req
   res.json(creche);
 });
 
-router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
+export async function getCrecheStatsHandler(req: AuthRequest, res: Response, dbInstance: any = db): Promise<void> {
   const id = parseInt(String(req.params.crecheId));
   if (req.user?.crecheId !== id && req.user?.role !== "master_admin") {
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
+  const [creche] = await dbInstance.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) { res.status(404).json({ error: "Not found" }); return; }
 
   const today = getBusinessDate();
-  const [checkedInPets] = await db.select({ count: count() }).from(petsTable)
+  const [checkedInPets] = await dbInstance.select({ count: count() }).from(petsTable)
     .where(and(eq(petsTable.crecheId, id), eq(petsTable.isCheckedIn, true)));
-  const [totalPets] = await db.select({ count: count() }).from(petsTable)
+  const [totalPets] = await dbInstance.select({ count: count() }).from(petsTable)
     .where(and(eq(petsTable.crecheId, id), eq(petsTable.status, "active")));
-  const [pendingBookings] = await db.select({ count: count() }).from(bookingsTable)
+  const [pendingBookings] = await dbInstance.select({ count: count() }).from(bookingsTable)
     .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "pending")));
-  const [activeBookings] = await db.select({ count: count() }).from(bookingsTable)
+  const [activeBookings] = await dbInstance.select({ count: count() }).from(bookingsTable)
     .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "active")));
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-  const [pendingTasks] = await db.select({ count: count() }).from(tasksTable)
+  const [pendingTasks] = await dbInstance.select({ count: count() }).from(tasksTable)
     .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "pending"), gte(tasksTable.scheduledFor, todayStart), lt(tasksTable.scheduledFor, todayEnd)));
-  const [completedTasks] = await db.select({ count: count() }).from(tasksTable)
+  const [completedTasks] = await dbInstance.select({ count: count() }).from(tasksTable)
     .where(and(eq(tasksTable.crecheId, id), eq(tasksTable.status, "completed"), gte(tasksTable.scheduledFor, todayStart), lt(tasksTable.scheduledFor, todayEnd)));
+
+  const todayCheckOutsRows = await dbInstance.select({ count: count() }).from(bookingsTable)
+    .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "completed"),
+      gte(bookingsTable.checkOutTime as any, todayStart), lt(bookingsTable.checkOutTime as any, todayEnd)));
 
   res.json({
     crecheId: id,
     currentOccupancy: creche.currentOccupancy,
     maxCapacity: creche.maxCapacity,
     todayCheckIns: checkedInPets?.count || 0,
-    todayCheckOuts: (await db.select({ count: count() }).from(bookingsTable)
-      .where(and(eq(bookingsTable.crecheId, id), eq(bookingsTable.status, "completed"),
-        gte(bookingsTable.checkOutTime as any, todayStart), lt(bookingsTable.checkOutTime as any, todayEnd))))[0]?.count || 0,
+    todayCheckOuts: todayCheckOutsRows[0]?.count || 0,
     pendingBookings: pendingBookings?.count || 0,
     activeBookings: activeBookings?.count || 0,
     pendingTasks: pendingTasks?.count || 0,
     completedTasks: completedTasks?.count || 0,
     petsCheckedIn: checkedInPets?.count || 0,
+    totalPets: totalPets?.count || 0,
   });
-});
+}
 
-router.get("/:crecheId/onboarding", async (req: AuthRequest, res) => {
+router.get("/:crecheId/stats", (req: AuthRequest, res: Response) => getCrecheStatsHandler(req, res));
+
+export async function getCrecheOnboardingHandler(req: AuthRequest, res: Response, dbInstance: any = db): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({ error: "Não autenticado" });
+    return;
+  }
   const id = parseInt(String(req.params.crecheId));
-  if ((req.user?.crecheId !== id || req.user?.role !== "creche_admin") && req.user?.role !== "master_admin") {
+  if (req.user?.role !== "creche_admin" || req.user?.crecheId !== id) {
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
+  const [creche] = await dbInstance.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
   if (!creche) {
     res.status(404).json({ error: "Not found" });
     return;
   }
 
-  const [staffMembersCount] = await db
+  const [staffMembersCount] = await dbInstance
     .select({ count: count() })
     .from(usersTable)
     .where(and(eq(usersTable.crecheId, id), sql`role IN ('creche_admin', 'staff')`));
 
-  const [tutorsCount] = await db
+  const [tutorsCount] = await dbInstance
     .select({ count: count() })
     .from(usersTable)
     .where(and(eq(usersTable.crecheId, id), eq(usersTable.role, "tutor")));
 
-  const [petsCount] = await db
+  const [petsCount] = await dbInstance
     .select({ count: count() })
     .from(petsTable)
     .where(eq(petsTable.crecheId, id));
 
-  const [bookingsCount] = await db
+  const [bookingsCount] = await dbInstance
     .select({ count: count() })
     .from(bookingsTable)
     .where(eq(bookingsTable.crecheId, id));
@@ -508,7 +517,9 @@ router.get("/:crecheId/onboarding", async (req: AuthRequest, res) => {
     totalSteps: steps.length,
     steps,
   });
-});
+}
+
+router.get("/:crecheId/onboarding", (req: AuthRequest, res: Response) => getCrecheOnboardingHandler(req, res));
 
 router.get("/:crecheId/staff", async (req: AuthRequest, res) => {
   const id = parseInt(String(req.params.crecheId));

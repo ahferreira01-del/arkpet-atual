@@ -1,376 +1,626 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { executeGlobalSearch } from "../routes/search.js";
+import { getCrecheStatsHandler, getCrecheOnboardingHandler } from "../routes/creches.js";
+import { petsTable } from "@workspace/db/schema";
+import { and, or, ilike, getTableName } from "drizzle-orm";
 
-// Realistic multi-tenant mock fixtures
-const { mockDbState } = vi.hoisted(() => ({
-  mockDbState: {
-    creches: [
-      { id: 1, name: "Creche Alpha", address: "Rua das Flores, 100", email: "alpha@arkpet.test", status: "active", phone: "1199999999" },
-      { id: 2, name: "Creche Beta", address: "Av. Paulista, 2000", email: "beta@arkpet.test", status: "active", phone: "1188888888" },
-      { id: 3, name: "Creche Vazia", address: "", email: "vazia@arkpet.test", status: "active", phone: "" },
-    ] as any[],
-    users: [
-      // Creche 1
-      { id: 1, name: "Admin Alpha", email: "admin.alpha@arkpet.test", role: "creche_admin", crecheId: 1, isActive: true },
-      { id: 2, name: "Staff Lucas", email: "lucas@arkpet.test", role: "staff", crecheId: 1, isActive: true },
-      { id: 10, name: "Tutor Bob", email: "bob@arkpet.test", role: "tutor", crecheId: 1, isActive: true },
-      { id: 25, name: "Tutor Alice", email: "alice@arkpet.test", role: "tutor", crecheId: 1, isActive: true },
-      // Creche 2
-      { id: 30, name: "Admin Beta", email: "admin.beta@arkpet.test", role: "creche_admin", crecheId: 2, isActive: true },
-      { id: 99, name: "Tutor Carlos", email: "carlos@arkpet.test", role: "tutor", crecheId: 2, isActive: true },
-      // Creche 3 (Empty)
-      { id: 40, name: "Admin Vazia", email: "admin.vazia@arkpet.test", role: "creche_admin", crecheId: 3, isActive: true },
-      // Master Admin
-      { id: 999, name: "Master Operator", email: "master@arkpet.test", role: "master_admin", crecheId: null, isActive: true },
-    ] as any[],
-    pets: [
-      // Creche 1
-      { id: 101, name: "Pipoca", species: "dog", breed: "Poodle", status: "active", crecheId: 1, tutorId: 25 }, // Alice's pet
-      { id: 102, name: "Thor", species: "dog", breed: "Golden", status: "active", crecheId: 1, tutorId: 10 },    // Bob's pet
-      // Creche 2
-      { id: 103, name: "Rex", species: "dog", breed: "Pastor", status: "active", crecheId: 2, tutorId: 99 },     // Carlos's pet
-    ] as any[],
-    bookings: [
-      // Creche 1
-      { id: 201, type: "Day Care", status: "confirmed", startDate: "2026-08-30", crecheId: 1, tutorId: 25, petId: 101 }, // Alice
-      { id: 202, type: "Hotel", status: "pending", startDate: "2026-08-31", crecheId: 1, tutorId: 10, petId: 102 },    // Bob
-      // Creche 2
-      { id: 203, type: "Day Care", status: "confirmed", startDate: "2026-08-30", crecheId: 2, tutorId: 99, petId: 103 }, // Carlos
-    ] as any[],
-  },
-}));
+// ────────────────────────────────────────────────────────────
+// REALISTIC MULTI-TENANT TEST FIXTURES
+// ────────────────────────────────────────────────────────────
+const mockDbState = {
+  creches: [
+    { id: 1, name: "Creche Alpha", address: "Rua das Flores, 100", email: "alpha@arkpet.test", status: "active", phone: "1199999999", currentOccupancy: 3, maxCapacity: 20 },
+    { id: 2, name: "Creche Beta", address: "Av. Paulista, 2000", email: "beta@arkpet.test", status: "active", phone: "1188888888", currentOccupancy: 1, maxCapacity: 15 },
+    { id: 3, name: "Creche Vazia", address: "", email: "vazia@arkpet.test", status: "active", phone: "", currentOccupancy: 0, maxCapacity: 10 },
+  ],
+  users: [
+    // Creche 1
+    { id: 1, name: "Admin Alpha", email: "admin.alpha@arkpet.test", role: "creche_admin", crecheId: 1, isActive: true, passwordHash: "secret_hash_1", cpf: "11122233344", phone: "1191111111" },
+    { id: 2, name: "Staff Lucas", email: "lucas@arkpet.test", role: "staff", crecheId: 1, isActive: true, passwordHash: "secret_hash_2", cpf: "22233344455", phone: "1192222222" },
+    { id: 10, name: "Tutor Bob", email: "bob@arkpet.test", role: "tutor", crecheId: 1, isActive: true, passwordHash: "secret_hash_10", cpf: "33344455566", phone: "1193333333" },
+    { id: 25, name: "Tutor Alice", email: "alice@arkpet.test", role: "tutor", crecheId: 1, isActive: true, passwordHash: "secret_hash_25", cpf: "44455566677", phone: "1194444444" },
+    // Creche 2
+    { id: 30, name: "Admin Beta", email: "admin.beta@arkpet.test", role: "creche_admin", crecheId: 2, isActive: true, passwordHash: "secret_hash_30", cpf: "55566677788", phone: "1195555555" },
+    { id: 99, name: "Tutor Carlos", email: "carlos@arkpet.test", role: "tutor", crecheId: 2, isActive: true, passwordHash: "secret_hash_99", cpf: "66677788899", phone: "1196666666" },
+    // Creche 3 (Empty)
+    { id: 40, name: "Admin Vazia", email: "admin.vazia@arkpet.test", role: "creche_admin", crecheId: 3, isActive: true, passwordHash: "secret_hash_40", cpf: "77788899900", phone: "" },
+    // Master Admin
+    { id: 999, name: "Master Operator", email: "master@arkpet.test", role: "master_admin", crecheId: null, isActive: true, passwordHash: "secret_hash_999", cpf: "00011122233", phone: "1190000000" },
+  ],
+  pets: [
+    // Creche 1
+    { id: 101, name: "Pipoca", species: "dog", breed: "Poodle", status: "active", isCheckedIn: true, crecheId: 1, tutorId: 25, medicalNotes: "Sensível", internalNotes: "VIP" },
+    { id: 102, name: "Thor", species: "dog", breed: "Golden", status: "active", isCheckedIn: false, crecheId: 1, tutorId: 10, medicalNotes: "Nenhuma", internalNotes: "Brincalhão" },
+    // Creche 2
+    { id: 103, name: "Rex", species: "dog", breed: "Pastor", status: "active", isCheckedIn: false, crecheId: 2, tutorId: 99, medicalNotes: "Nenhuma", internalNotes: "Bravo" },
+  ],
+  bookings: [
+    // Creche 1
+    { id: 201, type: "Day Care", status: "confirmed", startDate: "2026-08-30", crecheId: 1, tutorId: 25, petId: 101, price: 12000, financialNotes: "Pago via PIX" },
+    { id: 202, type: "Hotel", status: "pending", startDate: "2026-08-31", crecheId: 1, tutorId: 10, petId: 102, price: 20000, financialNotes: "Aguardando confirmação" },
+    // Creche 2
+    { id: 203, type: "Day Care", status: "confirmed", startDate: "2026-08-30", crecheId: 2, tutorId: 99, petId: 103, price: 15000, financialNotes: "Faturado" },
+  ],
+  tasks: [
+    { id: 301, crecheId: 1, title: "Alimentar cães", status: "pending", scheduledFor: new Date() },
+    { id: 302, crecheId: 1, title: "Limpar pátio", status: "completed", scheduledFor: new Date() },
+  ],
+};
 
-vi.mock("@workspace/db", () => {
+// ────────────────────────────────────────────────────────────
+// PREDICATE-AWARE DRIZZLE MOCK DB
+// Uses PgDialect to interpret Drizzle SQL generated by production code.
+// Mutation-sensitive: Omitting creche_id or tutor_id returns foreign rows.
+// ────────────────────────────────────────────────────────────
+function createMockDb(initialState = mockDbState) {
+  const dialect = new PgDialect();
+
   return {
-    db: {
-      select: (fields?: any) => {
-        let selectedTable: string = "";
-        let wherePredicates: any[] = [];
-        let limitVal = 100;
+    select: (fields?: any) => {
+      let targetTable = "";
+      let whereCondition: any = null;
+      let limitCount: number | null = null;
 
-        const chain: any = {
-          from: (tableObj: any) => {
-            selectedTable = (tableObj as any)?._?.name || (tableObj as any)?.name || "";
-            return chain;
-          },
-          leftJoin: () => chain,
-          where: (...conds: any[]) => {
-            wherePredicates = conds;
-            return chain;
-          },
-          limit: (n: number) => {
-            limitVal = n;
-            return chain.execute();
-          },
-          execute: async () => {
-            return chain.resolveRows();
-          },
-          resolveRows: async () => {
-            return [];
-          },
-          then: (resolve: any, reject: any) => {
-            return chain.execute().then(resolve, reject);
-          },
-        };
-        return chain;
-      },
+      const chain: any = {
+        from: (tableObj: any) => {
+          try {
+            targetTable = getTableName(tableObj);
+          } catch {
+            targetTable = tableObj?._?.name || tableObj?.name || "";
+          }
+          return chain;
+        },
+        leftJoin: () => chain,
+        where: (condition: any) => {
+          whereCondition = condition;
+          return chain;
+        },
+        limit: (n: number) => {
+          limitCount = n;
+          return chain;
+        },
+        execute: async () => {
+          return chain.resolve();
+        },
+        then: (resolve: any, reject: any) => {
+          return chain.resolve().then(resolve, reject);
+        },
+        resolve: async () => {
+          let sqlQuery: { sql: string; params: any[] } = { sql: "", params: [] };
+          if (whereCondition && typeof whereCondition.getSQL === "function") {
+            sqlQuery = dialect.sqlToQuery(whereCondition.getSQL());
+          }
+
+          const isCount = fields && typeof fields === "object" && "count" in fields;
+
+          // ── TABLE: creches ──
+          if (targetTable === "creches") {
+            let list = [...initialState.creches];
+            const idMatch = sqlQuery.sql.match(/"id"\s*=\s*\$(\d+)/i) || sqlQuery.sql.match(/"creches"\."id"\s*=\s*\$(\d+)/i);
+            if (idMatch) {
+              const idVal = sqlQuery.params[parseInt(idMatch[1], 10) - 1];
+              list = list.filter((c) => c.id === idVal);
+            }
+            const ilikeMatches = [...sqlQuery.sql.matchAll(/ilike\s*\$(\d+)/gi)];
+            if (ilikeMatches.length > 0) {
+              const terms = ilikeMatches.map((m) => String(sqlQuery.params[parseInt(m[1], 10) - 1] || "").replace(/%/g, "").toLowerCase());
+              list = list.filter((c) => terms.some((t) => c.name.toLowerCase().includes(t) || (c.address && c.address.toLowerCase().includes(t))));
+            }
+            if (limitCount !== null) list = list.slice(0, limitCount);
+            return isCount ? [{ count: list.length }] : list;
+          }
+
+          // ── TABLE: users ──
+          if (targetTable === "users") {
+            let list = [...initialState.users];
+            // Tenant isolation: creche_id
+            const crecheMatch = sqlQuery.sql.match(/creche_id"?\s*=\s*\$(\d+)/i);
+            if (crecheMatch) {
+              const crecheId = sqlQuery.params[parseInt(crecheMatch[1], 10) - 1];
+              list = list.filter((u) => u.crecheId === crecheId);
+            }
+            // Role check
+            const roleMatch = sqlQuery.sql.match(/role"?\s*=\s*\$(\d+)/i);
+            if (roleMatch) {
+              const roleVal = sqlQuery.params[parseInt(roleMatch[1], 10) - 1];
+              list = list.filter((u) => u.role === roleVal);
+            } else if (sqlQuery.sql.toLowerCase().includes("role in ('creche_admin', 'staff')")) {
+              list = list.filter((u) => ["creche_admin", "staff"].includes(u.role));
+            }
+            // Search pattern
+            const ilikeMatches = [...sqlQuery.sql.matchAll(/ilike\s*\$(\d+)/gi)];
+            if (ilikeMatches.length > 0) {
+              const terms = ilikeMatches.map((m) => String(sqlQuery.params[parseInt(m[1], 10) - 1] || "").replace(/%/g, "").toLowerCase());
+              list = list.filter((u) => terms.some((t) => u.name.toLowerCase().includes(t) || u.email.toLowerCase().includes(t)));
+            }
+            if (limitCount !== null) list = list.slice(0, limitCount);
+            return isCount ? [{ count: list.length }] : list;
+          }
+
+          // ── TABLE: pets ──
+          if (targetTable === "pets") {
+            let list = [...initialState.pets];
+            // Tenant isolation: creche_id
+            const crecheMatch = sqlQuery.sql.match(/creche_id"?\s*=\s*\$(\d+)/i);
+            if (crecheMatch) {
+              const crecheId = sqlQuery.params[parseInt(crecheMatch[1], 10) - 1];
+              list = list.filter((p) => p.crecheId === crecheId);
+            }
+            // Tutor isolation: tutor_id
+            const tutorMatch = sqlQuery.sql.match(/tutor_id"?\s*=\s*\$(\d+)/i);
+            if (tutorMatch) {
+              const tutorId = sqlQuery.params[parseInt(tutorMatch[1], 10) - 1];
+              list = list.filter((p) => p.tutorId === tutorId);
+            }
+            // Status check
+            const statusMatch = sqlQuery.sql.match(/status"?\s*=\s*\$(\d+)/i);
+            if (statusMatch) {
+              const statusVal = sqlQuery.params[parseInt(statusMatch[1], 10) - 1];
+              list = list.filter((p) => p.status === statusVal);
+            }
+            // isCheckedIn check
+            if (sqlQuery.sql.toLowerCase().includes("is_checked_in")) {
+              list = list.filter((p) => p.isCheckedIn === true);
+            }
+            // Search pattern
+            const ilikeMatches = [...sqlQuery.sql.matchAll(/ilike\s*\$(\d+)/gi)];
+            if (ilikeMatches.length > 0) {
+              const terms = ilikeMatches.map((m) => String(sqlQuery.params[parseInt(m[1], 10) - 1] || "").replace(/%/g, "").toLowerCase());
+              list = list.filter((p) => terms.some((t) => p.name.toLowerCase().includes(t) || (p.breed && p.breed.toLowerCase().includes(t))));
+            }
+            // Join tutor name
+            list = list.map((p) => {
+              const tutor = initialState.users.find((u) => u.id === p.tutorId);
+              return { ...p, tutorName: tutor?.name };
+            });
+            if (limitCount !== null) list = list.slice(0, limitCount);
+            return isCount ? [{ count: list.length }] : list;
+          }
+
+          // ── TABLE: bookings ──
+          if (targetTable === "bookings") {
+            let list = [...initialState.bookings];
+            // Tenant isolation: creche_id
+            const crecheMatch = sqlQuery.sql.match(/creche_id"?\s*=\s*\$(\d+)/i);
+            if (crecheMatch) {
+              const crecheId = sqlQuery.params[parseInt(crecheMatch[1], 10) - 1];
+              list = list.filter((b) => b.crecheId === crecheId);
+            }
+            // Tutor isolation: tutor_id
+            const tutorMatch = sqlQuery.sql.match(/tutor_id"?\s*=\s*\$(\d+)/i);
+            if (tutorMatch) {
+              const tutorId = sqlQuery.params[parseInt(tutorMatch[1], 10) - 1];
+              list = list.filter((b) => b.tutorId === tutorId);
+            }
+            // Status check
+            const statusMatch = sqlQuery.sql.match(/status"?\s*=\s*\$(\d+)/i);
+            if (statusMatch) {
+              const statusVal = sqlQuery.params[parseInt(statusMatch[1], 10) - 1];
+              list = list.filter((b) => b.status === statusVal);
+            }
+            // Search pattern
+            const ilikeMatches = [...sqlQuery.sql.matchAll(/ilike\s*\$(\d+)/gi)];
+            if (ilikeMatches.length > 0) {
+              const terms = ilikeMatches.map((m) => String(sqlQuery.params[parseInt(m[1], 10) - 1] || "").replace(/%/g, "").toLowerCase());
+              list = list.filter((b) => terms.some((t) => b.type.toLowerCase().includes(t)));
+            }
+            // Join pet and tutor names
+            list = list.map((b) => {
+              const pet = initialState.pets.find((p) => p.id === b.petId);
+              const tutor = initialState.users.find((u) => u.id === b.tutorId);
+              return { ...b, petName: pet?.name, tutorName: tutor?.name };
+            });
+            if (limitCount !== null) list = list.slice(0, limitCount);
+            return isCount ? [{ count: list.length }] : list;
+          }
+
+          // ── TABLE: tasks ──
+          if (targetTable === "tasks") {
+            let list = [...initialState.tasks];
+            const crecheMatch = sqlQuery.sql.match(/creche_id"?\s*=\s*\$(\d+)/i);
+            if (crecheMatch) {
+              const crecheId = sqlQuery.params[parseInt(crecheMatch[1], 10) - 1];
+              list = list.filter((t) => t.crecheId === crecheId);
+            }
+            const statusMatch = sqlQuery.sql.match(/status"?\s*=\s*\$(\d+)/i);
+            if (statusMatch) {
+              const statusVal = sqlQuery.params[parseInt(statusMatch[1], 10) - 1];
+              list = list.filter((t) => t.status === statusVal);
+            }
+            if (limitCount !== null) list = list.slice(0, limitCount);
+            return isCount ? [{ count: list.length }] : list;
+          }
+
+          return [];
+        },
+      };
+      return chain;
     },
   };
-});
+}
 
-describe("ARKPET — R40.E GLOBAL SEARCH & ONBOARDING SECURITY & FUNCTIONAL SUITE", () => {
+function createMockRes() {
+  const res: any = {
+    statusCode: 200,
+    body: null,
+    status: vi.fn((code: number) => {
+      res.statusCode = code;
+      return res;
+    }),
+    json: vi.fn((data: any) => {
+      res.body = data;
+      return res;
+    }),
+  };
+  return res;
+}
+
+describe("ARKPET — R40.E-FINAL.1 GLOBAL SEARCH & ONBOARDING SECURITY & REGRESSION SUITE", () => {
+  let mockDb: any;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDb = createMockDb();
   });
 
   // ────────────────────────────────────────────────────────────
-  // SEARCH SECURITY TESTS (SEARCH-SEC-01..06)
+  // 1. STATS CONTRACT RESTORATION & REGRESSION TEST
   // ────────────────────────────────────────────────────────────
-  describe("SEARCH-SEC-01 — Cross-Tenant Leak Prevention (Creche Isolation)", () => {
-    it("ensures Creche Admin from Creche 1 searching for term 'Rex' (only in Creche 2) receives 0 results", () => {
+  describe("BLOCKER 1: Preexisting Stats Contract Regression Closure", () => {
+    it("STATS-REG-01 — exercises production getCrecheStatsHandler and proves totalPets is restored with all contract keys", async () => {
       const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
-      expect(creche1Admin.crecheId).toBe(1);
+      const req: any = {
+        params: { crecheId: "1" },
+        user: creche1Admin,
+      };
+      const res = createMockRes();
 
-      // Evaluate predicate: pet must belong to Creche 1
-      const matchingPets = mockDbState.pets.filter(
-        (p) => p.crecheId === creche1Admin.crecheId && p.name.toLowerCase().includes("rex")
-      );
+      await getCrecheStatsHandler(req, res, mockDb);
 
-      expect(matchingPets.length).toBe(0);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toBeDefined();
+
+      // Assert all required contract keys are present
+      const expectedKeys = [
+        "crecheId",
+        "currentOccupancy",
+        "maxCapacity",
+        "todayCheckIns",
+        "todayCheckOuts",
+        "pendingBookings",
+        "activeBookings",
+        "pendingTasks",
+        "completedTasks",
+        "petsCheckedIn",
+        "totalPets",
+      ];
+
+      for (const key of expectedKeys) {
+        expect(res.body).toHaveProperty(key);
+      }
+
+      // Assert restored field value matches active pets count
+      expect(res.body.totalPets).toBe(2); // Pipoca (101) & Thor (102) in Creche 1
+      expect(res.body.crecheId).toBe(1);
+      expect(res.body.currentOccupancy).toBe(3);
+      expect(res.body.maxCapacity).toBe(20);
+      // Metric: STATS_TOTAL_PETS_CONTRACT_RESTORED = YES, STATS_TOTAL_PETS_REGRESSION_TEST = PASS
+    });
+
+    it("STATS-REG-02 — rejects cross-tenant stats inspection with HTTP 403", async () => {
+      const creche2Admin = mockDbState.users.find((u) => u.id === 30)!;
+      const req: any = {
+        params: { crecheId: "1" }, // Creche 1
+        user: creche2Admin, // Admin of Creche 2
+      };
+      const res = createMockRes();
+
+      await getCrecheStatsHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual({ error: "Sem permissão" });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 2. ONBOARDING ROLE CONTRACT & SECURITY
+  // ────────────────────────────────────────────────────────────
+  describe("BLOCKER 3: Onboarding Role Contract Alignment (ONBOARD-SEC-01..06)", () => {
+    it("ONBOARD-SEC-01: Creche Admin A -> own onboarding -> 200", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const req: any = { params: { crecheId: "1" }, user: creche1Admin };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.crecheId).toBe(1);
+      expect(res.body.totalSteps).toBe(5);
+      expect(Array.isArray(res.body.steps)).toBe(true);
+      expect(typeof res.body.completedCount).toBe("number");
+      expect(typeof res.body.isComplete).toBe("boolean");
+    });
+
+    it("ONBOARD-SEC-02: Creche Admin A -> foreign Creche B onboarding -> 403", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const req: any = { params: { crecheId: "2" }, user: creche1Admin };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual({ error: "Sem permissão" });
+    });
+
+    it("ONBOARD-SEC-03: Staff -> own creche onboarding -> 403", async () => {
+      const staffLucas = mockDbState.users.find((u) => u.id === 2)!;
+      const req: any = { params: { crecheId: "1" }, user: staffLucas };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual({ error: "Sem permissão" });
+    });
+
+    it("ONBOARD-SEC-04: Tutor -> creche onboarding -> 403", async () => {
+      const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
+      const req: any = { params: { crecheId: "1" }, user: tutorAlice };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual({ error: "Sem permissão" });
+    });
+
+    it("ONBOARD-SEC-05: Master Admin -> tenant onboarding -> 403 (MASTER_ADMIN_TENANT_ONBOARDING_ACCESS = 0)", async () => {
+      const masterUser = mockDbState.users.find((u) => u.id === 999)!;
+      const req: any = { params: { crecheId: "1" }, user: masterUser };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toEqual({ error: "Sem permissão" });
+    });
+
+    it("ONBOARD-SEC-06: Unauthenticated -> onboarding -> 401", async () => {
+      const req: any = { params: { crecheId: "1" }, user: undefined };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(401);
+      expect(res.body).toEqual({ error: "Não autenticado" });
+    });
+
+    it("ONBOARD-FUNC-01: validates creche_details requires both phone and address", async () => {
+      // Creche 3 has empty phone and address
+      const adminVazia = mockDbState.users.find((u) => u.id === 40)!;
+      const req: any = { params: { crecheId: "3" }, user: adminVazia };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(200);
+      const crecheDetailsStep = res.body.steps.find((s: any) => s.id === "creche_details");
+      expect(crecheDetailsStep.completed).toBe(false);
+      expect(res.body.isComplete).toBe(false);
+      // Metric: ONBOARDING_CRECHE_DETAILS_RULE = phone + address
+    });
+
+    it("ONBOARD-FUNC-02: populated Creche 1 marks creche_details complete based on facts", async () => {
+      const admin1 = mockDbState.users.find((u) => u.id === 1)!;
+      const req: any = { params: { crecheId: "1" }, user: admin1 };
+      const res = createMockRes();
+
+      await getCrecheOnboardingHandler(req, res, mockDb);
+
+      expect(res.statusCode).toBe(200);
+      const crecheDetailsStep = res.body.steps.find((s: any) => s.id === "creche_details");
+      expect(crecheDetailsStep.completed).toBe(true);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 3. REAL PRODUCTION CODE TESTS FOR GLOBAL SEARCH
+  // ────────────────────────────────────────────────────────────
+  describe("BLOCKER 4: Real Production Code Execution for Global Search", () => {
+    it("SEARCH-SEC-01 — exercises production executeGlobalSearch: Creche Admin 1 searching 'Rex' receives 0 results", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const results = await executeGlobalSearch(creche1Admin, "rex", mockDb);
+
+      const petGroup = results.groups.find((g) => g.type === "pet");
+      const rexPet = petGroup?.items.find((p) => p.title.toLowerCase().includes("rex"));
+      expect(rexPet).toBeUndefined();
+      expect(results.total).toBe(0);
       // Metric: SEARCH_CROSS_TENANT_LEAK = 0
     });
-  });
 
-  describe("SEARCH-SEC-02 — Cross-Tenant Tutor Isolation", () => {
-    it("ensures Staff from Creche 1 searching for Carlos (tutor of Creche 2) receives 0 results", () => {
-      const staffCreche1 = mockDbState.users.find((u) => u.id === 2)!;
-      expect(staffCreche1.crecheId).toBe(1);
+    it("SEARCH-SEC-02 — exercises production executeGlobalSearch: Staff Creche 1 searching 'Carlos' receives 0 results", async () => {
+      const staffLucas = mockDbState.users.find((u) => u.id === 2)!;
+      const results = await executeGlobalSearch(staffLucas, "carlos", mockDb);
 
-      const matchingTutors = mockDbState.users.filter(
-        (u) =>
-          u.crecheId === staffCreche1.crecheId &&
-          u.role === "tutor" &&
-          (u.name.toLowerCase().includes("carlos") || u.email.toLowerCase().includes("carlos"))
-      );
-
-      expect(matchingTutors.length).toBe(0);
+      const tutorGroup = results.groups.find((g) => g.type === "tutor");
+      const carlosTutor = tutorGroup?.items.find((t) => t.title.toLowerCase().includes("carlos"));
+      expect(carlosTutor).toBeUndefined();
+      expect(results.total).toBe(0);
     });
-  });
 
-  describe("SEARCH-SEC-03 — Tutor Cannot Search Foreign Pet in Same Creche", () => {
-    it("strictly prevents Tutor Alice from seeing Tutor Bob's pet 'Thor' in the same Creche 1", () => {
+    it("SEARCH-SEC-03 — exercises production executeGlobalSearch: Tutor Alice searching 'Thor' receives 0 results", async () => {
       const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
-      expect(tutorAlice.role).toBe("tutor");
-      expect(tutorAlice.crecheId).toBe(1);
+      const results = await executeGlobalSearch(tutorAlice, "thor", mockDb);
 
-      // Search term 'Thor'
-      const searchResults = mockDbState.pets.filter(
-        (p) =>
-          p.crecheId === tutorAlice.crecheId &&
-          p.tutorId === tutorAlice.id && // Strict ownership predicate
-          p.name.toLowerCase().includes("thor")
-      );
-
-      expect(searchResults.length).toBe(0);
+      const petGroup = results.groups.find((g) => g.type === "pet");
+      const thorPet = petGroup?.items.find((p) => p.title.toLowerCase().includes("thor"));
+      expect(thorPet).toBeUndefined();
+      expect(results.total).toBe(0);
       // Metric: TUTOR_SEARCH_FOREIGN_PET = 0
     });
-  });
 
-  describe("SEARCH-SEC-04 — Tutor Cannot Search Foreign Booking in Same Creche", () => {
-    it("strictly prevents Tutor Alice from seeing Tutor Bob's booking in the same Creche 1", () => {
+    it("SEARCH-SEC-04 — exercises production executeGlobalSearch: Tutor Alice searching foreign booking receives 0 results", async () => {
       const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
-      const foreignBookingId = 202; // Bob's booking
+      // Booking 202 is Bob's Hotel booking
+      const results = await executeGlobalSearch(tutorAlice, "Hotel", mockDb);
 
-      const matchingBookings = mockDbState.bookings.filter(
-        (b) =>
-          b.crecheId === tutorAlice.crecheId &&
-          b.tutorId === tutorAlice.id && // Strict ownership predicate
-          b.id === foreignBookingId
-      );
-
-      expect(matchingBookings.length).toBe(0);
+      const bookingGroup = results.groups.find((g) => g.type === "booking");
+      expect(bookingGroup).toBeUndefined();
+      expect(results.total).toBe(0);
       // Metric: TUTOR_SEARCH_FOREIGN_BOOKING = 0
     });
-  });
 
-  describe("SEARCH-SEC-04b — Tutor Cannot Search Other Tutors", () => {
-    it("ensures tutors never receive a tutors group or results (TUTOR_SEARCH_OTHER_TUTOR = 0)", () => {
+    it("SEARCH-SEC-04b — verifies tutor search never queries or returns other tutors", async () => {
       const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
-      expect(tutorAlice.role).toBe("tutor");
+      const results = await executeGlobalSearch(tutorAlice, "Bob", mockDb);
 
-      // In routes/search.ts, the 'tutor' role branch completely omits the tutor query
-      const isTutorQueryAllowed = tutorAlice.role === "creche_admin" || tutorAlice.role === "staff";
-      expect(isTutorQueryAllowed).toBe(false);
+      const tutorGroup = results.groups.find((g) => g.type === "tutor");
+      expect(tutorGroup).toBeUndefined();
+      // Metric: TUTOR_SEARCH_OTHER_TUTOR = 0
     });
-  });
 
-  describe("SEARCH-SEC-05 — Unauthenticated Access Blocked", () => {
-    it("rejects search requests with missing or invalid token with HTTP 401", () => {
-      const hasAuthHeader = false;
-      const status = hasAuthHeader ? 200 : 401;
-      expect(status).toBe(401);
+    it("SEARCH-SEC-05 — short query returns empty immediately without executing DB scan", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const results = await executeGlobalSearch(creche1Admin, "a", mockDb);
+
+      expect(results).toEqual({
+        query: "a",
+        groups: [],
+        total: 0,
+      });
+      // Metric: EMPTY_GLOBAL_SCAN = 0
     });
-  });
 
-  describe("SEARCH-SEC-06 — Destination Routes Remain Protected", () => {
-    it("verifies that all search result URLs point only to existing, protected application paths", () => {
-      const validAppRoutes = [
-        "/pets/:id",
-        "/bookings",
-        "/tutors",
-        "/admin/creches",
-        "/admin/users",
-      ];
+    it("SEARCH-SEC-06 — destination URLs point strictly to valid application routes", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const results = await executeGlobalSearch(creche1Admin, "pipo", mockDb);
 
-      const testResultUrls = [
-        "/pets/101",
-        "/bookings",
-        "/tutors",
-        "/admin/creches",
-        "/admin/users",
-      ];
+      expect(results.groups.length).toBeGreaterThan(0);
+      const validPrefixes = ["/pets/", "/bookings", "/tutors", "/admin/creches", "/admin/users"];
 
-      for (const url of testResultUrls) {
-        const matchesAny = validAppRoutes.some((route) => {
-          if (route.includes(":id")) {
-            const prefix = route.split(":id")[0];
-            return url.startsWith(prefix);
-          }
-          return url === route;
-        });
-        expect(matchesAny).toBe(true);
+      for (const group of results.groups) {
+        for (const item of group.items) {
+          const isValid = validPrefixes.some((p) => item.url.startsWith(p));
+          expect(isValid).toBe(true);
+        }
       }
-      // Metric: SEARCH_BROKEN_DESTINATION = 0, SEARCH_ROUTE_AUTH_BYPASS = 0
     });
-  });
 
-  // ────────────────────────────────────────────────────────────
-  // SEARCH FUNCTIONAL TESTS (SEARCH-001..007)
-  // ────────────────────────────────────────────────────────────
-  describe("SEARCH-001 — Matching Pet Returned For Authorized User", () => {
-    it("returns Pipoca when Tutor Alice searches for 'Pipo'", () => {
-      const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
-      const query = "pipo";
-
-      const matched = mockDbState.pets.filter(
-        (p) =>
-          p.crecheId === tutorAlice.crecheId &&
-          p.tutorId === tutorAlice.id &&
-          p.name.toLowerCase().includes(query)
-      );
-
-      expect(matched.length).toBe(1);
-      expect(matched[0].name).toBe("Pipoca");
-    });
-  });
-
-  describe("SEARCH-002 — Matching Tutor Returned For Operational Staff", () => {
-    it("returns Bob when Creche Admin searches for 'bob'", () => {
-      const admin = mockDbState.users.find((u) => u.id === 1)!;
-      const query = "bob";
-
-      const matched = mockDbState.users.filter(
-        (u) =>
-          u.crecheId === admin.crecheId &&
-          u.role === "tutor" &&
-          u.name.toLowerCase().includes(query)
-      );
-
-      expect(matched.length).toBe(1);
-      expect(matched[0].name).toBe("Tutor Bob");
-    });
-  });
-
-  describe("SEARCH-003 — Matching Booking Returned", () => {
-    it("returns Day Care booking when Creche Admin searches for 'Day Care'", () => {
-      const admin = mockDbState.users.find((u) => u.id === 1)!;
-      const query = "day care";
-
-      const matched = mockDbState.bookings.filter(
-        (b) => b.crecheId === admin.crecheId && b.type.toLowerCase().includes(query)
-      );
-
-      expect(matched.length).toBe(1);
-      expect(matched[0].id).toBe(201);
-    });
-  });
-
-  describe("SEARCH-004 — No Results State", () => {
-    it("returns empty groups and total 0 when no records match", () => {
-      const admin = mockDbState.users.find((u) => u.id === 1)!;
-      const query = "nonexistentanimal";
-
-      const matched = mockDbState.pets.filter(
-        (p) => p.crecheId === admin.crecheId && p.name.toLowerCase().includes(query)
-      );
-
-      expect(matched.length).toBe(0);
-    });
-  });
-
-  describe("SEARCH-005 — Query Below Minimum Length Returns Empty Immediately", () => {
-    it("rejects search evaluation when query is shorter than 2 characters (EMPTY_GLOBAL_SCAN = 0)", () => {
-      const query = "a";
-      const minLength = 2;
-      const shouldExecuteQuery = query.trim().length >= minLength;
-
-      expect(shouldExecuteQuery).toBe(false);
-    });
-  });
-
-  describe("SEARCH-006 — Sanitizes SQL LIKE Wildcards", () => {
-    it("escapes %, _, and backslashes to avoid unbounded wildcard scans", () => {
-      const sanitizeLike = (input: string) => input.replace(/[%_\\]/g, "\\$&");
-
-      expect(sanitizeLike("100%")).toBe("100\\%");
-      expect(sanitizeLike("test_user")).toBe("test\\_user");
-      expect(sanitizeLike("path\\file")).toBe("path\\\\file");
-    });
-  });
-
-  describe("SEARCH-007 — Master Admin Platform Search Scope", () => {
-    it("allows master admin to search creches across the network without arbitrary tenant data leak", () => {
+    it("SEARCH-SEC-07 — sensitive data overexposure prevention: ensures no secrets or sensitive fields leak in payload", async () => {
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
       const masterUser = mockDbState.users.find((u) => u.id === 999)!;
-      expect(masterUser.role).toBe("master_admin");
 
-      const query = "alpha";
-      const matchedCreches = mockDbState.creches.filter((c) =>
-        c.name.toLowerCase().includes(query)
-      );
+      const adminResults = await executeGlobalSearch(creche1Admin, "alpha", mockDb);
+      const masterResults = await executeGlobalSearch(masterUser, "alpha", mockDb);
 
-      expect(matchedCreches.length).toBe(1);
-      expect(matchedCreches[0].name).toBe("Creche Alpha");
-    });
-  });
-
-  // ────────────────────────────────────────────────────────────
-  // ONBOARDING TESTS (ONBOARD-001..007)
-  // ────────────────────────────────────────────────────────────
-  describe("ONBOARD-001 — New Creche Admin Incomplete Checklist", () => {
-    it("evaluates real state of empty Creche 3 and returns incomplete checklist steps", () => {
-      const creche = mockDbState.creches.find((c) => c.id === 3)!;
-      const staffCount = mockDbState.users.filter((u) => u.crecheId === 3 && ["creche_admin", "staff"].includes(u.role)).length;
-      const tutorsCount = mockDbState.users.filter((u) => u.crecheId === 3 && u.role === "tutor").length;
-      const petsCount = mockDbState.pets.filter((p) => p.crecheId === 3).length;
-      const bookingsCount = mockDbState.bookings.filter((b) => b.crecheId === 3).length;
-
-      const steps = [
-        { id: "creche_details", completed: Boolean(creche.phone && creche.address) },
-        { id: "staff", completed: staffCount > 1 },
-        { id: "tutors", completed: tutorsCount > 0 },
-        { id: "pets", completed: petsCount > 0 },
-        { id: "bookings", completed: bookingsCount > 0 },
+      const allItems = [
+        ...adminResults.groups.flatMap((g) => g.items),
+        ...masterResults.groups.flatMap((g) => g.items),
       ];
 
-      const completedCount = steps.filter((s) => s.completed).length;
-      expect(completedCount).toBe(0);
-      expect(steps.length).toBe(5);
-      // Metric: ONBOARDING_FAKE_COMPLETION = 0
+      const forbiddenKeys = [
+        "passwordHash",
+        "password",
+        "cpf",
+        "phone",
+        "pixKey",
+        "medicalNotes",
+        "internalNotes",
+        "financialNotes",
+        "price",
+        "amount",
+      ];
+
+      for (const item of allItems) {
+        for (const key of forbiddenKeys) {
+          expect((item as any)[key]).toBeUndefined();
+        }
+        // Only allowed keys
+        const allowedKeys = new Set(["id", "type", "title", "subtitle", "url", "badge"]);
+        for (const actualKey of Object.keys(item)) {
+          expect(allowedKeys.has(actualKey)).toBe(true);
+        }
+      }
+      // Metric: SEARCH_SENSITIVE_DATA_OVEREXPOSURE = 0
     });
-  });
 
-  describe("ONBOARD-002 — Existing Real Data Marks Items Complete", () => {
-    it("evaluates real state of populated Creche 1 and confirms completed steps based on facts", () => {
-      const creche = mockDbState.creches.find((c) => c.id === 1)!;
-      const staffCount = mockDbState.users.filter((u) => u.crecheId === 1 && ["creche_admin", "staff"].includes(u.role)).length;
-      const tutorsCount = mockDbState.users.filter((u) => u.crecheId === 1 && u.role === "tutor").length;
-      const petsCount = mockDbState.pets.filter((p) => p.crecheId === 1).length;
-      const bookingsCount = mockDbState.bookings.filter((b) => b.crecheId === 1).length;
+    // ────────────────────────────────────────────────────────────
+    // 4. MUTATION SENSITIVITY VERIFICATION
+    // ────────────────────────────────────────────────────────────
+    it("SEARCH-MUT-01 — proves mock DB is mutation-sensitive: omitting creche_id in Drizzle SQL returns foreign pets", async () => {
+      // In production, executeGlobalSearch produces eq(petsTable.crecheId, 1).
+      // Here we simulate an altered/mutated query lacking eq(petsTable.crecheId, crecheId)
+      // and assert that the mock DB returns Rex (pet from Creche 2), proving the mock DB
+      // relies genuinely on the SQL condition generated by Drizzle.
+      const mutatedQueryCond = or(ilike(petsTable.name, "%rex%"));
+      const rawResults = await mockDb
+        .select()
+        .from(petsTable)
+        .where(mutatedQueryCond);
 
-      expect(Boolean(creche.phone && creche.address)).toBe(true);
-      expect(staffCount).toBeGreaterThan(1);
-      expect(tutorsCount).toBeGreaterThan(0);
-      expect(petsCount).toBeGreaterThan(0);
-      expect(bookingsCount).toBeGreaterThan(0);
+      // Mutated query returns foreign pet
+      expect(rawResults.some((p: any) => p.name === "Rex" && p.crecheId === 2)).toBe(true);
+
+      // But production code with creche isolation NEVER returns Rex to Creche 1
+      const creche1Admin = mockDbState.users.find((u) => u.id === 1)!;
+      const productionResults = await executeGlobalSearch(creche1Admin, "rex", mockDb);
+      expect(productionResults.total).toBe(0);
     });
-  });
 
-  describe("ONBOARD-005 — Staff Role Leak Prevention", () => {
-    it("strictly forbids staff from accessing creche onboarding status (ONBOARDING_ROLE_LEAK = 0)", () => {
-      const staffUser = mockDbState.users.find((u) => u.id === 2)!;
-      expect(staffUser.role).toBe("staff");
+    it("SEARCH-MUT-02 — proves mock DB is mutation-sensitive: omitting tutor_id in Drizzle SQL returns other tutor's pets", async () => {
+      // Query without tutor_id predicate returns Bob's pet Thor (102)
+      const mutatedQueryCond = and(
+        ilike(petsTable.name, "%thor%")
+      );
+      const rawResults = await mockDb
+        .select()
+        .from(petsTable)
+        .where(mutatedQueryCond);
 
-      const isAllowed = staffUser.role === "creche_admin" || staffUser.role === "master_admin";
-      expect(isAllowed).toBe(false);
+      expect(rawResults.some((p: any) => p.name === "Thor" && p.tutorId === 10)).toBe(true);
+
+      // But production code executed for Alice NEVER returns Bob's pet Thor
+      const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
+      const productionResults = await executeGlobalSearch(tutorAlice, "thor", mockDb);
+      expect(productionResults.total).toBe(0);
     });
-  });
 
-  describe("ONBOARD-006 — Tutor Role Leak Prevention", () => {
-    it("strictly forbids tutor from accessing creche onboarding status (ONBOARDING_ROLE_LEAK = 0)", () => {
-      const tutorUser = mockDbState.users.find((u) => u.id === 25)!;
-      expect(tutorUser.role).toBe("tutor");
+    // ────────────────────────────────────────────────────────────
+    // 5. FUNCTIONAL SEARCH TESTS
+    // ────────────────────────────────────────────────────────────
+    it("SEARCH-001 — authorized Tutor Alice searching 'pipo' receives Pipoca", async () => {
+      const tutorAlice = mockDbState.users.find((u) => u.id === 25)!;
+      const results = await executeGlobalSearch(tutorAlice, "pipo", mockDb);
 
-      const isAllowed = tutorUser.role === "creche_admin" || tutorUser.role === "master_admin";
-      expect(isAllowed).toBe(false);
+      expect(results.total).toBe(1);
+      const petGroup = results.groups.find((g) => g.type === "pet");
+      expect(petGroup?.items[0].title).toBe("Pipoca");
+      expect(petGroup?.items[0].url).toBe("/pets/101");
     });
-  });
 
-  describe("ONBOARD-007 — Creche Tenant Isolation in Onboarding", () => {
-    it("prevents Creche Admin of Creche 1 from inspecting onboarding of Creche 2", () => {
+    it("SEARCH-002 — Creche Admin searching 'bob' receives Tutor Bob", async () => {
       const admin1 = mockDbState.users.find((u) => u.id === 1)!;
-      const targetCrecheId = 2;
+      const results = await executeGlobalSearch(admin1, "bob", mockDb);
 
-      const isAllowed = admin1.crecheId === targetCrecheId || admin1.role === "master_admin";
-      expect(isAllowed).toBe(false);
+      const tutorGroup = results.groups.find((g) => g.type === "tutor");
+      expect(tutorGroup?.items.some((t) => t.title === "Tutor Bob")).toBe(true);
+    });
+
+    it("SEARCH-003 — Creche Admin searching 'Day Care' receives Day Care booking", async () => {
+      const admin1 = mockDbState.users.find((u) => u.id === 1)!;
+      const results = await executeGlobalSearch(admin1, "Day Care", mockDb);
+
+      const bookingGroup = results.groups.find((g) => g.type === "booking");
+      expect(bookingGroup?.items.some((b) => b.id === 201)).toBe(true);
+    });
+
+    it("SEARCH-004 — Master Admin searching 'alpha' receives Creche Alpha", async () => {
+      const masterUser = mockDbState.users.find((u) => u.id === 999)!;
+      const results = await executeGlobalSearch(masterUser, "alpha", mockDb);
+
+      const crecheGroup = results.groups.find((g) => g.type === "creche");
+      expect(crecheGroup?.items.some((c) => c.title === "Creche Alpha")).toBe(true);
     });
   });
 });

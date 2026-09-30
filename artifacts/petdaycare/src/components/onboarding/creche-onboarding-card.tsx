@@ -49,18 +49,12 @@ interface CrecheOnboardingCardProps {
 }
 
 export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCardProps) {
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-
-  // Check localStorage for dismissal
-  useEffect(() => {
+  const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window !== "undefined" && crecheId) {
-      const dismissed = localStorage.getItem(`onboarding_dismissed_${crecheId}`);
-      if (dismissed === "true") {
-        setIsDismissed(true);
-      }
+      return localStorage.getItem(`onboarding_collapsed_${crecheId}`) === "true";
     }
-  }, [crecheId]);
+    return false;
+  });
 
   const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
 
@@ -86,8 +80,8 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
     return null;
   }
 
-  // If dismissed or loading without data or already complete, hide non-intrusively
-  if (isDismissed || isLoading || !data || !Array.isArray(data.steps) || data.isComplete) {
+  // If loading without data, steps missing, or 100% complete, hide completely
+  if (isLoading || !data || !Array.isArray(data.steps) || data.isComplete) {
     return null;
   }
 
@@ -100,13 +94,50 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
   const completedCount = typeof data.completedCount === "number" ? data.completedCount : steps.filter((s) => s.completed).length;
   const progressPercent = totalSteps > 0 ? Math.round((completedCount / totalSteps) * 100) : 0;
 
-  const handleDismiss = () => {
-    setIsDismissed(true);
+  const handleSetCollapsed = (collapsed: boolean) => {
+    setIsCollapsed(collapsed);
     if (typeof window !== "undefined") {
-      localStorage.setItem(`onboarding_dismissed_${crecheId}`, "true");
+      localStorage.setItem(`onboarding_collapsed_${crecheId}`, collapsed ? "true" : "false");
     }
   };
 
+  // ── Collapsed / Deferred State: compact bar showing progress with "Retomar" affordance ──
+  if (isCollapsed) {
+    return (
+      <div
+        role="region"
+        aria-label="Primeiros passos na ArkPet"
+        className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/5 via-background to-secondary/30 px-4 py-3 shadow-xs transition-all mb-6 flex items-center justify-between gap-4"
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="h-4 w-4 text-primary" />
+          </div>
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="font-display font-semibold text-sm text-foreground truncate">
+              Primeiros passos
+            </span>
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              ({completedCount} de {totalSteps} concluídos)
+            </span>
+          </div>
+        </div>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => handleSetCollapsed(false)}
+          className="h-8 text-xs gap-1.5 shrink-0"
+          aria-label="Retomar onboarding"
+        >
+          <span>Retomar</span>
+          <ChevronDown className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
+  // ── Expanded State ──
   return (
     <div
       role="region"
@@ -124,7 +155,7 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
               Primeiros passos na ArkPet
             </h3>
             <p className="text-xs text-muted-foreground">
-              {data.completedCount} de {data.totalSteps} etapas concluídas ({progressPercent}%)
+              {completedCount} de {totalSteps} etapas concluídas ({progressPercent}%)
             </p>
           </div>
         </div>
@@ -132,17 +163,18 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setIsCollapsed((prev) => !prev)}
+            onClick={() => handleSetCollapsed(true)}
             className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            aria-label={isCollapsed ? "Expandir checklist" : "Recolher checklist"}
+            title="Recolher checklist"
+            aria-label="Recolher checklist"
           >
-            {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+            <ChevronUp className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={handleDismiss}
+            onClick={() => handleSetCollapsed(true)}
             className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-            title="Fechar checklist"
+            title="Recolher checklist"
             aria-label="Fechar checklist"
           >
             <X className="h-4 w-4" />
@@ -158,76 +190,74 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
         />
       </div>
 
-      {/* Collapsible Steps Content */}
-      {!isCollapsed && (
-        <div className="mt-4 pt-3 border-t border-border/40 space-y-2.5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-            {data.steps.map((step) => {
-              return (
-                <div
-                  key={step.id}
-                  className={cn(
-                    "flex items-center justify-between p-3 rounded-xl border text-sm transition-all",
-                    step.completed
-                      ? "bg-secondary/20 border-border/40 text-muted-foreground"
-                      : "bg-background border-border hover:border-primary/40 shadow-2xs"
-                  )}
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="shrink-0">
-                      {step.completed ? (
-                        <CheckCircle2 className="h-5 w-5 text-success" />
-                      ) : (
-                        <Circle className="h-5 w-5 text-muted-foreground/40" />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p
-                        className={cn(
-                          "font-medium text-xs sm:text-sm truncate",
-                          step.completed ? "text-muted-foreground line-through opacity-70" : "text-foreground"
-                        )}
-                      >
-                        {step.title}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {step.description}
-                      </p>
-                    </div>
+      {/* Steps Content */}
+      <div className="mt-4 pt-3 border-t border-border/40 space-y-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          {steps.map((step) => {
+            return (
+              <div
+                key={step.id}
+                className={cn(
+                  "flex items-center justify-between p-3 rounded-xl border text-sm transition-all",
+                  step.completed
+                    ? "bg-secondary/20 border-border/40 text-muted-foreground"
+                    : "bg-background border-border hover:border-primary/40 shadow-2xs"
+                )}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="shrink-0">
+                    {step.completed ? (
+                      <CheckCircle2 className="h-5 w-5 text-success" />
+                    ) : (
+                      <Circle className="h-5 w-5 text-muted-foreground/40" />
+                    )}
                   </div>
-
-                  {!step.completed && (
-                    <Link href={step.route}>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1 shrink-0 ml-2"
-                      >
-                        <span>{step.actionLabel || "Iniciar"}</span>
-                        <ArrowRight className="h-3 w-3" />
-                      </Button>
-                    </Link>
-                  )}
+                  <div className="min-w-0">
+                    <p
+                      className={cn(
+                        "font-medium text-xs sm:text-sm truncate",
+                        step.completed ? "text-muted-foreground line-through opacity-70" : "text-foreground"
+                      )}
+                    >
+                      {step.title}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {step.description}
+                    </p>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
 
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-[11px] text-muted-foreground">
-              Configure sua creche no seu próprio ritmo.
-            </span>
-            <Button
-              variant="link"
-              size="sm"
-              onClick={handleDismiss}
-              className="text-xs text-muted-foreground hover:text-foreground h-auto p-0"
-            >
-              Continuar depois
-            </Button>
-          </div>
+                {!step.completed && (
+                  <Link href={step.route}>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 px-2.5 text-xs text-primary hover:text-primary hover:bg-primary/10 gap-1 shrink-0 ml-2"
+                    >
+                      <span>{step.actionLabel || "Iniciar"}</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+
+        <div className="flex items-center justify-between pt-2">
+          <span className="text-[11px] text-muted-foreground">
+            Configure sua creche no seu próprio ritmo.
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            onClick={() => handleSetCollapsed(true)}
+            className="text-xs text-muted-foreground hover:text-foreground h-auto p-0"
+          >
+            Continuar depois
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

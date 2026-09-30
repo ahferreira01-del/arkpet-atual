@@ -325,7 +325,7 @@ describe("ARKPET — R40.E GLOBAL SEARCH & ONBOARDING FRONTEND TEST SUITE", () =
       });
     });
 
-    it("ONBOARD-003 & ONBOARD-004: 'Continuar depois' dismisses checklist and persists without hard lock", async () => {
+    it("ONBOARD-003 & ONBOARD-004: 'Continuar depois' collapses checklist into resumable bar and allows resuming", async () => {
       global.fetch = vi.fn().mockResolvedValueOnce({
         ok: true,
         json: async () => mockIncompleteOnboarding,
@@ -339,14 +339,30 @@ describe("ARKPET — R40.E GLOBAL SEARCH & ONBOARDING FRONTEND TEST SUITE", () =
         expect(screen.getByText(/primeiros passos na arkpet/i)).toBeInTheDocument();
       });
 
+      // Click "Continuar depois"
       const dismissBtn = screen.getByRole("button", { name: /continuar depois/i });
       fireEvent.click(dismissBtn);
 
+      // Expanded header should disappear
       await waitFor(() => {
         expect(screen.queryByText(/primeiros passos na arkpet/i)).not.toBeInTheDocument();
       });
 
-      expect(localStorage.getItem("onboarding_dismissed_1")).toBe("true");
+      // Compact bar remains visible with progress and Retomar button
+      expect(localStorage.getItem("onboarding_collapsed_1")).toBe("true");
+      expect(screen.getByText("Primeiros passos")).toBeInTheDocument();
+      expect(screen.getByText("(2 de 5 concluídos)")).toBeInTheDocument();
+
+      const resumeBtn = screen.getByRole("button", { name: /retomar onboarding/i });
+      expect(resumeBtn).toBeInTheDocument();
+
+      // Click "Retomar" to expand again
+      fireEvent.click(resumeBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText(/primeiros passos na arkpet/i)).toBeInTheDocument();
+      });
+      expect(localStorage.getItem("onboarding_collapsed_1")).toBe("false");
     });
 
     it("ONBOARD-005: staff does NOT see creche admin onboarding (ONBOARDING_ROLE_LEAK = 0)", () => {
@@ -392,6 +408,28 @@ describe("ARKPET — R40.E GLOBAL SEARCH & ONBOARDING FRONTEND TEST SUITE", () =
 
         const bookingsLink = screen.getByRole("link", { name: /reservas/i });
         expect(bookingsLink).toHaveAttribute("href", "/bookings");
+      });
+    });
+
+    it("ONBOARD-009: completed onboarding renders nothing (COMPLETED_ONBOARDING_INTERRUPTIONS = 0)", async () => {
+      global.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          crecheId: 1,
+          isComplete: true,
+          completedCount: 5,
+          totalSteps: 5,
+          steps: [],
+        }),
+      } as any);
+
+      renderWithProviders(
+        <CrecheOnboardingCard crecheId={1} userRole="creche_admin" />
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText(/primeiros passos na arkpet/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/primeiros passos/i)).not.toBeInTheDocument();
       });
     });
   });
