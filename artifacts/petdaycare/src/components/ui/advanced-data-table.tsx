@@ -12,9 +12,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { ArrowUpDown, ChevronDown, Download, FileText, FileSpreadsheet, Printer } from "lucide-react"
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
-import * as XLSX from "xlsx"
 
 import { Button } from "./button"
 import { Input } from "./input"
@@ -151,7 +148,9 @@ export function AdvancedDataTable<TData, TValue>({
     document.body.removeChild(link)
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    const { default: jsPDF } = await import("jspdf")
+    const { default: autoTable } = await import("jspdf-autotable")
     const doc = new jsPDF()
     const { headers, data } = getExportData()
     
@@ -162,7 +161,8 @@ export function AdvancedDataTable<TData, TValue>({
     doc.save(`${fileName}.pdf`)
   }
 
-  const exportXLSX = () => {
+  const exportXLSX = async () => {
+    const XLSX = await import("xlsx")
     const { headers, data } = getExportData()
     
     // Convert to array of objects for XLSX

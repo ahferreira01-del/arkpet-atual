@@ -6,6 +6,7 @@ import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { BottomNav } from "./bottom-nav";
 import { SubscriptionBanner } from "./subscription-banner";
+import { OfflineBanner } from "./offline-banner";
 import { Loader2, PhoneCall, Settings } from "lucide-react";
 
 // Routes accessible even when subscription is blocked — needed to authenticate,
@@ -155,6 +156,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       {/* Main visual viewport column */}
       <div className="flex-1 flex flex-col h-dvh overflow-hidden relative z-0">
         <Header user={user} />
+        <OfflineBanner />
         {(user.role === "creche_admin" || user.role === "staff") && <SubscriptionBanner />}
 
         <main

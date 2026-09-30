@@ -14,6 +14,7 @@ import { ThemeProvider } from "./components/theme-provider";
 import { AppLayout } from "./components/layout/app-layout";
 import { PushPrompt } from "./components/push-prompt";
 import { UpdatePrompt } from "./components/update-prompt";
+import { PageSkeleton } from "./components/ui/page-skeleton";
 const ChangePasswordPage = React.lazy(() => import("./pages/change-password"));
 
 const Login = React.lazy(() => import("./pages/login"));
@@ -52,6 +53,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: false,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
       staleTime: 1000 * 60 * 5, // 5 minutes
       gcTime: 1000 * 60 * 10, // 10 minutes
     },
@@ -242,7 +244,7 @@ function App() {
             <ServiceWorkerBridge />
             <PushPrompt />
             <ChangePasswordGuard>
-              <React.Suspense fallback={<div className="flex h-screen w-full items-center justify-center text-muted-foreground">Carregando...</div>}>
+              <React.Suspense fallback={<PageSkeleton />}>
               <Switch>
                 <Route path="/login">
                   <Login />

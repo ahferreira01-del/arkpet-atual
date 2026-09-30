@@ -47,6 +47,8 @@ export function PetAvatar({ photoUrl, name, species, className = "h-full w-full 
     <img
       src={src}
       alt={name}
+      loading="lazy"
+      decoding="async"
       className={className}
       onError={() => {
         // If the image fails (e.g. 401 with a still-expired token), wait for

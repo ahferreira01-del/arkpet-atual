@@ -22,7 +22,8 @@ async function fetchServerVersion(): Promise<string | null> {
 //  2. A versão da API é diferente da versão salva no localStorage.
 // Não tem botão de fechar — o usuário DEVE atualizar para continuar.
 export function UpdatePrompt() {
-  const [blocked, setBlocked] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [updating, setUpdating] = useState(false);
   const waitingSwRef = useRef<ServiceWorker | null>(null);
   const reloadedRef = useRef(false);
@@ -33,9 +34,9 @@ export function UpdatePrompt() {
 
     let reg: ServiceWorkerRegistration | null = null;
 
-    const triggerBlock = (sw?: ServiceWorker | null) => {
+    const triggerPrompt = (sw?: ServiceWorker | null) => {
       if (sw) waitingSwRef.current = sw;
-      setBlocked(true);
+      setHasUpdate(true);
     };
 
     navigator.serviceWorker.ready.then((registration) => {
@@ -43,7 +44,7 @@ export function UpdatePrompt() {
 
       // Já havia um SW em espera quando o app abriu.
       if (registration.waiting && navigator.serviceWorker.controller) {
-        triggerBlock(registration.waiting);
+        triggerPrompt(registration.waiting);
       }
 
       // Novo SW encontrado enquanto o app está aberto.
@@ -52,7 +53,7 @@ export function UpdatePrompt() {
         if (!installing) return;
         installing.addEventListener("statechange", () => {
           if (installing.state === "installed" && navigator.serviceWorker.controller) {
-            triggerBlock(registration.waiting);
+            triggerPrompt(registration.waiting);
           }
         });
       });
@@ -96,8 +97,8 @@ export function UpdatePrompt() {
       }
 
       if (stored !== serverVersion) {
-        // Versão mudou → bloqueia.
-        setBlocked(true);
+        // Versão mudou → alerta atualização sem interromper operação
+        setHasUpdate(true);
       }
     };
 
@@ -138,37 +139,44 @@ export function UpdatePrompt() {
     }
   };
 
-  if (!blocked) return null;
+  if (!hasUpdate || dismissed) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-background/95 backdrop-blur-md px-6">
-      {/* Ícone */}
-      <div className="h-20 w-20 rounded-3xl bg-primary/20 flex items-center justify-center mb-6 shadow-lg">
-        <RefreshCw className="h-10 w-10 text-primary animate-spin" style={{ animationDuration: "3s" }} />
+    <aside
+      role="region"
+      aria-label="Atualização disponível"
+      className="fixed bottom-20 md:bottom-6 right-4 left-4 md:left-auto md:max-w-md z-50 bg-card/95 border border-primary/30 shadow-2xl rounded-2xl p-4 flex items-center gap-3 backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-300"
+    >
+      <div className="h-10 w-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+        <RefreshCw className={`h-5 w-5 text-primary ${updating ? "animate-spin" : ""}`} />
       </div>
 
-      {/* Título */}
-      <h1 className="text-2xl font-bold text-foreground text-center mb-2">
-        Nova versão disponível
-      </h1>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-foreground truncate">
+          Nova versão disponível
+        </h3>
+        <p className="text-xs text-muted-foreground line-clamp-2">
+          Atualize agora para carregar as melhorias e correções mais recentes.
+        </p>
+      </div>
 
-      {/* Descrição */}
-      <p className="text-muted-foreground text-center text-sm mb-8 max-w-xs leading-relaxed">
-        Uma atualização do ArkPet está disponível. Atualize agora para continuar usando o app com todas as melhorias e correções.
-      </p>
-
-      {/* Botão — único, sem opção de fechar */}
-      <button
-        onClick={handleUpdate}
-        disabled={updating}
-        className="w-full max-w-xs bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-4 rounded-2xl transition-colors disabled:opacity-60 text-base shadow-lg shadow-primary/30 min-h-[48px]"
-      >
-        {updating ? "Atualizando..." : "Atualizar agora"}
-      </button>
-
-      <p className="text-xs text-muted-foreground mt-4 text-center">
-        É necessário atualizar para continuar usando o ArkPet.
-      </p>
-    </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 rounded-lg transition-colors cursor-pointer"
+        >
+          Depois
+        </button>
+        <button
+          type="button"
+          onClick={handleUpdate}
+          disabled={updating}
+          className="text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-1.5 rounded-lg shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+        >
+          {updating ? "Atualizando..." : "Atualizar"}
+        </button>
+      </div>
+    </aside>
   );
 }
