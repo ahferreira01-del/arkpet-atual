@@ -1,33 +1,49 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { UserProfile, useGetCreche, getGetCrecheQueryKey } from "@workspace/api-client-react";
-import { 
-  LayoutDashboard, 
-  Users, 
-  Building2, 
-  Dog, 
-  CalendarDays, 
-  CheckSquare, 
-  MessageSquare,
-  Settings,
-  LogOut,
-  Footprints,
-  QrCode,
-  CreditCard,
-  CircleDollarSign,
-  Receipt,
-  Tag,
-} from "lucide-react";
+import { LogOut, ChevronLeft, ChevronRight, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
+import { getDesktopNavigationItems, UserRole, NavigationItem } from "@/config/navigation-config";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 interface SidebarProps {
   user: UserProfile;
 }
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "arkpet-sidebar-collapsed";
+
+function useBookingsBadge(user: UserProfile) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const { data } = useQuery({
+    queryKey: ["bookings-badge", user?.crecheId, user?.role],
+    queryFn: async () => {
+      if (!user?.crecheId) return 0;
+      const [pendingRes, cancelRes] = await Promise.all([
+        fetch(`/api/creches/${user.crecheId}/bookings?status=pending`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/creches/${user.crecheId}/bookings?status=cancel_requested`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      const pending = pendingRes.ok ? await pendingRes.json() : { total: 0 };
+      const cancelRequested = cancelRes.ok ? await cancelRes.json() : { total: 0 };
+      return (
+        (pending.total ?? pending.items?.length ?? 0) +
+        (cancelRequested.total ?? cancelRequested.items?.length ?? 0)
+      );
+    },
+    enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
+    refetchInterval: 20_000,
+    staleTime: 0,
+  });
+  return (data ?? 0) as number;
+}
+
 function useFinancialBadge(user: UserProfile) {
-  const token = localStorage.getItem("auth_token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const { data } = useQuery({
     queryKey: ["financial-awaiting-count", user?.crecheId],
     queryFn: async () => {
@@ -38,144 +54,403 @@ function useFinancialBadge(user: UserProfile) {
       );
       return r.ok ? r.json() : { count: 0 };
     },
-    enabled: !!user?.crecheId && user?.role === "creche_admin",
+    enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
     refetchInterval: 30_000,
     staleTime: 0,
   });
   return (data?.count ?? 0) as number;
 }
 
+function useTutorInvoiceBadge(user: UserProfile) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const { data } = useQuery({
+    queryKey: ["tutor-invoices", user?.crecheId, user?.id],
+    queryFn: async () => {
+      if (!user?.crecheId || !user?.id) return [];
+      const r = await fetch(
+        `/api/creches/${user.crecheId}/financial/invoices?tutorId=${user.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return r.ok ? r.json() : [];
+    },
+    enabled: !!user?.crecheId && user?.role === "tutor",
+    refetchInterval: 60_000,
+    staleTime: 0,
+  });
+  const invoices: any[] = data?.data ?? (Array.isArray(data) ? data : []);
+  return invoices.filter((inv: any) => inv.status === "pending" || inv.status === "overdue").length;
+}
+
+function useChatUnread(user: UserProfile) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const { data } = useQuery({
+    queryKey: ["chat-unread", user?.crecheId],
+    queryFn: async () => {
+      if (!user?.crecheId) return { total: 0 };
+      const r = await fetch(`/api/creches/${user.crecheId}/chat/unread`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return r.ok ? r.json() : { total: 0 };
+    },
+    enabled: !!user?.crecheId,
+    refetchInterval: 15_000,
+    staleTime: 0,
+  });
+  return (data?.total ?? 0) as number;
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  master_admin: "Master Admin",
+  creche_admin: "Admin de Creche",
+  staff: "Funcionário",
+  tutor: "Tutor",
+};
+
 export function Sidebar({ user }: SidebarProps) {
   const [location] = useLocation();
   const { logout } = useAuth();
-  const { data: creche } = useGetCreche(user.crecheId as number, {
-    query: {
-      queryKey: getGetCrecheQueryKey(user.crecheId as number),
-      enabled: Boolean(user.crecheId)
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+    } catch {
+      return false;
     }
   });
-  const financialBadge = useFinancialBadge(user);
 
-  const getLinks = () => {
-    switch (user.role) {
-      case "master_admin":
-        return [
-          { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Creches", href: "/admin/creches", icon: Building2 },
-          { name: "Campanhas", href: "/admin/campaigns", icon: Tag },
-          { name: "Usuários", href: "/admin/users", icon: Users },
-        ];
-      case "creche_admin":
-        return [
-          { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Painel Operacional", href: "/staff/board", icon: CheckSquare },
-          { name: "Mensagens", href: "/chat", icon: MessageSquare },
-          { name: "Equipe", href: "/staff/manage", icon: Users },
-          { name: "Tutores", href: "/tutors", icon: Users },
-          { name: "Campanhas", href: "/marketing/campaigns", icon: Tag },
-          { name: "Financeiro", href: "/financial", icon: CircleDollarSign, badge: financialBadge },
-          { name: "Assinatura", href: "/assinatura", icon: CreditCard },
-          { name: "Configurações", href: "/settings", icon: Settings },
-        ];
-      case "staff":
-        return [
-          { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Painel Operacional", href: "/staff/board", icon: CheckSquare },
-          { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Campanhas", href: "/marketing/campaigns", icon: Tag },
-          { name: "Leitor QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Mensagens", href: "/chat", icon: MessageSquare },
-          { name: "Configurações", href: "/settings", icon: Settings },
-        ];
-      case "tutor":
-        return [
-          { name: "Dashboard", href: "/", icon: LayoutDashboard },
-          { name: "Meus Pets", href: "/pets", icon: Dog },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Mensagens", href: "/chat", icon: MessageSquare },
-          { name: "Minhas Faturas", href: "/tutor/financial", icon: Receipt },
-          { name: "Configurações", href: "/settings", icon: Settings },
-        ];
+  const toggleCollapse = () => {
+    setIsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next));
+      } catch {
+        // Safe fallback
+      }
+      return next;
+    });
+  };
+
+  const { data: creche } = useGetCreche(user?.crecheId as number, {
+    query: {
+      queryKey: getGetCrecheQueryKey(user?.crecheId as number),
+      enabled: Boolean(user?.crecheId),
+    },
+  });
+
+  const financialBadge = useFinancialBadge(user);
+  const bookingsBadge = useBookingsBadge(user);
+  const tutorInvoiceBadge = useTutorInvoiceBadge(user);
+  const chatUnread = useChatUnread(user);
+
+  const desktopItems = getDesktopNavigationItems(user?.role as UserRole);
+
+  const getBadgeValue = (badgeKey?: string) => {
+    switch (badgeKey) {
+      case "financialBadge":
+        return financialBadge;
+      case "bookingsBadge":
+        return bookingsBadge;
+      case "invoiceBadge":
+        return tutorInvoiceBadge;
+      case "unreadChat":
+        return chatUnread;
       default:
-        return [];
+        return 0;
     }
   };
 
-  const links = getLinks();
+  // Group items by their group property
+  const groupedItems = desktopItems.reduce<Record<string, NavigationItem[]>>((acc, item) => {
+    const groupName = item.group || "Principal";
+    if (!acc[groupName]) {
+      acc[groupName] = [];
+    }
+    acc[groupName].push(item);
+    return acc;
+  }, {});
+
+  const isMasterAdmin = user?.role === "master_admin";
+  const roleName = ROLE_LABELS[user?.role] || user?.role || "Usuário";
 
   return (
-    <div className="w-64 bg-background border-r border-border hidden md:flex flex-col h-full z-10 relative">
-      <div className="p-6 flex items-center gap-3">
-        {creche?.logoUrl ? (
-          <>
-            <div className="h-10 w-10 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0 border border-white/10">
-              <img src={creche.logoUrl} alt={creche.name} className="h-full w-full object-cover" />
+    <aside
+      aria-label="Navegação Principal"
+      className={cn(
+        "hidden md:flex flex-col h-full z-20 relative bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-in-out shrink-0 select-none",
+        isCollapsed ? "w-[72px]" : "w-64"
+      )}
+    >
+      {/* ── Header / Brand Context ── */}
+      <div
+        className={cn(
+          "flex items-center border-b border-sidebar-border/60 transition-all duration-200",
+          isCollapsed ? "p-3 justify-center h-16" : "p-4 gap-3 h-16"
+        )}
+      >
+        {isMasterAdmin ? (
+          isCollapsed ? (
+            <Tooltip delayDuration={100}>
+              <TooltipTrigger asChild>
+                <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center cursor-pointer">
+                  <img
+                    src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+                    alt="ArkPet"
+                    className="h-6 w-6 object-contain"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">ArkPet Master Admin</TooltipContent>
+            </Tooltip>
+          ) : (
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+                <img
+                  src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+                  alt="ArkPet"
+                  className="h-6 w-6 object-contain"
+                />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-display font-bold text-base tracking-tight text-sidebar-foreground truncate">
+                  ArkPet
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold truncate">
+                  Painel Master
+                </span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-display font-bold text-lg tracking-tight text-white line-clamp-1">{creche.name}</span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Powered by ArkPet</span>
+          )
+        ) : creche?.logoUrl ? (
+          isCollapsed ? (
+            <Tooltip delayDuration={100}>
+              <TooltipTrigger asChild>
+                <div className="h-10 w-10 rounded-xl bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0 cursor-pointer">
+                  <img src={creche.logoUrl} alt={creche.name} className="h-full w-full object-cover" />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">{creche.name}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 rounded-xl bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0">
+                <img src={creche.logoUrl} alt={creche.name} className="h-full w-full object-cover" />
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="font-display font-bold text-sm tracking-tight text-sidebar-foreground truncate">
+                  {creche.name}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium truncate">
+                  Powered by ArkPet
+                </span>
+              </div>
             </div>
-          </>
+          )
+        ) : isCollapsed ? (
+          <Tooltip delayDuration={100}>
+            <TooltipTrigger asChild>
+              <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center cursor-pointer">
+                <img
+                  src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+                  alt="ArkPet"
+                  className="h-6 w-6 object-contain"
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">ArkPet</TooltipContent>
+          </Tooltip>
         ) : (
-          <>
-            <div className="h-10 w-10 rounded-xl bg-primary/20 flex items-center justify-center border border-primary/30">
-              <img src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`} alt="ArkPet" className="h-8 w-8 opacity-90" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <img
+                src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+                alt="ArkPet"
+                className="h-6 w-6 object-contain"
+              />
             </div>
-            <span className="font-display font-bold text-xl tracking-tight text-white">ArkPet</span>
-          </>
+            <div className="flex flex-col min-w-0">
+              <span className="font-display font-bold text-base tracking-tight text-sidebar-foreground truncate">
+                ArkPet
+              </span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
+                Gestão que conecta
+              </span>
+            </div>
+          </div>
         )}
       </div>
 
-      <div className="px-4 py-2 mb-4">
-        <div className="px-3 py-2 rounded-lg bg-white/5 border border-white/5 backdrop-blur-md">
-          <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">Conectado como</p>
-          <p className="text-sm font-medium text-white truncate">{user.name}</p>
-          <p className="text-xs text-primary capitalize">
-            {{ master_admin: "Master Admin", creche_admin: "Admin de Creche", staff: "Funcionário", tutor: "Tutor" }[user.role] || user.role}
-          </p>
+      {/* ── User Context (Expanded mode) ── */}
+      {!isCollapsed && user && (
+        <div className="px-3 pt-3 pb-1">
+          <div className="px-3 py-2 rounded-xl bg-sidebar-accent/50 border border-sidebar-border/80">
+            <p className="text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
+              Conectado como
+            </p>
+            <p className="text-xs font-semibold text-sidebar-foreground truncate mt-0.5">{user.name}</p>
+            <p className="text-[11px] text-primary font-medium">{roleName}</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      <nav className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
-        {links.map((link) => {
-          const isActive = location === link.href || (link.href !== "/" && location.startsWith(link.href));
+      {/* ── Navigation Links ── */}
+      <nav className="flex-1 px-2.5 py-3 space-y-4 overflow-y-auto custom-scrollbar">
+        {Object.entries(groupedItems).map(([groupName, items]) => {
           return (
-            <Link key={link.href} href={link.href} className="block">
-              <div
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group cursor-pointer",
-                  isActive 
-                    ? "bg-primary/10 text-primary border border-primary/20" 
-                    : "text-muted-foreground hover:bg-white/5 hover:text-white"
-                )}
-              >
-                <div className="relative">
-                  <link.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", isActive && "text-primary")} />
-                  {(link as any).badge > 0 && (
-                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center leading-none">
-                      {(link as any).badge > 99 ? "99+" : (link as any).badge}
-                    </span>
-                  )}
+            <div key={groupName} className="space-y-1">
+              {!isCollapsed ? (
+                <div className="px-2 pt-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                  {groupName}
                 </div>
-                <span className="font-medium text-sm">{link.name}</span>
-              </div>
-            </Link>
+              ) : (
+                <div className="my-1.5 border-t border-sidebar-border/40 mx-1" />
+              )}
+
+              {items.map((item) => {
+                const isActive =
+                  location === item.path ||
+                  (item.path !== "/" && location.startsWith(item.path));
+                const badge = getBadgeValue(item.badgeKey);
+
+                if (isCollapsed) {
+                  return (
+                    <Tooltip key={item.id} delayDuration={150}>
+                      <TooltipTrigger asChild>
+                        <Link href={item.path} className="block" aria-label={item.label} aria-current={isActive ? "page" : undefined}>
+                          <div
+                            className={cn(
+                              "relative flex items-center justify-center w-11 h-11 mx-auto rounded-xl transition-all duration-200 group cursor-pointer",
+                              isActive
+                                ? "bg-primary/10 text-primary border border-primary/25 shadow-xs"
+                                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                            )}
+                          >
+                            {isActive && (
+                              <span
+                                className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-primary"
+                                aria-hidden="true"
+                              />
+                            )}
+                            <item.icon
+                              className={cn(
+                                "h-5 w-5 shrink-0 transition-transform group-hover:scale-105",
+                                isActive && "text-primary"
+                              )}
+                            />
+                            {badge > 0 && (
+                              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center leading-none shadow-xs">
+                                {badge > 99 ? "99+" : badge}
+                              </span>
+                            )}
+                          </div>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={12}>
+                        <div className="flex items-center gap-2">
+                          <span>{item.label}</span>
+                          {badge > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-none">
+                              {badge}
+                            </span>
+                          )}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+
+                return (
+                  <Link key={item.id} href={item.path} className="block" aria-current={isActive ? "page" : undefined}>
+                    <div
+                      className={cn(
+                        "relative flex items-center gap-3 px-3 py-2 rounded-xl transition-all duration-200 group cursor-pointer text-sm font-medium",
+                        isActive
+                          ? "bg-primary/10 text-primary font-semibold border border-primary/25 shadow-xs"
+                          : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      )}
+                    >
+                      {isActive && (
+                        <span
+                          className="absolute left-1 top-2 bottom-2 w-1 rounded-full bg-primary"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <item.icon
+                        className={cn(
+                          "h-4 w-4 shrink-0 transition-transform group-hover:scale-105",
+                          isActive ? "text-primary" : "text-muted-foreground group-hover:text-sidebar-foreground"
+                        )}
+                      />
+                      <span className="truncate">{item.label}</span>
+                      {badge > 0 && (
+                        <span className="ml-auto min-w-[18px] h-[18px] px-1.5 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center leading-none shadow-xs">
+                          {badge > 99 ? "99+" : badge}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           );
         })}
       </nav>
 
-      <div className="p-4 mt-auto">
-        <button 
-          onClick={logout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 w-full"
-        >
-          <LogOut className="h-5 w-5" />
-          <span className="font-medium text-sm">Sair</span>
-        </button>
+      {/* ── Footer Actions (Collapse Toggle + Logout) ── */}
+      <div className="p-3 border-t border-sidebar-border/60 space-y-1 mt-auto">
+        {/* Collapse toggle button */}
+        {isCollapsed ? (
+          <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={toggleCollapse}
+                aria-expanded={!isCollapsed}
+                aria-label="Expandir barra lateral"
+                className="flex items-center justify-center w-11 h-10 mx-auto rounded-xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Expandir barra lateral</TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            onClick={toggleCollapse}
+            aria-expanded={!isCollapsed}
+            aria-label="Recolher barra lateral"
+            className="flex items-center gap-3 px-3 py-2 rounded-xl text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all duration-200 w-full text-xs font-medium"
+          >
+            <ChevronLeft className="h-4 w-4 shrink-0" />
+            <span>Recolher menu</span>
+          </button>
+        )}
+
+        {/* Logout button */}
+        {isCollapsed ? (
+          <Tooltip delayDuration={150}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={logout}
+                aria-label="Sair da conta"
+                className="flex items-center justify-center w-11 h-10 mx-auto rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">Sair da conta</TooltipContent>
+          </Tooltip>
+        ) : (
+          <button
+            type="button"
+            onClick={logout}
+            className="flex items-center gap-3 px-3 py-2 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 w-full text-xs font-medium"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span>Sair da conta</span>
+          </button>
+        )}
       </div>
-    </div>
+    </aside>
   );
 }

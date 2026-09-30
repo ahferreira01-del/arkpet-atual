@@ -32,29 +32,29 @@ export function AuditTab({ crecheId }: { crecheId: number }) {
     <Card>
       <CardContent className="p-6">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="font-medium text-white">Trilha de Auditoria Financeira</h3>
+          <h3 className="font-medium text-foreground">Trilha de Auditoria Financeira</h3>
           <Button
             variant={creche?.auditEnabled ? "destructive" : "default"}
             size="sm"
             onClick={handleToggleAudit}
             disabled={updateSettingsMutation.isPending}
-            className={!creche?.auditEnabled ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+            className={!creche?.auditEnabled ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""}
           >
             {creche?.auditEnabled ? "Desativar Auditoria" : "Ativar Auditoria"}
           </Button>
         </div>
         {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
-        <div className="md:hidden divide-y divide-white/5 mt-4 border-t border-white/5">
+        <div className="md:hidden divide-y divide-border mt-4 border-t border-border">
           {logs?.length > 0 ? (
             logs.map((log: any) => (
               <div key={log.id} className="p-4 space-y-2">
                 <div className="flex justify-between items-start">
-                  <p className="font-semibold text-white">{log.userName || "Desconhecido"}</p>
+                  <p className="font-semibold text-foreground">{log.userName || "Desconhecido"}</p>
                   <Badge variant="outline" className="text-[10px] font-mono">{log.action}</Badge>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Data/Hora:</span>
-                  <span className="text-white">{format(new Date(log.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
+                  <span className="text-foreground">{format(new Date(log.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
                 </div>
                 <div className="pt-2">
                   <p className="text-sm text-muted-foreground">{log.details || "—"}</p>
@@ -69,7 +69,7 @@ export function AuditTab({ crecheId }: { crecheId: number }) {
         {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground bg-black/20 uppercase">
+            <thead className="text-xs text-muted-foreground bg-muted/40 uppercase">
               <tr>
                 <th className="px-6 py-4 font-medium">Data/Hora</th>
                 <th className="px-6 py-4 font-medium">Usuário</th>
@@ -77,14 +77,14 @@ export function AuditTab({ crecheId }: { crecheId: number }) {
                 <th className="px-6 py-4 font-medium">Detalhes</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-border">
               {logs?.length > 0 ? (
                 logs.map((log: any) => (
-                  <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                  <tr key={log.id} className="hover:bg-secondary/50 transition-colors">
                     <td className="px-6 py-4 text-muted-foreground">
                       {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                     </td>
-                    <td className="px-6 py-4 text-white">{log.userName || "Desconhecido"}</td>
+                    <td className="px-6 py-4 text-foreground">{log.userName || "Desconhecido"}</td>
                     <td className="px-6 py-4">
                       <Badge variant="outline" className="text-xs font-mono">{log.action}</Badge>
                     </td>

@@ -41,7 +41,7 @@ function FinancialDashboardContent() {
       items: [
         { id: "cashflow", label: "Movimentações", icon: <BarChart3 className="h-4 w-4" />, content: <CashFlowTab crecheId={crecheId} /> },
         { id: "receivables", label: "A Receber", icon: <Receipt className="h-4 w-4" />, content: <ReceivablesTab crecheId={crecheId} /> },
-        { id: "defaulters", label: "Inadimplência", icon: <FileText className="h-4 w-4 text-red-400" />, content: <DefaultersTab crecheId={crecheId} /> },
+        { id: "defaulters", label: "Inadimplência", icon: <FileText className="h-4 w-4 text-destructive" />, content: <DefaultersTab crecheId={crecheId} /> },
         { id: "payables", label: "A Pagar", icon: <FileText className="h-4 w-4" />, content: <PayablesTab crecheId={crecheId} /> },
         { id: "reports", label: "Central de Relatórios", icon: <FileText className="h-4 w-4" />, content: <ReportsCentralTab crecheId={crecheId} /> }
       ]
@@ -51,9 +51,9 @@ function FinancialDashboardContent() {
       label: "Gestão e Controles",
       items: [
         { id: "catalogue", label: "Catálogo", icon: <PackageOpen className="h-4 w-4" />, content: <CatalogueTab crecheId={crecheId} /> },
-        { id: "orders", label: "Pedidos (Loja)", icon: <ShoppingBag className="h-4 w-4 text-emerald-400" />, content: <OrdersTab crecheId={crecheId} /> },
+        { id: "orders", label: "Pedidos (Loja)", icon: <ShoppingBag className="h-4 w-4 text-success" />, content: <OrdersTab crecheId={crecheId} /> },
         { id: "receipts", label: "Comprovantes", icon: <Camera className="h-4 w-4" />, content: <ReceiptsTab crecheId={crecheId} /> },
-        { id: "audit", label: "Auditoria", icon: <ShieldAlert className="h-4 w-4 text-orange-400" />, content: <AuditTab crecheId={crecheId} /> }
+        { id: "audit", label: "Auditoria", icon: <ShieldAlert className="h-4 w-4 text-warning" />, content: <AuditTab crecheId={crecheId} /> }
       ]
     }
   ];
@@ -92,7 +92,7 @@ function FinancialDashboardContent() {
               <CommandPalette crecheId={crecheId} />
             </div>
           </div>
-          <Button onClick={() => setIsPosModalOpen(true)} className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow-sm transition-all hover:shadow-md w-full sm:w-auto">
+          <Button onClick={() => setIsPosModalOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold shadow-sm transition-all hover:shadow-md w-full sm:w-auto">
             <ShoppingCart className="mr-2 h-4 w-4 shrink-0" /> Venda Balcão (PDV)
           </Button>
         </div>
@@ -102,7 +102,7 @@ function FinancialDashboardContent() {
         <POSSaleModal isOpen={true} onClose={() => setIsPosModalOpen(false)} crecheId={crecheId} />
       )}
 
-      <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 border-b border-white/10 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 border-b border-border pb-4">
         {TAB_GROUPS.map(group => {
           const isActiveGroup = activeGroupId === group.id;
           const activeItemInGroup = group.items.find(i => i.id === activeTabId);
@@ -124,12 +124,12 @@ function FinancialDashboardContent() {
                   <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56 bg-zinc-950 border-white/10">
+              <DropdownMenuContent align="start" className="w-56">
                 {group.items.map(item => (
                   <DropdownMenuItem
                     key={item.id}
                     onClick={() => handleTabChange(item.id)}
-                    className={`cursor-pointer ${item.id === activeTabId ? 'bg-white/10 text-white' : 'text-muted-foreground hover:text-white'}`}
+                    className={`cursor-pointer ${item.id === activeTabId ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     {item.icon}
                     <span className="ml-2">{item.label}</span>

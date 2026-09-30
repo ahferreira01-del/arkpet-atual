@@ -196,7 +196,7 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800/60">
+              <Badge variant="outline" className="text-[11px] font-semibold text-warning bg-warning/10 border-warning/30">
                 Reativação
               </Badge>
               <select
@@ -211,7 +211,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <Users className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              <Users className="h-5 w-5 text-warning" />
               Tutores Inativos
             </CardTitle>
             <CardDescription className="text-xs">
@@ -267,7 +267,7 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-semibold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800/60">
+              <Badge variant="outline" className="text-[11px] font-semibold text-primary bg-primary/10 border-primary/30">
                 Boas-vindas
               </Badge>
               <select
@@ -282,7 +282,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <UserPlus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <UserPlus className="h-5 w-5 text-primary" />
               Novos Tutores
             </CardTitle>
             <CardDescription className="text-xs">
@@ -338,7 +338,7 @@ export function MarketingOpportunitiesTab({
         <Card className="border-border/60 bg-card flex flex-col justify-between shadow-sm hover:border-border transition-colors">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2">
-              <Badge variant="outline" className="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/60">
+              <Badge variant="outline" className="text-[11px] font-semibold text-success bg-success/10 border-success/30">
                 Cross-Sell
               </Badge>
               <select
@@ -355,7 +355,7 @@ export function MarketingOpportunitiesTab({
               </select>
             </div>
             <CardTitle className="text-lg font-semibold mt-2 flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              <Sparkles className="h-5 w-5 text-success" />
               Experimentação
             </CardTitle>
             <CardDescription className="text-xs truncate">

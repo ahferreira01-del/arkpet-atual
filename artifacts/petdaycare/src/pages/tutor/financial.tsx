@@ -455,7 +455,7 @@ function InvoiceDetailsModal({ isOpen, onClose, invoiceId, crecheId }: { isOpen:
                   <p className="text-sm font-semibold text-foreground">{item.description}</p>
                   <p className="text-xs text-muted-foreground mt-1">Qtd: {item.quantity}</p>
                   {item.campaignSnapshot?.campaignName && (
-                    <p className="text-xs text-emerald-500 font-medium mt-0.5">
+                    <p className="text-xs text-success font-medium mt-0.5">
                       Campanha: {item.campaignSnapshot.campaignName}
                       {Number(item.campaignSnapshot.unitDiscountCents) > 0 && ` (-${formatCentsToBRL(Number(item.campaignSnapshot.unitDiscountCents))})`}
                     </p>
@@ -535,11 +535,11 @@ function PixPaymentModal({ isOpen, onClose, invoice, onUploadClick }: { isOpen: 
           </div>
         ) : (
           <>
-            <div className="bg-white p-4 rounded-3xl inline-block mx-auto border-4 border-success/20 shadow-md">
+            <div className="bg-card p-4 rounded-3xl inline-block mx-auto border-4 border-success/20 shadow-md">
               {qrCodeUrl ? (
-                <img src={qrCodeUrl} alt="QR Code Pix" className="h-44 w-44 object-contain" />
+                <img src={qrCodeUrl} alt="QR Code Pix" className="h-44 w-44 object-contain rounded-xl" />
               ) : (
-                <QrCode className="h-44 w-44 text-slate-900 opacity-10" />
+                <QrCode className="h-44 w-44 text-muted-foreground opacity-20" />
               )}
             </div>
 

@@ -75,7 +75,7 @@ export default function AdminDashboard() {
               <h3 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{totalUsers}</h3>
               <p className="text-xs text-muted-foreground mt-1">na plataforma</p>
             </div>
-            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-violet-400/20 text-violet-400 flex items-center justify-center">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-primary/20 text-primary flex items-center justify-center">
               <Users className="h-5 w-5" />
             </div>
           </CardContent>
@@ -89,7 +89,7 @@ export default function AdminDashboard() {
               </h3>
               <p className="text-xs text-muted-foreground mt-1">da rede</p>
             </div>
-            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center">
+            <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-xl bg-warning/20 text-warning flex items-center justify-center">
               <Sparkles className="h-5 w-5" />
             </div>
           </CardContent>

@@ -60,7 +60,7 @@ const INTERVAL_MONTHS: Record<Interval, number> = {
 };
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  trial: { label: "Período de teste", className: "bg-blue-500/15 text-blue-500 border-blue-500/25" },
+  trial: { label: "Período de teste", className: "bg-primary/15 text-primary border-primary/25" },
   active: { label: "Ativa", className: "bg-success/15 text-success border-success/25" },
   past_due: { label: "Pagamento pendente", className: "bg-warning/15 text-warning border-warning/25" },
   suspended: { label: "Suspensa", className: "bg-destructive/15 text-destructive border-destructive/25" },
@@ -347,12 +347,12 @@ export default function Billing() {
                   • {statusInfo.label}
                 </span>
                 {sub?.isGrandfathered && (
-                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-amber-500/15 text-amber-600 border-amber-500/30">
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-warning/15 text-warning border-warning/30">
                     Contrato Legado Preservado (Grandfathered)
                   </span>
                 )}
                 {sub?.commercialBindingStatus === "unresolved_legacy_contract" && (
-                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-purple-500/15 text-purple-600 border-purple-500/30">
+                  <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border bg-primary/15 text-primary border-primary/30">
                     Contrato Legado em Revisão
                   </span>
                 )}
@@ -420,7 +420,7 @@ export default function Billing() {
                     return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
                   }
                   if (pct >= 80) {
-                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                    return <Badge variant="warning" className="text-[10px]">Atenção (≥80%)</Badge>;
                   }
                   return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
                 })()}
@@ -433,7 +433,7 @@ export default function Billing() {
                   </span>
                   <span className={cn(
                     "font-semibold",
-                    sub.quotas.pets.percent >= 100 ? "text-destructive" : sub.quotas.pets.percent >= 80 ? "text-amber-600" : "text-foreground"
+                    sub.quotas.pets.percent >= 100 ? "text-destructive" : sub.quotas.pets.percent >= 80 ? "text-warning" : "text-foreground"
                   )}>
                     {sub.quotas.pets.percent}%
                   </span>
@@ -442,7 +442,7 @@ export default function Billing() {
                   <div
                     className={cn(
                       "h-full transition-all duration-300 rounded-full",
-                      sub.quotas.pets.percent >= 100 ? "bg-destructive" : sub.quotas.pets.percent >= 80 ? "bg-amber-500" : "bg-primary"
+                      sub.quotas.pets.percent >= 100 ? "bg-destructive" : sub.quotas.pets.percent >= 80 ? "bg-warning" : "bg-primary"
                     )}
                     style={{ width: `${Math.min(sub.quotas.pets.percent, 100)}%` }}
                   />
@@ -473,17 +473,17 @@ export default function Billing() {
                 {(() => {
                   const staff = sub.quotas.staff;
                   if (staff.unlimited) {
-                    return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px]">Ilimitado</Badge>;
+                    return <Badge variant="success" className="text-[10px]">Ilimitado</Badge>;
                   }
                   if (staff.enforcementBypassed || staff.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") {
-                    return <Badge className="bg-purple-500/15 text-purple-600 border-purple-500/30 text-[10px]">Em Revisão</Badge>;
+                    return <Badge variant="secondary" className="text-[10px]">Em Revisão</Badge>;
                   }
                   const pct = staff.percent ?? 0;
                   if (pct >= 100) {
                     return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
                   }
                   if (pct >= 80) {
-                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                    return <Badge variant="warning" className="text-[10px]">Atenção (≥80%)</Badge>;
                   }
                   return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
                 })()}
@@ -499,7 +499,7 @@ export default function Billing() {
               ) : (sub.quotas.staff.enforcementBypassed || sub.quotas.staff.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") ? (
                 <div className="space-y-1 py-1">
                   <p className="text-xs font-medium text-foreground">{sub.quotas.staff.used} membro(s) cadastrados</p>
-                  <p className="text-[11px] text-purple-600">
+                  <p className="text-[11px] text-primary">
                     Contrato legado sem limite formalizado. Em processo de revisão contratual.
                   </p>
                 </div>
@@ -512,7 +512,7 @@ export default function Billing() {
                       </span>
                       <span className={cn(
                         "font-semibold",
-                        (sub.quotas.staff.percent ?? 0) >= 100 ? "text-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "text-amber-600" : "text-foreground"
+                        (sub.quotas.staff.percent ?? 0) >= 100 ? "text-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "text-warning" : "text-foreground"
                       )}>
                         {sub.quotas.staff.percent ?? 0}%
                       </span>
@@ -521,7 +521,7 @@ export default function Billing() {
                       <div
                         className={cn(
                           "h-full transition-all duration-300 rounded-full",
-                          (sub.quotas.staff.percent ?? 0) >= 100 ? "bg-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "bg-amber-500" : "bg-primary"
+                          (sub.quotas.staff.percent ?? 0) >= 100 ? "bg-destructive" : (sub.quotas.staff.percent ?? 0) >= 80 ? "bg-warning" : "bg-primary"
                         )}
                         style={{ width: `${Math.min(sub.quotas.staff.percent ?? 0, 100)}%` }}
                       />
@@ -553,7 +553,7 @@ export default function Billing() {
                 {(() => {
                   const storage = sub.quotas.storage;
                   if (storage.enforcementBypassed || storage.enforcementReason === "UNRESOLVED_LEGACY_CONTRACT") {
-                    return <Badge className="bg-purple-500/15 text-purple-600 border-purple-500/30 text-[10px]">Em Revisão</Badge>;
+                    return <Badge variant="secondary" className="text-[10px]">Em Revisão</Badge>;
                   }
                   if (storage.enforcementMode === "ENFORCE" && storage.hardBlocked) {
                     return <Badge variant="destructive" className="text-[10px]">Bloqueado</Badge>;
@@ -561,15 +561,15 @@ export default function Billing() {
                   const pct = storage.percent ?? 0;
                   if (pct >= 100) {
                     if (storage.enforcementMode === "AUDIT") {
-                      return <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30 text-[10px]">Monitoramento</Badge>;
+                      return <Badge variant="default" className="text-[10px]">Monitoramento</Badge>;
                     }
                     if (storage.enforcementMode === "SHADOW") {
-                      return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Observação</Badge>;
+                      return <Badge variant="warning" className="text-[10px]">Observação</Badge>;
                     }
                     return <Badge variant="destructive" className="text-[10px]">Limite Atingido</Badge>;
                   }
                   if (pct >= 80) {
-                    return <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">Atenção (≥80%)</Badge>;
+                    return <Badge variant="warning" className="text-[10px]">Atenção (≥80%)</Badge>;
                   }
                   return <Badge variant="outline" className="text-[10px] text-muted-foreground">Normal</Badge>;
                 })()}
@@ -580,7 +580,7 @@ export default function Billing() {
                   <p className="text-xs font-medium text-foreground">
                     {formatStorageBytes(sub.quotas.storage.usedBytes)} utilizados
                   </p>
-                  <p className="text-[11px] text-purple-600">
+                  <p className="text-[11px] text-primary">
                     Contrato legado sem cota de armazenamento formalizada. Em avaliação técnica.
                   </p>
                 </div>
@@ -593,7 +593,7 @@ export default function Billing() {
                       </span>
                       <span className={cn(
                         "font-semibold",
-                        sub.quotas.storage.hardBlocked ? "text-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "text-amber-600" : "text-foreground"
+                        sub.quotas.storage.hardBlocked ? "text-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "text-warning" : "text-foreground"
                       )}>
                         {sub.quotas.storage.percent}%
                       </span>
@@ -602,7 +602,7 @@ export default function Billing() {
                       <div
                         className={cn(
                           "h-full transition-all duration-300 rounded-full",
-                          sub.quotas.storage.hardBlocked ? "bg-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "bg-amber-500" : "bg-primary"
+                          sub.quotas.storage.hardBlocked ? "bg-destructive" : (sub.quotas.storage.percent ?? 0) >= 80 ? "bg-warning" : "bg-primary"
                         )}
                         style={{ width: `${Math.min(sub.quotas.storage.percent, 100)}%` }}
                       />
@@ -698,10 +698,10 @@ export default function Billing() {
         }
 
         return (
-          <Card className="bg-amber-500/5 border border-amber-500/30 rounded-[20px] shadow-sm">
+          <Card className="bg-warning/5 border border-warning/30 rounded-[20px] shadow-sm">
             <CardContent className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <CalendarClock className="h-5 w-5 text-amber-600 shrink-0" />
+                <CalendarClock className="h-5 w-5 text-warning shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-foreground">
                     Mudança de Plano Agendada
@@ -865,7 +865,7 @@ export default function Billing() {
                           {isExpired && isSent ? "Expirada" : p.status}
                         </Badge>
                         {isAccepted && isPendingActivation && (
-                          <Badge variant="secondary" className="text-amber-600 bg-amber-50">
+                          <Badge variant="warning">
                             Ativação em Processamento
                           </Badge>
                         )}
@@ -909,7 +909,7 @@ export default function Billing() {
                         </>
                       )}
                       {isAccepted && (
-                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                        <div className="flex items-center gap-1.5 text-xs text-success font-medium">
                           <CheckCircle className="h-4 w-4" /> Aceita em {formatDate(p.acceptedAt)}
                         </div>
                       )}
@@ -928,7 +928,7 @@ export default function Billing() {
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between border-b pb-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
                   <Wrench className="h-5 w-5" />
                 </div>
                 <div>
@@ -1082,22 +1082,22 @@ export default function Billing() {
                   </div>
                 )}
                 {activeServiceRequest.status === "paid" && (
-                  <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+                  <p className="text-xs text-success font-medium flex items-center gap-1.5">
                     <CheckCircle className="h-4 w-4" /> Pagamento confirmado! Nossa equipe entrará em contato para agendar a sessão.
                   </p>
                 )}
                 {activeServiceRequest.status === "scheduled" && (
-                  <p className="text-xs text-blue-600 font-medium">
+                  <p className="text-xs text-primary font-medium">
                     📅 Sessão agendada para: {activeServiceRequest.scheduledFor ? new Date(activeServiceRequest.scheduledFor).toLocaleString("pt-BR") : "A confirmar"}
                   </p>
                 )}
                 {activeServiceRequest.status === "in_progress" && (
-                  <p className="text-xs text-amber-600 font-medium">
+                  <p className="text-xs text-warning font-medium">
                     ⚡ Implantação em andamento com o suporte ArkPet.
                   </p>
                 )}
                 {activeServiceRequest.status === "completed" && (
-                  <p className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
+                  <p className="text-xs text-success font-medium flex items-center gap-1.5">
                     <CheckCircle className="h-4 w-4" /> Implantação concluída com sucesso!
                   </p>
                 )}
@@ -1113,7 +1113,7 @@ export default function Billing() {
       )}
 
       {!isAdmin && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-sm text-blue-500 font-medium">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-primary/10 border border-primary/20 text-sm text-primary font-medium">
           <ShieldCheck className="h-5 w-5 flex-shrink-0" />
           <p>Apenas o administrador da creche pode alterar o plano ou os dados de pagamento.</p>
         </div>
@@ -1330,7 +1330,7 @@ export default function Billing() {
                   <div className="mt-auto">
                     {plan.name.toLowerCase() === "enterprise" ? (
                       <Button
-                        className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white border-0 h-12 rounded-xl text-[15px] font-bold"
+                        className="w-full bg-[#25D366] hover:bg-[#128C7E] text-primary-foreground border-0 h-12 rounded-xl text-[15px] font-bold"
                         onClick={() => window.open(`https://wa.me/${ENTERPRISE_WHATSAPP_NUMBER}?text=${ENTERPRISE_WHATSAPP_MSG}`, '_blank')}
                       >
                         Falar no WhatsApp

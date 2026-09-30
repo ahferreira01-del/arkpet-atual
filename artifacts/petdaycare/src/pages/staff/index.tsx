@@ -239,16 +239,16 @@ function TaskCompleteModal({
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-border">
               {mediaTypeRef.current === "video" ? (
-                <video src={preview} className="w-full max-h-52 bg-black" muted playsInline preload="metadata" />
+                <video src={preview} className="w-full max-h-52 bg-muted" muted playsInline preload="metadata" />
               ) : (
                 <img src={preview} alt="Preview" className="w-full max-h-40 sm:max-h-52 object-cover" />
               )}
               <button
                 type="button"
                 onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
-                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
+                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-background/80 border border-border flex items-center justify-center hover:bg-background transition-colors"
               >
-                <X className="h-5 w-5 text-white" />
+                <X className="h-5 w-5 text-foreground" />
               </button>
             </div>
           ) : compressing ? (
@@ -462,13 +462,13 @@ function StandalonePublishModal({
           {preview ? (
             <div className="relative rounded-xl overflow-hidden border border-border">
               {mediaTypeRef.current === "video" ? (
-                <video src={preview} className="w-full max-h-36 bg-black" muted playsInline preload="metadata" />
+                <video src={preview} className="w-full max-h-36 bg-muted" muted playsInline preload="metadata" />
               ) : (
                 <img src={preview} alt="Preview" className="w-full max-h-36 object-cover" />
               )}
               <button type="button" onClick={() => { setPreview(null); mediaDataRef.current = null; mediaTypeRef.current = null; if (fileRef.current) fileRef.current.value = ""; }}
-                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors">
-                <X className="h-5 w-5 text-white" />
+                className="absolute top-2 right-2 h-11 w-11 rounded-full bg-background/80 border border-border flex items-center justify-center hover:bg-background transition-colors">
+                <X className="h-5 w-5 text-foreground" />
               </button>
             </div>
           ) : compressing ? (
@@ -708,7 +708,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                               </Badge>
                             )}
                             {hasSpecialNeeds && (
-                              <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                              <Badge variant="warning" className="text-xs">
                                 Cuidados especiais
                               </Badge>
                             )}

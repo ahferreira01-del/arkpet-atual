@@ -22,7 +22,7 @@ interface PetAvatarProps {
  * (emitted by use-auth.tsx after every token save) and re-resolves the URL,
  * so the image loads correctly even when the token is refreshed mid-session.
  */
-export function PetAvatar({ photoUrl, name, species, className = "h-full w-full object-cover", iconClassName = "h-8 w-8 text-white/30" }: PetAvatarProps) {
+export function PetAvatar({ photoUrl, name, species, className = "h-full w-full object-cover", iconClassName = "h-8 w-8 text-muted-foreground/40" }: PetAvatarProps) {
   const [src, setSrc] = useState<string | null>(() => resolvePhotoUrl(photoUrl));
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export function PetAvatar({ photoUrl, name, species, className = "h-full w-full 
 
   if (!src) {
     const Icon = species === "cat" ? Cat : Dog;
-    return <Icon className={iconClassName} />;
+    return <Icon className={iconClassName} role="img" aria-label={`Avatar padrão de ${name}`} />;
   }
 
   return (

@@ -23,10 +23,10 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const roleColors: Record<string, string> = {
-  master_admin: "bg-violet-500/20 text-violet-300 border-violet-500/30",
-  creche_admin: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  staff: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-  tutor: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  master_admin: "bg-primary/20 text-primary border-primary/30",
+  creche_admin: "bg-secondary text-secondary-foreground border-border",
+  staff: "bg-success/20 text-success border-success/30",
+  tutor: "bg-warning/20 text-warning border-warning/30",
 };
 
 type UserRole = "master_admin" | "creche_admin" | "staff" | "tutor";
@@ -207,10 +207,10 @@ export default function AdminUsers() {
       {/* Role summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { role: "master_admin", label: "Master Admin", color: "text-violet-300" },
-          { role: "creche_admin", label: "Admin", color: "text-blue-300" },
-          { role: "staff", label: "Funcionários", color: "text-emerald-300" },
-          { role: "tutor", label: "Tutores", color: "text-amber-300" },
+          { role: "master_admin", label: "Master Admin", color: "text-primary" },
+          { role: "creche_admin", label: "Admin", color: "text-foreground" },
+          { role: "staff", label: "Funcionários", color: "text-success" },
+          { role: "tutor", label: "Tutores", color: "text-warning" },
         ].map(({ role, label, color }) => (
           <Card
             key={role}
@@ -315,7 +315,7 @@ export default function AdminUsers() {
                             {u.isActive ? "Ativo" : "Inativo"}
                           </Badge>
                           {(u as any).mustChangePassword && (
-                            <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-xs">
+                            <Badge className="bg-warning/20 text-warning border-warning/30 text-xs">
                               <AlertCircle className="h-3 w-3 mr-1" /> Provisória
                             </Badge>
                           )}
@@ -335,8 +335,8 @@ export default function AdminUsers() {
                               size="sm"
                               variant="outline"
                               className={u.isActive
-                                ? "border-red-500/30 text-red-400 hover:bg-red-500/10 px-2 md:px-3"
-                                : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2 md:px-3"
+                                ? "border-destructive/30 text-destructive hover:bg-destructive/10 px-2 md:px-3"
+                                : "border-success/30 text-success hover:bg-success/10 px-2 md:px-3"
                               }
                               onClick={() => handleToggleActive(u)}
                               isLoading={updateMutation.isPending}
@@ -539,7 +539,7 @@ export default function AdminUsers() {
                 </div>
               </div>
               {editPassword && showEditPassword && (
-                <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                <p className="text-xs text-warning bg-warning/10 border border-warning/20 rounded-lg px-3 py-2 flex items-center gap-2">
                   <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
                   Copie e envie esta senha ao usuário (WhatsApp, etc.). Ele deverá trocá-la no próximo acesso.
                 </p>
@@ -547,7 +547,7 @@ export default function AdminUsers() {
             </div>
 
             {(editUser as any).mustChangePassword && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-300 flex items-center gap-2">
+              <div className="p-3 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 Este usuário ainda não trocou a senha provisória.
               </div>
@@ -558,8 +558,8 @@ export default function AdminUsers() {
                 <Button
                   variant="outline"
                   className={editUser.isActive
-                    ? "border-red-500/30 text-red-400 hover:bg-red-500/10"
-                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                    ? "border-destructive/30 text-destructive hover:bg-destructive/10"
+                    : "border-success/30 text-success hover:bg-success/10"
                   }
                   onClick={() => { handleToggleActive(editUser); setEditUser(null); }}
                 >

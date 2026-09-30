@@ -95,7 +95,7 @@ export function QuickCheckIn() {
       <Input
         icon={<Search className="h-4 w-4" />}
         placeholder="Check-in rápido (pet/tutor)..."
-        className="rounded-full bg-white/5 border-white/5 focus-visible:ring-1"
+        className="rounded-full bg-secondary/50 border-border focus-visible:ring-1"
         value={search}
         onChange={(e) => {
           setSearch(e.target.value);
@@ -105,13 +105,13 @@ export function QuickCheckIn() {
       />
 
       {isOpen && search.trim() !== "" && (
-        <div className="absolute top-full mt-2 w-full bg-[#121214] border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute top-full mt-2 w-full bg-popover border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
           {isLoading ? (
             <div className="p-4 text-center text-sm text-muted-foreground">Buscando...</div>
           ) : results.length > 0 ? (
-            <div className="divide-y divide-white/5 max-h-80 overflow-y-auto custom-scrollbar">
+            <div className="divide-y divide-border max-h-80 overflow-y-auto custom-scrollbar">
               {results.map((pet) => (
-                <div key={pet.id} className="p-3 flex items-center justify-between gap-3 hover:bg-white/5 transition-colors">
+                <div key={pet.id} className="p-3 flex items-center justify-between gap-3 hover:bg-secondary/50 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 overflow-hidden">
                       <PetAvatar
@@ -122,14 +122,14 @@ export function QuickCheckIn() {
                       />
                     </div>
                     <div className="min-w-0">
-                      <p className="font-semibold text-white text-sm truncate">{pet.name}</p>
+                      <p className="font-semibold text-foreground text-sm truncate">{pet.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{pet.tutorName || "Sem tutor"}</p>
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    variant="glass"
-                    className="flex-shrink-0 gap-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/20 px-2"
+                    variant="outline"
+                    className="flex-shrink-0 gap-1 text-success border-success/30 hover:bg-success/10 px-2 min-h-8"
                     onClick={() => handleCheckIn(pet)}
                     disabled={checkInMutation.isPending}
                   >

@@ -537,12 +537,12 @@ export default function NewBooking() {
                         <div className="mt-4">
                           {service.id < 0 ? (
                             <div>
-                              <p className="text-sm text-emerald-400 font-medium">Será descontado das suas diárias</p>
-                              <p className="text-[10px] text-emerald-400/70 mt-1 uppercase tracking-wide font-bold">
+                              <p className="text-sm text-success font-medium">Será descontado das suas diárias</p>
+                              <p className="text-[10px] text-success/70 mt-1 uppercase tracking-wide font-bold">
                                 {service.maxPets > 1 ? `PACOTE MULTI-PET: ATÉ ${service.maxPets} PETS POR DIÁRIA` : `PACOTE INDIVIDUAL: 1 PET POR DIÁRIA`}
                               </p>
                               {isSuboptimalPackage && (
-                                <p className="text-xs text-orange-400 mt-2 font-medium">
+                                <p className="text-xs text-warning mt-2 font-medium">
                                   Bloqueado: Você tem um pacote mais vantajoso para {selectedPetIds.length} pet(s).
                                 </p>
                               )}
@@ -555,7 +555,7 @@ export default function NewBooking() {
                                   return (
                                     <div>
                                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 font-semibold">
+                                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-success/10 text-success border-success/30 font-semibold">
                                           {offer.statusLabel}
                                         </Badge>
                                         {offer.campaignName && (
@@ -566,18 +566,18 @@ export default function NewBooking() {
                                         <span className="text-xs sm:text-sm text-muted-foreground line-through font-medium">
                                           R$ {parseFloat(offer.basePrice).toFixed(2).replace(".", ",")}
                                         </span>
-                                        <span className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                                        <span className="text-2xl font-bold text-success">
                                           R$ {parseFloat(offer.effectivePrice).toFixed(2).replace(".", ",")}
                                         </span>
                                       </div>
                                       {offer.isComplimentaryZeroValue && (
-                                        <p className="text-xs text-purple-700 dark:text-purple-300 font-medium mt-0.5">Cortesia promocional (100% de desconto)</p>
+                                        <p className="text-xs text-primary font-medium mt-0.5">Cortesia promocional (100% de desconto)</p>
                                       )}
                                     </div>
                                   );
                                 }
                                 return (
-                                  <p className="text-2xl font-bold text-emerald-400">
+                                  <p className="text-2xl font-bold text-success">
                                     {formatCentsToBRL(service.price)}
                                     {service.pricingBySize && (
                                       <span className="text-xs text-muted-foreground font-normal ml-2 tracking-wide">
@@ -679,7 +679,7 @@ export default function NewBooking() {
                 <div className="text-sm">
                   <p className="font-semibold mb-1">Pacote Multi-Pet ({selectedService.maxPets} pets/diária)</p>
                   {selectedPetIds.length > selectedService.maxPets ? (
-                    <p className="text-orange-400">Você selecionou {selectedPetIds.length} pets, mas este pacote cobre apenas {selectedService.maxPets} pet(s) por diária. As diárias excedentes serão cobradas do seu saldo ou faturadas separadamente.</p>
+                    <p className="text-warning">Você selecionou {selectedPetIds.length} pets, mas este pacote cobre apenas {selectedService.maxPets} pet(s) por diária. As diárias excedentes serão cobradas do seu saldo ou faturadas separadamente.</p>
                   ) : selectedPetIds.length < selectedService.maxPets ? (
                     <p>Você selecionou {selectedPetIds.length} pet(s). Como este pacote cobre até {selectedService.maxPets} pets, você poderia adicionar mais {selectedService.maxPets - selectedPetIds.length} pet(s) para aproveitar a mesma diária sem custo adicional.</p>
                   ) : (
@@ -790,7 +790,7 @@ export default function NewBooking() {
                             return addon ? (
                               <span
                                 key={id}
-                                className="inline-flex items-center gap-1 rounded-full bg-indigo-500/15 px-2.5 py-0.5 text-xs font-medium text-indigo-300 ring-1 ring-inset ring-indigo-500/25"
+                                className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary ring-1 ring-inset ring-primary/30"
                               >
                                 + {addon.name}
                               </span>
@@ -857,10 +857,10 @@ export default function NewBooking() {
                   const offer = tutorOffers.find((o: any) => o.catalogueItemId === selectedServiceId);
                   if (!offer) return null;
                   return (
-                    <div className="flex gap-3 items-start p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/50 rounded-xl text-emerald-900 dark:text-emerald-300">
-                      <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5 text-emerald-700 dark:text-emerald-400" />
+                    <div className="flex gap-3 items-start p-4 bg-success/10 border border-success/30 rounded-xl text-success">
+                      <Sparkles className="w-5 h-5 flex-shrink-0 mt-0.5 text-success" />
                       <div>
-                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                        <p className="text-sm font-semibold text-success">
                           {offer.statusLabel}: {offer.campaignName || "Benefício comercial"}
                         </p>
                         <p className="text-xs text-foreground/80 mt-0.5">
@@ -1041,7 +1041,7 @@ export default function NewBooking() {
                             <span className="text-muted-foreground font-medium">
                               {isPackage && excessDays > 0 ? "Fatura (Excedente Estimado)" : "Total Estimado"}
                             </span>
-                            <span className="text-3xl font-bold text-emerald-400">
+                            <span className="text-3xl font-bold text-success">
                               {formatCentsToBRL(totalCost)}
                             </span>
                           </div>

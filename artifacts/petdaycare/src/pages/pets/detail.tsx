@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Tabs } from "@/components/ui/tabs";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { Dog, Syringe, Activity, Clock, AlertCircle, LogIn, Camera, QrCode, UtensilsCrossed, Navigation, Car, MessageSquare } from "lucide-react";
+import { Dog, Syringe, Activity, Clock, AlertCircle, LogIn, Camera, QrCode, UtensilsCrossed, Navigation, Car, MessageSquare, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 
@@ -154,8 +154,8 @@ export default function PetDetail({ id }: { id: number }) {
   return (
     <div className="space-y-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-secondary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="rounded-full hover:bg-secondary min-h-[44px] min-w-[44px]">
+          <ArrowLeft className="h-5 w-5 text-muted-foreground" />
         </Button>
         <span className="text-sm text-muted-foreground font-medium">Voltar</span>
       </div>
@@ -171,7 +171,7 @@ export default function PetDetail({ id }: { id: number }) {
           title="Clique para trocar a foto"
         >
           {uploadingPhoto ? (
-            <div className="h-full w-full flex items-center justify-center bg-black/60">
+            <div className="h-full w-full flex items-center justify-center bg-background/80 backdrop-blur-xs">
               <div className="animate-spin h-8 w-8 rounded-full border-2 border-primary border-t-transparent" />
             </div>
           ) : (
@@ -184,9 +184,9 @@ export default function PetDetail({ id }: { id: number }) {
               />
           )}
           {!uploadingPhoto && (
-            <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
-              <Camera className="h-8 w-8 text-white mb-1" />
-              <span className="text-xs text-white font-medium">Trocar foto</span>
+            <div className="absolute inset-0 bg-background/70 backdrop-blur-xs flex flex-col items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity">
+              <Camera className="h-8 w-8 text-foreground mb-1" />
+              <span className="text-xs text-foreground font-medium">Trocar foto</span>
             </div>
           )}
         </div>
@@ -317,6 +317,11 @@ export default function PetDetail({ id }: { id: number }) {
             <Button variant="ghost" onClick={() => setOnTheWayOpen(false)}>Cancelar</Button>
           </div>
         </div>
+      </Modal>
+
+      {/* QR Code Modal */}
+      <Modal isOpen={qrModalOpen} onClose={() => setQrModalOpen(false)} title={`QR Code — ${pet.name}`}>
+        <QrTab pet={pet} />
       </Modal>
 
       {/* Edit Profile Modal */}
@@ -461,6 +466,7 @@ export default function PetDetail({ id }: { id: number }) {
 function CheckInButton({ crecheId, bookingId, petId }: { crecheId: number; bookingId: number; petId: number }) {
   const checkInMutation = useCheckIn();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   return (
     <Button
@@ -474,10 +480,11 @@ function CheckInButton({ crecheId, bookingId, petId }: { crecheId: number; booki
                 queryClient.invalidateQueries({ queryKey: getListBookingsQueryKey(crecheId) });
                 queryClient.invalidateQueries({ queryKey: getListPetsQueryKey(crecheId) });
               }
+              toast({ title: "Check-in realizado com sucesso!" });
             },
             onError: (err: any) => {
               const msg = err?.response?.data?.error ?? err?.message ?? "Tente novamente.";
-              alert(msg);
+              toast({ title: "Erro no check-in", description: msg, variant: "destructive" });
             },
           }
         )

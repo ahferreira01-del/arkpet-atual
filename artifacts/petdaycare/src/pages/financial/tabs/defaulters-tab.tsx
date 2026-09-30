@@ -34,9 +34,9 @@ export function DefaultersTab({ crecheId }: { crecheId: number }) {
   });
 
   const columns = React.useMemo(() => [
-    { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => <span className="font-medium text-white">{info.getValue() || "Desconhecido"}</span> },
+    { accessorKey: "tutorName", header: "Tutor", cell: (info: any) => <span className="font-medium text-foreground">{info.getValue() || "Desconhecido"}</span> },
     { accessorKey: "dueDate", header: "Vencimento", cell: (info: any) => info.getValue() ? format(parseLocalDate(info.getValue()), "dd/MM/yyyy", { locale: ptBR }) : "—" },
-    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <span className="font-medium text-white">{formatCentsToBRL(info.getValue())}</span> },
+    { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: any) => formatCentsToBRL(Number(v)) }, cell: (info: any) => <span className="font-medium text-foreground">{formatCentsToBRL(info.getValue())}</span> },
     {
       id: "daysLate",
       header: "Dias Atraso",
@@ -54,10 +54,10 @@ export function DefaultersTab({ crecheId }: { crecheId: number }) {
         const msg = encodeURIComponent(`Olá ${inv.tutorName || "Tutor"}, notamos que há uma fatura em aberto no valor de ${formatCentsToBRL(inv.amount)}. Poderia verificar?`);
         return (
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-white" onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending}>
+            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending}>
               Cancelar
             </Button>
-            <Button size="sm" variant="outline" className="text-emerald-400 border-emerald-400/20 hover:bg-emerald-400/10" onClick={() => window.open(`https://wa.me/?text=${msg}`, '_blank')}>
+            <Button size="sm" variant="outline" className="text-success border-success/30 hover:bg-success/10" onClick={() => window.open(`https://wa.me/?text=${msg}`, '_blank')}>
               Cobrar
             </Button>
           </div>
@@ -72,10 +72,10 @@ export function DefaultersTab({ crecheId }: { crecheId: number }) {
 
   return (
     <div className="space-y-6">
-      <Card className="bg-gradient-to-br from-red-500/10 to-transparent border-red-500/20">
+      <Card className="bg-gradient-to-br from-destructive/10 to-transparent border-destructive/20">
         <CardContent className="p-6">
-          <h3 className="text-sm font-medium text-red-400 mb-2">Total em Inadimplência</h3>
-          <p className="text-3xl font-display font-bold text-white">
+          <h3 className="text-sm font-medium text-destructive mb-2">Total em Inadimplência</h3>
+          <p className="text-3xl font-display font-bold text-foreground">
             {formatCentsToBRL(totalDefaulters)}
           </p>
         </CardContent>
@@ -83,8 +83,8 @@ export function DefaultersTab({ crecheId }: { crecheId: number }) {
 
       <Card>
         <CardContent className="p-0">
-          <div className="p-4 border-b border-white/5 flex justify-between items-center bg-white/5">
-            <h3 className="font-medium text-white">Faturas Inadimplentes</h3>
+          <div className="p-4 border-b border-border flex justify-between items-center bg-muted/40">
+            <h3 className="font-medium text-foreground">Faturas Inadimplentes</h3>
           </div>
           <div className="p-4">
              <AdvancedDataTable

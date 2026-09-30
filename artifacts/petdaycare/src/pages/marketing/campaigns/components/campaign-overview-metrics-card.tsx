@@ -124,14 +124,14 @@ export function CampaignOverviewMetricsCard({
               <p className="text-[11px] text-muted-foreground uppercase font-medium tracking-wider">
                 Aplicações Efetivas
               </p>
-              <p className="text-xl font-bold text-emerald-400 mt-0.5">
+              <p className="text-xl font-bold text-success mt-0.5">
                 {isLoading ? "..." : apps?.redemptionsFirstAppliedCount ?? 0}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
                 {apps?.uniqueTutorsAppliedCount ?? 0} tutores aplicaram
               </p>
             </div>
-            <CheckCircle2 className="h-7 w-7 text-emerald-400/20" />
+            <CheckCircle2 className="h-7 w-7 text-success/20" />
           </CardContent>
         </Card>
 
@@ -160,14 +160,14 @@ export function CampaignOverviewMetricsCard({
                 <p className="text-[11px] text-muted-foreground uppercase font-medium tracking-wider">
                   Campanhas Ativas
                 </p>
-                <p className="text-xl font-bold text-emerald-400 mt-0.5">
+                <p className="text-xl font-bold text-success mt-0.5">
                   {isLoading ? "..." : data?.campaignsByStatus?.active ?? 0}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   de {data?.campaignsByStatus?.total ?? 0} cadastradas
                 </p>
               </div>
-              <Sparkles className="h-7 w-7 text-emerald-400/20" />
+              <Sparkles className="h-7 w-7 text-success/20" />
             </CardContent>
           </Card>
         )}
@@ -180,14 +180,14 @@ export function CampaignOverviewMetricsCard({
                 <p className="text-[11px] text-muted-foreground uppercase font-medium tracking-wider">
                   Cobrado Líquido
                 </p>
-                <p className="text-xl font-bold text-emerald-400 mt-0.5">
+                <p className="text-xl font-bold text-success mt-0.5">
                   {isLoading ? "..." : formatCents(fin?.nonVoidedNonRefundedFinalAmountCents)}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Exclui canceladas e estornos
                 </p>
               </div>
-              <CheckCircle2 className="h-7 w-7 text-emerald-400/20" />
+              <CheckCircle2 className="h-7 w-7 text-success/20" />
             </CardContent>
           </Card>
         ) : (
@@ -197,7 +197,7 @@ export function CampaignOverviewMetricsCard({
                 <p className="text-[11px] text-muted-foreground uppercase font-medium tracking-wider">
                   Agendadas/Pausadas
                 </p>
-                <p className="text-xl font-bold text-blue-400 mt-0.5">
+                <p className="text-xl font-bold text-primary mt-0.5">
                   {isLoading
                     ? "..."
                     : (data?.campaignsByStatus?.scheduled ?? 0) +
@@ -207,7 +207,7 @@ export function CampaignOverviewMetricsCard({
                   {data?.campaignsByStatus?.scheduled ?? 0} agendadas, {data?.campaignsByStatus?.paused ?? 0} pausadas
                 </p>
               </div>
-              <Clock className="h-7 w-7 text-blue-400/20" />
+              <Clock className="h-7 w-7 text-primary/20" />
             </CardContent>
           </Card>
         )}
@@ -217,22 +217,22 @@ export function CampaignOverviewMetricsCard({
       {isCrecheAdmin && data?.hasFinancialAccess && fin?.invoiceStatusBreakdown && (
         <div className="p-2.5 rounded-lg bg-secondary/25 border border-border/40 text-[11px] flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-muted-foreground">
-            <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+            <DollarSign className="h-3.5 w-3.5 text-success" />
             <span className="font-semibold text-foreground">Faturas no Período:</span>
             <span>
-              Pagas: <strong className="text-emerald-400">{formatCents(fin.invoiceStatusBreakdown.paid?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.paid?.lineCount || 0})
+              Pagas: <strong className="text-success">{formatCents(fin.invoiceStatusBreakdown.paid?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.paid?.lineCount || 0})
             </span>
             <span>•</span>
             <span>
-              Pendentes: <strong className="text-amber-400">{formatCents(fin.invoiceStatusBreakdown.pending?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.pending?.lineCount || 0})
+              Pendentes: <strong className="text-warning">{formatCents(fin.invoiceStatusBreakdown.pending?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.pending?.lineCount || 0})
             </span>
             <span>•</span>
             <span>
-              Confirmação: <strong className="text-blue-400">{formatCents(fin.invoiceStatusBreakdown.awaitingConfirmation?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.awaitingConfirmation?.lineCount || 0})
+              Confirmação: <strong className="text-primary">{formatCents(fin.invoiceStatusBreakdown.awaitingConfirmation?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.awaitingConfirmation?.lineCount || 0})
             </span>
             <span>•</span>
             <span>
-              Vencidas: <strong className="text-rose-400">{formatCents(fin.invoiceStatusBreakdown.overdue?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.overdue?.lineCount || 0})
+              Vencidas: <strong className="text-destructive">{formatCents(fin.invoiceStatusBreakdown.overdue?.finalChargedAmountCents)}</strong> ({fin.invoiceStatusBreakdown.overdue?.lineCount || 0})
             </span>
           </div>
           {fin.complimentaryApplicationsCount > 0 && (

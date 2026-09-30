@@ -148,7 +148,7 @@ export function UpdatePrompt() {
       </div>
 
       {/* Título */}
-      <h1 className="text-2xl font-bold text-white text-center mb-2">
+      <h1 className="text-2xl font-bold text-foreground text-center mb-2">
         Nova versão disponível
       </h1>
 
@@ -161,7 +161,7 @@ export function UpdatePrompt() {
       <button
         onClick={handleUpdate}
         disabled={updating}
-        className="w-full max-w-xs bg-primary hover:bg-primary/90 text-white font-semibold py-4 rounded-2xl transition-colors disabled:opacity-60 text-base shadow-lg shadow-primary/30"
+        className="w-full max-w-xs bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-4 rounded-2xl transition-colors disabled:opacity-60 text-base shadow-lg shadow-primary/30 min-h-[48px]"
       >
         {updating ? "Atualizando..." : "Atualizar agora"}
       </button>

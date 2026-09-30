@@ -1,40 +1,23 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { UserProfile } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Modal } from "@/components/ui/modal";
-import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  Dog,
-  CalendarDays,
-  CheckSquare,
-  MessageSquare,
-  Settings,
-  Footprints,
-  QrCode,
-  CreditCard,
-  LogOut,
-  CircleDollarSign,
-  Receipt,
-  UserCog,
-  Menu
-} from "lucide-react";
+import { LogOut, Menu } from "lucide-react";
+import { getMobileNavigationItems, UserRole } from "@/config/navigation-config";
 
 interface BottomNavProps {
   user: UserProfile;
 }
 
 function useBookingsBadge(user: UserProfile) {
-  const token = localStorage.getItem("auth_token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const { data } = useQuery({
     queryKey: ["bookings-badge", user?.crecheId, user?.role],
     queryFn: async () => {
       if (!user?.crecheId) return 0;
-      // Admins/staff: count pending + cancel_requested bookings
       const [pendingRes, cancelRes] = await Promise.all([
         fetch(`/api/creches/${user.crecheId}/bookings?status=pending`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -43,11 +26,12 @@ function useBookingsBadge(user: UserProfile) {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
-      // API returns { items, total, ... } — use .total, not .length
       const pending = pendingRes.ok ? await pendingRes.json() : { total: 0 };
       const cancelRequested = cancelRes.ok ? await cancelRes.json() : { total: 0 };
-      return (pending.total ?? pending.items?.length ?? 0) +
-             (cancelRequested.total ?? cancelRequested.items?.length ?? 0);
+      return (
+        (pending.total ?? pending.items?.length ?? 0) +
+        (cancelRequested.total ?? cancelRequested.items?.length ?? 0)
+      );
     },
     enabled: !!user?.crecheId && (user?.role === "creche_admin" || user?.role === "staff"),
     refetchInterval: 20_000,
@@ -56,9 +40,8 @@ function useBookingsBadge(user: UserProfile) {
   return (data ?? 0) as number;
 }
 
-// Badge for creche_admin: invoices awaiting receipt confirmation ("comprovantes a dar baixa").
 function useFinancialBadge(user: UserProfile) {
-  const token = localStorage.getItem("auth_token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const { data } = useQuery({
     queryKey: ["financial-awaiting-count", user?.crecheId],
     queryFn: async () => {
@@ -76,10 +59,8 @@ function useFinancialBadge(user: UserProfile) {
   return (data?.count ?? 0) as number;
 }
 
-// Badge showing how many pending/overdue invoices the tutor has.
-// Invalidated by usePayManualInvoice, useApproveReceipt, etc.
 function useTutorInvoiceBadge(user: UserProfile) {
-  const token = localStorage.getItem("auth_token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const { data } = useQuery({
     queryKey: ["tutor-invoices", user?.crecheId, user?.id],
     queryFn: async () => {
@@ -98,10 +79,8 @@ function useTutorInvoiceBadge(user: UserProfile) {
   return invoices.filter((inv: any) => inv.status === "pending" || inv.status === "overdue").length;
 }
 
-// Uses React Query so invalidating ["chat-unread", crecheId] in the chat page
-// immediately clears the badge here too — no separate polling needed.
 function useChatUnread(user: UserProfile) {
-  const token = localStorage.getItem("auth_token");
+  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
   const { data } = useQuery({
     queryKey: ["chat-unread", user?.crecheId],
     queryFn: async () => {
@@ -112,7 +91,7 @@ function useChatUnread(user: UserProfile) {
       return r.ok ? r.json() : { total: 0 };
     },
     enabled: !!user?.crecheId,
-    refetchInterval: 15000,
+    refetchInterval: 15_000,
     staleTime: 0,
   });
   return (data?.total ?? 0) as number;
@@ -127,56 +106,44 @@ export function BottomNav({ user }: BottomNavProps) {
   const { logout } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const getLinks = () => {
-    switch (user.role) {
-      case "master_admin":
-        return [
-          { name: "Início", href: "/", icon: LayoutDashboard },
-          { name: "Creches", href: "/admin/creches", icon: Building2 },
-          { name: "Usuários", href: "/admin/users", icon: Users },
-          { name: "Sair", href: null, icon: LogOut, action: logout },
-        ];
-      case "creche_admin":
-        return [
-          { name: "Início", href: "/", icon: LayoutDashboard },
-          { name: "Pets", href: "/pets", icon: Dog },
-          { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays, badge: bookingsBadge },
-          { name: "Tutores", href: "/tutors", icon: Users },
-          { name: "Equipe", href: "/staff/manage", icon: UserCog },
-          { name: "Tarefas", href: "/staff/board", icon: CheckSquare },
-          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
-          { name: "Finanças", href: "/financial", icon: CircleDollarSign, badge: financialBadge },
-          { name: "Plano", href: "/assinatura", icon: CreditCard },
-          { name: "Config.", href: "/settings", icon: Settings },
-        ];
-      case "staff":
-        return [
-          { name: "Início", href: "/", icon: LayoutDashboard },
-          { name: "Operacional", href: "/staff/board", icon: CheckSquare },
-          { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays, badge: bookingsBadge },
-          { name: "QR", href: "/staff/qr-scanner", icon: QrCode },
-          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
-          { name: "Config.", href: "/settings", icon: Settings },
-        ];
-      case "tutor":
-        return [
-          { name: "Início", href: "/", icon: LayoutDashboard },
-          { name: "Pets", href: "/pets", icon: Dog },
-          { name: "Reservas", href: "/bookings", icon: CalendarDays },
-          { name: "Chat", href: "/chat", icon: MessageSquare, badge: unreadChat },
-          { name: "Faturas", href: "/tutor/financial", icon: Receipt, badge: invoiceBadge },
-          { name: "Config.", href: "/settings", icon: Settings },
-        ];
+  const mobileItems = getMobileNavigationItems(user.role as UserRole);
+
+  const getBadgeValue = (key?: string) => {
+    switch (key) {
+      case "unreadChat":
+        return unreadChat;
+      case "bookingsBadge":
+        return bookingsBadge;
+      case "invoiceBadge":
+        return invoiceBadge;
+      case "financialBadge":
+        return financialBadge;
       default:
-        return [];
+        return 0;
     }
   };
 
-  const links = getLinks();
-  const needsMenu = links.length > 5;
-  const visibleLinks = needsMenu ? links.slice(0, 4) : links;
+  const navLinks = mobileItems.map((item) => ({
+    name: item.shortLabel || item.label,
+    modalLabel: item.label,
+    href: item.path,
+    icon: item.icon,
+    badge: getBadgeValue(item.badgeKey),
+    action: undefined as (() => void) | undefined,
+  }));
+
+  const logoutLink = {
+    name: "Sair",
+    modalLabel: "Sair da conta",
+    href: null,
+    icon: LogOut,
+    badge: 0,
+    action: logout,
+  };
+
+  const needsMenu = navLinks.length > 4;
+  const visibleLinks = needsMenu ? navLinks.slice(0, 4) : navLinks;
+  const modalLinks = [...navLinks, logoutLink];
 
   const renderLink = (link: any, isInsideMenu = false) => {
     const isActive =
@@ -184,28 +151,50 @@ export function BottomNav({ user }: BottomNavProps) {
       (location === link.href || (link.href !== "/" && location.startsWith(link.href)));
     const badge = link.badge ?? 0;
     const action = link.action;
+    const displayName = isInsideMenu ? link.modalLabel : link.name;
 
     const inner = (
       <div
         className={cn(
-          "relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 overflow-hidden active:bg-secondary/50",
-          isInsideMenu ? "py-4 rounded-3xl bg-card active:bg-card/80 aspect-square border border-border" : "py-2.5 mx-0.5 mt-1 rounded-xl",
-          isActive ? "text-primary" : action ? "text-destructive/70" : "text-muted-foreground"
+          "relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 overflow-hidden select-none",
+          isInsideMenu
+            ? "p-4 rounded-2xl bg-card border border-border hover:bg-secondary active:scale-[0.98] min-h-[80px]"
+            : "py-2 px-1 min-h-[48px] rounded-xl active:bg-secondary/40",
+          isActive ? "text-primary" : action ? "text-destructive/80" : "text-muted-foreground"
         )}
       >
         {!isInsideMenu && isActive && (
-          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-primary rounded-full" />
+          <div className="absolute top-0.5 left-1/2 -translate-x-1/2 w-5 h-0.5 bg-primary rounded-full" />
         )}
-        <div className={cn("relative flex items-center justify-center rounded-lg", isInsideMenu ? "h-8 w-8 mb-1" : "h-7 w-7")}>
-          <link.icon strokeWidth={1.5} className={cn("", isInsideMenu ? "h-7 w-7" : "h-[22px] w-[22px]", !isInsideMenu && isActive ? "text-primary stroke-[2px]" : "text-muted-foreground")} />
+        <div className={cn("relative flex items-center justify-center rounded-lg", isInsideMenu ? "h-7 w-7 mb-1" : "h-6 w-6")}>
+          <link.icon
+            className={cn(
+              "shrink-0",
+              isInsideMenu ? "h-6 w-6" : "h-5 w-5",
+              isActive ? "text-primary stroke-[2.2px]" : "text-muted-foreground"
+            )}
+          />
           {badge > 0 && (
-            <span className={cn("absolute px-0.5 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center leading-none shadow-sm", isInsideMenu ? "-top-2 -right-2 min-w-[20px] h-[20px] text-[10px]" : "-top-1 -right-2 min-w-[16px] h-[16px] text-[9px]")}>
+            <span
+              className={cn(
+                "absolute px-1 rounded-full bg-primary text-primary-foreground font-bold flex items-center justify-center leading-none shadow-xs",
+                isInsideMenu
+                  ? "-top-1.5 -right-2 min-w-[18px] h-[18px] text-[10px]"
+                  : "-top-1 -right-2 min-w-[15px] h-[15px] text-[9px]"
+              )}
+            >
               {badge > 99 ? "99+" : badge}
             </span>
           )}
         </div>
-        <span className={cn("font-medium leading-none truncate max-w-full z-10", isInsideMenu ? "text-[12px] text-foreground" : "text-[11px]", !isInsideMenu && isActive ? "text-primary font-semibold" : action ? "text-destructive/70" : "text-muted-foreground")}>
-          {link.name}
+        <span
+          className={cn(
+            "leading-none truncate max-w-full z-10",
+            isInsideMenu ? "text-xs font-medium text-foreground" : "text-[11px] font-medium tracking-tight",
+            isActive ? "text-primary font-semibold" : action ? "text-destructive" : "text-muted-foreground"
+          )}
+        >
+          {displayName}
         </span>
       </div>
     );
@@ -226,14 +215,25 @@ export function BottomNav({ user }: BottomNavProps) {
 
     if (action) {
       return (
-        <button key={link.name} onClick={onClick} className={cn("relative", isInsideMenu ? "w-full" : "flex-1")}>
+        <button
+          key={link.name}
+          type="button"
+          onClick={onClick}
+          className={cn("relative cursor-pointer text-left", isInsideMenu ? "w-full" : "flex-1")}
+        >
           {inner}
         </button>
       );
     }
 
     return (
-      <a key={link.href!} href={link.href} onClick={onClick} className={cn("relative cursor-pointer block", isInsideMenu ? "w-full" : "flex-1")}>
+      <a
+        key={link.href!}
+        href={link.href}
+        onClick={onClick}
+        aria-current={isActive ? "page" : undefined}
+        className={cn("relative cursor-pointer block", isInsideMenu ? "w-full" : "flex-1")}
+      >
         {inner}
       </a>
     );
@@ -241,31 +241,37 @@ export function BottomNav({ user }: BottomNavProps) {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden will-change-transform">
-        <div className="bg-background border-t border-border px-1 pb-safe pl-safe pr-safe relative">
-          <div className="flex items-stretch justify-around">
-            {visibleLinks.map((link) => renderLink(link, false))}
-            
-            {needsMenu && (
-              <button onClick={() => setIsMenuOpen(true)} className="flex-1 relative">
-                <div className="relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 rounded-xl mt-1 overflow-hidden py-2.5 mx-0.5 text-muted-foreground active:bg-secondary/50">
-                  <div className="relative flex items-center justify-center rounded-lg h-7 w-7">
-                    <Menu className="h-[22px] w-[22px]" />
-                  </div>
-                  <span className="font-medium leading-none truncate max-w-full z-10 text-[11px]">
-                    Menu
-                  </span>
+      <nav
+        aria-label="Navegação Inferior Mobile"
+        className="fixed bottom-0 left-0 right-0 z-40 md:hidden will-change-transform bg-background/95 backdrop-blur-md border-t border-border pb-safe pl-safe pr-safe"
+      >
+        <div className="flex items-center justify-around px-1 py-1">
+          {visibleLinks.map((link) => renderLink(link, false))}
+
+          {needsMenu && (
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(true)}
+              aria-label="Abrir menu de opções"
+              className="flex-1 relative cursor-pointer"
+            >
+              <div className="relative flex flex-col items-center justify-center gap-1 transition-colors duration-200 rounded-xl py-2 px-1 min-h-[48px] text-muted-foreground active:bg-secondary/40">
+                <div className="relative flex items-center justify-center rounded-lg h-6 w-6">
+                  <Menu className="h-5 w-5" />
                 </div>
-              </button>
-            )}
-          </div>
+                <span className="font-medium leading-none truncate max-w-full z-10 text-[11px] tracking-tight">
+                  Menu
+                </span>
+              </div>
+            </button>
+          )}
         </div>
       </nav>
 
       {needsMenu && (
         <Modal isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} title="Menu Principal">
-          <div className="grid grid-cols-2 min-[360px]:grid-cols-3 sm:grid-cols-4 gap-3 pb-4">
-            {links.map((link) => renderLink(link, true))}
+          <div className="grid grid-cols-2 min-[360px]:grid-cols-3 gap-2.5 pb-2">
+            {modalLinks.map((link) => renderLink(link, true))}
           </div>
         </Modal>
       )}

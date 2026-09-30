@@ -38,8 +38,8 @@ export default function ForgotPassword() {
 
           <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="h-10 w-10 rounded-full bg-violet-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <ShieldCheck className="h-5 w-5 text-violet-500" />
+              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <ShieldCheck className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-1">Administradores de Creche</h3>

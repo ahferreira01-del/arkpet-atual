@@ -17,16 +17,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { useListPets } from "@workspace/api-client-react";
 
 const EVENT_META: Record<string, { emoji: string; label: string; color: string }> = {
-  photo:      { emoji: "📸", label: "Foto",         color: "bg-violet-500/20 text-violet-300 border-violet-500/30" },
-  video:      { emoji: "🎥", label: "Vídeo",        color: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
-  note:       { emoji: "📝", label: "Nota",         color: "bg-white/10 text-white/70 border-white/10" },
-  play:       { emoji: "🎾", label: "Brincadeira",  color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
-  walk:       { emoji: "🦮", label: "Passeio",      color: "bg-green-500/20 text-green-300 border-green-500/30" },
-  feeding:    { emoji: "🍽️", label: "Alimentação", color: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
-  medication: { emoji: "💊", label: "Medicação",    color: "bg-red-500/20 text-red-300 border-red-500/30" },
-  health:     { emoji: "🏥", label: "Saúde",        color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30" },
-  check_in:   { emoji: "✅", label: "Check-in",     color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
-  check_out:  { emoji: "🏠", label: "Check-out",    color: "bg-slate-500/20 text-slate-300 border-slate-500/30" },
+  photo:      { emoji: "📸", label: "Foto",         color: "bg-primary/10 text-primary border-primary/20" },
+  video:      { emoji: "🎥", label: "Vídeo",        color: "bg-primary/10 text-primary border-primary/20" },
+  note:       { emoji: "📝", label: "Nota",         color: "bg-secondary text-foreground border-border" },
+  play:       { emoji: "🎾", label: "Brincadeira",  color: "bg-secondary text-foreground border-border" },
+  walk:       { emoji: "🦮", label: "Passeio",      color: "bg-secondary text-foreground border-border" },
+  feeding:    { emoji: "🍽️", label: "Alimentação", color: "bg-secondary text-foreground border-border" },
+  medication: { emoji: "💊", label: "Medicação",    color: "bg-destructive/10 text-destructive border-destructive/20" },
+  health:     { emoji: "🏥", label: "Saúde",        color: "bg-secondary text-foreground border-border" },
+  check_in:   { emoji: "✅", label: "Check-in",     color: "bg-success/10 text-success border-success/20" },
+  check_out:  { emoji: "🏠", label: "Check-out",    color: "bg-secondary text-foreground border-border" },
 };
 
 function getInitials(name: string) {
@@ -149,7 +149,7 @@ function FeedCard({
   const meta = EVENT_META[event.type] || {
     emoji: "📌",
     label: event.type,
-    color: "bg-white/10 text-white border-white/10",
+    color: "bg-secondary text-foreground border-border",
   };
   const date = new Date(event.createdAt);
   const relTime = formatDistanceToNow(date, { addSuffix: true, locale: ptBR });
@@ -218,23 +218,23 @@ function FeedCard({
   };
 
   return (
-    <div className="bg-card border border-white/5 rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 relative group">
+    <div className="bg-card border border-border rounded-2xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 relative group">
       {canDelete && (
         <button
           onClick={handleDelete}
-          className="absolute top-4 right-4 h-8 w-8 rounded-full bg-red-500/10 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-red-500/20"
+          className="absolute top-4 right-4 h-8 w-8 rounded-full bg-destructive/10 text-destructive opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center hover:bg-destructive/20"
         >
           <Trash2 className="h-4 w-4" />
         </button>
       )}
 
       {/* Header */}
-      <div className="p-4 flex items-center gap-3 border-b border-white/5">
+      <div className="p-4 flex items-center gap-3 border-b border-border">
         <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
           <span className="text-xl">{meta.emoji}</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-white truncate text-sm">
+          <p className="font-semibold text-foreground truncate text-sm">
             {event.pets?.map((p: any) => p.petName).join(", ")}
           </p>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
@@ -268,16 +268,16 @@ function FeedCard({
             </div>
           ) : event.content && (
             <div className="relative group/caption mb-4">
-              <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed pr-7">
+              <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed pr-7">
                 {event.content}
               </p>
               {canEdit && (
                 <button
                   onClick={() => setEditing(true)}
-                  className="absolute top-0 right-0 h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+                  className="absolute top-0 right-0 h-6 w-6 rounded-full bg-secondary hover:bg-secondary/80 flex items-center justify-center transition-colors"
                   title="Editar legenda"
                 >
-                  <Pencil className="h-3 w-3 text-white/60" />
+                  <Pencil className="h-3 w-3 text-muted-foreground" />
                 </button>
               )}
             </div>
@@ -285,14 +285,14 @@ function FeedCard({
 
           {/* Loading placeholder while media fetches automatically */}
           {hasMedia && !displayMedia && (
-            <div className="w-full flex items-center justify-center gap-2 py-10 rounded-xl bg-white/5 border border-white/10 text-sm text-muted-foreground animate-pulse">
+            <div className="w-full flex items-center justify-center gap-2 py-10 rounded-xl bg-secondary/40 border border-border text-sm text-muted-foreground animate-pulse">
               <Camera className="h-4 w-4" />
               Carregando foto...
             </div>
           )}
 
           {displayMedia && displayMediaType === "video" && (
-            <div className="w-full rounded-xl overflow-hidden bg-black">
+            <div className="w-full rounded-xl overflow-hidden bg-muted">
               <video
                 src={displayMedia}
                 controls
@@ -317,8 +317,8 @@ function FeedCard({
                 loading="lazy"
               />
               {!expanded && (
-                <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-medium text-white flex items-center gap-1.5 shadow-lg">
-                  <Sparkles className="h-3.5 w-3.5 text-yellow-400" /> Ampliar
+                <div className="absolute bottom-3 right-3 bg-background/80 text-foreground border border-border backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1.5 shadow-lg">
+                  <Sparkles className="h-3.5 w-3.5 text-primary" /> Ampliar
                 </div>
               )}
             </div>
@@ -327,15 +327,15 @@ function FeedCard({
       )}
 
       {/* Footer */}
-      <div className="px-4 py-3 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+      <div className="px-4 py-3 bg-secondary/20 border-t border-border flex items-center justify-between">
         <button
           onClick={handleLike}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-white/5 transition-colors text-sm font-medium"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-secondary/50 transition-colors text-sm font-medium"
         >
           <span className={`transition-transform duration-200 ${liked ? "scale-110" : ""}`}>
             {liked ? "❤️" : "🤍"}
           </span>
-          <span className={liked ? "text-rose-400" : "text-muted-foreground"}>
+          <span className={liked ? "text-destructive" : "text-muted-foreground"}>
             {likeCount > 0 ? likeCount : "Curtir"}
           </span>
         </button>
@@ -442,8 +442,8 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
       
       {/* Create Post Area (Staff only) */}
       {isStaff && (
-        <div className="bg-card rounded-2xl border border-white/10 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-xl">
-          <div className="p-4 border-b border-white/5 bg-white/[0.02]">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-xl">
+          <div className="p-4 border-b border-border bg-card">
             <Textarea 
               placeholder="O que está acontecendo agora?"
               value={content}
@@ -456,22 +456,22 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
                 {mediaFile.type.startsWith("video/") ? (
                   <video
                     src={URL.createObjectURL(mediaFile)}
-                    className="h-32 rounded-lg border border-white/10 bg-black"
+                    className="h-32 rounded-lg border border-border bg-muted"
                     muted
                     playsInline
                     preload="metadata"
                   />
                 ) : (
-                  <img src={URL.createObjectURL(mediaFile)} className="h-32 rounded-lg object-cover border border-white/10" />
+                  <img src={URL.createObjectURL(mediaFile)} className="h-32 rounded-lg object-cover border border-border" />
                 )}
-                <button onClick={() => setMediaFile(null)} className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 rounded-full flex items-center justify-center text-white hover:bg-red-600 shadow-lg">
+                <button onClick={() => setMediaFile(null)} className="absolute -top-2 -right-2 h-6 w-6 bg-destructive rounded-full flex items-center justify-center text-destructive-foreground hover:bg-destructive/90 shadow-lg">
                   <X className="h-3 w-3" />
                 </button>
               </div>
             )}
           </div>
           
-          <div className="p-4 bg-black/20">
+          <div className="p-4 bg-secondary/30">
             <div className="mb-3">
               <p className="text-xs font-medium text-muted-foreground mb-2">Marcar Pets (Presentes):</p>
               <div className="flex flex-wrap gap-2">
@@ -482,7 +482,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                       selectedPets.includes(pet.id) 
                         ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-105" 
-                        : "bg-white/5 text-muted-foreground hover:bg-white/10"
+                        : "bg-secondary text-muted-foreground hover:bg-secondary/80"
                     }`}
                   >
                     {selectedPets.includes(pet.id) && <CheckCircle2 className="h-3 w-3" />}
@@ -531,7 +531,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="flex-1 h-11 px-4 rounded-xl bg-card border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary shadow-sm hover:border-white/20 transition-colors"
+          className="flex-1 h-11 px-4 rounded-xl bg-card border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm hover:border-primary/40 transition-colors"
         >
           <option value="all">Todos os tipos de publicação</option>
           {Object.entries(EVENT_META).map(([key, meta]) => (
@@ -541,7 +541,7 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
         <select
           value={filterPet}
           onChange={(e) => setFilterPet(e.target.value)}
-          className="flex-1 h-11 px-4 rounded-xl bg-card border border-white/10 text-sm text-white focus:outline-none focus:ring-1 focus:ring-primary shadow-sm hover:border-white/20 transition-colors"
+          className="flex-1 h-11 px-4 rounded-xl bg-card border border-border text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-sm hover:border-primary/40 transition-colors"
         >
           <option value="all">Todos os pets</option>
           {((petsData as any)?.items || []).map((pet: any) => (
@@ -555,17 +555,17 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
         {isLoading && (
           <div className="flex flex-col gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="bg-card border border-white/5 rounded-2xl overflow-hidden animate-pulse">
-                <div className="p-4 flex items-center gap-3 border-b border-white/5">
-                  <div className="h-10 w-10 rounded-full bg-white/10 flex-shrink-0" />
+              <div key={i} className="bg-card border border-border rounded-2xl overflow-hidden animate-pulse">
+                <div className="p-4 flex items-center gap-3 border-b border-border">
+                  <div className="h-10 w-10 rounded-full bg-muted flex-shrink-0" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-white/10 rounded w-1/3" />
-                    <div className="h-3 bg-white/10 rounded w-1/4" />
+                    <div className="h-3 bg-muted rounded w-1/3" />
+                    <div className="h-3 bg-muted rounded w-1/4" />
                   </div>
                 </div>
                 <div className="p-4 space-y-2">
-                  <div className="h-3 bg-white/10 rounded w-full" />
-                  <div className="h-3 bg-white/10 rounded w-3/4" />
+                  <div className="h-3 bg-muted rounded w-full" />
+                  <div className="h-3 bg-muted rounded w-3/4" />
                 </div>
               </div>
             ))}
@@ -573,10 +573,10 @@ export function FeedTab({ crecheId }: { crecheId: number }) {
         )}
         {!isLoading && isError && (
           <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center">
-              <X className="h-6 w-6 text-red-400" />
+            <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+              <X className="h-6 w-6 text-destructive" />
             </div>
-            <p className="text-sm font-medium text-white">Não foi possível carregar o feed</p>
+            <p className="text-sm font-medium text-foreground">Não foi possível carregar o feed</p>
             <p className="text-xs text-muted-foreground">Verifique sua conexão e tente novamente.</p>
             <button
               onClick={() => queryClient.invalidateQueries({ queryKey: getListFeedQueryKey(crecheId) })}

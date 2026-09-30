@@ -30,29 +30,29 @@ export function ReceiptsTab({ crecheId }: { crecheId: number }) {
     <>
     <Card>
       <CardContent className="p-6">
-        <h3 className="font-medium text-white mb-6">Comprovantes Pendentes de Aprovação</h3>
+        <h3 className="font-medium text-foreground mb-6">Comprovantes Pendentes de Aprovação</h3>
         {/* ── MOBILE CARD VIEW ──────────────────────────────── */}
-        <div className="md:hidden divide-y divide-white/5">
+        <div className="md:hidden divide-y divide-border">
           {pendingReceipts.length > 0 ? (
             pendingReceipts.map((inv: any) => (
               <div key={inv.id} className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
-                  <p className="font-semibold text-white">{inv.tutorName || "Desconhecido"}</p>
-                  <p className="font-bold text-white">{formatCentsToBRL(inv.amount)}</p>
+                  <p className="font-semibold text-foreground">{inv.tutorName || "Desconhecido"}</p>
+                  <p className="font-bold text-foreground">{formatCentsToBRL(inv.amount)}</p>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">Vencimento:</span>
-                  <span className="text-white">{inv.dueDate ? format(new Date(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>
+                  <span className="text-foreground">{inv.dueDate ? format(new Date(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>
                 </div>
-                <div className="flex gap-2 pt-2 border-t border-white/5">
+                <div className="flex gap-2 pt-2 border-t border-border">
                   {inv.receiptPhotoPath && (
                     <Button variant="ghost" size="sm" onClick={() => {
                       setPreviewUrl(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()));
-                    }} className="flex-1 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
+                    }} className="flex-1 text-info hover:text-info/80 hover:bg-info/10">
                       Ver Comprovante
                     </Button>
                   )}
-                  <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
+                  <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="flex-1 bg-success hover:bg-success/90 text-success-foreground">
                     Aprovar
                   </Button>
                 </div>
@@ -66,7 +66,7 @@ export function ReceiptsTab({ crecheId }: { crecheId: number }) {
         {/* ── DESKTOP TABLE VIEW ────────────────────────────── */}
         <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground bg-black/20 uppercase">
+            <thead className="text-xs text-muted-foreground bg-muted/40 uppercase">
               <tr>
                 <th className="px-6 py-4 font-medium">Tutor</th>
                 <th className="px-6 py-4 font-medium">Vencimento</th>
@@ -74,24 +74,24 @@ export function ReceiptsTab({ crecheId }: { crecheId: number }) {
                 <th className="px-6 py-4 font-medium text-right">Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className="divide-y divide-border">
               {pendingReceipts.length > 0 ? (
                 pendingReceipts.map((inv: any) => (
-                  <tr key={inv.id} className="hover:bg-white/5 transition-colors">
-                    <td className="px-6 py-4 font-medium text-white">{inv.tutorName || "Desconhecido"}</td>
+                  <tr key={inv.id} className="hover:bg-secondary/50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-foreground">{inv.tutorName || "Desconhecido"}</td>
                     <td className="px-6 py-4 text-muted-foreground">
                       {inv.dueDate ? format(parseLocalDate(inv.dueDate), "dd/MM/yyyy", { locale: ptBR }) : "—"}
                     </td>
-                    <td className="px-6 py-4 text-white font-medium">{formatCentsToBRL(inv.amount)}</td>
+                    <td className="px-6 py-4 text-foreground font-medium">{formatCentsToBRL(inv.amount)}</td>
                     <td className="px-6 py-4 text-right space-x-2">
                       {inv.receiptPhotoPath && (
                         <Button variant="ghost" size="sm" onClick={() => {
                           setPreviewUrl(buildMediaSrc(inv.receiptPhotoPath, getMediaToken()));
-                        }} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
+                        }} className="text-info hover:text-info/80 hover:bg-info/10">
                           Ver Comprovante
                         </Button>
                       )}
-                      <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="bg-emerald-500 hover:bg-emerald-600">
+                      <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="bg-success hover:bg-success/90 text-success-foreground">
                         Aprovar
                       </Button>
                     </td>

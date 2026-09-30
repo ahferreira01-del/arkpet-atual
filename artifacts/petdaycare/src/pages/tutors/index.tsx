@@ -342,27 +342,49 @@ export default function TutorsPage() {
         </Card>
       )}
 
-      {/* Search */}
-      <SearchInput
-        placeholder="Buscar por nome ou e-mail..."
-        value={search}
-        onChange={(val) => setSearch(val)}
-        className="w-full sm:max-w-sm"
-      />
+      {/* Search & Stats */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <SearchInput
+          placeholder="Buscar por nome ou e-mail..."
+          value={search}
+          onChange={(val) => setSearch(val)}
+          className="w-full sm:max-w-sm"
+        />
+        <p className="text-xs text-muted-foreground font-medium">
+          {filtered.length} {filtered.length === 1 ? "tutor encontrado" : "tutores encontrados"}
+        </p>
+      </div>
 
       {/* Tutors list */}
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando tutores...</div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Card key={i} className="border-border bg-card p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-muted rounded w-2/3 animate-pulse" />
+                  <div className="h-3 bg-muted rounded w-1/2 animate-pulse" />
+                </div>
+                <div className="h-10 w-10 rounded-xl bg-muted animate-pulse flex-shrink-0" />
+              </div>
+              <div className="h-3 bg-muted rounded w-1/4 animate-pulse mt-4" />
+              <div className="h-10 bg-muted rounded w-full animate-pulse mt-4" />
+            </Card>
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title="Nenhum tutor encontrado"
-          description='Clique em "Novo Tutor" para cadastrar o primeiro tutor da sua creche.'
-        />
+        <Card className="py-12 border-border bg-card">
+          <EmptyState
+            icon={Users}
+            title={search ? "Nenhum resultado encontrado" : "Nenhum tutor encontrado"}
+            description={search ? "Tente alterar ou limpar os termos da busca." : 'Clique em "Novo Tutor" para cadastrar o primeiro tutor da sua creche.'}
+            action={!search ? { label: "Novo Tutor", onClick: () => { setShowModal(true); setCreatedPassword(null); } } : undefined}
+          />
+        </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((tutor) => (
-            <Card key={tutor.id} className={!tutor.isActive ? "opacity-60" : ""}>
+            <Card key={tutor.id} className={`border-border bg-card transition-colors hover:border-primary/40 ${!tutor.isActive ? "opacity-60" : ""}`}>
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex-1 min-w-0">
@@ -413,7 +435,7 @@ export default function TutorsPage() {
                     <>
                       <button
                         onClick={() => setCommercialTutor(tutor)}
-                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-amber-500 hover:bg-amber-500/10 transition-colors min-h-[44px]"
+                        className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-1.5 rounded-lg text-warning hover:bg-warning/10 transition-colors min-h-[44px]"
                       >
                         <Tag className="h-3.5 w-3.5" /> Condição Comercial
                       </button>

@@ -262,7 +262,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Rascunhos</p>
-            <p className="text-2xl font-bold text-amber-500">
+            <p className="text-2xl font-bold text-warning">
               {proposals.filter((p: any) => p.status === "draft").length}
             </p>
           </CardContent>
@@ -270,7 +270,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Enviadas (Aguardando Aceite)</p>
-            <p className="text-2xl font-bold text-blue-500">
+            <p className="text-2xl font-bold text-primary">
               {proposals.filter((p: any) => p.status === "sent").length}
             </p>
           </CardContent>
@@ -278,7 +278,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Aceitas</p>
-            <p className="text-2xl font-bold text-emerald-500">
+            <p className="text-2xl font-bold text-success">
               {proposals.filter((p: any) => p.status === "accepted").length}
             </p>
           </CardContent>
@@ -390,7 +390,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Solicitadas / Em Análise</p>
-            <p className="text-2xl font-bold text-amber-500">
+            <p className="text-2xl font-bold text-warning">
               {services.filter((s: any) => ["requested", "under_review"].includes(s.status)).length}
             </p>
           </CardContent>
@@ -398,7 +398,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Pagas / Agendadas</p>
-            <p className="text-2xl font-bold text-blue-500">
+            <p className="text-2xl font-bold text-primary">
               {services.filter((s: any) => ["paid", "scheduled", "in_progress"].includes(s.status)).length}
             </p>
           </CardContent>
@@ -406,7 +406,7 @@ export default function AdminProposals() {
         <Card>
           <CardContent className="pt-4">
             <p className="text-xs text-muted-foreground font-medium">Concluídas</p>
-            <p className="text-2xl font-bold text-emerald-500">
+            <p className="text-2xl font-bold text-success">
               {services.filter((s: any) => s.status === "completed").length}
             </p>
           </CardContent>
@@ -447,7 +447,7 @@ export default function AdminProposals() {
                         Data Solicitada: {formatDate(s.createdAt)}
                       </p>
                       {s.scheduledFor && (
-                        <p className="text-xs text-blue-600 font-medium">
+                        <p className="text-xs text-primary font-medium">
                           📅 Agendado para: {formatDateTime(s.scheduledFor)}
                         </p>
                       )}
@@ -520,7 +520,7 @@ export default function AdminProposals() {
                       {s.status === "in_progress" && (
                         <Button
                           size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="bg-success hover:bg-success/90 text-success-foreground"
                           onClick={() => {
                             setSelectedService(s);
                             setCompletionNotes("");
@@ -1017,7 +1017,7 @@ export default function AdminProposals() {
               Cancelar
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              className="bg-success hover:bg-success/90 text-success-foreground"
               onClick={() => {
                 serviceActionMutation.mutate({
                   endpoint: `/api/commercial/platform-services/${selectedService.id}/complete`,

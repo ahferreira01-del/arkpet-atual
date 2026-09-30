@@ -32,10 +32,10 @@ export const INVOICE_STATUS_LABELS: Record<string, string> = {
 };
 
 export const INVOICE_STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-white/10 text-white',
-  awaiting_confirmation: 'bg-amber-500/20 text-amber-500',
-  paid: 'bg-emerald-500/20 text-emerald-400',
-  overdue: 'bg-red-500/20 text-red-500',
-  voided: 'bg-zinc-500/20 text-zinc-400',
-  refunded: 'bg-purple-500/20 text-purple-400',
+  pending: 'bg-muted text-muted-foreground border-border',
+  awaiting_confirmation: 'bg-warning/20 text-warning border-warning/30',
+  paid: 'bg-success/20 text-success border-success/30',
+  overdue: 'bg-destructive/20 text-destructive border-destructive/30',
+  voided: 'bg-muted text-muted-foreground border-border',
+  refunded: 'bg-primary/20 text-primary border-primary/30',
 };

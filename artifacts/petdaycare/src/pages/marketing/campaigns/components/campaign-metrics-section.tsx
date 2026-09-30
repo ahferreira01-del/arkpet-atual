@@ -123,7 +123,7 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
               N/D (Rascunho)
             </p>
           ) : data.utilizationRatePercentage != null ? (
-            <p className="font-bold text-emerald-400 text-sm">
+            <p className="font-bold text-success text-sm">
               {data.utilizationRatePercentage.toFixed(1)}%
             </p>
           ) : (
@@ -143,19 +143,19 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
           <div className="p-2 rounded bg-background/50 flex flex-col">
             <span className="text-muted-foreground">Reservados</span>
-            <span className="font-bold text-blue-400">{red.reservedCount ?? 0}</span>
+            <span className="font-bold text-primary">{red.reservedCount ?? 0}</span>
           </div>
           <div className="p-2 rounded bg-background/50 flex flex-col">
             <span className="text-muted-foreground">Parcialmente Aplicados</span>
-            <span className="font-bold text-amber-400">{red.partiallyAppliedCount ?? 0}</span>
+            <span className="font-bold text-warning">{red.partiallyAppliedCount ?? 0}</span>
           </div>
           <div className="p-2 rounded bg-background/50 flex flex-col">
             <span className="text-muted-foreground">Totalmente Aplicados</span>
-            <span className="font-bold text-emerald-400">{red.appliedCount ?? 0}</span>
+            <span className="font-bold text-success">{red.appliedCount ?? 0}</span>
           </div>
           <div className="p-2 rounded bg-background/50 flex flex-col">
             <span className="text-muted-foreground">Reservas liberadas</span>
-            <span className="font-bold text-neutral-400">{red.releasedCount ?? 0}</span>
+            <span className="font-bold text-muted-foreground">{red.releasedCount ?? 0}</span>
           </div>
         </div>
       </div>
@@ -165,10 +165,10 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
         <div className="space-y-2.5 pt-2 border-t border-border/40">
           <div className="flex items-center justify-between">
             <p className="font-semibold text-foreground flex items-center gap-1.5">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+              <DollarSign className="h-3.5 w-3.5 text-success" />
               Impacto Financeiro Auditado
             </p>
-            <Badge variant="outline" className="text-[10px] border-emerald-500/30 text-emerald-400">
+            <Badge variant="outline" className="text-[10px] border-success/30 text-success">
               Admin
             </Badge>
           </div>
@@ -188,13 +188,13 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
             </div>
             <div className="p-2 rounded bg-secondary/30 border border-border/40">
               <span className="text-muted-foreground">Valor Final Cobrado</span>
-              <p className="font-bold text-emerald-400 mt-0.5">
+              <p className="font-bold text-success mt-0.5">
                 {formatCents(fin.grossAppliedFinalAmountCents)}
               </p>
             </div>
             <div className="p-2 rounded bg-secondary/30 border border-border/40">
               <span className="text-muted-foreground">Válido Líquido (s/ estorno)</span>
-              <p className="font-bold text-emerald-300 mt-0.5">
+              <p className="font-bold text-success mt-0.5">
                 {formatCents(fin.nonVoidedNonRefundedFinalAmountCents)}
               </p>
             </div>
@@ -220,27 +220,27 @@ export function CampaignMetricsSection({ crecheId, campaignId }: CampaignMetrics
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-emerald-400">Pagas ({fin.invoiceStatusBreakdown.paid?.lineCount || 0}):</span>
+                  <span className="text-success">Pagas ({fin.invoiceStatusBreakdown.paid?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.paid?.finalChargedAmountCents)}</span>
                 </div>
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-amber-400">Pendentes ({fin.invoiceStatusBreakdown.pending?.lineCount || 0}):</span>
+                  <span className="text-warning">Pendentes ({fin.invoiceStatusBreakdown.pending?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.pending?.finalChargedAmountCents)}</span>
                 </div>
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-blue-400">Confirmação ({fin.invoiceStatusBreakdown.awaitingConfirmation?.lineCount || 0}):</span>
+                  <span className="text-primary">Confirmação ({fin.invoiceStatusBreakdown.awaitingConfirmation?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.awaitingConfirmation?.finalChargedAmountCents)}</span>
                 </div>
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-rose-400">Vencidas ({fin.invoiceStatusBreakdown.overdue?.lineCount || 0}):</span>
+                  <span className="text-destructive">Vencidas ({fin.invoiceStatusBreakdown.overdue?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.overdue?.finalChargedAmountCents)}</span>
                 </div>
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-neutral-400">Canceladas ({fin.invoiceStatusBreakdown.voided?.lineCount || 0}):</span>
+                  <span className="text-muted-foreground">Canceladas ({fin.invoiceStatusBreakdown.voided?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.voided?.finalChargedAmountCents)}</span>
                 </div>
                 <div className="p-1.5 rounded bg-secondary/20 border border-border/30 flex justify-between">
-                  <span className="text-purple-400">Reembolsadas ({fin.invoiceStatusBreakdown.refunded?.lineCount || 0}):</span>
+                  <span className="text-secondary-foreground">Reembolsadas ({fin.invoiceStatusBreakdown.refunded?.lineCount || 0}):</span>
                   <span className="font-semibold">{formatCents(fin.invoiceStatusBreakdown.refunded?.finalChargedAmountCents)}</span>
                 </div>
               </div>

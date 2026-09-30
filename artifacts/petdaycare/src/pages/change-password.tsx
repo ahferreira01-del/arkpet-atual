@@ -58,7 +58,7 @@ export default function ChangePassword() {
         {/* Card do Formulário */}
         <div className="w-full bg-card rounded-2xl border border-border p-6 shadow-sm">
           
-          <div className="mb-6 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-600 dark:text-amber-400">
+          <div className="mb-6 p-4 rounded-xl border border-warning/30 bg-warning/10 text-warning">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
               <p className="text-sm leading-relaxed font-medium">

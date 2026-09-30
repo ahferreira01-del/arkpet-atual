@@ -799,7 +799,7 @@ export default function Bookings() {
                     {editBooking.additionalServices.map((s) => (
                       <span
                         key={s.id}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/15 border border-violet-400/25 text-violet-300"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/10 border border-primary/20 text-primary"
                       >
                         {s.catalogueItemName ?? s.catalogueItem?.name ?? `#${s.catalogueItemId}`}
                         {s.status && s.status !== "pending" && (
@@ -884,8 +884,8 @@ export default function Bookings() {
               if (!hasItems || !photoUrl) return null;
               return (
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
-                    <Package className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-warning/15 border border-warning/30">
+                    <Package className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-semibold text-foreground">⚠️ Pet veio com itens pessoais</p>
                       <p className="text-xs text-muted-foreground mt-0.5">Lembre-se de devolver todos os itens ao tutor.</p>
@@ -904,8 +904,8 @@ export default function Bookings() {
 
             {pendingTasksForBooking(checkoutBooking).length > 0 && (
               <>
-                <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-                  <ClipboardList className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-warning/15 border border-warning/30">
+                  <ClipboardList className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="text-sm font-semibold text-foreground">
                       {checkoutBooking.petName} tem{" "}
@@ -921,7 +921,7 @@ export default function Bookings() {
                 <ul className="space-y-1.5 max-h-40 overflow-y-auto">
                   {pendingTasksForBooking(checkoutBooking).map((t) => (
                     <li key={t.id} className="flex items-center gap-2 text-sm text-muted-foreground px-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-warning flex-shrink-0" />
                       {t.title}
                     </li>
                   ))}

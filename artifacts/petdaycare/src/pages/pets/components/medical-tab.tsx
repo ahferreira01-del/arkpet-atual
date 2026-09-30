@@ -49,14 +49,22 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
-      alert("Foto deve ter no máximo 10MB");
+      toast({
+        title: "Arquivo muito grande",
+        description: "A foto deve ter no máximo 10MB.",
+        variant: "destructive",
+      });
       return;
     }
     try {
       const compressed = await compressImage(file, 1200, 0.85);
       setVaccinePhoto(compressed);
     } catch {
-      alert("Não foi possível processar a imagem.");
+      toast({
+        title: "Erro no processamento",
+        description: "Não foi possível processar a imagem.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -260,17 +268,17 @@ export function MedicalTab({ crecheId, petId }: { crecheId: number; petId: numbe
           {/* Lightbox */}
           {lightboxUrl && (
             <div
-              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+              className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4"
               onClick={() => setLightboxUrl(null)}
             >
               <div className="relative max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
                 <button
-                  className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm"
+                  className="absolute -top-10 right-0 text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
                   onClick={() => setLightboxUrl(null)}
                 >
                   ✕ Fechar
                 </button>
-                <img src={lightboxUrl} alt="Carteirinha de vacina" className="w-full rounded-2xl shadow-2xl" />
+                <img src={lightboxUrl} alt="Carteirinha de vacina" className="w-full rounded-2xl border border-border shadow-2xl" />
               </div>
             </div>
           )}

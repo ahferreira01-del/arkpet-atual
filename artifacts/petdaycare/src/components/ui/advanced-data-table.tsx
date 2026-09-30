@@ -210,7 +210,7 @@ export function AdvancedDataTable<TData, TValue>({
                 <FileSpreadsheet className="mr-2 h-4 w-4" /> Excel (XLSX)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={exportPDF}>
-                <FileText className="mr-2 h-4 w-4 text-red-500" /> PDF
+                <FileText className="mr-2 h-4 w-4 text-destructive" /> PDF
               </DropdownMenuItem>
               <DropdownMenuItem onClick={printTable}>
                 <Printer className="mr-2 h-4 w-4" /> Imprimir

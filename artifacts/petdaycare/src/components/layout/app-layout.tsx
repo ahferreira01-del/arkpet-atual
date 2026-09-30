@@ -62,8 +62,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center flex flex-col items-center">
-          <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
-          <h2 className="text-xl font-display text-white">Carregando ArkPet...</h2>
+          <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+          <h2 className="text-lg font-display font-medium text-foreground">Carregando ArkPet...</h2>
         </div>
       </div>
     );
@@ -78,8 +78,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
       return (
         <div className="min-h-screen bg-background flex items-center justify-center">
           <div className="text-center flex flex-col items-center">
-            <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
-            <h2 className="text-xl font-display text-white">Verificando assinatura...</h2>
+            <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+            <h2 className="text-lg font-display font-medium text-foreground">Verificando assinatura...</h2>
           </div>
         </div>
       );
@@ -95,7 +95,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
               Não foi possível verificar o acesso.
             </p>
             <button
-              className="text-primary text-sm underline"
+              className="text-primary text-sm underline cursor-pointer"
               onClick={() => refetchSub()}
             >
               Tentar novamente
@@ -123,7 +123,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
                 </p>
               </div>
               <Link href="/settings">
-                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                   <Settings className="h-4 w-4" />
                   Configurações
                 </button>
@@ -141,25 +141,31 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh bg-background overflow-hidden relative">
-      {/* Background limpo e sólido. Removidos painéis difusos por restrição de ruído visual. */}
+      {/* Accessible skip link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2.5 focus:bg-primary focus:text-primary-foreground focus:rounded-xl focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 font-medium text-sm transition-all"
+      >
+        Pular para o conteúdo principal
+      </a>
 
       {/* Desktop sidebar */}
       <Sidebar user={user} />
 
-      {/* h-dvh so the content column fills the real visual viewport on mobile
-          (100vh can be wrong when the browser toolbar is visible) */}
+      {/* Main visual viewport column */}
       <div className="flex-1 flex flex-col h-dvh overflow-hidden relative z-0">
         <Header user={user} />
         {(user.role === "creche_admin" || user.role === "staff") && <SubscriptionBanner />}
-        {/* Use pt/px (no pb shorthand from p-4) so padding-bottom is
-            controlled exclusively by the spacer div below.               */}
-        <main className="flex-1 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar pt-4 px-4 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-6">
-          <div className="max-w-7xl mx-auto">
+
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-none custom-scrollbar pt-4 px-4 sm:px-6 md:pt-6 md:px-6 lg:pt-8 lg:px-8 md:pb-8 focus:outline-none"
+        >
+          <div className="max-w-7xl mx-auto w-full">
             {children}
-            {/* Physical bottom spacer — visible only on mobile.
-                A real element is more reliable than padding-bottom on
-                overflow-y:auto in Safari (known Safari bug).
-                Height = nav bar (~68 px) + safe-area-inset-bottom.        */}
+
+            {/* Mobile physical bottom spacer for fixed BottomNav */}
             {!hideBottomNav && (
               <div
                 className="block md:hidden flex-shrink-0"

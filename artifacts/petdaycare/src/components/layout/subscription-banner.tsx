@@ -10,19 +10,19 @@ type BannerStatus = "trial_expired" | "past_due" | "suspended" | "cancelled";
 const CONFIG: Record<BannerStatus, { message: string; className: string }> = {
   trial_expired: {
     message: "O período de teste encerrou. Assine um plano para continuar usando todos os recursos.",
-    className: "bg-red-500/10 border-red-500/25 text-red-200",
+    className: "bg-destructive/15 border-destructive/30 text-destructive",
   },
   past_due: {
     message: "Há um pagamento pendente na assinatura da creche. Regularize para evitar a suspensão dos serviços.",
-    className: "bg-amber-500/10 border-amber-500/25 text-amber-200",
+    className: "bg-warning/15 border-warning/30 text-warning",
   },
   suspended: {
     message: "A assinatura da creche está suspensa. Novos cadastros e reservas estão bloqueados até a regularização.",
-    className: "bg-red-500/10 border-red-500/25 text-red-200",
+    className: "bg-destructive/15 border-destructive/30 text-destructive",
   },
   cancelled: {
     message: "A assinatura da creche foi cancelada. Reative um plano para voltar a usar todos os recursos.",
-    className: "bg-red-500/10 border-red-500/25 text-red-200",
+    className: "bg-destructive/15 border-destructive/30 text-destructive",
   },
 };
 

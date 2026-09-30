@@ -81,13 +81,13 @@ export class ErrorBoundary extends Component<Props, State> {
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="flex justify-center">
-            <div className="h-20 w-20 rounded-full bg-red-500/10 flex items-center justify-center">
-              <AlertTriangle className="h-10 w-10 text-red-400" />
+            <div className="h-20 w-20 rounded-full bg-destructive/10 flex items-center justify-center">
+              <AlertTriangle className="h-10 w-10 text-destructive" />
             </div>
           </div>
 
           <div className="space-y-2">
-            <h1 className="text-xl font-semibold text-white">
+            <h1 className="text-xl font-semibold text-foreground">
               Algo deu errado
             </h1>
             <p className="text-sm text-muted-foreground">
@@ -95,7 +95,7 @@ export class ErrorBoundary extends Component<Props, State> {
               automaticamente.
             </p>
             {this.state.message && (
-              <p className="text-xs text-red-400/80 bg-red-500/10 rounded-lg px-3 py-2 font-mono break-all">
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 font-mono break-all">
                 {this.state.message}
               </p>
             )}

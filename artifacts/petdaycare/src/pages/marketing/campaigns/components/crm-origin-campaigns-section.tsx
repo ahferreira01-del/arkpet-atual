@@ -149,7 +149,7 @@ export function CrmOriginCampaignsSection({
                   </div>
                   <div>
                     <span className="text-muted-foreground">Tutores que Utilizaram:</span>
-                    <p className="font-semibold text-emerald-400">
+                    <p className="font-semibold text-success">
                       {c.uniqueTutorsApplied} aplicaram
                     </p>
                   </div>

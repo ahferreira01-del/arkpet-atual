@@ -58,7 +58,7 @@ export function PetSelector({ pets, selectedIds, onToggle }: PetSelectorProps) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Pesquisar pet…"
-            className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-2 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full bg-secondary border border-border rounded-lg pl-8 pr-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
       )}
@@ -84,7 +84,7 @@ export function PetSelector({ pets, selectedIds, onToggle }: PetSelectorProps) {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
                   selected
                     ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-105"
-                    : "bg-white/5 text-muted-foreground hover:bg-white/10 hover:text-white"
+                    : "bg-secondary text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
                 }`}
               >
                 {selected && <CheckCircle2 className="h-3 w-3" />}

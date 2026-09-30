@@ -96,12 +96,12 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'pending': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'overdue': return 'bg-red-100 text-red-800 border-red-200';
-      case 'voided': return 'bg-slate-100 text-slate-800 border-slate-200';
-      case 'refunded': return 'bg-purple-100 text-purple-800 border-purple-200';
-      default: return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'paid': return 'bg-success/15 text-success border-success/30';
+      case 'pending': return 'bg-warning/15 text-warning border-warning/30';
+      case 'overdue': return 'bg-destructive/15 text-destructive border-destructive/30';
+      case 'voided': return 'bg-muted text-muted-foreground border-border';
+      case 'refunded': return 'bg-primary/15 text-primary border-primary/30';
+      default: return 'bg-muted text-muted-foreground border-border';
     }
   };
 
@@ -138,7 +138,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
           </div>
           <div className="flex justify-between items-center pt-1">
             <span className="text-sm text-muted-foreground font-medium">Valor Total</span>
-            <span className="text-lg font-bold text-emerald-500">{formatCentsToBRL(total)}</span>
+            <span className="text-lg font-bold text-success">{formatCentsToBRL(total)}</span>
           </div>
         </div>
 
@@ -150,28 +150,28 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
             <div className="sm:hidden absolute top-0 left-[15px] w-0.5 h-full bg-muted -z-10"></div>
 
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
-              <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
+              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <FileText className="w-4 h-4" />
               </div>
               <p className="text-xs font-medium sm:mt-2 text-card-foreground">Criada</p>
             </div>
 
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
-              <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
+              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0">
                 <Receipt className="w-4 h-4" />
               </div>
               <p className="text-xs font-medium sm:mt-2 text-card-foreground">Enviada</p>
             </div>
 
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'paid' ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'paid' ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'}`}>
                 <CircleDollarSign className="w-4 h-4" />
               </div>
               <p className={`text-xs font-medium sm:mt-2 ${invoiceStatus === 'paid' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Paga</p>
             </div>
 
             <div className="flex sm:flex-col items-center sm:justify-center gap-3 sm:gap-0">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'refunded' ? 'bg-purple-600 text-white' : 'bg-muted text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-4 border-card shadow-sm z-10 shrink-0 ${invoiceStatus === 'refunded' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                 <ArrowRight className="w-4 h-4" />
               </div>
               <p className={`text-xs font-medium sm:mt-2 ${invoiceStatus === 'refunded' ? 'text-card-foreground' : 'text-muted-foreground'}`}>Estornada</p>
@@ -185,7 +185,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
           {isLoading ? (
             <div className="text-center p-8 text-muted-foreground">Carregando itens...</div>
           ) : (invoiceItems && invoiceItems.length > 0) ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-border">
               {invoiceItems.map((item: InvoiceItem) => {
                 const unitPrice = Number(item.amount);
                 const qty = item.quantity || 1;
@@ -194,13 +194,13 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                 return (
                   <div key={item.id} className="py-3 flex justify-between items-center gap-3 group">
                     <div className="flex items-center min-w-0 flex-1">
-                      <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-3 shrink-0">
-                        <PackageOpen className="w-5 h-5 text-slate-400" />
+                      <div className="w-10 h-10 rounded bg-muted flex items-center justify-center mr-3 shrink-0">
+                        <PackageOpen className="w-5 h-5 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-800 break-words">
+                        <p className="text-sm font-bold text-foreground break-words">
                           {item.description}
-                          {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 shrink-0">{item.petName}</span>}
+                          {item.petName && <span className="ml-2 text-xs font-medium px-2 py-0.5 rounded-full bg-success/15 text-success border border-success/30 shrink-0">{item.petName}</span>}
                         </p>
                         <p className="text-xs text-muted-foreground flex items-center flex-wrap gap-x-2 mt-1">
                           {formattedDate && <span>{formattedDate} &bull;</span>}
@@ -226,7 +226,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
                             onError: (err: unknown) => alert(`Erro ao estornar: ${getErrorMessage(err, "Tente novamente.")}`),
                           });
                         }}
-                        className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                        className="h-8 px-3 text-xs border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                         disabled={refundItemMutation.isPending || invoiceStatus !== 'paid'}
                       >
                         Estornar
@@ -237,7 +237,7 @@ function InvoiceERPView({ crecheId, invoiceId, open, onClose, invoiceStatus = "p
               })}
             </div>
           ) : (
-            <div className="text-center p-8 text-slate-400">Nenhum item encontrado.</div>
+            <div className="text-center p-8 text-muted-foreground">Nenhum item encontrado.</div>
           )}
         </div>
 
@@ -325,7 +325,7 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         const inv = info.row.original;
         const val = inv.dueDate;
         const isOverdue = val && ['pending', 'overdue'].includes(inv.status) && parseLocalDate(val).getTime() < new Date().setHours(0,0,0,0);
-        return <span className={isOverdue ? "text-red-400 font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
+        return <span className={isOverdue ? "text-destructive font-medium" : ""}>{val ? format(parseLocalDate(val), "dd/MM/yyyy", { locale: ptBR }) : "—"}</span>;
     } },
     { accessorKey: "amount", header: "Valor", meta: { exportValue: (v: unknown) => formatCentsToBRL(Number(v)) }, cell: (info) => formatCentsToBRL(Number(info.row.original.amount)) },
     { accessorKey: "status", header: "Status", cell: (info) => {
@@ -343,35 +343,35 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         const inv = row.original;
         return (
           <div className="flex justify-end gap-1">
-            <Button variant="ghost" size="sm" onClick={() => setDetailsModal({ open: true, invoiceId: inv.id })} className="text-muted-foreground hover:text-white hover:bg-white/10">
+            <Button variant="ghost" size="sm" onClick={() => setDetailsModal({ open: true, invoiceId: inv.id })} className="text-muted-foreground hover:text-foreground hover:bg-accent">
               Detalhes
             </Button>
             {inv.receiptPhotoPath && (
-              <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.receiptPhotoPath)} className="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10">
+              <Button variant="ghost" size="sm" onClick={() => handleViewReceipt(inv.receiptPhotoPath)} className="text-primary hover:text-primary/80 hover:bg-primary/10">
                 Ver Comprovante
               </Button>
             )}
             {inv.status === "awaiting_confirmation" && (
-              <Button variant="ghost" size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10">
+              <Button variant="ghost" size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="text-success hover:text-success/80 hover:bg-success/10">
                 Aprovar
               </Button>
             )}
             {inv.status === "paid" && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => setReceiptModalId(inv.id)} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10">
+                <Button variant="ghost" size="sm" onClick={() => setReceiptModalId(inv.id)} className="text-success hover:text-success/80 hover:bg-success/10">
                   <Printer className="mr-1.5 h-3.5 w-3.5" /> Recibo NFC-e
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleRefund(inv.id)} disabled={refundMutation.isPending} className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+                <Button variant="ghost" size="sm" onClick={() => handleRefund(inv.id)} disabled={refundMutation.isPending} className="text-destructive hover:text-destructive/80 hover:bg-destructive/10">
                   Estornar
                 </Button>
               </>
             )}
             {(inv.status === "pending" || inv.status === "overdue") && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => setPayModal({ open: true, invoiceId: inv.id })} className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10">
+                <Button variant="ghost" size="sm" onClick={() => setPayModal({ open: true, invoiceId: inv.id })} className="text-success hover:text-success/80 hover:bg-success/10">
                   Receber
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending} className="text-muted-foreground hover:text-white hover:bg-white/10">
+                <Button variant="ghost" size="sm" onClick={() => handleVoid(inv.id)} disabled={voidMutation.isPending} className="text-muted-foreground hover:text-foreground hover:bg-accent">
                   Cancelar
                 </Button>
               </>
@@ -415,12 +415,12 @@ export function ReceivablesTab({ crecheId }: { crecheId: number }) {
         {/* Footer: Actions */}
         <div className="flex justify-end items-center gap-2 pt-1">
           {(inv.status === "pending" || inv.status === "overdue") && (
-            <Button size="sm" onClick={() => setPayModal({ open: true, invoiceId: inv.id })} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px] h-9">
+            <Button size="sm" onClick={() => setPayModal({ open: true, invoiceId: inv.id })} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[100px] h-9">
               Receber
             </Button>
           )}
           {inv.status === "awaiting_confirmation" && (
-            <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700 text-white min-w-[100px] h-9">
+            <Button size="sm" onClick={() => handleApproveReceipt(inv.id)} disabled={approveReceiptMutation.isPending} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[100px] h-9">
               Aprovar
             </Button>
           )}

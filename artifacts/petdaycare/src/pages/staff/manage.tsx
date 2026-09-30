@@ -306,7 +306,8 @@ export default function ManageStaff() {
               <button
                 key={member.id}
                 onClick={() => setEditingMember(member as StaffMember)}
-                className="w-full bg-card rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border hover:border-primary/30"
+                aria-label={`Editar membro ${member.name}`}
+                className="w-full bg-card rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border hover:border-primary/30 min-h-[44px]"
               >
                 <MemberAvatar name={member.name} active={true} />
 
@@ -351,7 +352,8 @@ export default function ManageStaff() {
               <button
                 key={member.id}
                 onClick={() => setEditingMember(member as StaffMember)}
-                className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border"
+                aria-label={`Reativar membro ${member.name}`}
+                className="w-full bg-background rounded-2xl px-4 py-3.5 flex items-center gap-3 hover:bg-secondary/40 active:scale-[0.99] transition-all text-left border border-border min-h-[44px]"
               >
                 <MemberAvatar name={member.name} active={false} />
                 <div className="flex-1 min-w-0 opacity-60">

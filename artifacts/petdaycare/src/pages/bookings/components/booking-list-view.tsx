@@ -90,7 +90,7 @@ export function getCommercialBadge(commercialReservation: any) {
   if (item.lineStatus === "RELEASED") {
     if (item.releaseReason === "covered_by_prepaid_credit") {
       return (
-        <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/60 font-semibold">
+        <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-success bg-success/15 border-success/30 font-semibold">
           Crédito pré-pago
         </Badge>
       );
@@ -99,20 +99,20 @@ export function getCommercialBadge(commercialReservation: any) {
   }
   if (item.effectiveUnitPriceCents === 0 || item.applicationMode === "COMPLIMENTARY_ZERO_VALUE") {
     return (
-      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-purple-800 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800/60 font-semibold">
+      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-primary bg-primary/15 border-primary/30 font-semibold">
         Cortesia promocional
       </Badge>
     );
   }
   if (item.lineStatus === "APPLIED") {
     return (
-      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-800/60 font-semibold">
+      <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-info bg-info/15 border-info/30 font-semibold">
         Campanha aplicada
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800/60 font-semibold">
+    <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-success bg-success/15 border-success/30 font-semibold">
       Preço promocional reservado
     </Badge>
   );
@@ -196,7 +196,7 @@ export function BookingListView({
                           </Badge>
                         )}
                         {hasSpecialNeeds && (
-                          <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                          <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-warning/15 text-warning border-warning/30">
                             Cuidados especiais
                           </Badge>
                         )}
@@ -232,12 +232,12 @@ export function BookingListView({
                 {(booking.checkInTime || booking.checkOutTime) && (
                   <div className="flex items-center gap-3">
                     {booking.checkInTime && (
-                      <span className="text-emerald-500 font-medium flex items-center gap-1">
+                      <span className="text-success font-medium flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" /> In: {format(new Date(booking.checkInTime), "HH:mm")}
                       </span>
                     )}
                     {booking.checkOutTime && (
-                      <span className="text-amber-500 font-medium flex items-center gap-1">
+                      <span className="text-warning font-medium flex items-center gap-1">
                         <LogOut className="h-3.5 w-3.5" /> Out: {format(new Date(booking.checkOutTime), "HH:mm")}
                       </span>
                     )}
@@ -441,7 +441,7 @@ export function BookingListView({
                         </Badge>
                       )}
                       {hasSpecialNeeds && (
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px] font-medium leading-none bg-warning/15 text-warning border-warning/30">
                           Cuidados especiais
                         </Badge>
                       )}
@@ -462,12 +462,12 @@ export function BookingListView({
                     <span> → {format(parseLocalDate(booking.endDate), "dd/MM/yyyy")}</span>
                   )}
                   {booking.checkInTime && (
-                    <p className="text-xs text-emerald-400 mt-0.5">
+                    <p className="text-xs text-success mt-0.5">
                       Check-in: {format(new Date(booking.checkInTime), "HH:mm")}
                     </p>
                   )}
                   {booking.checkOutTime && (
-                    <p className="text-xs text-amber-500 mt-0.5">
+                    <p className="text-xs text-warning mt-0.5">
                       Check-out: {format(new Date(booking.checkOutTime), "HH:mm")}
                     </p>
                   )}
@@ -538,10 +538,10 @@ export function BookingListView({
                         {booking.status === "confirmed" && (
                           isServiceBooking(booking) ? (
                             isPetPresent(booking.petId) ? (
-                              <Button
+                                <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-violet-500/30 text-violet-400 hover:bg-violet-500/10"
+                                className="border-primary/30 text-primary hover:bg-primary/10"
                                 onClick={() => handleCompleteService(booking)}
                                 isLoading={isCompleteServicePending}
                               >
@@ -586,7 +586,7 @@ export function BookingListView({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                              className="border-warning/30 text-warning hover:bg-warning/10"
                               onClick={() => handleCheckOut(booking)}
                               isLoading={isCheckOutPending}
                             >

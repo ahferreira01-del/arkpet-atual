@@ -48,7 +48,7 @@ export function QrTab({ pet }: { pet: any }) {
             <p className="text-sm text-muted-foreground text-center mt-1">QR Code de Identificação</p>
           </div>
 
-          <div className="p-3 rounded-2xl bg-white shadow-md">
+          <div className="p-3 rounded-2xl bg-card border border-border shadow-md">
             <canvas ref={canvasRef} className="rounded-lg block" />
           </div>
 

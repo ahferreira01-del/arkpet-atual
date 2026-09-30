@@ -253,7 +253,7 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
         )}
 
         {actionSuccess && (
-          <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-md text-sm text-emerald-600 flex items-center gap-2">
+          <div className="p-3 bg-success/15 border border-success/30 rounded-md text-sm text-success flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>{actionSuccess}</span>
           </div>
@@ -432,9 +432,9 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
 
         {/* Activation confirmation card */}
         {activatingVersionNumber !== null && (
-          <Card className="border-amber-500/40 bg-amber-500/5">
+          <Card className="border-warning/40 bg-warning/5">
             <CardContent className="pt-4 space-y-3">
-              <div className="font-semibold text-sm flex items-center gap-1.5 text-amber-600">
+              <div className="font-semibold text-sm flex items-center gap-1.5 text-warning">
                 <Zap className="h-4 w-4" />
                 Ativar Versão v{activatingVersionNumber} no Catálogo
               </div>
@@ -466,7 +466,7 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  className="bg-warning text-warning-foreground hover:bg-warning/90"
                   onClick={() => handleActivate(activatingVersionNumber)}
                   disabled={submitting || !changeReason.trim()}
                 >
@@ -492,27 +492,27 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
             );
             if (isActive) {
               statusBadge = (
-                <Badge className="bg-emerald-500/20 text-emerald-600 border-emerald-500/30">
+                <Badge variant="success">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Ativa (Catálogo Vigente)
                 </Badge>
               );
             } else if (isDraft) {
               statusBadge = (
-                <Badge className="bg-blue-500/20 text-blue-600 border-blue-500/30">
+                <Badge variant="default">
                   <Clock className="h-3 w-3 mr-1" />
                   Rascunho (DRAFT)
                 </Badge>
               );
             } else if (isSuperseded) {
               statusBadge = (
-                <Badge className="bg-amber-500/20 text-amber-600 border-amber-500/30">
+                <Badge variant="warning">
                   Substituída (SUPERSEDED)
                 </Badge>
               );
             } else if (isArchived) {
               statusBadge = (
-                <Badge className="bg-zinc-500/20 text-zinc-600 border-zinc-500/30">
+                <Badge variant="secondary">
                   <Archive className="h-3 w-3 mr-1" />
                   Arquivada
                 </Badge>
@@ -580,7 +580,7 @@ export function PlanVersioningModal({ isOpen, onClose, plan }: PlanVersioningMod
                         <>
                           <Button
                             size="sm"
-                            className="bg-amber-600 hover:bg-amber-700 text-white h-7 text-xs"
+                            className="bg-warning text-warning-foreground hover:bg-warning/90 h-7 text-xs"
                             onClick={() => {
                               setActivatingVersionNumber(ver.versionNumber);
                               setChangeReason("");

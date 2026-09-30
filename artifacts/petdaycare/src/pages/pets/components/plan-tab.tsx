@@ -63,8 +63,8 @@ export function PlanTab({ pet, crecheId, petId }: { pet: any; crecheId: number; 
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
-                <UtensilsCrossed className="h-4 w-4 text-orange-400" />
+              <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <UtensilsCrossed className="h-4 w-4 text-primary" />
               </div>
               <h3 className="text-lg font-display font-semibold text-foreground">Alimentação</h3>
             </div>

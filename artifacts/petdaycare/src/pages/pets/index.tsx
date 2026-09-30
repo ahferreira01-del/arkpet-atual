@@ -258,16 +258,18 @@ export default function PetsDirectory() {
               />
             </div>
             
-            <div className="flex shrink-0 items-center justify-center p-1 rounded-lg border border-border bg-background backdrop-blur-md">
+            <div className="flex shrink-0 items-center justify-center p-1 rounded-xl border border-border bg-card">
               <button 
                 onClick={() => setViewMode("grid")}
-                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                aria-label="Visualização em grade"
+                className={`flex justify-center p-1.5 rounded-lg transition-colors ${viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button 
                 onClick={() => setViewMode("list")}
-                className={`flex justify-center p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                aria-label="Visualização em lista"
+                className={`flex justify-center p-1.5 rounded-lg transition-colors ${viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <ListIcon className="h-4 w-4" />
               </button>
@@ -278,10 +280,11 @@ export default function PetsDirectory() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => { setOnlyPresent(!onlyPresent); setPage(1); }}
-              className={`flex-1 flex items-center justify-center gap-2 h-10 px-3 rounded-lg text-[13px] font-medium border transition-all whitespace-nowrap ${
+              aria-pressed={onlyPresent}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-2 h-10 px-3.5 rounded-xl text-[13px] font-medium border transition-colors whitespace-nowrap ${
                 onlyPresent
-                  ? "bg-success/20 text-success border-success/40"
-                  : "bg-background text-muted-foreground hover:text-foreground border-border hover:bg-secondary backdrop-blur-md"
+                  ? "bg-success/15 text-success border-success/30"
+                  : "bg-card text-muted-foreground hover:text-foreground border-border hover:bg-secondary"
               }`}
             >
               <Filter className={`h-3.5 w-3.5 ${onlyPresent ? "text-success" : "text-muted-foreground"}`} />
@@ -291,39 +294,40 @@ export default function PetsDirectory() {
             <select 
               value={sortBy} 
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="flex-1 h-10 px-3 py-2 rounded-lg border border-border bg-background text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary backdrop-blur-md"
+              aria-label="Ordenar pets"
+              className="flex-1 sm:w-48 sm:flex-none h-10 px-3 py-2 rounded-xl border border-border bg-card text-[13px] text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
             >
               <option value="name_asc">A-Z (Nome)</option>
               <option value="name_desc">Z-A (Nome)</option>
             </select>
           </div>
         </div>
-        <p className="text-sm text-muted-foreground">{totalFiltered} {totalFiltered === 1 ? "pet encontrado" : "pets encontrados"}</p>
+        <p className="text-xs text-muted-foreground font-medium">{totalFiltered} {totalFiltered === 1 ? "pet encontrado" : "pets encontrados"}</p>
       </div>
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {[1,2,3,4].map(i => <Card key={i} className="h-64 animate-pulse bg-muted" />)}
+          {[1,2,3,4].map(i => <Card key={i} className="h-64 animate-pulse bg-muted border-border" />)}
         </div>
       ) : paginatedPets?.length ? (
         <>
-        <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-4"}>
+        <div className={viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" : "flex flex-col gap-3"}>
           {paginatedPets.map((pet) => (
-            <Card key={pet.id} className={`group ${viewMode === "grid" ? "h-full flex flex-col" : "flex flex-row items-center py-2 px-4"} overflow-hidden bg-background border-border transition-all hover:bg-secondary/40`}>
-              <div className={`${viewMode === "grid" ? "h-32 w-full border-b" : "h-14 w-14 rounded-full border shadow-inner"} bg-secondary relative flex-shrink-0 border-border overflow-hidden`}>
+            <Card key={pet.id} className={`group ${viewMode === "grid" ? "h-full flex flex-col" : "flex flex-row items-center py-3 px-4"} overflow-hidden bg-card border-border transition-colors hover:border-primary/40`}>
+              <div className={`${viewMode === "grid" ? "h-32 w-full border-b" : "h-12 w-12 rounded-full border"} bg-secondary relative flex-shrink-0 border-border overflow-hidden`}>
                 <PetAvatar
                   photoUrl={pet.photoUrl}
                   name={pet.name}
                   species={(pet as any).species}
                   className="w-full h-full object-cover"
-                  iconClassName={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-muted-foreground/30`}
+                  iconClassName={`${viewMode === "grid" ? "h-10 w-10" : "h-6 w-6"} text-muted-foreground/40`}
                 />
                 {viewMode === "grid" && (
                   <div className="absolute top-3 right-3">
                     {pet.isCheckedIn ? (
-                      <Badge variant="success" className="shadow-sm backdrop-blur-md">Presente</Badge>
+                      <Badge variant="success" className="shadow-sm">Presente</Badge>
                     ) : (
-                      <Badge variant="secondary" className="shadow-sm backdrop-blur-md">Em casa</Badge>
+                      <Badge variant="secondary" className="shadow-sm">Em casa</Badge>
                     )}
                   </div>
                 )}
@@ -350,7 +354,7 @@ export default function PetsDirectory() {
                           {Boolean(pet.specialNeeds && pet.specialNeeds.trim()) && (
                             <Badge
                               variant="secondary"
-                              className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                              className="h-4 px-1.5 text-[9px] font-medium leading-none bg-warning/15 text-warning border-warning/30"
                             >
                               Cuidados especiais
                             </Badge>
@@ -358,8 +362,8 @@ export default function PetsDirectory() {
                         </div>
                       )}
                     </div>
-                    <Link href={`/pets/${pet.id}`} className="shrink-0">
-                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors">
+                    <Link href={`/pets/${pet.id}`} className="shrink-0" aria-label={`Mais opções de ${pet.name}`}>
+                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center sm:min-h-0 sm:min-w-0">
                         <MoreVertical className="h-5 w-5" />
                       </button>
                     </Link>
@@ -372,7 +376,7 @@ export default function PetsDirectory() {
                   <div className="border-t border-border my-4" />
                   <div className="flex items-center justify-between mt-auto">
                     <Link href={`/pets/${pet.id}`}>
-                      <Button variant="outline" size="sm" className="rounded-full bg-transparent border-border text-foreground hover:bg-secondary">
+                      <Button variant="outline" size="sm" className="rounded-full border-border text-foreground hover:bg-secondary">
                         Ver perfil
                       </Button>
                     </Link>
@@ -397,7 +401,7 @@ export default function PetsDirectory() {
                         {Boolean(pet.specialNeeds && pet.specialNeeds.trim()) && (
                           <Badge
                             variant="secondary"
-                            className="h-4 px-1.5 text-[9px] font-medium leading-none bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                            className="h-4 px-1.5 text-[9px] font-medium leading-none bg-warning/15 text-warning border-warning/30"
                           >
                             Cuidados especiais
                           </Badge>
@@ -412,17 +416,17 @@ export default function PetsDirectory() {
                   <div className="flex-1 flex items-center justify-end gap-3 min-w-0">
                     {pet.temperament && <Badge variant="outline" className="hidden lg:inline-flex capitalize text-xs bg-secondary border-border text-foreground/80">{pet.temperament}</Badge>}
                     {pet.isCheckedIn ? (
-                      <Badge variant="success" className="shadow-sm backdrop-blur-md">Presente</Badge>
+                      <Badge variant="success" className="shadow-sm">Presente</Badge>
                     ) : (
-                      <Badge variant="secondary" className="shadow-sm backdrop-blur-md">Em casa</Badge>
+                      <Badge variant="secondary" className="shadow-sm">Em casa</Badge>
                     )}
                     <Link href={`/pets/${pet.id}`}>
                       <Button variant="ghost" size="sm" className="hidden sm:flex text-primary hover:bg-primary/20">
                         Ver perfil
                       </Button>
                     </Link>
-                    <Link href={`/pets/${pet.id}`}>
-                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md transition-colors cursor-pointer">
+                    <Link href={`/pets/${pet.id}`} aria-label={`Mais opções de ${pet.name}`}>
+                      <button className="p-1 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors cursor-pointer min-h-[44px] min-w-[44px] flex items-center justify-center sm:min-h-0 sm:min-w-0">
                         <MoreVertical className="h-5 w-5" />
                       </button>
                     </Link>
@@ -437,7 +441,7 @@ export default function PetsDirectory() {
         
         </>
       ) : (
-        <Card className="py-16">
+        <Card className="py-16 border-border bg-card">
           <EmptyState
             icon={Dog}
             title="Nenhum pet encontrado"

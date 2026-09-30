@@ -503,7 +503,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
           <>
             {/* Success Notice */}
             {successNotice && (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-400 flex items-start gap-3">
+              <div className="rounded-xl border border-success/30 bg-success/10 p-4 text-success flex items-start gap-3">
                 <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-semibold">Operação Concluída</p>
@@ -514,7 +514,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
 
             {/* Diagnostic Integrity Alert */}
             {data?.conditionIntegrityError && (
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-400 flex items-start gap-3">
+              <div className="rounded-xl border border-warning/40 bg-warning/10 p-4 text-warning flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
                 <div className="text-sm">
                   <p className="font-semibold">Erro de Integridade Contratual</p>
@@ -552,7 +552,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   <CreditCard className="h-3.5 w-3.5" /> Plano & Assinatura
                 </span>
                 {data?.subscriptionState === "NOT_PROVISIONED" ? (
-                  <Badge variant="destructive" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                  <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
                     Assinatura não provisionada
                   </Badge>
                 ) : (
@@ -563,7 +563,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
               </div>
 
               {data?.subscriptionState === "NOT_PROVISIONED" ? (
-                <div className="text-xs text-muted-foreground bg-amber-500/5 p-3 rounded-lg border border-amber-500/20">
+                <div className="text-xs text-muted-foreground bg-warning/5 p-3 rounded-lg border border-warning/20">
                   Esta unidade foi cadastrada sem uma assinatura vinculada. Serviços operacionais requerem provisionamento prévio.
                 </div>
               ) : (
@@ -582,7 +582,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                   </div>
                   <div>
                     <span className="text-muted-foreground text-xs block">Preço Efetivo Atual</span>
-                    <span className="font-semibold text-emerald-400">{formatCentsToBRL(data?.pricing?.finalEffectivePriceCents)}{currentIntervalSuffix}</span>
+                    <span className="font-semibold text-success">{formatCentsToBRL(data?.pricing?.finalEffectivePriceCents)}{currentIntervalSuffix}</span>
                   </div>
                   {data?.subscription?.currentPeriodEnd && (
                     <div className="col-span-2 sm:col-span-4 text-xs text-muted-foreground pt-1 flex items-center gap-1">
@@ -699,7 +699,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     </div>
                     <div>
                       <span className="text-muted-foreground block text-[11px]">Preço Efetivo Proposto</span>
-                      <span className="font-bold text-emerald-400 text-sm">
+                      <span className="font-bold text-success text-sm">
                         {formatCentsToBRL(data.draftCondition.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
                       </span>
                     </div>
@@ -726,7 +726,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                         Ativar no Stripe
                       </Button>
                       {!data.subscription?.hasStripeSubscription && (
-                        <p className="text-[11px] text-amber-400/90 leading-tight">
+                        <p className="text-[11px] text-warning/90 leading-tight">
                           Esta conta não possui uma assinatura recorrente Stripe vinculada e não pode receber ativação automática de preço neste momento.
                         </p>
                       )}
@@ -791,9 +791,9 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     }
                     className={
                       data.commercialStripeStatus === "SYNCHRONIZED"
-                        ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[10px]"
+                        ? "bg-success/20 text-success border-success/30 text-[10px]"
                         : data.commercialStripeStatus === "PENDING"
-                        ? "bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]"
+                        ? "bg-warning/20 text-warning border-warning/30 text-[10px]"
                         : "bg-destructive/20 text-destructive border-destructive/30 text-[10px]"
                     }
                   >
@@ -810,13 +810,13 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
               <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                 <div>
                   <span className="text-muted-foreground block">Stripe Customer:</span>
-                  <span className={data?.subscription?.hasStripeCustomer ? "text-emerald-400 font-medium" : "text-muted-foreground"}>
+                  <span className={data?.subscription?.hasStripeCustomer ? "text-success font-medium" : "text-muted-foreground"}>
                     {data?.subscription?.hasStripeCustomer ? "Vinculado" : "Não vinculado"}
                   </span>
                 </div>
                 <div>
                   <span className="text-muted-foreground block">Stripe Subscription:</span>
-                  <span className={data?.subscription?.hasStripeSubscription ? "text-emerald-400 font-medium" : "text-muted-foreground"}>
+                  <span className={data?.subscription?.hasStripeSubscription ? "text-success font-medium" : "text-muted-foreground"}>
                     {data?.subscription?.hasStripeSubscription ? "Vinculado" : "Não vinculado"}
                   </span>
                 </div>
@@ -824,8 +824,8 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
 
               {/* Bounded Percentage Reprice Warning & Action */}
               {data?.percentageRepriceNotice?.required && (
-                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 space-y-2 text-xs">
-                  <div className="flex items-center gap-2 font-semibold text-amber-400">
+                <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3.5 space-y-2 text-xs">
+                  <div className="flex items-center gap-2 font-semibold text-warning">
                     <AlertTriangle className="h-4 w-4 shrink-0" />
                     <span>Valor Stripe desatualizado</span>
                   </div>
@@ -841,7 +841,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     </div>
                     <div>
                       <span className="text-muted-foreground block">Valor Esperado (Catálogo):</span>
-                      <span className="font-semibold text-emerald-400">
+                      <span className="font-semibold text-success">
                         {formatCentsToBRL(data.percentageRepriceNotice.expectedEffectivePriceCents)}{currentIntervalSuffix}
                       </span>
                     </div>
@@ -859,7 +859,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                         setIsAbandoning(false);
                         setIsCustomizing(false);
                       }}
-                      className="h-8 text-xs font-semibold border-amber-500/40 text-amber-300 hover:bg-amber-500/20"
+                      className="h-8 text-xs font-semibold border-warning/40 text-warning hover:bg-warning/20"
                     >
                       Reconciliar cobrança
                     </Button>
@@ -870,10 +870,10 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
 
             {/* Subviews: Repricing */}
             {isRepricing && (
-              <div className="rounded-xl border border-amber-500/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
+              <div className="rounded-xl border border-warning/40 p-5 bg-card space-y-4 shadow-sm animate-in fade-in duration-200">
                 <div className="flex items-center justify-between pb-2 border-b border-border">
                   <h4 className="font-semibold text-base text-foreground flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 text-amber-400" /> Reconciliar cobrança percentual no Stripe
+                    <RefreshCw className="h-4 w-4 text-warning" /> Reconciliar cobrança percentual no Stripe
                   </h4>
                   <Button size="sm" variant="ghost" onClick={() => setIsRepricing(false)} className="text-xs">
                     Cancelar
@@ -897,7 +897,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                     <div>
                       <span className="text-muted-foreground text-xs block">Novo Valor Reconciliado</span>
-                      <span className="font-bold text-emerald-400">
+                      <span className="font-bold text-success">
                         {formatCentsToBRL(data?.percentageRepriceNotice?.expectedEffectivePriceCents || 0)}{currentIntervalSuffix}
                       </span>
                     </div>
@@ -931,7 +931,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     onClick={handleConfirmReprice}
                     disabled={repricingLoading || !repriceReason.trim()}
                     isLoading={repricingLoading}
-                    className="flex-1 h-11 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
+                    className="flex-1 h-11 text-xs font-semibold bg-warning text-warning-foreground hover:bg-warning/90"
                   >
                     Confirmar Reconciliação
                   </Button>
@@ -969,7 +969,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                     <div className="text-right">
                       <span className="text-muted-foreground text-xs block">Novo Preço Recorrente</span>
-                      <span className="font-bold text-emerald-400 text-base">
+                      <span className="font-bold text-success text-base">
                         {formatCentsToBRL(data?.draftCondition?.proposedPricing?.finalEffectivePriceCents)}{draftIntervalSuffix}
                       </span>
                     </div>
@@ -998,7 +998,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                 </div>
 
                 {/* Explicit Legal / Operational Notices */}
-                <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-amber-300 text-xs space-y-1">
+                <div className="rounded-lg bg-warning/10 border border-warning/30 p-3 text-warning text-xs space-y-1">
                   <p className="font-medium text-foreground">Avisos Operacionais:</p>
                   <ul className="list-disc list-inside text-[11px] text-muted-foreground space-y-0.5">
                     <li>Esta alteração será aplicada somente a esta empresa.</li>
@@ -1225,9 +1225,9 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
 
                 {/* Lowering limit warning & confirmation */}
                 {isLoweringLimit && (
-                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3.5 text-amber-300 space-y-2 text-xs">
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3.5 text-warning space-y-2 text-xs">
                     <div className="flex items-center gap-2 font-semibold">
-                      <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
                       Atenção: Redução de Limite de Pets
                     </div>
                     <p>
@@ -1258,7 +1258,7 @@ export function CommercialSupportModal({ isOpen, onClose, creche }: CommercialSu
                         {formatCentsToBRL(preview.catalogPriceCents)}
                       </span>
                       <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                      <span className="font-bold text-emerald-400">
+                      <span className="font-bold text-success">
                         {formatCentsToBRL(preview.proposedEffectivePriceCents)}{previewIntervalSuffix}
                       </span>
                       {preview.discountPercentage > 0 && (

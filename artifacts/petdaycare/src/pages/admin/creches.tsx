@@ -210,7 +210,7 @@ export default function AdminCreches() {
         <Card>
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground mb-1">Arquivadas</p>
-            <p className="text-3xl font-display font-bold text-amber-500">
+            <p className="text-3xl font-display font-bold text-warning">
               {creches?.filter((c) => (c.status as string) === "archived").length || 0}
             </p>
           </CardContent>
@@ -268,7 +268,7 @@ export default function AdminCreches() {
                     key={creche.id}
                     className={`relative overflow-hidden transition-all hover:border-primary/30 ${
                       creche.status === "inactive" ? "opacity-60" : ""
-                    } ${isArchived ? "opacity-75 border-dashed border-amber-500/40 bg-amber-500/5" : ""}`}
+                    } ${isArchived ? "opacity-75 border-dashed border-warning/40 bg-warning/5" : ""}`}
                   >
                     <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-bl-full" />
                     <CardContent className="p-6">
@@ -277,7 +277,7 @@ export default function AdminCreches() {
                           <Building2 className="h-6 w-6 text-primary" />
                         </div>
                         {isArchived ? (
-                          <Badge variant="outline" className="border-amber-500/40 text-amber-400 bg-amber-500/10">
+                          <Badge variant="outline" className="border-warning/40 text-warning bg-warning/10">
                             Arquivada
                           </Badge>
                         ) : (
@@ -319,7 +319,7 @@ export default function AdminCreches() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 text-xs px-2.5"
+                              className="border-success/40 text-success hover:bg-success/10 text-xs px-2.5"
                               onClick={() => handleRestore(creche)}
                               isLoading={restoringId === creche.id}
                             >
@@ -332,8 +332,8 @@ export default function AdminCreches() {
                                 variant="outline"
                                 className={
                                   creche.status === "active"
-                                    ? "border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs px-2.5"
-                                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-xs px-2.5"
+                                    ? "border-warning/30 text-warning hover:bg-warning/10 text-xs px-2.5"
+                                    : "border-success/30 text-success hover:bg-success/10 text-xs px-2.5"
                                 }
                                 onClick={() => handleToggleStatus(creche)}
                                 isLoading={updateMutation.isPending}
@@ -361,7 +361,7 @@ export default function AdminCreches() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10"
+                                className="text-warning hover:text-warning/80 hover:bg-warning/10"
                                 onClick={() => handleOpenArchive(creche)}
                                 title="Arquivar Creche"
                               >
@@ -564,11 +564,11 @@ export default function AdminCreches() {
             </div>
 
             {archiveError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400 flex items-start gap-2.5">
-                <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-400 mt-0.5" />
+              <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-xl text-sm text-destructive flex items-start gap-2.5">
+                <AlertCircle className="h-5 w-5 flex-shrink-0 text-destructive mt-0.5" />
                 <div className="space-y-1">
                   <p className="font-medium">Arquivamento Bloqueado (SAAS-BR-003):</p>
-                  <p className="text-xs text-red-300">
+                  <p className="text-xs text-destructive/90">
                     {archiveError.code === "stripe_subscription_active" &&
                       "A creche possui assinatura Stripe ativa ou em atraso. Cancele no gateway antes de arquivar."}
                     {archiveError.code === "tenant_archive_open_invoice" &&
@@ -592,7 +592,7 @@ export default function AdminCreches() {
                 onClick={handleArchiveConfirm}
                 isLoading={archiving}
                 disabled={archiveReason.trim().length < 5}
-                className="bg-amber-600 hover:bg-amber-500 border-amber-500/30 text-white"
+                className="bg-warning text-warning-foreground hover:bg-warning/90 border-warning/30"
               >
                 <Archive className="h-4 w-4 mr-2" /> Confirmar Arquivamento
               </Button>

@@ -108,6 +108,31 @@ function CrecheAdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function MasterAdminGuard({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (user.role !== "master_admin") {
+        setLocation("/");
+      }
+    }
+  }, [user, isLoading, setLocation]);
+
+  if (isLoading) return null;
+  if (user && user.role !== "master_admin") return null;
+  return <>{children}</>;
+}
+
+function RedirectToAdminHome() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/", { replace: true });
+  }, [setLocation]);
+  return null;
+}
+
 function RedirectToStaffBoard({ tab }: { tab?: "passeios" } = {}) {
   const [, setLocation] = useLocation();
   useEffect(() => {
@@ -310,33 +335,41 @@ function App() {
                 </Route>
 
                 <Route path="/admin">
-                  <AppLayout>
-                    <AdminDashboard />
-                  </AppLayout>
+                  <MasterAdminGuard>
+                    <RedirectToAdminHome />
+                  </MasterAdminGuard>
                 </Route>
 
                 <Route path="/admin/creches">
-                  <AppLayout>
-                    <AdminCreches />
-                  </AppLayout>
+                  <MasterAdminGuard>
+                    <AppLayout>
+                      <AdminCreches />
+                    </AppLayout>
+                  </MasterAdminGuard>
                 </Route>
 
                 <Route path="/admin/campaigns">
-                  <AppLayout>
-                    <AdminCampaigns />
-                  </AppLayout>
+                  <MasterAdminGuard>
+                    <AppLayout>
+                      <AdminCampaigns />
+                    </AppLayout>
+                  </MasterAdminGuard>
                 </Route>
 
                 <Route path="/admin/proposals">
-                  <AppLayout>
-                    <AdminProposals />
-                  </AppLayout>
+                  <MasterAdminGuard>
+                    <AppLayout>
+                      <AdminProposals />
+                    </AppLayout>
+                  </MasterAdminGuard>
                 </Route>
 
                 <Route path="/admin/users">
-                  <AppLayout>
-                    <AdminUsers />
-                  </AppLayout>
+                  <MasterAdminGuard>
+                    <AppLayout>
+                      <AdminUsers />
+                    </AppLayout>
+                  </MasterAdminGuard>
                 </Route>
 
                 <Route path="/staff/qr-scanner">

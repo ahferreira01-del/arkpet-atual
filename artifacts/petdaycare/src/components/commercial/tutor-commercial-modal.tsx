@@ -307,9 +307,9 @@ export function TutorCommercialModal({
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ACTIVE":
-        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30">Ativa</Badge>;
+        return <Badge className="bg-success/20 text-success border-success/30">Ativa</Badge>;
       case "SCHEDULED":
-        return <Badge className="bg-sky-500/20 text-sky-400 border-sky-500/30">Agendada</Badge>;
+        return <Badge variant="secondary">Agendada</Badge>;
       case "SUPERSEDED":
         return <Badge variant="secondary" className="opacity-70">Substituída</Badge>;
       case "REVOKED":
@@ -344,10 +344,10 @@ export function TutorCommercialModal({
     >
       <div className="space-y-4 mt-2">
         {/* Contractual disclaimer */}
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-200">
-          <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+        <div className="bg-warning/10 border border-warning/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-warning">
+          <AlertCircle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-amber-300">Aviso Contratual Importante</p>
+            <p className="font-semibold text-warning">Aviso Contratual Importante</p>
             <p className="text-muted-foreground mt-0.5">
               Esta condição não altera cobranças já emitidas. O benefício passa a valer para novas contratações no período acordado.
             </p>
@@ -519,8 +519,8 @@ export function TutorCommercialModal({
             className="space-y-4"
           >
             {supersedeId && (
-              <div className="bg-sky-500/10 border border-sky-500/30 rounded-xl p-3 flex items-center gap-2 text-xs text-sky-200">
-                <RefreshCw className="h-4 w-4 text-sky-400 shrink-0" />
+              <div className="bg-primary/10 border border-primary/30 rounded-xl p-3 flex items-center gap-2 text-xs text-foreground">
+                <RefreshCw className="h-4 w-4 text-primary shrink-0" />
                 <span>
                   Você está <strong>substituindo</strong> a condição anterior #{supersedeId}. A anterior será arquivada e não haverá sobreposição de datas.
                 </span>
@@ -622,7 +622,7 @@ export function TutorCommercialModal({
             {previewResult && (
               <div className="p-3 bg-secondary/80 border border-border rounded-xl space-y-1.5 text-xs">
                 <div className="font-semibold text-foreground flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                   Simulação Autorizada pelo Servidor
                 </div>
                 <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border/50 text-[11px]">
@@ -634,7 +634,7 @@ export function TutorCommercialModal({
                   </div>
                   <div>
                     <span className="text-muted-foreground block">Desconto Unitário:</span>
-                    <span className="font-medium text-emerald-400">
+                    <span className="font-medium text-success">
                       - R$ {previewResult.unitDiscount}
                     </span>
                   </div>

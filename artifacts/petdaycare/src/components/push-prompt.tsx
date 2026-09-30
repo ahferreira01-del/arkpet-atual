@@ -92,16 +92,16 @@ export function PushPrompt() {
               <Smartphone className="h-4 w-4 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white leading-tight">Ative notificações no iPhone</p>
+              <p className="text-sm font-semibold text-foreground leading-tight">Ative notificações no iPhone</p>
               <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
-                Toque em <span className="text-white font-medium">Compartilhar</span> (□↑) no Safari →{" "}
-                <span className="text-white font-medium">Adicionar à Tela de Início</span> → depois ative aqui.
+                Toque em <span className="text-foreground font-medium">Compartilhar</span> (□↑) no Safari →{" "}
+                <span className="text-foreground font-medium">Adicionar à Tela de Início</span> → depois ative aqui.
               </p>
             </div>
             <button
               onClick={handleIosDismiss}
-              className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-white hover:bg-white/10 transition-colors flex-shrink-0"
-              aria-label="Fechar"
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex-shrink-0 min-h-[32px] min-w-[32px]"
+              aria-label="Fechar aviso de notificações iOS"
             >
               <X className="h-4 w-4" />
             </button>
@@ -127,7 +127,7 @@ export function PushPrompt() {
 
         {/* Text */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white leading-tight">Ativar notificações</p>
+          <p className="text-sm font-semibold text-foreground leading-tight">Ativar notificações</p>
           <p className="text-[11px] text-muted-foreground mt-0.5 leading-tight">
             {getBannerDescription(user?.role)}
           </p>
@@ -138,14 +138,14 @@ export function PushPrompt() {
           <button
             onClick={handleActivate}
             disabled={isLoading}
-            className="text-xs font-semibold text-white bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+            className="text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 px-3.5 py-2 rounded-xl transition-colors disabled:opacity-60 min-h-[36px]"
           >
             {isLoading ? "..." : "Ativar"}
           </button>
           <button
             onClick={handleDismiss}
-            className="h-7 w-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-white hover:bg-white/10 transition-colors"
-            aria-label="Fechar"
+            className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-h-[32px] min-w-[32px]"
+            aria-label="Fechar aviso de notificações"
           >
             <X className="h-4 w-4" />
           </button>

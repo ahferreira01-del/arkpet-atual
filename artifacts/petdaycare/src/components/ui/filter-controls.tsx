@@ -64,7 +64,7 @@ export const FilterChip = React.forwardRef<HTMLButtonElement, FilterChipProps>(
           <span
             className={cn(
               "ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] leading-none",
-              isActive ? "bg-white/20 text-white" : "bg-background text-muted-foreground"
+              isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-background text-muted-foreground"
             )}
           >
             {count}

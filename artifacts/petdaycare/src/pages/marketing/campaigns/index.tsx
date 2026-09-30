@@ -421,17 +421,17 @@ export default function CrecheCampaignsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ACTIVE":
-        return <Badge className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800/60 font-semibold">Ativa</Badge>;
+        return <Badge className="bg-success/15 text-success border-success/30 font-semibold">Ativa</Badge>;
       case "SCHEDULED":
-        return <Badge className="bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-800/60 font-semibold">Agendada</Badge>;
+        return <Badge className="bg-primary/15 text-primary border-primary/30 font-semibold">Agendada</Badge>;
       case "DRAFT":
-        return <Badge className="bg-neutral-100 dark:bg-neutral-900/60 text-neutral-800 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 font-semibold">Rascunho</Badge>;
+        return <Badge variant="secondary" className="font-semibold">Rascunho</Badge>;
       case "PAUSED":
-        return <Badge className="bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800/60 font-semibold">Pausada</Badge>;
+        return <Badge className="bg-warning/15 text-warning border-warning/30 font-semibold">Pausada</Badge>;
       case "ENDED":
-        return <Badge className="bg-neutral-100 dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700 font-semibold">Encerrada</Badge>;
+        return <Badge variant="outline" className="font-semibold">Encerrada</Badge>;
       case "REVOKED":
-        return <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800/60 font-semibold">Revogada</Badge>;
+        return <Badge variant="destructive" className="font-semibold">Revogada</Badge>;
       default:
         return <Badge>{status}</Badge>;
     }
@@ -655,7 +655,7 @@ export default function CrecheCampaignsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/20 hover:bg-amber-500/10"
+                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-warning border-warning/30 hover:bg-warning/10"
                           onClick={() => {
                             setActionReason("");
                             setPauseModal({ id: camp.id, name: camp.name });
@@ -670,7 +670,7 @@ export default function CrecheCampaignsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/20 hover:bg-emerald-500/10"
+                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-success border-success/30 hover:bg-success/10"
                           onClick={() => {
                             setActionReason("");
                             setResumeModal({ id: camp.id, name: camp.name });
@@ -685,7 +685,7 @@ export default function CrecheCampaignsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-rose-800 dark:text-rose-300 hover:bg-rose-500/10"
+                          className="h-11 sm:h-8 min-h-[44px] sm:min-h-0 text-xs px-3 sm:px-2 gap-1 text-destructive hover:bg-destructive/10"
                           onClick={() => {
                             setActionReason("");
                             setRevokeModal({ id: camp.id, name: camp.name });
@@ -1077,7 +1077,7 @@ export default function CrecheCampaignsPage() {
                 </div>
               </div>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-400 font-medium">
+              <div className="p-3 bg-warning/10 border border-warning/20 rounded-xl text-xs text-warning font-medium">
                 Regra de Ouro: Os descontos nunca são somados ou empilhados.
               </div>
 
@@ -1157,7 +1157,7 @@ export default function CrecheCampaignsPage() {
                           <span className="font-medium text-foreground">{p.name}</span>
                           <div className="flex items-center gap-3">
                             <span className="text-muted-foreground line-through">R$ {parseFloat(p.baseUnitPrice).toFixed(2)}</span>
-                            <span className="font-bold text-emerald-400">R$ {parseFloat(p.effectiveUnitPrice).toFixed(2)}</span>
+                            <span className="font-bold text-success">R$ {parseFloat(p.effectiveUnitPrice).toFixed(2)}</span>
                             <span className="text-[10px] text-primary">(-R$ {parseFloat(p.unitDiscount).toFixed(2)})</span>
                           </div>
                         </div>
@@ -1382,7 +1382,7 @@ export default function CrecheCampaignsPage() {
         className="max-w-md"
       >
         <div className="space-y-4 pt-2">
-          <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2 text-xs text-amber-400">
+          <div className="p-3 bg-warning/10 border border-warning/20 rounded-xl flex items-start gap-2 text-xs text-warning">
             <Info className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
               Atenção: Reservas promocionais já realizadas permanecem válidas.
@@ -1462,7 +1462,7 @@ export default function CrecheCampaignsPage() {
         className="max-w-md"
       >
         <div className="space-y-4 pt-2">
-          <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl flex items-start gap-2 text-xs text-rose-400">
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl flex items-start gap-2 text-xs text-destructive">
             <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
               Atenção: A revogação é definitiva. Reservas promocionais já realizadas permanecem válidas. A campanha não poderá mais ser reativada no futuro.

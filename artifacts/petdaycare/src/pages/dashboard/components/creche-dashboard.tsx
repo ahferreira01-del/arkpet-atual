@@ -86,16 +86,17 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
   const staffCount = (staff || []).filter((s: any) => s.isActive !== false).length;
 
   return (
-    <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
+      {/* ── Operational Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-1 border-b border-border/40">
         <div>
-          <p className="text-sm text-muted-foreground mb-1">
+          <p className="text-xs sm:text-sm text-muted-foreground font-medium mb-1">
             {format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
           </p>
-          <h1 className="text-2xl sm:text-3xl font-display font-bold text-foreground">{greeting}, {firstName}!</h1>
-          <p className="text-muted-foreground mt-1">Veja o que está acontecendo na sua creche hoje.</p>
+          <h1 className="text-2xl sm:text-3xl font-display font-bold tracking-tight text-foreground">
+            {greeting}, {firstName}!
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Veja o que está acontecendo na sua creche hoje.</p>
         </div>
         <Link href="/staff/qr-scanner">
           <Button variant="outline" className="gap-2 w-full sm:w-auto min-h-[44px]">
@@ -104,19 +105,19 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
         </Link>
       </div>
 
-      {/* Financial attention alert */}
+      {/* ── Financial Attention Alert ── */}
       {awaitingCount > 0 && (
         <Link href="/financial?tab=receipts" className="block">
           <div
             role="alert"
-            className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4 cursor-pointer hover:bg-amber-500/15 transition-colors shadow-sm"
+            className="p-4 rounded-2xl bg-warning/10 border border-warning/30 flex items-center justify-between gap-4 cursor-pointer hover:bg-warning/15 transition-colors shadow-xs"
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-10 w-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-                <Receipt className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="h-10 w-10 rounded-xl bg-warning/20 border border-warning/30 flex items-center justify-center shrink-0">
+                <Receipt className="h-5 w-5 text-warning" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">
+                <p className="text-sm font-semibold text-foreground truncate">
                   {awaitingCount === 1
                     ? "1 comprovante aguardando validação"
                     : `${awaitingCount} comprovantes aguardando validação`}
@@ -126,7 +127,7 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-medium shrink-0">
+            <div className="flex items-center gap-1 text-xs text-warning font-semibold shrink-0">
               <span>Revisar</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </div>
@@ -134,14 +135,15 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
         </Link>
       )}
 
+      {/* ── Tabs (Timeline / Visão Geral) ── */}
       <div className="mt-4 sm:mt-6">
-        <Tabs 
+        <Tabs
           defaultTab="timeline"
           tabs={[
             {
               id: "timeline",
               label: "Timeline",
-              content: <FeedPage crecheId={crecheId} userRole={user?.role ?? ""} userId={user?.id ?? 0} />
+              content: <FeedPage crecheId={crecheId} userRole={user?.role ?? ""} userId={user?.id ?? 0} />,
             },
             {
               id: "dashboard",
@@ -154,7 +156,7 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
                       value={checkedIn.length.toString()}
                       subValue={`de ${pets?.total || 0} cadastrados`}
                       icon={<Dog className="h-5 w-5" />}
-                      iconBg="bg-primary/20"
+                      iconBg="bg-primary/15"
                       iconColor="text-primary"
                       clickable
                     />
@@ -165,8 +167,8 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
                       value={stats?.pendingBookings?.toString() ?? pendingBookings.length.toString()}
                       subValue="aguardando confirmação"
                       icon={<Calendar className="h-5 w-5" />}
-                      iconBg={pendingBookings.length > 0 ? "bg-amber-400/20" : "bg-blue-500/20"}
-                      iconColor={pendingBookings.length > 0 ? "text-amber-500 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"}
+                      iconBg={pendingBookings.length > 0 ? "bg-warning/15" : "bg-info/15"}
+                      iconColor={pendingBookings.length > 0 ? "text-warning" : "text-info"}
                       alert={pendingBookings.length > 0}
                       clickable
                     />
@@ -177,8 +179,8 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
                       value={activeTasks.length.toString()}
                       subValue="para hoje"
                       icon={<CheckSquare className="h-5 w-5" />}
-                      iconBg={activeTasks.length > 0 ? "bg-red-500/20" : "bg-emerald-500/20"}
-                      iconColor={activeTasks.length > 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}
+                      iconBg={activeTasks.length > 0 ? "bg-destructive/15" : "bg-success/15"}
+                      iconColor={activeTasks.length > 0 ? "text-destructive" : "text-success"}
                       clickable
                     />
                   </Link>
@@ -188,14 +190,14 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
                       value={staffCount.toString()}
                       subValue="membros"
                       icon={<Users className="h-5 w-5" />}
-                      iconBg="bg-violet-500/20"
-                      iconColor="text-violet-600 dark:text-violet-400"
+                      iconBg="bg-primary/15"
+                      iconColor="text-primary"
                       clickable
                     />
                   </Link>
                 </div>
-              )
-            }
+              ),
+            },
           ]}
         />
       </div>
