@@ -312,20 +312,11 @@ export async function handleSubscriptionEvent(
   const incomingPriceId = currentItem?.price?.id;
   const actualStripeAmountCents = currentItem?.price?.unit_amount;
 
-  let resolved: ResolvedPlanByPrice | null = null;
   if (incomingPriceId) {
-    try {
-      resolved = await resolvePlanByPrice(incomingPriceId);
-    } catch (err) {
-      if (err instanceof UnknownStripePriceError) {
-        resolved = null;
-      } else {
-        throw err;
-      }
+    const resolved = await resolvePlanByPrice(incomingPriceId);
+    if (!resolved) {
+      throw new UnknownStripePriceError(incomingPriceId);
     }
-  }
-
-  if (resolved) {
     updates.planId = resolved.planId;
     updates.billingInterval = resolved.interval;
     if (resolved.planVersionId) {
