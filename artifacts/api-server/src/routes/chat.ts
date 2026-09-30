@@ -13,8 +13,8 @@ const sendMessageSchema = z.object({
   content: z.string().optional().nullable(),
   petId: z.number().int().positive("petId inválido").optional().nullable(),
   mediaUrl: z.string().refine(
-    (v) => v.startsWith("/objects/") || v.startsWith("/api/") || z.string().url().safeParse(v).success,
-    { message: "mediaUrl inválido" }
+    (v) => v.startsWith("/objects/") && !v.includes(".."),
+    { message: "mediaUrl deve ser um caminho de armazenamento canônico (/objects/...)" }
   ).optional().nullable(),
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
@@ -452,4 +452,5 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
+export { validateTargetTutor, sendMessageSchema, markReadSchema };
 export default router;

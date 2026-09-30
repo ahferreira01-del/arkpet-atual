@@ -35,7 +35,8 @@ interface OptimisticMessage {
   petName?: string | null;
   mediaUrl?: string | null;
   optimistic: true;
-  status: "sending" | "failed";
+  status: "sending" | "sent" | "failed";
+  serverId?: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -80,9 +81,6 @@ function ConversationItem({
       <div className="relative shrink-0">
          <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-[15px] font-bold text-foreground">
            {avatarInitials(conv.tutorName)}
-         </div>
-         <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-card rounded-full flex items-center justify-center">
-            <div className="h-2.5 w-2.5 bg-success rounded-full" />
          </div>
       </div>
       <div className="flex-1 min-w-0">
@@ -187,12 +185,9 @@ export default function Chat() {
     const server = (serverMessages ?? []) as any[];
     const serverIds = new Set(server.map((m) => m.id));
     const dedupedOlder = olderMessages.filter((m) => !serverIds.has(m.id));
+    // CONTENT_SENDER_AS_MESSAGE_IDENTITY = NO: Deduplicate strictly by serverId, never by text
     const dedupeOpt = optimisticMessages.filter(
-      (om) =>
-        om.status === "failed" ||
-        !server.some(
-          (sm) => sm.content === om.content && sm.senderId === om.senderId
-        )
+      (om) => !om.serverId || !serverIds.has(om.serverId)
     );
     return [...dedupedOlder, ...server, ...dedupeOpt].sort(
       (a, b) => parseUTC(a.createdAt).getTime() - parseUTC(b.createdAt).getTime()
@@ -328,14 +323,15 @@ export default function Chat() {
 
   useEffect(() => {
     if (!serverMessages?.length || !optimisticMessages.length) return;
+    const serverIds = new Set((serverMessages as any[]).map((sm) => sm.id));
     setOptimisticMessages((prev) =>
-      prev.filter(
-        (om) =>
-          om.status === "failed" ||
-          !(serverMessages as any[]).some(
-            (sm) => sm.content === om.content && sm.senderId === om.senderId
-          )
-      )
+      prev.filter((om) => {
+        // Remove only when confirmed message appears in the server poll array
+        if (om.serverId && serverIds.has(om.serverId)) {
+          return false;
+        }
+        return true;
+      })
     );
   }, [serverMessages]);
 
@@ -373,16 +369,39 @@ export default function Chat() {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // PREVIEW_OBJECT_URL_LEAK = 0: Revoke object URL on cleanup
+  useEffect(() => {
+    return () => {
+      if (filePreview) {
+        URL.revokeObjectURL(filePreview);
+      }
+    };
+  }, [filePreview]);
+
+  const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+  const MAX_PHOTO_BYTES = 10_000_000;
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!ALLOWED_PHOTO_TYPES.includes(file.type.toLowerCase())) {
       toast({
-        title: "Tipo de arquivo inválido",
-        description: "Selecione uma imagem (PNG, JPG, WebP).",
+        title: "Tipo de arquivo não permitido",
+        description: "Formatos aceitos: JPG, PNG, WebP.",
         variant: "destructive",
       });
       return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "A foto excede o tamanho máximo de 10 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (filePreview) {
+      URL.revokeObjectURL(filePreview);
     }
     setSelectedFile(file);
     const objectUrl = URL.createObjectURL(file);
@@ -467,7 +486,19 @@ export default function Chat() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (serverMsg: any) => {
+          setOptimisticMessages((prev) =>
+            prev.map((m) =>
+              m.id === msg.id
+                ? {
+                    ...m,
+                    status: "sent",
+                    serverId: serverMsg?.id,
+                    createdAt: serverMsg?.createdAt ?? m.createdAt,
+                  }
+                : m
+            )
+          );
           queryClient.invalidateQueries({
             predicate: (q) => String(q.queryKey[0]).includes("/chat"),
           });
@@ -515,8 +546,9 @@ export default function Chat() {
     setMessage("");
     handleClearFile();
 
+    const uniqueLocalId = `opt-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const optimistic: OptimisticMessage = {
-      id: `opt-${Date.now()}`,
+      id: uniqueLocalId,
       senderId: user.id,
       senderName: user.name,
       content,
@@ -541,7 +573,20 @@ export default function Chat() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (serverMsg: any) => {
+          // HTTP 201 immediately resolves SENDING -> SENT with serverId correlation
+          setOptimisticMessages((prev) =>
+            prev.map((m) =>
+              m.id === uniqueLocalId
+                ? {
+                    ...m,
+                    status: "sent",
+                    serverId: serverMsg?.id,
+                    createdAt: serverMsg?.createdAt ?? m.createdAt,
+                  }
+                : m
+            )
+          );
           queryClient.invalidateQueries({
             predicate: (q) => String(q.queryKey[0]).includes("/chat"),
           });
@@ -549,7 +594,7 @@ export default function Chat() {
         },
         onError: () => {
           setOptimisticMessages((prev) =>
-            prev.map((m) => (m.id === optimistic.id ? { ...m, status: "failed" } : m))
+            prev.map((m) => (m.id === uniqueLocalId ? { ...m, status: "failed" } : m))
           );
           toast({
             title: "Erro ao enviar mensagem",
@@ -596,10 +641,6 @@ export default function Chat() {
               ))}
             </div>
           )}
-        </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-success flex-shrink-0 bg-success/10 px-2.5 py-1 rounded-full uppercase tracking-wider">
-          <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-          Online
         </div>
       </div>
 
@@ -876,13 +917,6 @@ export default function Chat() {
 
   // ── Layout ────────────────────────────────────────────────────────────────
 
-  const pageHeaderAction = (
-    <div className="flex items-center gap-1.5 text-xs text-success font-semibold px-2.5 py-1.5 rounded-full bg-success/10 border border-success/20 uppercase tracking-wider">
-      <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
-      Ao vivo
-    </div>
-  );
-
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -892,7 +926,6 @@ export default function Chat() {
           title="Mensagens"
           description="Conversas em tempo real com os tutores."
           icon={MessageSquare}
-          action={pageHeaderAction}
         />
       </div>
 
