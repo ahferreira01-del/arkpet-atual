@@ -7,14 +7,18 @@ import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUsers } from "../lib/push.js";
 import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
+import { parseCanonicalPrivateObjectPath } from "../lib/objectAuthorization.js";
 
 const sendMessageSchema = z.object({
   tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
   content: z.string().optional().nullable(),
   petId: z.number().int().positive("petId inválido").optional().nullable(),
   mediaUrl: z.string().refine(
-    (v) => v.startsWith("/objects/") && !v.includes(".."),
-    { message: "mediaUrl deve ser um caminho de armazenamento canônico (/objects/...)" }
+    (v) => {
+      const parsed = parseCanonicalPrivateObjectPath(v);
+      return parsed.ok;
+    },
+    { message: "mediaUrl deve ser um caminho de armazenamento canônico (/objects/uploads/c<crecheId>/<uuid>.<ext>)" }
   ).optional().nullable(),
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
@@ -64,6 +68,54 @@ async function validateTargetTutor(
   }
 
   return { ok: true, tutorId: tutor.id };
+}
+
+/**
+ * Validates chat media canonical path format and tenant ownership.
+ * Fails closed if mediaUrl is not canonical or does not belong to the conversation creche.
+ */
+async function validateChatMedia(
+  crecheId: number,
+  mediaUrl?: string | null
+): Promise<{ ok: true } | { ok: false; status: 400; error: string; code: string }> {
+  if (!mediaUrl) return { ok: true };
+  const parsed = parseCanonicalPrivateObjectPath(mediaUrl);
+  if (!parsed.ok || parsed.pathCrecheId !== crecheId) {
+    return {
+      ok: false,
+      status: 400,
+      error: "mediaUrl inválido ou não pertence a esta creche",
+      code: "CROSS_TENANT_MEDIA_FORBIDDEN",
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Validates petId ownership and creche tenant boundaries.
+ */
+async function validateChatPet(
+  crecheId: number,
+  targetTutorId: number,
+  petId: number,
+  executor: any = db
+): Promise<{ ok: true; petName: string } | { ok: false; status: 400; error: string }> {
+  const [pet] = await executor
+    .select({ id: petsTable.id, name: petsTable.name })
+    .from(petsTable)
+    .where(
+      and(
+        eq(petsTable.id, petId),
+        eq(petsTable.crecheId, crecheId),
+        eq(petsTable.tutorId, targetTutorId)
+      )
+    )
+    .limit(1);
+
+  if (!pet) {
+    return { ok: false, status: 400, error: "Pet inválido ou não pertence a este tutor nesta creche" };
+  }
+  return { ok: true, petName: pet.name };
 }
 
 const router = Router({ mergeParams: true });
@@ -362,6 +414,13 @@ router.post("/", async (req: AuthRequest, res) => {
     }
     const targetTutorId = validated.tutorId;
 
+    // Validate media tenant match BEFORE transaction / insert (FOREIGN_TENANT_MEDIA_INSERT = 0)
+    const mediaCheck = await validateChatMedia(crecheId, mediaUrl);
+    if (!mediaCheck.ok) {
+      res.status(mediaCheck.status).json({ error: mediaCheck.error, code: mediaCheck.code });
+      return;
+    }
+
     const result = await db.transaction(async (tx) => {
       await acquireTenantOperationalLock(crecheId, tx);
 
@@ -369,20 +428,11 @@ router.post("/", async (req: AuthRequest, res) => {
       let petName: string | null = null;
       const parsedPetId = petId ?? null;
       if (parsedPetId) {
-        const [pet] = await tx
-          .select({ id: petsTable.id, name: petsTable.name })
-          .from(petsTable)
-          .where(and(
-            eq(petsTable.id, parsedPetId),
-            eq(petsTable.crecheId, crecheId),
-            eq(petsTable.tutorId, targetTutorId),
-          ))
-          .limit(1);
-
-        if (!pet) {
-          return { status: 400, error: "Pet inválido ou não pertence a este tutor nesta creche" };
+        const petCheck = await validateChatPet(crecheId, targetTutorId, parsedPetId, tx);
+        if (!petCheck.ok) {
+          return { status: petCheck.status, error: petCheck.error };
         }
-        petName = pet.name;
+        petName = petCheck.petName;
       }
 
       // Insert message with authenticated user as senderId
@@ -452,5 +502,11 @@ router.post("/", async (req: AuthRequest, res) => {
   }
 });
 
-export { validateTargetTutor, sendMessageSchema, markReadSchema };
+export {
+  validateTargetTutor,
+  validateChatPet,
+  validateChatMedia,
+  sendMessageSchema,
+  markReadSchema,
+};
 export default router;

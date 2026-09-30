@@ -525,7 +525,8 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
   // ────────────────────────────────────────────────────────────
   describe("CHAT-008 — Authenticated Media Attachments via Storage Uploads", () => {
     it("uploads photo via uploadFileDirect, displays protected media resolution in bubble, and rejects invalid format and oversized files", async () => {
-      const mockUpload = vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValue("/objects/uploads/chat-photo.webp");
+      const canonicalPhotoUrl = "/objects/uploads/c1/e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b5c.webp";
+      const mockUpload = vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValue(canonicalPhotoUrl);
       const mockMutate = vi.fn((payload, options) => {
         options?.onSuccess?.({
           id: 88,
@@ -534,7 +535,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
           senderId: 10,
           senderName: "Lucas Staff",
           content: "Olha que foto linda!",
-          mediaUrl: "/objects/uploads/chat-photo.webp",
+          mediaUrl: canonicalPhotoUrl,
           createdAt: new Date().toISOString(),
         });
       });
@@ -595,7 +596,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
             data: expect.objectContaining({
               tutorId: 25,
               content: "Olha que foto linda!",
-              mediaUrl: "/objects/uploads/chat-photo.webp",
+              mediaUrl: canonicalPhotoUrl,
             }),
           }),
           expect.any(Object)
@@ -605,7 +606,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
       // 5. Server-confirmed rendered bubble uses protected media resolution
       const renderedImg = screen.getByRole("img", { name: "Anexo" }) as HTMLImageElement;
       expect(renderedImg).toBeInTheDocument();
-      expect(renderedImg.src).toContain("/api/storage/objects/uploads/chat-photo.webp");
+      expect(renderedImg.src).toContain("/api/storage/objects/uploads/c1/e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b5c.webp");
       expect(renderedImg.src).toContain("mt=test-media-token-r40d");
     });
   });
@@ -794,7 +795,8 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
       const input = screen.getByPlaceholderText("Escreva uma mensagem...");
 
       // Message 1: "Foto" + photo1.webp
-      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce("/objects/uploads/photo1.webp");
+      const photoUrl1 = "/objects/uploads/c1/11111111-1111-4111-8111-111111111111.webp";
+      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce(photoUrl1);
       const file1 = new File(["bytes1"], "photo1.png", { type: "image/png" });
       fireEvent.change(fileInput, { target: { files: [file1] } });
       await waitFor(() => expect(screen.getByText("photo1.png")).toBeInTheDocument());
@@ -808,7 +810,8 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
       });
 
       // Message 2: "Foto" + photo2.webp
-      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce("/objects/uploads/photo2.webp");
+      const photoUrl2 = "/objects/uploads/c1/22222222-2222-4222-8222-222222222222.webp";
+      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce(photoUrl2);
       const file2 = new File(["bytes2"], "photo2.png", { type: "image/png" });
       fireEvent.change(fileInput, { target: { files: [file2] } });
       await waitFor(() => expect(screen.getByText("photo2.png")).toBeInTheDocument());
