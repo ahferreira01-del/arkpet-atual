@@ -691,6 +691,7 @@ export interface SendMessageRequest {
   petId?: number | null;
   content: string;
   mediaUrl?: string | null;
+  mediaUploadProof?: string | null;
 }
 
 export type BillingInterval =

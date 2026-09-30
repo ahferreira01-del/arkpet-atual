@@ -8,6 +8,7 @@ import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.
 import { sendPushToUsers } from "../lib/push.js";
 import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
 import { parseCanonicalPrivateObjectPath } from "../lib/objectAuthorization.js";
+import { verifyUploadProof } from "../lib/uploadProof.js";
 
 const sendMessageSchema = z.object({
   tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
@@ -20,9 +21,13 @@ const sendMessageSchema = z.object({
     },
     { message: "mediaUrl deve ser um caminho de armazenamento canônico (/objects/uploads/c<crecheId>/<uuid>.<ext>)" }
   ).optional().nullable(),
+  mediaUploadProof: z.string().optional().nullable(),
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
   { message: "content ou mediaUrl é obrigatório" }
+).refine(
+  (d) => !d.mediaUrl || (typeof d.mediaUploadProof === "string" && d.mediaUploadProof.trim().length > 0),
+  { message: "mediaUploadProof é obrigatório para mensagens com anexo de mídia" }
 );
 
 const markReadSchema = z.object({
@@ -71,13 +76,16 @@ async function validateTargetTutor(
 }
 
 /**
- * Validates chat media canonical path format and tenant ownership.
- * Fails closed if mediaUrl is not canonical or does not belong to the conversation creche.
+ * Validates chat media canonical path format, tenant ownership, and cryptographic upload ownership proof.
+ * Fails closed if mediaUrl is not canonical, does not belong to the conversation creche,
+ * or lacks a valid upload proof bound to the authenticated sender.
  */
 async function validateChatMedia(
   crecheId: number,
-  mediaUrl?: string | null
-): Promise<{ ok: true } | { ok: false; status: 400; error: string; code: string }> {
+  userId: number,
+  mediaUrl?: string | null,
+  mediaUploadProof?: string | null
+): Promise<{ ok: true } | { ok: false; status: 400 | 403; error: string; code: string }> {
   if (!mediaUrl) return { ok: true };
   const parsed = parseCanonicalPrivateObjectPath(mediaUrl);
   if (!parsed.ok || parsed.pathCrecheId !== crecheId) {
@@ -88,6 +96,32 @@ async function validateChatMedia(
       code: "CROSS_TENANT_MEDIA_FORBIDDEN",
     };
   }
+
+  if (!mediaUploadProof) {
+    return {
+      ok: false,
+      status: 400,
+      error: "mediaUploadProof é obrigatório para mensagens com anexo de mídia",
+      code: "MISSING_UPLOAD_PROOF",
+    };
+  }
+
+  const verified = verifyUploadProof(mediaUploadProof, {
+    userId,
+    crecheId,
+    objectPath: mediaUrl,
+    purpose: "chat_attachment",
+  });
+
+  if (!verified.ok) {
+    return {
+      ok: false,
+      status: 403,
+      error: verified.error || "Prova de upload inválida ou expirada",
+      code: verified.code || "INVALID_UPLOAD_PROOF",
+    };
+  }
+
   return { ok: true };
 }
 
@@ -404,7 +438,7 @@ router.post("/", async (req: AuthRequest, res) => {
       res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten().fieldErrors });
       return;
     }
-    const { tutorId, petId, content, mediaUrl } = parsed.data;
+    const { tutorId, petId, content, mediaUrl, mediaUploadProof } = parsed.data;
 
     // Validate target tutor authorization
     const validated = await validateTargetTutor(crecheId, tutorId, req.user);
@@ -414,8 +448,8 @@ router.post("/", async (req: AuthRequest, res) => {
     }
     const targetTutorId = validated.tutorId;
 
-    // Validate media tenant match BEFORE transaction / insert (FOREIGN_TENANT_MEDIA_INSERT = 0)
-    const mediaCheck = await validateChatMedia(crecheId, mediaUrl);
+    // Validate media tenant match and upload proof BEFORE transaction / insert (FOREIGN_TENANT_MEDIA_INSERT = 0)
+    const mediaCheck = await validateChatMedia(crecheId, req.user.id, mediaUrl, mediaUploadProof);
     if (!mediaCheck.ok) {
       res.status(mediaCheck.status).json({ error: mediaCheck.error, code: mediaCheck.code });
       return;

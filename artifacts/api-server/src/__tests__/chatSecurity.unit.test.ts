@@ -7,8 +7,8 @@ const dialect = new PgDialect();
 const { mockState } = vi.hoisted(() => ({
   mockState: {
     users: [
-      { id: 10, name: "Tutor Creche 1", role: "tutor", crecheId: 1 },
-      { id: 25, name: "Mariana Silva", role: "tutor", crecheId: 1 },
+      { id: 10, name: "Tutor B (Creche 1)", role: "tutor", crecheId: 1 },
+      { id: 25, name: "Tutor A (Creche 1)", role: "tutor", crecheId: 1 },
       { id: 99, name: "Tutor Creche 2", role: "tutor", crecheId: 2 }, // Belongs to Creche 2
       { id: 5, name: "Staff Lucas", role: "staff", crecheId: 1 },
     ] as any[],
@@ -27,6 +27,7 @@ import {
   sendMessageSchema,
 } from "../routes/chat.js";
 import { canUserAccessPrivateResource } from "../lib/objectAuthorization.js";
+import { generateUploadProof, verifyUploadProof } from "../lib/uploadProof.js";
 
 // Helper to evaluate SQL where conditions against fixture rows
 function evaluateWhere(sqlStr: string, params: any[], row: any): boolean {
@@ -102,7 +103,7 @@ vi.mock("../lib/push.js", () => ({
   sendPushToUsers: vi.fn(async () => {}),
 }));
 
-describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
+describe("ARKPET — R40.D-FINAL.3 BACKEND CHAT SECURITY & ATTACHMENT PROOF TEST SUITE", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -255,7 +256,13 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
     it("rejects media belonging to a different creche before database insert", async () => {
       // Creche 1 conversation attempting to link Creche 2's media path
       const foreignMedia = "/objects/uploads/c2/e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b5c.webp";
-      const result = await validateChatMedia(1, foreignMedia);
+      const proof = generateUploadProof({
+        userId: 25,
+        crecheId: 2,
+        objectPath: foreignMedia,
+      });
+
+      const result = await validateChatMedia(1, 25, foreignMedia, proof);
 
       expect(result.ok).toBe(false);
       if (!result.ok) {
@@ -270,9 +277,15 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
   // CHAT-SEC-MEDIA-02: Canonical Media Acceptance
   // ────────────────────────────────────────────────────────────
   describe("CHAT-SEC-MEDIA-02 — Canonical Media Acceptance", () => {
-    it("accepts canonical private storage path matching the conversation crecheId", async () => {
+    it("accepts canonical private storage path matching the conversation crecheId and valid proof", async () => {
       const validMedia = "/objects/uploads/c1/e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b5c.webp";
-      const result = await validateChatMedia(1, validMedia);
+      const validProof = generateUploadProof({
+        userId: 25,
+        crecheId: 1,
+        objectPath: validMedia,
+      });
+
+      const result = await validateChatMedia(1, 25, validMedia, validProof);
 
       expect(result.ok).toBe(true);
     });
@@ -287,6 +300,7 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "/objects/uploads/photo.webp",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
     });
@@ -296,6 +310,7 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "/objects/foo.webp",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
     });
@@ -305,6 +320,7 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "/objects/uploads/c1/photo.webp",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
     });
@@ -314,6 +330,7 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "/objects/uploads/c1/../secrets.env",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
     });
@@ -323,6 +340,7 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "https://evil-attacker.com/malicious.jpg",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
     });
@@ -332,8 +350,176 @@ describe("ARKPET — R40.D-FINAL.2 BACKEND CHAT SECURITY TEST SUITE", () => {
         tutorId: 25,
         content: "Foto",
         mediaUrl: "/api/creches/1/users",
+        mediaUploadProof: "any-proof",
       });
       expect(res.success).toBe(false);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // CHAT-SEC-ATTACH: Upload Ownership Proof & Anti-Self-Grant Suite
+  // ────────────────────────────────────────────────────────────
+  describe("CHAT-SEC-ATTACH — Cryptographic Upload Ownership Proof & Anti-Self-Grant Suite", () => {
+    const objectB = "/objects/uploads/c1/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webp";
+    const objectA = "/objects/uploads/c1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp";
+
+    // CHAT-SEC-ATTACH-01
+    it("CHAT-SEC-ATTACH-01: rejects same-tenant cross-tutor attachment without valid proof (SAME_TENANT_CROSS_TUTOR_ATTACHMENT_REFERENCE = 0)", async () => {
+      // Tutor A (id: 25) attempts to attach Tutor B's object with no proof
+      const resultNoProof = await validateChatMedia(1, 25, objectB, null);
+      expect(resultNoProof.ok).toBe(false);
+      if (!resultNoProof.ok) {
+        expect(resultNoProof.status).toBe(400);
+        expect(resultNoProof.code).toBe("MISSING_UPLOAD_PROOF");
+      }
+
+      // Or with empty string proof
+      const resultEmpty = await validateChatMedia(1, 25, objectB, "   ");
+      expect(resultEmpty.ok).toBe(false);
+    });
+
+    // CHAT-SEC-ATTACH-02
+    it("CHAT-SEC-ATTACH-02: rejects submission of foreign user upload proof (FOREIGN_USER_UPLOAD_PROOF_ACCEPTED = 0)", async () => {
+      // Tutor B (id: 10) was issued a valid proof for objectB
+      const tutorBProof = generateUploadProof({
+        userId: 10,
+        crecheId: 1,
+        objectPath: objectB,
+      });
+
+      // Tutor A (id: 25) steals and submits Tutor B's proof
+      const result = await validateChatMedia(1, 25, objectB, tutorBProof);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(403);
+        expect(result.code).toBe("USER_MISMATCH");
+        expect(result.error).toMatch(/não pertence ao usuário autenticado/i);
+      }
+    });
+
+    // CHAT-SEC-ATTACH-03
+    it("CHAT-SEC-ATTACH-03: rejects proof path substitution (UPLOAD_PROOF_PATH_SUBSTITUTION = 0)", async () => {
+      // Tutor A uploaded objectA and has proof for objectA
+      const proofForA = generateUploadProof({
+        userId: 25,
+        crecheId: 1,
+        objectPath: objectA,
+      });
+
+      // Tutor A attempts to attach objectB using proofForA
+      const result = await validateChatMedia(1, 25, objectB, proofForA);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(403);
+        expect(result.code).toBe("PATH_MISMATCH");
+        expect(result.error).toMatch(/não corresponde ao arquivo informado/i);
+      }
+    });
+
+    // CHAT-SEC-ATTACH-04
+    it("CHAT-SEC-ATTACH-04: rejects proof tenant substitution (UPLOAD_PROOF_TENANT_SUBSTITUTION = 0)", async () => {
+      // Proof issued for Creche 2
+      const proofCreche2 = generateUploadProof({
+        userId: 25,
+        crecheId: 2,
+        objectPath: "/objects/uploads/c2/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp",
+      });
+
+      // Attempt to attach in Creche 1
+      const result = await validateChatMedia(1, 25, "/objects/uploads/c1/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webp", proofCreche2);
+      expect(result.ok).toBe(false);
+    });
+
+    // CHAT-SEC-ATTACH-05
+    it("CHAT-SEC-ATTACH-05: rejects expired upload proof (EXPIRED_UPLOAD_PROOF_ACCEPTED = 0)", async () => {
+      // Proof expired 10 seconds ago
+      const expiredProof = generateUploadProof({
+        userId: 25,
+        crecheId: 1,
+        objectPath: objectA,
+        ttlMs: -10_000,
+      });
+
+      const result = await validateChatMedia(1, 25, objectA, expiredProof);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(403);
+        expect(result.code).toBe("EXPIRED_UPLOAD_PROOF");
+        expect(result.error).toMatch(/expirada/i);
+      }
+    });
+
+    // CHAT-SEC-ATTACH-06
+    it("CHAT-SEC-ATTACH-06: rejects tampered upload proof (TAMPERED_UPLOAD_PROOF_ACCEPTED = 0)", async () => {
+      const validProof = generateUploadProof({
+        userId: 25,
+        crecheId: 1,
+        objectPath: objectA,
+      });
+
+      const [payloadB64, sig] = validProof.split(".");
+      // Tamper with payload: change userId 25 to 10
+      const decoded = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
+      decoded.userId = 10;
+      const tamperedPayloadB64 = Buffer.from(JSON.stringify(decoded)).toString("base64url");
+      const tamperedProof = `${tamperedPayloadB64}.${sig}`;
+
+      const result = await validateChatMedia(1, 10, objectA, tamperedProof);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.status).toBe(403);
+        expect(result.code).toBe("TAMPERED_UPLOAD_PROOF");
+      }
+    });
+
+    // CHAT-SEC-ATTACH-07
+    it("CHAT-SEC-ATTACH-07: accepts valid upload proof for own upload (VALID_OWN_UPLOAD_ATTACHMENT = PASS)", async () => {
+      const validProof = generateUploadProof({
+        userId: 25,
+        crecheId: 1,
+        objectPath: objectA,
+      });
+
+      const result = await validateChatMedia(1, 25, objectA, validProof);
+      expect(result.ok).toBe(true);
+    });
+
+    // CHAT-SEC-ATTACH-08
+    it("CHAT-SEC-ATTACH-08: normal text messages do not require upload proof (TEXT_CHAT_REQUIRES_UPLOAD_PROOF = NO)", async () => {
+      const textOnly = sendMessageSchema.safeParse({
+        tutorId: 25,
+        content: "Olá! Tudo bem?",
+      });
+      expect(textOnly.success).toBe(true);
+
+      const result = await validateChatMedia(1, 25, null, null);
+      expect(result.ok).toBe(true);
+    });
+
+    // CHAT-SEC-ATTACH-09
+    it("CHAT-SEC-ATTACH-09: failed reference attempt does not grant access (FAILED_REFERENCE_ATTEMPT_CREATES_ACCESS = 0 / CHAT_ATTACHMENT_REFERENCE_MUST_NOT_CREATE_ITS_OWN_AUTHORIZATION_PROOF = PASS)", async () => {
+      // 1. Tutor B (id: 10) owns objectB
+      // 2. Tutor A (id: 25) initially does NOT have access to objectB
+      const tutorA = { id: 25, role: "tutor", crecheId: 1 };
+      const initialAccess = await canUserAccessPrivateResource({
+        canonicalObjectPath: objectB,
+        pathCrecheId: 1,
+        user: tutorA,
+      });
+      expect(initialAccess).toBe(false);
+
+      // 3. Tutor A attempts to attach objectB without valid Tutor A ownership proof
+      const attachAttempt = await validateChatMedia(1, 25, objectB, null);
+      expect(attachAttempt.ok).toBe(false);
+
+      // 4. Request fails and insertion is blocked
+      // 5. Re-check canUserAccessPrivateResource for Tutor A / objectB: still false!
+      const postAttemptAccess = await canUserAccessPrivateResource({
+        canonicalObjectPath: objectB,
+        pathCrecheId: 1,
+        user: tutorA,
+      });
+      expect(postAttemptAccess).toBe(false);
     });
   });
 

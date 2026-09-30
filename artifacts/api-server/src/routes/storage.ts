@@ -16,6 +16,7 @@ import {
   parseCanonicalPrivateObjectPath,
   canUserAccessPrivateResource,
 } from "../lib/objectAuthorization.js";
+import { generateUploadProof } from "../lib/uploadProof.js";
 import {
   acquireTenantOperationalLock,
   TenantArchivedError,
@@ -196,7 +197,14 @@ router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type:
       res.setHeader("X-ArkPet-Storage-Warning", "true");
     }
 
-    res.json({ objectPath });
+    const uploadProof = generateUploadProof({
+      userId: req.user.id,
+      crecheId,
+      objectPath,
+      purpose: "chat_attachment",
+    });
+
+    res.json({ objectPath, uploadProof });
   } catch (err: any) {
     if (err instanceof TenantArchivedError || err?.code === "tenant_archived" || err?.message === "tenant_archived") {
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Uploads desabilitados." });

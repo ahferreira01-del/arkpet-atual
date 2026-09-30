@@ -20,7 +20,7 @@ import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { parseUTC } from "@/lib/date-utils";
-import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
+import { resolvePhotoUrl, uploadFileDirectWithProof } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,7 @@ interface OptimisticMessage {
   petId?: number | null;
   petName?: string | null;
   mediaUrl?: string | null;
+  mediaUploadProof?: string | null;
   optimistic: true;
   status: "sending" | "sent" | "failed";
   serverId?: number;
@@ -483,6 +484,7 @@ export default function Chat() {
           petId: msg.petId ?? null,
           content: msg.content,
           mediaUrl: msg.mediaUrl ?? undefined,
+          mediaUploadProof: msg.mediaUploadProof ?? undefined,
         },
       },
       {
@@ -527,10 +529,13 @@ export default function Chat() {
     const taggedPet = selectedConv?.pets.find((p) => p.id === taggedPetId);
 
     let uploadedMediaUrl: string | null = null;
+    let uploadedMediaProof: string | null = null;
     if (currentFile) {
       setIsUploadingFile(true);
       try {
-        uploadedMediaUrl = await uploadFileDirect(currentFile, token || "");
+        const uploadRes = await uploadFileDirectWithProof(currentFile, token || "");
+        uploadedMediaUrl = uploadRes.objectPath;
+        uploadedMediaProof = uploadRes.uploadProof ?? null;
       } catch {
         setIsUploadingFile(false);
         toast({
@@ -557,6 +562,7 @@ export default function Chat() {
       petId: taggedPetId ?? null,
       petName: taggedPet?.name ?? null,
       mediaUrl: uploadedMediaUrl || currentPreview,
+      mediaUploadProof: uploadedMediaProof,
       optimistic: true,
       status: "sending",
     };
@@ -570,6 +576,7 @@ export default function Chat() {
           petId: taggedPetId ?? null,
           content,
           mediaUrl: uploadedMediaUrl ?? undefined,
+          mediaUploadProof: uploadedMediaProof ?? undefined,
         },
       },
       {

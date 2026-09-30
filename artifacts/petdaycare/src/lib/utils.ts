@@ -119,16 +119,15 @@ async function compressImageToBlob(file: File, maxWidth = 1080, quality = 0.82):
   });
 }
 
+export interface UploadFileResult {
+  objectPath: string;
+  uploadProof?: string;
+}
+
 /**
- * Upload a file to Replit Object Storage via the server-side /direct endpoint.
- *
- * - Images (image/*): compressed client-side to WebP, then uploaded as blob
- * - Other files (video, PDF, …): sent as raw bytes
- *
- * Always returns an objectPath ("/objects/uploads/…") suitable for DB storage.
- * Legacy base64 data: URIs are no longer produced by this function.
+ * Upload a file directly and return both the canonical objectPath and the cryptographic upload ownership proof.
  */
-export async function uploadFileDirect(file: File, token: string): Promise<string> {
+export async function uploadFileDirectWithProof(file: File, token: string): Promise<UploadFileResult> {
   let body: Blob;
   let contentType: string;
 
@@ -137,10 +136,6 @@ export async function uploadFileDirect(file: File, token: string): Promise<strin
     contentType = "image/webp";
   } else {
     body = file;
-    // F4: infer MIME from file extension when file.type is empty (some browsers/
-    // platforms omit it for video files). Unknown extensions keep the fallback so
-    // the server can reject them explicitly (415) rather than silently accepting
-    // an unreadable stream.
     let rawType = file.type;
     if (!rawType) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -166,8 +161,20 @@ export async function uploadFileDirect(file: File, token: string): Promise<strin
     const err = await uploadRes.json().catch(() => ({}));
     throw new Error((err as any).error || "Falha ao enviar o arquivo. Tente novamente.");
   }
-  const { objectPath } = await uploadRes.json();
-  return objectPath as string;
+  const data = await uploadRes.json();
+  return {
+    objectPath: data.objectPath as string,
+    uploadProof: data.uploadProof as string | undefined,
+  };
+}
+
+/**
+ * Upload a file to Replit Object Storage via the server-side /direct endpoint.
+ * Backwards-compatible helper returning objectPath string.
+ */
+export async function uploadFileDirect(file: File, token: string): Promise<string> {
+  const result = await uploadFileDirectWithProof(file, token);
+  return result.objectPath;
 }
 
 export function getInitials(name: string) {

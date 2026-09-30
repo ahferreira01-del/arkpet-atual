@@ -524,9 +524,12 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
   // CHAT-008: Authenticated Media Attachments
   // ────────────────────────────────────────────────────────────
   describe("CHAT-008 — Authenticated Media Attachments via Storage Uploads", () => {
-    it("uploads photo via uploadFileDirect, displays protected media resolution in bubble, and rejects invalid format and oversized files", async () => {
+    it("uploads photo via uploadFileDirectWithProof, displays protected media resolution in bubble, and rejects invalid format and oversized files", async () => {
       const canonicalPhotoUrl = "/objects/uploads/c1/e0a1b2c3-d4e5-4f6a-8b9c-0d1e2f3a4b5c.webp";
-      const mockUpload = vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValue(canonicalPhotoUrl);
+      const mockUpload = vi.spyOn(utilsModule, "uploadFileDirectWithProof").mockResolvedValue({
+        objectPath: canonicalPhotoUrl,
+        uploadProof: "test-signed-upload-proof",
+      });
       const mockMutate = vi.fn((payload, options) => {
         options?.onSuccess?.({
           id: 88,
@@ -536,6 +539,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
           senderName: "Lucas Staff",
           content: "Olha que foto linda!",
           mediaUrl: canonicalPhotoUrl,
+          mediaUploadProof: "test-signed-upload-proof",
           createdAt: new Date().toISOString(),
         });
       });
@@ -589,7 +593,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
       await waitFor(() => {
         // Upload performed with canonical token
         expect(mockUpload).toHaveBeenCalledWith(validFile, "test-auth-token-r40d");
-        // Mutation called with canonical object path
+        // Mutation called with canonical object path and upload ownership proof
         expect(mockMutate).toHaveBeenCalledWith(
           expect.objectContaining({
             crecheId: 1,
@@ -597,6 +601,7 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
               tutorId: 25,
               content: "Olha que foto linda!",
               mediaUrl: canonicalPhotoUrl,
+              mediaUploadProof: "test-signed-upload-proof",
             }),
           }),
           expect.any(Object)
@@ -796,7 +801,10 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
 
       // Message 1: "Foto" + photo1.webp
       const photoUrl1 = "/objects/uploads/c1/11111111-1111-4111-8111-111111111111.webp";
-      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce(photoUrl1);
+      vi.spyOn(utilsModule, "uploadFileDirectWithProof").mockResolvedValueOnce({
+        objectPath: photoUrl1,
+        uploadProof: "proof-1",
+      });
       const file1 = new File(["bytes1"], "photo1.png", { type: "image/png" });
       fireEvent.change(fileInput, { target: { files: [file1] } });
       await waitFor(() => expect(screen.getByText("photo1.png")).toBeInTheDocument());
@@ -811,7 +819,10 @@ describe("ARKPET — R40.D CHAT & REAL-TIME EXPERIENCE TEST SUITE", () => {
 
       // Message 2: "Foto" + photo2.webp
       const photoUrl2 = "/objects/uploads/c1/22222222-2222-4222-8222-222222222222.webp";
-      vi.spyOn(utilsModule, "uploadFileDirect").mockResolvedValueOnce(photoUrl2);
+      vi.spyOn(utilsModule, "uploadFileDirectWithProof").mockResolvedValueOnce({
+        objectPath: photoUrl2,
+        uploadProof: "proof-2",
+      });
       const file2 = new File(["bytes2"], "photo2.png", { type: "image/png" });
       fireEvent.change(fileInput, { target: { files: [file2] } });
       await waitFor(() => expect(screen.getByText("photo2.png")).toBeInTheDocument());
