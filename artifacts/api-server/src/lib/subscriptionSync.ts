@@ -313,101 +313,110 @@ export async function handleSubscriptionEvent(
   const actualStripeAmountCents = currentItem?.price?.unit_amount;
 
   if (incomingPriceId) {
-    const resolved = await resolvePlanByPrice(incomingPriceId);
-    if (!resolved) {
-      throw new UnknownStripePriceError(incomingPriceId);
+    let resolved: ResolvedPlanByPrice | null = null;
+    try {
+      resolved = await resolvePlanByPrice(incomingPriceId);
+    } catch (err) {
+      if (err instanceof UnknownStripePriceError) {
+        resolved = null;
+      } else {
+        throw err;
+      }
     }
-    updates.planId = resolved.planId;
-    updates.billingInterval = resolved.interval;
-    if (resolved.planVersionId) {
-      updates.planVersionId = resolved.planVersionId;
-      updates.planVersionPriceId = resolved.planVersionPriceId ?? null;
-      updates.contractedPriceCents = resolved.priceBrl ?? actualStripeAmountCents ?? null;
-      updates.contractedStripePriceId = incomingPriceId;
-    }
-    if (resolved.isCustom && resolved.conditionId) {
-      // Section 8: Check if active percentage condition has drifted from current catalog price
-      let shouldMarkDivergent = false;
-      if (appSub.activeConditionId && appSub.activeConditionId === resolved.conditionId) {
-        const [activeCond] = await db
-          .select()
-          .from(customerCommercialConditionsTable)
-          .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId))
-          .limit(1);
 
-        if (activeCond && activeCond.pricingOverrideType === "percentage") {
-          const [planRow] = await db
+    if (resolved) {
+      updates.planId = resolved.planId;
+      updates.billingInterval = resolved.interval;
+      if (resolved.planVersionId) {
+        updates.planVersionId = resolved.planVersionId;
+        updates.planVersionPriceId = resolved.planVersionPriceId ?? null;
+        updates.contractedPriceCents = resolved.priceBrl ?? actualStripeAmountCents ?? null;
+        updates.contractedStripePriceId = incomingPriceId;
+      }
+      if (resolved.isCustom && resolved.conditionId) {
+        // Section 8: Check if active percentage condition has drifted from current catalog price
+        let shouldMarkDivergent = false;
+        if (appSub.activeConditionId && appSub.activeConditionId === resolved.conditionId) {
+          const [activeCond] = await db
             .select()
-            .from(plansTable)
-            .where(eq(plansTable.id, resolved.planId))
+            .from(customerCommercialConditionsTable)
+            .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId))
             .limit(1);
 
-          if (planRow) {
-            try {
-              const currentCatalog = await resolveCatalogPlanPrice(planRow, resolved.interval, db);
-              const expectedPricing = calculateEffectivePrice({
-                catalogPriceCents: currentCatalog.catalogPriceCents,
-                pricingOverrideType: "percentage",
-                pricingOverrideValue: activeCond.pricingOverrideValue ?? 0,
-              });
-              if (
-                typeof actualStripeAmountCents === "number" &&
-                actualStripeAmountCents !== expectedPricing.finalEffectivePriceCents
-              ) {
-                shouldMarkDivergent = true;
+          if (activeCond && activeCond.pricingOverrideType === "percentage") {
+            const [planRow] = await db
+              .select()
+              .from(plansTable)
+              .where(eq(plansTable.id, resolved.planId))
+              .limit(1);
+
+            if (planRow) {
+              try {
+                const currentCatalog = await resolveCatalogPlanPrice(planRow, resolved.interval, db);
+                const expectedPricing = calculateEffectivePrice({
+                  catalogPriceCents: currentCatalog.catalogPriceCents,
+                  pricingOverrideType: "percentage",
+                  pricingOverrideValue: activeCond.pricingOverrideValue ?? 0,
+                });
+                if (
+                  typeof actualStripeAmountCents === "number" &&
+                  actualStripeAmountCents !== expectedPricing.finalEffectivePriceCents
+                ) {
+                  shouldMarkDivergent = true;
+                }
+              } catch {
+                // Ignore catalog resolution error in webhook
               }
-            } catch {
-              // Ignore catalog resolution error in webhook
             }
           }
         }
-      }
 
-      if (shouldMarkDivergent) {
+        if (shouldMarkDivergent) {
+          await db
+            .update(customerCommercialConditionsTable)
+            .set({ syncStatus: "divergent", updatedAt: new Date() })
+            .where(eq(customerCommercialConditionsTable.id, resolved.conditionId));
+        } else {
+          await db
+            .update(customerCommercialConditionsTable)
+            .set({
+              syncStatus: "synced",
+              ...(typeof actualStripeAmountCents === "number" ? { lastSynchronizedAmountCents: actualStripeAmountCents } : {}),
+              lastSyncError: null,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(customerCommercialConditionsTable.id, resolved.conditionId),
+                or(
+                  eq(customerCommercialConditionsTable.syncStatus, "sync_pending"),
+                  eq(customerCommercialConditionsTable.syncStatus, "divergent"),
+                ),
+              ),
+            );
+        }
+      }
+    } else {
+      // Unknown price detected from external Stripe modification (Section 27)
+      if (appSub.activeConditionId) {
         await db
           .update(customerCommercialConditionsTable)
           .set({ syncStatus: "divergent", updatedAt: new Date() })
-          .where(eq(customerCommercialConditionsTable.id, resolved.conditionId));
-      } else {
-        await db
-          .update(customerCommercialConditionsTable)
-          .set({
-            syncStatus: "synced",
-            ...(typeof actualStripeAmountCents === "number" ? { lastSynchronizedAmountCents: actualStripeAmountCents } : {}),
-            lastSyncError: null,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(customerCommercialConditionsTable.id, resolved.conditionId),
-              or(
-                eq(customerCommercialConditionsTable.syncStatus, "sync_pending"),
-                eq(customerCommercialConditionsTable.syncStatus, "divergent"),
-              ),
-            ),
-          );
-      }
-    }
-  } else if (incomingPriceId) {
-    // Unknown price detected from external Stripe modification (Section 27)
-    if (appSub.activeConditionId) {
-      await db
-        .update(customerCommercialConditionsTable)
-        .set({ syncStatus: "divergent", updatedAt: new Date() })
-        .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId));
+          .where(eq(customerCommercialConditionsTable.id, appSub.activeConditionId));
 
-      await logCommercialAudit({
-        targetCrecheId: appSub.crecheId,
-        actorType: "gateway",
-        action: "commercial_stripe_divergence_detected",
-        executionStatus: "divergent",
-        relatedConditionId: appSub.activeConditionId,
-        reason: `Preço desconhecido no Stripe ('${incomingPriceId}') não corresponde ao catálogo nem a nenhuma condição comercial aprovada.`,
-        afterState: {
-          divergentPriceId: incomingPriceId,
-          syncStatus: "divergent",
-        },
-      });
+        await logCommercialAudit({
+          targetCrecheId: appSub.crecheId,
+          actorType: "gateway",
+          action: "commercial_stripe_divergence_detected",
+          executionStatus: "divergent",
+          relatedConditionId: appSub.activeConditionId,
+          reason: `Preço desconhecido no Stripe ('${incomingPriceId}') não corresponde ao catálogo nem a nenhuma condição comercial aprovada.`,
+          afterState: {
+            divergentPriceId: incomingPriceId,
+            syncStatus: "divergent",
+          },
+        });
+      }
     }
   }
 
