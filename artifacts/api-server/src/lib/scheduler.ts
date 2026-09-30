@@ -665,7 +665,7 @@ export async function sendInvoiceReminders() {
         title: tutorTitle,
         body: tutorBody,
         tag: `invoice-tutor-${invoice.invoiceId}-${notifyType}`,
-        data: { type: "invoice", invoiceId: invoice.invoiceId },
+        data: { type: "invoice", invoiceId: invoice.invoiceId, crecheId: invoice.crecheId },
       }).catch(() => {});
 
       let adminTitle = "📅 Fatura de Tutor";
@@ -683,7 +683,7 @@ export async function sendInvoiceReminders() {
         title: adminTitle,
         body: adminBody,
         tag: `invoice-creche-${invoice.invoiceId}-${notifyType}`,
-        data: { type: "invoice", tutorId: invoice.tutorId },
+        data: { type: "invoice", invoiceId: invoice.invoiceId, tutorId: invoice.tutorId, crecheId: invoice.crecheId },
       }).catch(() => {});
       });
     }

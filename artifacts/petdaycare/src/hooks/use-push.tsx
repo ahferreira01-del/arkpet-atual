@@ -213,11 +213,28 @@ export function usePush() {
         if (!sub && mountedRef.current) {
           console.log("[push] Permission granted but subscription missing — auto-recovering...");
           subscribe();
+        } else if (sub && user && mountedRef.current) {
+          // Sync existing browser subscription with backend for active user session
+          const p256dh = arrayBufferToBase64(sub.getKey("p256dh"));
+          const auth = arrayBufferToBase64(sub.getKey("auth"));
+          const token = localStorage.getItem("auth_token");
+          if (p256dh && auth && token) {
+            fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
+            }).then(() => {
+              if (mountedRef.current) {
+                setIsSubscribed(true);
+                try { localStorage.setItem(STORAGE_KEY, "1"); } catch {}
+              }
+            }).catch((err) => console.warn("[push] Re-sync subscription failed:", err));
+          }
         }
       } catch {
         // Silent fail — recovery is best-effort
       }
-    }, 3000);
+    }, 1500);
 
     return () => clearTimeout(timer);
   }, [user?.id, subscribe]);

@@ -56,11 +56,19 @@ export class PushFeedNotificationService implements IFeedNotificationService {
 
     const results = await Promise.allSettled(
       tutorIds.map((tutorId) => {
-        const petNames = pets
-          .filter((p) => p.tutorId === tutorId)
-          .map((p) => p.name)
-          .join(", ");
-        return sendPushToUser(tutorId, { title, body: `Atualização sobre ${petNames}` });
+        const tutorPets = pets.filter((p) => p.tutorId === tutorId);
+        const petNames = tutorPets.map((p) => p.name).join(", ");
+        return sendPushToUser(tutorId, {
+          title,
+          body: `Atualização sobre ${petNames}`,
+          tag: `feed-${event.postId}`,
+          data: {
+            type: "timeline",
+            postId: event.postId,
+            petId: tutorPets[0]?.id,
+            crecheId: event.crecheId,
+          },
+        });
       }),
     );
 

@@ -74,9 +74,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logoutMutation = useLogout({
     mutation: {
+      onMutate: async () => {
+        // Disassociate push subscription on the backend before clearing tokens
+        try {
+          const token = localStorage.getItem("auth_token");
+          if (token && "serviceWorker" in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription();
+            if (sub) {
+              await fetch("/api/push/subscribe", {
+                method: "DELETE",
+                headers: {
+                  "content-type": "application/json",
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ endpoint: sub.endpoint })
+              });
+            }
+          }
+        } catch {
+          // Best effort — do not block logout
+        }
+      },
       onSettled: () => {
         localStorage.removeItem("auth_token");
         localStorage.removeItem("media_token");
+        localStorage.removeItem("arkpet_push_subscribed");
         queryClient.setQueryData(getGetMeQueryKey(), null);
         queryClient.clear();
         setLocation("/login");

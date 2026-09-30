@@ -210,8 +210,19 @@ router.post("/", async (req: AuthRequest, res) => {
 
   for (const tutorId of tutorIdsToNotify) {
     // get pet names for this tutor that were involved
-    const tutorPetsInvolved = pets.filter(p => p.tutorId === tutorId).map(p => p.name).join(", ");
-    await sendPushToUser(tutorId, { title, body: `Atualização sobre ${tutorPetsInvolved}` });
+    const tutorPets = pets.filter(p => p.tutorId === tutorId);
+    const tutorPetsInvolved = tutorPets.map(p => p.name).join(", ");
+    await sendPushToUser(tutorId, {
+      title,
+      body: `Atualização sobre ${tutorPetsInvolved}`,
+      tag: `feed-${event.id}`,
+      data: {
+        type: "timeline",
+        eventId: event.id,
+        petId: tutorPets[0]?.id,
+        crecheId,
+      },
+    });
   }
 
   res.json({ ok: true, event });

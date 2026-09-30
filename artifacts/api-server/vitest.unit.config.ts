@@ -18,6 +18,8 @@ export default defineConfig({
     env: {
       // Deliberately non-connectable sentinel endpoint for safe offline unit tests (R36.D Correction 12)
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://sentinel-do-not-connect:0/unreachable_db",
+      VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || "BFtestVapidPublicKeyForUnitTestingPurposesOnly123456789=",
+      VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || "testVapidPrivateKey123=",
     },
   },
 });

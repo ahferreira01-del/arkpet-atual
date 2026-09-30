@@ -1,9 +1,11 @@
-const CACHE_NAME = "arkpet-v31";
+const CACHE_NAME = "arkpet-v32";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./icons/icon.svg",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
 ];
 
 // Resolve a path relative to the SW scope so it works under any BASE_PATH.
@@ -142,7 +144,7 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: data.body || "",
-    icon: data.icon || scopedUrl("icons/arkpet-logo.png"),
+    icon: data.icon || scopedUrl("icons/icon-192.png"),
     badge: scopedUrl("icons/icon-192.png"),
     tag,
     renotify: true,
@@ -173,7 +175,7 @@ self.addEventListener("push", (event) => {
       const notifType = (data.data?.type ?? data.type) || "";
       const isChat = notifType === "chat";
       const isTest = notifType === "test";
-      // Financial events (receipts, payments, voids, refunds) must always show
+      // Financial events (receipts, payments, voids, refunds, invoices) must always show
       // an OS notification — they require action or are critical status changes.
       // Suppressing them when the app is open causes silent misses.
       const isFinancial =
@@ -181,7 +183,9 @@ self.addEventListener("push", (event) => {
         notifType === "invoice_paid" ||
         notifType === "invoice_voided" ||
         notifType === "invoice_refunded" ||
-        notifType === "mensalidade";
+        notifType === "mensalidade" ||
+        notifType === "invoice" ||
+        notifType === "financial";
       // New booking requests and status changes must reach the admin even when
       // the app is open — they are actionable and time-sensitive.
       const isBooking =
@@ -198,7 +202,20 @@ self.addEventListener("push", (event) => {
         return;
       }
 
-      await self.registration.showNotification(title, options);
+      try {
+        await self.registration.showNotification(title, options);
+      } catch (err) {
+        console.warn("[SW] showNotification with full options failed, retrying minimal fallback:", err);
+        try {
+          await self.registration.showNotification(title, {
+            body: options.body || "",
+            icon: scopedUrl("icons/icon-192.png"),
+            tag: options.tag,
+          });
+        } catch (fallbackErr) {
+          console.error("[SW] Fatal showNotification failure:", fallbackErr);
+        }
+      }
     })()
   );
 });
@@ -256,14 +273,18 @@ function resolveTargetPath(data) {
   if (type === "order_status") return "/tutor/store";
 
   // ── Financial ─────────────────────────────────────────
-  // "mensalidade" notifications come from invoice reminders — send the tutor
-  // directly to their wallet so they can see and pay the invoice.
+  // "mensalidade" and "invoice" notifications come from invoice reminders
   if (type === "mensalidade") return "/tutor/financial";
+  if (type === "invoice") {
+    // If creche admin (has tutorId in payload), navigate to /financial; otherwise tutor wallet
+    if (data.tutorId) return "/financial";
+    return "/tutor/financial";
+  }
   // Tutor: invoice paid/approved/voided/refunded → their financial page.
   if (type === "invoice_paid" || type === "invoice_voided" || type === "invoice_refunded")
     return "/tutor/financial";
   // Creche admin: receipt waiting for confirmation → accounts-receivable tab.
-  if (type === "invoice_receipt") return "/financial";
+  if (type === "invoice_receipt" || type === "financial") return "/financial";
 
   // ── Test push (sent from Settings) ───────────────────
   if (type === "test") return "/settings";

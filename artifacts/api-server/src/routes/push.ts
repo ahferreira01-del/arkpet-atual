@@ -38,7 +38,7 @@ router.post("/subscribe", async (req: AuthRequest, res) => {
     if (userId) update.userId = userId;
     await db.update(pushSubscriptionsTable).set(update)
       .where(eq(pushSubscriptionsTable.endpoint, endpoint));
-    console.log(`[push] Subscription refreshed for userId=${existing[0].userId} (endpoint matched)`);
+    console.log(`[push] Subscription refreshed for userId=${userId ?? existing[0].userId} (endpoint matched)`);
     res.json({ message: "Assinatura atualizada" }); return;
   }
 
@@ -117,8 +117,13 @@ router.post("/test", authenticate, async (req: AuthRequest, res) => {
 // DELETE unsubscribe — requires auth
 router.delete("/subscribe", authenticate, async (req: AuthRequest, res) => {
   if (!req.user) { res.status(401).json({ error: "Não autenticado" }); return; }
-  const { endpoint } = req.body;
-  if (!endpoint) { res.status(400).json({ error: "endpoint obrigatório" }); return; }
+  const { endpoint, all } = req.body || {};
+  if (all || !endpoint) {
+    await db.delete(pushSubscriptionsTable)
+      .where(eq(pushSubscriptionsTable.userId, req.user.id));
+    res.json({ message: "Assinaturas removidas" });
+    return;
+  }
   await db.delete(pushSubscriptionsTable)
     .where(and(
       eq(pushSubscriptionsTable.userId, req.user.id),
