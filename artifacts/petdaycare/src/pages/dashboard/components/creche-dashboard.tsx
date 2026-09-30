@@ -18,6 +18,7 @@ import {
   CheckSquare,
   Users,
 } from "lucide-react";
+import { CrecheOnboardingCard } from "@/components/onboarding/creche-onboarding-card";
 import {
   useGetCrecheStats,
   useListPets,
@@ -104,6 +105,9 @@ export function CrecheDashboard({ crecheId, user }: { crecheId: number; user: an
           </Button>
         </Link>
       </div>
+
+      {/* ── Creche Admin Onboarding Checklist ── */}
+      <CrecheOnboardingCard crecheId={crecheId} userRole={user?.role} />
 
       {/* ── Financial Attention Alert ── */}
       {awaitingCount > 0 && (

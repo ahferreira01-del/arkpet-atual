@@ -420,7 +420,93 @@ router.get("/:crecheId/stats", async (req: AuthRequest, res) => {
     pendingTasks: pendingTasks?.count || 0,
     completedTasks: completedTasks?.count || 0,
     petsCheckedIn: checkedInPets?.count || 0,
-    totalPets: totalPets?.count || 0,
+  });
+});
+
+router.get("/:crecheId/onboarding", async (req: AuthRequest, res) => {
+  const id = parseInt(String(req.params.crecheId));
+  if ((req.user?.crecheId !== id || req.user?.role !== "creche_admin") && req.user?.role !== "master_admin") {
+    res.status(403).json({ error: "Sem permissão" });
+    return;
+  }
+  const [creche] = await db.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
+  if (!creche) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const [staffMembersCount] = await db
+    .select({ count: count() })
+    .from(usersTable)
+    .where(and(eq(usersTable.crecheId, id), sql`role IN ('creche_admin', 'staff')`));
+
+  const [tutorsCount] = await db
+    .select({ count: count() })
+    .from(usersTable)
+    .where(and(eq(usersTable.crecheId, id), eq(usersTable.role, "tutor")));
+
+  const [petsCount] = await db
+    .select({ count: count() })
+    .from(petsTable)
+    .where(eq(petsTable.crecheId, id));
+
+  const [bookingsCount] = await db
+    .select({ count: count() })
+    .from(bookingsTable)
+    .where(eq(bookingsTable.crecheId, id));
+
+  const steps = [
+    {
+      id: "creche_details",
+      title: "Completar dados da creche",
+      description: "Informe telefone e endereço da creche",
+      completed: Boolean(creche.phone && creche.address),
+      route: "/settings",
+      actionLabel: "Configurar",
+    },
+    {
+      id: "staff",
+      title: "Cadastrar equipe",
+      description: "Convide ou adicione membros da equipe",
+      completed: (staffMembersCount?.count || 0) > 1,
+      route: "/staff/manage",
+      actionLabel: "Equipe",
+    },
+    {
+      id: "tutors",
+      title: "Cadastrar tutor",
+      description: "Cadastre seu primeiro tutor",
+      completed: (tutorsCount?.count || 0) > 0,
+      route: "/tutors",
+      actionLabel: "Tutores",
+    },
+    {
+      id: "pets",
+      title: "Cadastrar primeiro pet",
+      description: "Cadastre um pet vinculado a um tutor",
+      completed: (petsCount?.count || 0) > 0,
+      route: "/pets",
+      actionLabel: "Pets",
+    },
+    {
+      id: "bookings",
+      title: "Conhecer reservas",
+      description: "Crie sua primeira reserva ou veja a agenda",
+      completed: (bookingsCount?.count || 0) > 0,
+      route: "/bookings",
+      actionLabel: "Reservas",
+    },
+  ];
+
+  const completedCount = steps.filter((s) => s.completed).length;
+  const isComplete = completedCount === steps.length;
+
+  res.json({
+    crecheId: id,
+    isComplete,
+    completedCount,
+    totalSteps: steps.length,
+    steps,
   });
 });
 

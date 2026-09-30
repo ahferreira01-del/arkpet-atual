@@ -1,7 +1,7 @@
 import React from "react";
 import { useLocation } from "wouter";
 import { UserProfile } from "@workspace/api-client-react";
-import { Sun, Moon, LogOut, ChevronDown, User, Download } from "lucide-react";
+import { Sun, Moon, LogOut, ChevronDown, User, Download, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
 import { usePWA } from "@/hooks/use-pwa";
@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { NAVIGATION_CONFIG } from "@/config/navigation-config";
+import { GlobalSearchModal } from "@/components/search/global-search-modal";
 
 interface HeaderProps {
   user: UserProfile;
@@ -48,41 +49,83 @@ export function Header({ user }: HeaderProps) {
     .toUpperCase();
 
   const roleLabel = ROLE_LABELS[user?.role] || user?.role || "Usuário";
+  const [isSearchOpen, setIsSearchOpen] = React.useState(false);
+
+  // Global Ctrl+K / Cmd+K shortcut
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   return (
-    <header className="h-14 sm:h-16 bg-background/95 backdrop-blur-md border-b border-border z-20 flex items-center justify-between px-4 sm:px-6 sticky top-0 shrink-0">
-      {/* ── Left Context ── */}
-      <div className="flex items-center gap-3 min-w-0">
-        {/* Mobile brand (hidden on desktop where sidebar is visible) */}
-        <div className="flex md:hidden items-center gap-2.5 min-w-0">
-          <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <img
-              src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
-              alt="ArkPet"
-              className="h-5 w-5 object-contain"
-            />
+    <>
+      <header className="h-14 sm:h-16 bg-background/95 backdrop-blur-md border-b border-border z-20 flex items-center justify-between px-4 sm:px-6 sticky top-0 shrink-0">
+        {/* ── Left Context ── */}
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Mobile brand (hidden on desktop where sidebar is visible) */}
+          <div className="flex md:hidden items-center gap-2.5 min-w-0">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+              <img
+                src={`${import.meta.env.BASE_URL}icons/arkpet-logo.png`}
+                alt="ArkPet"
+                className="h-5 w-5 object-contain"
+              />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="font-display font-bold text-sm leading-none text-foreground tracking-tight truncate">
+                ArkPet
+              </span>
+              <span className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+                {pageTitle}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col min-w-0">
-            <span className="font-display font-bold text-sm leading-none text-foreground tracking-tight truncate">
-              ArkPet
-            </span>
-            <span className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
+
+          {/* Desktop breadcrumb / location title */}
+          <div className="hidden md:flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground tracking-tight">
               {pageTitle}
             </span>
           </div>
         </div>
 
-        {/* Desktop breadcrumb / location title */}
-        <div className="hidden md:flex items-center gap-2">
-          <span className="text-sm font-semibold text-foreground tracking-tight">
-            {pageTitle}
-          </span>
+        {/* ── Center: Search Trigger (Desktop) ── */}
+        <div className="hidden md:flex items-center flex-1 max-w-xs mx-4">
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl border border-border bg-card/60 hover:bg-secondary text-muted-foreground hover:text-foreground text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer"
+            aria-label="Buscar (Ctrl+K)"
+          >
+            <div className="flex items-center gap-2 min-w-0 truncate">
+              <Search className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Buscar pets, tutores, reservas...</span>
+            </div>
+            <kbd className="px-1.5 py-0.5 rounded bg-muted border border-border text-[10px] font-mono shrink-0">
+              Ctrl+K
+            </kbd>
+          </button>
         </div>
-      </div>
 
-      {/* ── Right Actions ── */}
-      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        {/* PWA Install Button (if available) */}
+        {/* ── Right Actions ── */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          {/* Mobile Search Button */}
+          <button
+            type="button"
+            onClick={() => setIsSearchOpen(true)}
+            aria-label="Abrir busca global"
+            className="flex md:hidden h-10 w-10 rounded-xl border border-border bg-card items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+
+          {/* PWA Install Button (if available) */}
         {canInstall && (
           <button
             type="button"
@@ -182,5 +225,7 @@ export function Header({ user }: HeaderProps) {
         </DropdownMenu>
       </div>
     </header>
+    <GlobalSearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+  </>
   );
 }
