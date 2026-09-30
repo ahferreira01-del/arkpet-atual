@@ -13,13 +13,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Send, MessageSquare, ArrowLeft, Dog, Search, ChevronUp, X, ChevronRight } from "lucide-react";
+import { Send, MessageSquare, ArrowLeft, Dog, Search, ChevronUp, X, ChevronRight, Paperclip, AlertCircle, RotateCcw, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { parseUTC } from "@/lib/date-utils";
+import { resolvePhotoUrl, uploadFileDirect } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,9 @@ interface OptimisticMessage {
   tutorId: number;
   petId?: number | null;
   petName?: string | null;
+  mediaUrl?: string | null;
   optimistic: true;
+  status: "sending" | "failed";
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -186,6 +189,7 @@ export default function Chat() {
     const dedupedOlder = olderMessages.filter((m) => !serverIds.has(m.id));
     const dedupeOpt = optimisticMessages.filter(
       (om) =>
+        om.status === "failed" ||
         !server.some(
           (sm) => sm.content === om.content && sm.senderId === om.senderId
         )
@@ -327,6 +331,7 @@ export default function Chat() {
     setOptimisticMessages((prev) =>
       prev.filter(
         (om) =>
+          om.status === "failed" ||
           !(serverMessages as any[]).some(
             (sm) => sm.content === om.content && sm.senderId === om.senderId
           )
@@ -363,6 +368,38 @@ export default function Chat() {
 
   const sendMutation = useSendMessage();
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Tipo de arquivo inválido",
+        description: "Selecione uma imagem (PNG, JPG, WebP).",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setFilePreview(objectUrl);
+  };
+
+  const handleClearFile = () => {
+    setSelectedFile(null);
+    if (filePreview) {
+      URL.revokeObjectURL(filePreview);
+      setFilePreview(null);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleSelectConversation = (tutorId: number) => {
     setSelectedTutorId(tutorId);
     setShowConversation(true);
@@ -382,6 +419,9 @@ export default function Chat() {
     const combined = [...olderMessages, ...(serverMessages ?? [])];
     const oldest = (combined as any[]).sort((a, b) => a.id - b.id)[0];
     if (!oldest) return;
+    const container = scrollContainerRef.current;
+    const prevScrollHeight = container ? container.scrollHeight : 0;
+    const prevScrollTop = container ? container.scrollTop : 0;
     setLoadingOlder(true);
     try {
       const older = await fetchMessages(crecheId, {
@@ -394,22 +434,87 @@ export default function Chat() {
         const existingIds = new Set(prev.map((m: any) => m.id));
         return [...older.filter((m) => !existingIds.has(m.id)), ...prev];
       });
+      requestAnimationFrame(() => {
+        if (container) {
+          const delta = container.scrollHeight - prevScrollHeight;
+          container.scrollTop = prevScrollTop + delta;
+        }
+      });
     } catch {
       toast({
         title: "Erro ao carregar mensagens",
         description: "Não foi possível carregar o histórico de mensagens.",
         variant: "destructive",
       });
+    } finally {
+      setLoadingOlder(false);
     }
-    setLoadingOlder(false);
   };
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleRetry = (msg: OptimisticMessage) => {
+    if (!crecheId) return;
+    setOptimisticMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, status: "sending" } : m))
+    );
+    sendMutation.mutate(
+      {
+        crecheId,
+        data: {
+          tutorId: msg.tutorId,
+          petId: msg.petId ?? null,
+          content: msg.content,
+          mediaUrl: msg.mediaUrl ?? undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({
+            predicate: (q) => String(q.queryKey[0]).includes("/chat"),
+          });
+          queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId ?? 0) });
+        },
+        onError: () => {
+          setOptimisticMessages((prev) =>
+            prev.map((m) => (m.id === msg.id ? { ...m, status: "failed" } : m))
+          );
+          toast({
+            title: "Erro ao reenviar",
+            description: "A mensagem ainda não pôde ser enviada. Verifique sua conexão.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!crecheId || !message.trim() || !selectedTutorId || !user) return;
+    if (!crecheId || (!message.trim() && !selectedFile) || !selectedTutorId || !user) return;
     const content = message.trim();
-    setMessage("");
+    const currentFile = selectedFile;
+    const currentPreview = filePreview;
     const taggedPet = selectedConv?.pets.find((p) => p.id === taggedPetId);
+
+    let uploadedMediaUrl: string | null = null;
+    if (currentFile) {
+      setIsUploadingFile(true);
+      try {
+        uploadedMediaUrl = await uploadFileDirect(currentFile, token || "");
+      } catch {
+        setIsUploadingFile(false);
+        toast({
+          title: "Erro no envio do anexo",
+          description: "Não foi possível carregar a imagem.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setIsUploadingFile(false);
+    }
+
+    setMessage("");
+    handleClearFile();
+
     const optimistic: OptimisticMessage = {
       id: `opt-${Date.now()}`,
       senderId: user.id,
@@ -419,11 +524,22 @@ export default function Chat() {
       tutorId: selectedTutorId,
       petId: taggedPetId ?? null,
       petName: taggedPet?.name ?? null,
+      mediaUrl: uploadedMediaUrl || currentPreview,
       optimistic: true,
+      status: "sending",
     };
     setOptimisticMessages((prev) => [...prev, optimistic]);
+
     sendMutation.mutate(
-      { crecheId, data: { tutorId: selectedTutorId, petId: taggedPetId ?? null, content } },
+      {
+        crecheId,
+        data: {
+          tutorId: selectedTutorId,
+          petId: taggedPetId ?? null,
+          content,
+          mediaUrl: uploadedMediaUrl ?? undefined,
+        },
+      },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({
@@ -432,8 +548,14 @@ export default function Chat() {
           queryClient.invalidateQueries({ queryKey: getListConversationsQueryKey(crecheId ?? 0) });
         },
         onError: () => {
-          setOptimisticMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-          setMessage(content);
+          setOptimisticMessages((prev) =>
+            prev.map((m) => (m.id === optimistic.id ? { ...m, status: "failed" } : m))
+          );
+          toast({
+            title: "Erro ao enviar mensagem",
+            description: "Não foi possível entregar a mensagem. Toque em 'Tentar novamente'.",
+            variant: "destructive",
+          });
         },
       }
     );
@@ -538,11 +660,39 @@ export default function Chat() {
                       isOwn
                         ? "bg-primary text-primary-foreground rounded-tr-sm"
                         : "bg-card text-card-foreground rounded-tl-sm border border-border"
-                    }`}
+                    } ${isOptimistic && msg.status === "failed" ? "border border-destructive ring-1 ring-destructive/40" : ""}`}
                   >
-                    {msg.content}
-                    {isOptimistic && (
-                      <span className="block mt-1.5 text-primary-foreground/70 text-[10px] font-bold uppercase tracking-wider">Enviando...</span>
+                    {msg.mediaUrl && (
+                      <div className="mb-2 overflow-hidden rounded-xl">
+                        <img
+                          src={resolvePhotoUrl(msg.mediaUrl) || msg.mediaUrl}
+                          alt="Anexo"
+                          className="max-h-60 w-full object-cover rounded-xl"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
+                    {msg.content ? <div>{msg.content}</div> : null}
+                    {isOptimistic && msg.status === "sending" && (
+                      <span className="block mt-1.5 text-primary-foreground/70 text-[10px] font-bold uppercase tracking-wider">
+                        Enviando...
+                      </span>
+                    )}
+                    {isOptimistic && msg.status === "failed" && (
+                      <div className="mt-2 pt-1.5 border-t border-destructive/20 flex items-center justify-between gap-3 text-destructive text-[11px] font-medium">
+                        <span className="flex items-center gap-1">
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          Falha ao enviar
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRetry(msg)}
+                          className="inline-flex items-center gap-1 font-bold underline hover:opacity-80 active:scale-95 transition-transform"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Tentar novamente
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -564,6 +714,24 @@ export default function Chat() {
 
       {/* Input */}
       <div className="p-3 md:p-4 border-t border-border flex-shrink-0 bg-card shadow-sm relative z-10">
+        {selectedFile && (
+          <div className="flex items-center gap-2 mb-2 p-1.5 bg-secondary/80 rounded-xl border border-border inline-flex">
+            {filePreview && (
+              <img src={filePreview} alt="Preview" className="h-8 w-8 rounded-lg object-cover" />
+            )}
+            <span className="text-xs truncate max-w-[150px] font-medium text-foreground">
+              {selectedFile.name}
+            </span>
+            <button
+              type="button"
+              onClick={handleClearFile}
+              className="p-1 hover:bg-background rounded-full text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+
         {taggedPetId && selectedConv && (
           <div className="flex items-center gap-2 mb-3">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full bg-primary text-primary-foreground">
@@ -581,6 +749,27 @@ export default function Chat() {
         )}
 
         <form onSubmit={handleSend} className="flex gap-2 items-end">
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploadingFile}
+            className={`h-[44px] px-3.5 rounded-2xl transition-colors flex items-center justify-center gap-2 text-[13px] font-medium flex-shrink-0 min-w-[44px] ${
+              selectedFile
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80"
+            }`}
+            title="Anexar imagem"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+
           {(selectedConv?.pets.length ?? 0) > 0 && (
             <div className="relative" ref={petPickerRef}>
               <button
@@ -632,10 +821,14 @@ export default function Chat() {
           </div>
           <Button
             type="submit"
-            disabled={!message.trim()}
+            disabled={(!message.trim() && !selectedFile) || isUploadingFile || sendMutation.isPending}
             className="h-[44px] w-[44px] p-0 flex items-center justify-center flex-shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl shadow-none transition-transform active:scale-95"
           >
-            <Send className="h-5 w-5 ml-0.5" />
+            {isUploadingFile ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5 ml-0.5" />
+            )}
           </Button>
         </form>
       </div>

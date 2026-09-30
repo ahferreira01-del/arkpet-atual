@@ -12,7 +12,10 @@ const sendMessageSchema = z.object({
   tutorId: z.number({ required_error: "tutorId é obrigatório" }).int().positive("tutorId inválido"),
   content: z.string().optional().nullable(),
   petId: z.number().int().positive("petId inválido").optional().nullable(),
-  mediaUrl: z.string().url("mediaUrl inválido").optional().nullable(),
+  mediaUrl: z.string().refine(
+    (v) => v.startsWith("/objects/") || v.startsWith("/api/") || z.string().url().safeParse(v).success,
+    { message: "mediaUrl inválido" }
+  ).optional().nullable(),
 }).refine(
   (d) => (d.content && d.content.trim().length > 0) || d.mediaUrl,
   { message: "content ou mediaUrl é obrigatório" }
