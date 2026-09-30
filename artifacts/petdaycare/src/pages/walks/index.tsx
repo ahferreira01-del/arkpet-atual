@@ -96,6 +96,7 @@ function ActiveWalkCard({ walk, onEnd, isEnding }: { walk: any, onEnd: (id: numb
         <Button
           onClick={() => onEnd(walk.id)}
           isLoading={isEnding}
+          disabled={isEnding}
           variant="outline"
           className="w-full sm:w-auto min-h-[44px] relative z-10 shadow-sm hover:bg-primary/5 hover:text-primary hover:border-primary/30"
         >
@@ -154,6 +155,8 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
   const activeWalks = walks?.filter((w) => w.status === "in_progress") || [];
   const completedWalks = walks?.filter((w) => w.status === "completed") || [];
   const checkedInPets = pets?.filter((p) => p.isCheckedIn) || [];
+  const activeWalkingPetIds = new Set(activeWalks.map((w: any) => w.petId));
+  const availablePets = checkedInPets.filter((p: any) => !activeWalkingPetIds.has(p.id));
 
   const handleStart = (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,13 +264,13 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
         <form onSubmit={handleStart} className="space-y-4">
           <div className="space-y-2">
             <label className="text-sm font-medium">Selecione o Pet</label>
-            {checkedInPets.length > 0 ? (
+            {availablePets.length > 0 ? (
               <select
                 value={selectedPetId}
                 onChange={(e) => {
                   const id = Number(e.target.value);
                   setSelectedPetId(id);
-                  const pet = checkedInPets.find(p => p.id === id);
+                  const pet = availablePets.find(p => p.id === id);
                   if (pet?.walkSchedule && Array.isArray(pet.walkSchedule) && pet.walkSchedule.length > 0) {
                     const plannedDuration = pet.walkSchedule[0]?.durationMinutes;
                     if (plannedDuration) setDuration(Number(plannedDuration));
@@ -277,10 +280,14 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
                 className="flex h-12 w-full rounded-xl border border-border bg-background px-3 py-2 text-base text-foreground focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
               >
                 <option value={0} disabled>Escolha um pet com check-in...</option>
-                {checkedInPets.map((p) => (
+                {availablePets.map((p) => (
                   <option key={p.id} value={p.id}>{p.name} ({p.breed || p.species})</option>
                 ))}
               </select>
+            ) : checkedInPets.length > 0 ? (
+              <div className="p-4 rounded-xl bg-info/10 border border-info/20 text-sm text-info font-medium">
+                Todos os pets presentes já estão em passeio no momento.
+              </div>
             ) : (
               <div className="p-4 rounded-xl bg-warning/10 border border-warning/20 text-sm text-warning font-medium">
                 Nenhum pet fez check-in. Realize o check-in de um pet antes de iniciar o passeio.
@@ -300,7 +307,7 @@ export default function Walks({ hideHeader }: { hideHeader?: boolean }) {
           </div>
           <div className="modal-sticky-footer flex justify-end gap-3 pt-2">
             <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)} className="min-h-[44px]">Cancelar</Button>
-            <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId} className="min-h-[44px]">
+            <Button type="submit" isLoading={startMutation.isPending} disabled={!selectedPetId || startMutation.isPending} className="min-h-[44px]">
               <Play className="mr-2 h-4 w-4" /> Iniciar Passeio
             </Button>
           </div>

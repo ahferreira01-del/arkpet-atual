@@ -76,6 +76,7 @@ function TaskCompleteModal({
   const [selectedType, setSelectedType] = useState(defaultType);
   const [preview, setPreview] = useState<string | null>(null);
   const [compressing, setCompressing] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const mediaDataRef = useRef<string | null>(null);
   const mediaTypeRef = useRef<"photo" | "video" | null>(null);
@@ -132,8 +133,10 @@ function TaskCompleteModal({
   }, [toast]);
 
   const completeOnly = () => {
+    const fd = formRef.current ? new FormData(formRef.current) : null;
+    const content = (fd?.get("content") as string) || null;
     completeTaskMutation.mutate(
-      { crecheId, taskId: task.id, data: {} },
+      { crecheId, taskId: task.id, data: { notes: content || undefined } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
@@ -153,7 +156,7 @@ function TaskCompleteModal({
     const content = (fd.get("content") as string) || null;
 
     completeTaskMutation.mutate(
-      { crecheId, taskId: task.id, data: {} },
+      { crecheId, taskId: task.id, data: { notes: content || undefined } },
       {
         onSuccess: () => {
           addEventMutation.mutate(
@@ -177,14 +180,14 @@ function TaskCompleteModal({
               },
               onError: () => {
                 queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
-                toast({ title: "Tarefa concluída", description: "Mas houve um erro ao publicar na linha do tempo.", variant: "destructive" });
+                toast({ title: "Tarefa concluída", description: "Houve um erro ao publicar na linha do tempo.", variant: "destructive" });
                 onClose();
               },
             }
           );
         },
         onError: () => {
-          toast({ title: "Erro", description: "Não foi possível concluir a tarefa.", variant: "destructive" });
+          toast({ title: "Erro", description: "Não foi possível concluir a tarefa. Tente novamente.", variant: "destructive" });
         },
       }
     );
@@ -199,7 +202,7 @@ function TaskCompleteModal({
       title={`Concluir: ${task.title}`}
       description={task.petName ? `Publicar atualização na linha do tempo de ${task.petName}` : ""}
     >
-      <form onSubmit={handlePublishAndComplete} className="space-y-4 mt-4">
+      <form ref={formRef} onSubmit={handlePublishAndComplete} className="space-y-4 mt-4">
         {/* Task info banner */}
         <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20">
           <span className="text-2xl">{eventTypes.find(e => e.value === defaultType)?.emoji || "📋"}</span>
@@ -526,6 +529,7 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
   });
   const [taskToComplete, setTaskToComplete] = useState<any | null>(null);
   const [showPublishModal, setShowPublishModal] = useState(false);
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!highlightTaskId) return;
@@ -588,12 +592,18 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
     if (task.petId) {
       setTaskToComplete(task);
     } else {
+      setCompletingTaskId(task.id);
       completeTaskMutation.mutate(
         { crecheId, taskId: task.id, data: {} },
         {
           onSuccess: () => {
+            setCompletingTaskId(null);
             queryClient.invalidateQueries({ queryKey: getListTasksQueryKey(crecheId) });
             toast({ title: "Tarefa concluída!", description: task.title });
+          },
+          onError: () => {
+            setCompletingTaskId(null);
+            toast({ title: "Erro", description: "Não foi possível concluir a tarefa.", variant: "destructive" });
           },
         }
       );
@@ -738,7 +748,8 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                           <Button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleConcluir(task); }}
                             size="default"
-                            isLoading={completeTaskMutation.isPending && !taskToComplete}
+                            isLoading={completingTaskId === task.id || (completeTaskMutation.isPending && !taskToComplete && completingTaskId === task.id)}
+                            disabled={completingTaskId !== null}
                             className="min-h-[44px] w-full sm:w-auto text-base sm:text-sm shadow-sm"
                           >
                             Concluir
@@ -775,8 +786,14 @@ export default function Staff({ hideHeader }: { hideHeader?: boolean }) {
                     {task.title}
                   </p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
-                    Concluída às {task.completedAt ? format(new Date(task.completedAt), "HH:mm") : "horário desconhecido"} · {taskTypeLabel[task.type] || task.type}
+                    Concluída às {task.completedAt ? format(new Date(task.completedAt), "HH:mm") : "horário desconhecido"}
+                    {task.completedBy ? ` por ${task.completedBy}` : ""} · {taskTypeLabel[task.type] || task.type}
                   </p>
+                  {task.notes && (
+                    <p className="text-xs text-muted-foreground mt-1 bg-muted/30 rounded px-2 py-1 italic">
+                      Nota: {task.notes}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

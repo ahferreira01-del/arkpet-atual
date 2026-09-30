@@ -132,6 +132,7 @@ export function QuickCheckIn() {
                     className="flex-shrink-0 gap-1 text-success border-success/30 hover:bg-success/10 px-2 min-h-8"
                     onClick={() => handleCheckIn(pet)}
                     disabled={checkInMutation.isPending}
+                    isLoading={checkInMutation.isPending && (checkInMutation.variables as any)?.bookingId === pet.activeBookingId}
                   >
                     <LogIn className="h-3 w-3" />
                     <span>Entrar</span>
