@@ -87,8 +87,24 @@ router.get("/", async (req: AuthRequest, res) => {
 
 router.post("/", requireActiveSubscription, async (req: AuthRequest, res) => {
   try {
-    const crecheId = parseInt(String(req.params.crecheId));
+    const crecheId = parseInt(String(req.params.crecheId), 10);
+    if (isNaN(crecheId) || crecheId <= 0) {
+      res.status(400).json({ error: "ID de creche inválido." });
+      return;
+    }
     const { tutorId, name, species, breed, birthDate, gender, weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule, status } = req.body;
+
+    // Tutors can only register pets for themselves
+    let effectiveTutorId: number;
+    if (req.user?.role === "tutor") {
+      effectiveTutorId = req.user.id;
+    } else {
+      effectiveTutorId = parseInt(String(tutorId), 10);
+      if (isNaN(effectiveTutorId) || effectiveTutorId <= 0) {
+        res.status(400).json({ error: "tutorId válido é obrigatório." });
+        return;
+      }
+    }
 
     const result = await db.transaction(async (tx) => {
       await acquireTenantOperationalLock(crecheId, tx);
@@ -107,13 +123,13 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res) => {
       }
 
       const [pet] = await tx.insert(petsTable).values({
-        crecheId, tutorId, name, species, breed, birthDate, gender: gender || "unknown",
+        crecheId, tutorId: effectiveTutorId, name, species, breed, birthDate, gender: gender || "unknown",
         weight, color, temperament, allergies, specialNeeds, photoUrl, feedingSchedule, walkSchedule,
         status: targetStatus,
       }).returning();
 
-      const [tutor] = tutorId
-        ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, tutorId)).limit(1)
+      const [tutor] = effectiveTutorId
+        ? await tx.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, effectiveTutorId)).limit(1)
         : [{ name: null }];
 
       return { ...pet, tutorName: tutor?.name ?? null };
@@ -187,8 +203,12 @@ async function verifyPetAccess(crecheId: number, petId: number, user: AuthReques
 }
 
 router.get("/:petId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const petId = parseInt(String(req.params.petId));
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const petId = parseInt(String(req.params.petId), 10);
+  if (isNaN(crecheId) || crecheId <= 0 || isNaN(petId) || petId <= 0) {
+    res.status(400).json({ error: "Identificador inválido." });
+    return;
+  }
 
   const conditions = [eq(petsTable.crecheId, crecheId), eq(petsTable.id, petId)];
   if (req.user?.role === "tutor") {
@@ -230,8 +250,12 @@ router.get("/:petId", async (req: AuthRequest, res) => {
 
 router.put("/:petId", async (req: AuthRequest, res) => {
   try {
-    const crecheId = parseInt(String(req.params.crecheId));
-    const petId = parseInt(String(req.params.petId));
+    const crecheId = parseInt(String(req.params.crecheId), 10);
+    const petId = parseInt(String(req.params.petId), 10);
+    if (isNaN(crecheId) || crecheId <= 0 || isNaN(petId) || petId <= 0) {
+      res.status(400).json({ error: "Identificador inválido." });
+      return;
+    }
 
     const result = await db.transaction(async (tx) => {
       await acquireTenantOperationalLock(crecheId, tx);

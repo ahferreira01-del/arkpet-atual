@@ -577,8 +577,12 @@ router.post("/", requireActiveSubscription, async (req: AuthRequest, res, next) 
 });
 
 router.get("/:bookingId", async (req: AuthRequest, res) => {
-  const crecheId = parseInt(String(req.params.crecheId));
-  const bookingId = parseInt(String(req.params.bookingId));
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const bookingId = parseInt(String(req.params.bookingId), 10);
+  if (isNaN(crecheId) || crecheId <= 0 || isNaN(bookingId) || bookingId <= 0) {
+    res.status(400).json({ error: "Identificador inválido." });
+    return;
+  }
   const [booking] = await db
     .select()
     .from(bookingsTable)
@@ -590,6 +594,10 @@ router.get("/:bookingId", async (req: AuthRequest, res) => {
     )
     .limit(1);
   if (!booking) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (req.user?.role === "tutor" && booking.tutorId !== req.user.id) {
     res.status(404).json({ error: "Not found" });
     return;
   }
@@ -606,8 +614,12 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const bookingId = parseInt(String(req.params.bookingId));
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const bookingId = parseInt(String(req.params.bookingId), 10);
+  if (isNaN(crecheId) || crecheId <= 0 || isNaN(bookingId) || bookingId <= 0) {
+    res.status(400).json({ error: "Identificador inválido." });
+    return;
+  }
   const { status, notes, price } = req.body;
   const updates: Record<string, unknown> = {};
 
@@ -631,6 +643,17 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
       if (!bookingIdentity) {
         throw clientError("Reserva não encontrada.", 404);
       }
+
+      // Check tutor ownership and unauthorized price modification
+      if (req.user!.role === "tutor") {
+        if (bookingIdentity.tutorId !== req.user!.id) {
+          throw clientError("Reserva não encontrada.", 404);
+        }
+        if (price !== undefined) {
+          throw clientError("Tutores não têm permissão para alterar o preço de reservas.", 403);
+        }
+      }
+
       // R37.C2B / R37.C2C1 Canonical Lock Order:
       // Campaign Tutor Lock MUST strictly precede Financial Tutor Lock to eliminate any deadlock inversion.
       await CrecheCampaignReservationService.acquireTutorCampaignLock(
@@ -676,7 +699,7 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         updates.status = status;
       }
       if (notes !== undefined) updates.notes = notes;
-      if (price !== undefined) updates.price = price;
+      if (price !== undefined && req.user!.role !== "tutor") updates.price = price;
 
       // Handle acceptance logic (Deduction of credits)
       if (status === "confirmed" && existing.status === "pending") {
@@ -1210,13 +1233,17 @@ router.post("/:bookingId/on-the-way", async (req: AuthRequest, res) => {
   res.json(enriched);
 });
 
-router.post("/:bookingId/confirm-arrival", async (req: AuthRequest, res) => {
+router.post("/:bookingId/confirm-arrival", requireRole("staff", "creche_admin", "master_admin"), async (req: AuthRequest, res) => {
   if (!req.user) {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const bookingId = parseInt(String(req.params.bookingId));
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const bookingId = parseInt(String(req.params.bookingId), 10);
+  if (isNaN(crecheId) || crecheId <= 0 || isNaN(bookingId) || bookingId <= 0) {
+    res.status(400).json({ error: "Identificador inválido." });
+    return;
+  }
 
   const [booking] = await db
     .select()
@@ -1252,8 +1279,12 @@ router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
     res.status(401).json({ error: "Não autenticado" });
     return;
   }
-  const crecheId = parseInt(String(req.params.crecheId));
-  const bookingId = parseInt(String(req.params.bookingId));
+  const crecheId = parseInt(String(req.params.crecheId), 10);
+  const bookingId = parseInt(String(req.params.bookingId), 10);
+  if (isNaN(crecheId) || crecheId <= 0 || isNaN(bookingId) || bookingId <= 0) {
+    res.status(400).json({ error: "Identificador inválido." });
+    return;
+  }
   const { hasItems, photoUrl } = req.body;
 
   if (typeof hasItems !== "boolean") {
@@ -1262,6 +1293,27 @@ router.post("/:bookingId/personal-items", async (req: AuthRequest, res) => {
   }
   if (hasItems && !photoUrl) {
     res.status(400).json({ error: "photoUrl é obrigatório quando há itens" });
+    return;
+  }
+
+  const [existingBooking] = await db
+    .select({ id: bookingsTable.id, tutorId: bookingsTable.tutorId, petId: bookingsTable.petId })
+    .from(bookingsTable)
+    .where(
+      and(
+        eq(bookingsTable.crecheId, crecheId),
+        eq(bookingsTable.id, bookingId),
+      ),
+    )
+    .limit(1);
+
+  if (!existingBooking) {
+    res.status(404).json({ error: "Reserva não encontrada" });
+    return;
+  }
+
+  if (req.user.role === "tutor" && existingBooking.tutorId !== req.user.id) {
+    res.status(404).json({ error: "Reserva não encontrada" });
     return;
   }
 

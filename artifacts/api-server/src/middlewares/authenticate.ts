@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../lib/auth.js";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
+import { usersTable, crechesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
+import { logger } from "../lib/logger.js";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -40,11 +41,35 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     res.status(401).json({ error: "Sessão expirada. Entre novamente." });
     return;
   }
+  // Block access if user belongs to an archived tenant (non-master)
+  if (user.crecheId != null && user.role !== "master_admin") {
+    const [creche] = await db
+      .select({ status: crechesTable.status })
+      .from(crechesTable)
+      .where(eq(crechesTable.id, user.crecheId))
+      .limit(1);
+
+    if (creche && creche.status === "archived") {
+      logger.warn("authorization_denied", {
+        requestId: (req as any).id,
+        userId: user.id,
+        role: user.role,
+        crecheId: user.crecheId,
+        reason: "tenant_archived",
+        path: req.path,
+        method: req.method,
+      });
+      res.status(403).json({
+        error: "tenant_archived",
+        code: "tenant_archived",
+        message: "Esta creche foi arquivada. Acesso bloqueado.",
+      });
+      return;
+    }
+  }
   req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
   next();
 }
-
-import { logger } from "../lib/logger.js";
 
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
