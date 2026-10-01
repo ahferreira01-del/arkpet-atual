@@ -30,6 +30,7 @@ import {
   resolveStorageEnforcementMode,
   EntitlementsError,
 } from "../services/entitlementsService.js";
+import { logger } from "../lib/logger.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -218,8 +219,18 @@ router.post("/storage/uploads/direct", authenticate, validateUpload, raw({ type:
       });
       return;
     }
-    console.error("Error uploading file directly", err);
-    res.status(500).json({ error: "Failed to upload file", message: err.message });
+    const requestId = (req as any).id || (req.headers["x-request-id"] as string) || undefined;
+    logger.error("storage_upload_error", err, {
+      requestId,
+      userId: req.user?.id,
+      crecheId,
+      errorCode: err?.code || "INTERNAL_ERROR",
+    });
+    res.status(500).json({
+      error: "Falha ao enviar arquivo",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -252,8 +263,16 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
       res.end();
     }
   } catch (error) {
-    console.error("Error serving public object", error);
-    res.status(500).json({ error: "Failed to serve public object" });
+    const requestId = (req as any).id || (req.headers["x-request-id"] as string) || undefined;
+    logger.error("storage_serve_public_error", error, {
+      requestId,
+      errorCode: (error as any)?.code || "INTERNAL_ERROR",
+    });
+    res.status(500).json({
+      error: "Falha ao servir arquivo público",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -379,8 +398,18 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
       res.status(404).json({ error: "Object not found" });
       return;
     }
-    console.error("Error serving object", error);
-    res.status(500).json({ error: "Failed to serve object" });
+    const requestId = (req as any).id || (req.headers["x-request-id"] as string) || undefined;
+    logger.error("storage_serve_error", error, {
+      requestId,
+      userId: req.user?.id,
+      crecheId: req.user?.crecheId,
+      errorCode: (error as any)?.code || "INTERNAL_ERROR",
+    });
+    res.status(500).json({
+      error: "Falha ao servir arquivo",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -437,7 +466,13 @@ router.delete("/storage/objects/*path", authenticate, async (req: AuthRequest, r
         await objectStorageService.deleteObject(objectFile);
       } catch (err: any) {
         if (!(err instanceof ObjectNotFoundError)) {
-          console.error("Physical storage delete error (ignoring for idempotency):", err);
+          const requestId = (req as any).id || (req.headers["x-request-id"] as string) || undefined;
+          logger.warn("storage_physical_delete_warning", {
+            requestId,
+            crecheId: pathCrecheId,
+            errorCode: err?.code || "PHYSICAL_DELETE_FAILED",
+            messageSafe: "Physical storage delete failed, proceeding for idempotency",
+          });
         }
       }
 
@@ -462,8 +497,18 @@ router.delete("/storage/objects/*path", authenticate, async (req: AuthRequest, r
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
       return;
     }
-    console.error("Error deleting storage object", err);
-    res.status(500).json({ error: "Failed to delete file", message: err.message });
+    const requestId = (req as any).id || (req.headers["x-request-id"] as string) || undefined;
+    logger.error("storage_delete_error", err, {
+      requestId,
+      userId: req.user?.id,
+      crecheId: pathCrecheId,
+      errorCode: err?.code || "INTERNAL_ERROR",
+    });
+    res.status(500).json({
+      error: "Falha ao excluir arquivo",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 

@@ -65,6 +65,7 @@ const { mockState } = vi.hoisted(() => ({
     ] as any[],
     throwOnUsersMutation: null as Error | null,
     throwOnSearchQuery: null as Error | null,
+    throwOnStorageUpload: null as Error | null,
   },
 }));
 
@@ -230,6 +231,28 @@ vi.mock("../services/tenantLifecycleLock.js", () => ({
 vi.mock("../services/entitlementsService.js", () => ({
   checkQuota: vi.fn(async () => ({ allowed: true, limit: 100, used: 1 })),
   checkCreationQuota: vi.fn(async () => ({ allowed: true, limit: 100, used: 1 })),
+  createStorageReservation: vi.fn(async () => ({ file: { id: 1 } })),
+  confirmStorageReservation: vi.fn(async () => {}),
+  claimStorageFileForDeletion: vi.fn(async () => {}),
+  finalizeStorageFileDeletion: vi.fn(async () => {}),
+  resolveStorageEnforcementMode: vi.fn(() => "SHADOW"),
+  EntitlementsError: class extends Error {},
+}));
+
+vi.mock("../lib/objectStorage.js", () => ({
+  ObjectStorageService: class {
+    uploadBuffer = vi.fn(async (...args: any[]) => {
+      if (mockState.throwOnStorageUpload) {
+        throw mockState.throwOnStorageUpload;
+      }
+      return "/api/storage/uploads/c1/test.png";
+    });
+    downloadObject = vi.fn();
+    deleteObject = vi.fn();
+    getObjectEntityFile = vi.fn();
+    searchPublicObject = vi.fn();
+  },
+  ObjectNotFoundError: class extends Error {},
 }));
 
 vi.mock("../repositories/booking-services.repository.js", () => ({
@@ -274,6 +297,8 @@ import usersRouter from "../routes/users.js";
 import authRouter from "../routes/auth.js";
 import billingRouter from "../routes/billing.js";
 import searchRouter from "../routes/search.js";
+import storageRouter from "../routes/storage.js";
+import { setLogWriter, resetLogWriter } from "../lib/logger.js";
 import { authenticate, requireRole, isSuspendedTenantRecoveryPath } from "../middlewares/authenticate.js";
 import { isAllowedOrigin } from "../app.js";
 import {
@@ -312,6 +337,7 @@ function createTestApp() {
   app.use("/api/users", usersRouter);
   app.use("/api/billing", billingRouter);
   app.use("/api/search", searchRouter);
+  app.use("/api", storageRouter);
 
   // Protected route specifically verifying prefix boundary check with production authenticate
   app.get("/api/billing-attacker", authenticate, (_req: Request, res: Response) => {
@@ -372,6 +398,7 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
     ];
     mockState.throwOnUsersMutation = null;
     mockState.throwOnSearchQuery = null;
+    mockState.throwOnStorageUpload = null;
     app = createTestApp();
   });
 
@@ -830,6 +857,59 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
 
     const rawResponse = JSON.stringify(res.body);
     expect(rawResponse).not.toContain("sk_live_secret_key_99999");
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // STORAGE ERROR SECRET LEAK TEST (R40.G-FINAL.3 A5)
+  // ────────────────────────────────────────────────────────────
+  it("STORAGE_ERROR_SECRET_LEAK_TEST: unexpected storage upload error returns generic 500 without leaking secrets, paths, or provider tokens", async () => {
+    const adminToken = generateToken(5, "creche_admin");
+    const syntheticSecret = "super_secret_provider_token_xyz987";
+    const syntheticDbUri = "postgresql://admin:super_secret_db_pass@db.internal:5432/arkpet";
+    const syntheticFsPath = "/var/run/secrets/cloud/storage_key.pem";
+
+    mockState.throwOnStorageUpload = new Error(
+      `Fatal upload crash: failed connecting to ${syntheticDbUri} with token ${syntheticSecret} at path ${syntheticFsPath}`
+    );
+
+    const loggedRecords: any[] = [];
+    setLogWriter((line, _level) => {
+      try {
+        loggedRecords.push(JSON.parse(line));
+      } catch {}
+    });
+
+    try {
+      const bodyBuffer = Buffer.from("sample-binary-image-data");
+      const res = await request(app)
+        .post("/api/storage/uploads/direct")
+        .set("Authorization", `Bearer ${adminToken}`)
+        .set("Content-Type", "image/png")
+        .set("Content-Length", String(bodyBuffer.length))
+        .set("X-Request-Id", "req-sec-storage-leak-01")
+        .send(bodyBuffer);
+
+      expect(res.status).toBe(500);
+      expect(res.body.code).toBe("INTERNAL_ERROR");
+      expect(res.body.error).toBe("Falha ao enviar arquivo");
+      expect(res.body.requestId).toBe("req-sec-storage-leak-01");
+      expect(res.body.message).toBeUndefined();
+
+      const rawResponse = JSON.stringify(res.body);
+      expect(rawResponse).not.toContain(syntheticSecret);
+      expect(rawResponse).not.toContain("super_secret_db_pass");
+      expect(rawResponse).not.toContain("db.internal");
+      expect(rawResponse).not.toContain("/var/run/secrets");
+
+      // Verify structured logger captured safe event with requestId and errorCode
+      const storageLog = loggedRecords.find((r) => r.event === "storage_upload_error");
+      expect(storageLog).toBeDefined();
+      expect(storageLog.requestId).toBe("req-sec-storage-leak-01");
+      expect(storageLog.errorCode).toBe("INTERNAL_ERROR");
+    } finally {
+      resetLogWriter();
+      mockState.throwOnStorageUpload = null;
+    }
   });
 
   // ────────────────────────────────────────────────────────────
