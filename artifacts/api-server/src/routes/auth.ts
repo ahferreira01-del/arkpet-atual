@@ -268,7 +268,16 @@ router.post("/forgot-password", sensitiveLimiter, async (req, res) => {
         await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
         const resetLink = `${getAppBaseUrl()}/redefinir-senha?token=${token}`;
         sendPasswordResetEmail({ name: user.name, email: user.email, resetLink })
-          .catch((err) => logger.warn("password_reset_email_failed", { userId: user.id, error: String(err) }));
+          .catch((err) =>
+            logger.warn("password_reset_email_failed", {
+              requestId: (req as any).id,
+              userId: user.id,
+              errorCode:
+                typeof (err as any)?.code === "string"
+                  ? (err as any).code
+                  : "EMAIL_DELIVERY_FAILED",
+            })
+          );
         logger.info("password_reset_requested", {
           requestId: (req as any).id,
           userId: user.id,
