@@ -23,6 +23,49 @@ export interface AssistantCitation {
   path: string;
 }
 
+export type CanonicalOnboardingStepId =
+  | "creche_details"
+  | "staff"
+  | "tutors"
+  | "pets"
+  | "bookings";
+
+export interface GuidedOnboardingStep {
+  id: CanonicalOnboardingStepId;
+  title: string;
+  description: string;
+  route: string;
+  actionLabel?: string;
+  target: string;
+  completed: boolean;
+}
+
+export interface GuidedOnboardingStatus {
+  crecheId: number;
+  isComplete: boolean;
+  completedCount: number;
+  totalSteps: number;
+  progressPercent: number;
+  completedSteps: CanonicalOnboardingStepId[];
+  pendingSteps: CanonicalOnboardingStepId[];
+  currentStep: GuidedOnboardingStep | null;
+  steps: GuidedOnboardingStep[];
+}
+
+export type AssistantUIAction =
+  | {
+      type: "navigate";
+      route: string;
+    }
+  | {
+      type: "highlight";
+      targetId: string;
+    }
+  | {
+      type: "scroll_to";
+      targetId: string;
+    };
+
 export interface AssistantMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -34,6 +77,14 @@ export interface AssistantMessage {
     arguments: Record<string, any>;
     result?: any;
   }>;
+  uiActions?: AssistantUIAction[];
+  onboarding?: {
+    isComplete: boolean;
+    progressPercent: number;
+    currentStep?: CanonicalOnboardingStepId | null;
+    completedSteps?: CanonicalOnboardingStepId[];
+    pendingSteps?: CanonicalOnboardingStepId[];
+  };
 }
 
 export interface AssistantSession {

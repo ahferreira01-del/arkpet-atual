@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, ShieldAlert, RotateCcw } from "lucide-react";
+import { Send, Sparkles, ShieldAlert, RotateCcw, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AssistantTypingState } from "./AssistantTypingState";
 import { AssistantFeedback } from "./AssistantFeedback";
 import { AssistantKnowledgeCitation } from "./AssistantKnowledgeCitation";
-import type { AssistantUIMessage, AssistantVisualState, ScreenContextInfo } from "./assistant.types";
+import type {
+  AssistantUIMessage,
+  AssistantVisualState,
+  ScreenContextInfo,
+  AssistantUIAction,
+} from "./assistant.types";
 
 interface AssistantConversationProps {
   messages: AssistantUIMessage[];
@@ -13,6 +18,7 @@ interface AssistantConversationProps {
   userRole?: string;
   onSendMessage: (text: string) => void;
   onClearSession: () => void;
+  onExecuteAction?: (action: AssistantUIAction) => void;
 }
 
 export function AssistantConversation({
@@ -22,6 +28,7 @@ export function AssistantConversation({
   userRole,
   onSendMessage,
   onClearSession,
+  onExecuteAction,
 }: AssistantConversationProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -147,6 +154,61 @@ export function AssistantConversation({
 
                 {msg.role === "assistant" && msg.citations && (
                   <AssistantKnowledgeCitation citations={msg.citations} />
+                )}
+
+                {msg.role === "assistant" && msg.onboarding && (
+                  <div className="mt-2 pt-2 border-t border-border/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                    <span>Progresso: {msg.onboarding.progressPercent}%</span>
+                    {msg.onboarding.isComplete ? (
+                      <span className="text-success font-medium">100% Concluído</span>
+                    ) : (
+                      <span>Próximo: {msg.onboarding.currentStep}</span>
+                    )}
+                  </div>
+                )}
+
+                {msg.role === "assistant" && msg.uiActions && msg.uiActions.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-wrap gap-1.5">
+                    {msg.uiActions.map((act, idx) => {
+                      if (act.type === "navigate") {
+                        const routeLabels: Record<string, string> = {
+                          "/settings": "Ir para Configurações",
+                          "/staff/manage": "Ir para Equipe",
+                          "/tutors": "Ir para Tutores",
+                          "/pets": "Ir para Pets",
+                          "/bookings": "Ir para Reservas",
+                        };
+                        const label = routeLabels[act.route] || `Acessar ${act.route}`;
+                        return (
+                          <Button
+                            key={idx}
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => onExecuteAction?.(act)}
+                            className="h-7 text-xs px-2.5 rounded-lg border border-border/60 hover:border-primary/40 text-foreground flex items-center gap-1 cursor-pointer"
+                          >
+                            <span>{label}</span>
+                            <ArrowRight className="h-3 w-3 text-primary" />
+                          </Button>
+                        );
+                      }
+                      if (act.type === "highlight") {
+                        return (
+                          <Button
+                            key={idx}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onExecuteAction?.(act)}
+                            className="h-7 text-xs px-2.5 rounded-lg border border-primary/30 text-primary hover:bg-primary/10 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            <span>Destacar botão</span>
+                          </Button>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
                 )}
               </div>
 

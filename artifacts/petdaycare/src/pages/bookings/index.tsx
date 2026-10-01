@@ -710,7 +710,12 @@ export default function Bookings() {
 
       {/* Filters */}
       <div className="flex flex-col gap-3 w-full mb-2">
-        <Button onClick={() => setLocation("/bookings/new")} className="w-full sm:w-auto h-10 rounded-xl">
+        <Button
+          id="booking-create-button"
+          data-guidance-target="booking-create-button"
+          onClick={() => setLocation("/bookings/new")}
+          className="w-full sm:w-auto h-10 rounded-xl"
+        >
           <Plus className="h-5 w-5 mr-2" /> Nova Reserva
         </Button>
         

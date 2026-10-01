@@ -214,7 +214,7 @@ export default function Settings() {
                 )}
               </div>
             ) : (
-              <form onSubmit={handleSubmit} className="space-y-8">
+              <form id="creche-profile-form" data-guidance-target="creche-profile-form" onSubmit={handleSubmit} className="space-y-8">
                 {/* Section: Dados Gerais */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">

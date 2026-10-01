@@ -16,7 +16,7 @@ const evalCases: Array<{
   forbiddenContains: string[];
 }> = JSON.parse(fs.readFileSync(evalsPath, "utf-8"));
 
-describe("ArkPet R41.A — Golden Evaluation Dataset (52 Cases)", () => {
+describe("ArkPet R41.B — Golden Evaluation Dataset (58 Cases)", () => {
   it("verifies the evaluation dataset contains at least 50 test cases across 4 roles", () => {
     expect(evalCases.length).toBeGreaterThanOrEqual(50);
 

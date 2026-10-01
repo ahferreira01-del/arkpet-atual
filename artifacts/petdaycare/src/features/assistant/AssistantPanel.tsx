@@ -1,8 +1,28 @@
 import React, { useState, useEffect, useRef } from "react";
 import { X, Minimize2, Maximize2, Sparkles, WifiOff } from "lucide-react";
+import { useLocation } from "wouter";
 import { AssistantConversation } from "./AssistantConversation";
 import { useAssistantContext } from "./useAssistantContext";
-import type { AssistantUIMessage, AssistantVisualState } from "./assistant.types";
+import type { AssistantUIMessage, AssistantVisualState, AssistantUIAction } from "./assistant.types";
+
+const ALLOWED_GUIDANCE_ROUTES = [
+  "/",
+  "/settings",
+  "/staff/manage",
+  "/tutors",
+  "/pets",
+  "/bookings",
+  "/financial",
+  "/chat",
+];
+
+const ALLOWED_GUIDANCE_TARGETS = [
+  "creche-profile-form",
+  "staff-create-button",
+  "tutor-create-button",
+  "pet-create-button",
+  "booking-create-button",
+];
 
 interface AssistantPanelProps {
   isOpen: boolean;
@@ -85,12 +105,54 @@ export function AssistantPanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose, triggerButtonRef]);
 
+  const [, setLocation] = useLocation();
+
+  const executeHighlight = (targetId: string) => {
+    if (!ALLOWED_GUIDANCE_TARGETS.includes(targetId)) return;
+    try {
+      const el =
+        document.getElementById(targetId) ||
+        document.querySelector(`[data-guidance-target="${targetId}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-4", "ring-primary", "ring-offset-2", "transition-all");
+        setTimeout(() => {
+          el.classList.remove("ring-4", "ring-primary", "ring-offset-2");
+        }, 4000);
+      }
+    } catch {
+      // MISSING_GUIDANCE_TARGET_BREAKS_APP = NO
+    }
+  };
+
+  const executeUIAction = (action: AssistantUIAction) => {
+    if (action.type === "navigate") {
+      const cleanRoute = action.route.split("?")[0].split("#")[0];
+      if (ALLOWED_GUIDANCE_ROUTES.includes(cleanRoute)) {
+        setLocation(cleanRoute);
+      }
+    } else if (action.type === "highlight") {
+      executeHighlight(action.targetId);
+    }
+  };
+
   // Restore focus to launcher on unmount/close
   useEffect(() => {
     if (!isOpen && triggerButtonRef?.current) {
       triggerButtonRef.current.focus();
     }
   }, [isOpen, triggerButtonRef]);
+
+  useEffect(() => {
+    const handleOpenWithPrompt = (e: Event) => {
+      const customEvent = e as CustomEvent<{ prompt?: string }>;
+      if (customEvent.detail?.prompt) {
+        handleSendMessage(customEvent.detail.prompt);
+      }
+    };
+    window.addEventListener("arkpet:open-assistant", handleOpenWithPrompt);
+    return () => window.removeEventListener("arkpet:open-assistant", handleOpenWithPrompt);
+  }, []);
 
   const handleSendMessage = async (text: string) => {
     if (!isOnline) {
@@ -142,10 +204,29 @@ export function AssistantPanel({
         content: data.message.content,
         createdAt: data.message.createdAt || new Date().toISOString(),
         citations: data.message.citations,
+        uiActions: data.message.uiActions,
+        onboarding: data.message.onboarding,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
       setStatus("idle");
+
+      // Auto-trigger navigation and highlighting safely (AI-GUIDE-001..002)
+      if (Array.isArray(data.message.uiActions)) {
+        for (const act of data.message.uiActions) {
+          if (act.type === "navigate") {
+            const cleanRoute = act.route.split("?")[0].split("#")[0];
+            if (ALLOWED_GUIDANCE_ROUTES.includes(cleanRoute)) {
+              setLocation(cleanRoute);
+            }
+          }
+          if (act.type === "highlight") {
+            setTimeout(() => {
+              executeHighlight(act.targetId);
+            }, 350);
+          }
+        }
+      }
     } catch (err: any) {
       const errorMessage: AssistantUIMessage = {
         id: `msg_${Date.now()}_err`,
@@ -243,6 +324,7 @@ export function AssistantPanel({
               userRole={userRole}
               onSendMessage={handleSendMessage}
               onClearSession={handleClearSession}
+              onExecuteAction={executeUIAction}
             />
           )}
         </div>

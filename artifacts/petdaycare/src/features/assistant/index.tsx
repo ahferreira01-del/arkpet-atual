@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { AssistantLauncher } from "./AssistantLauncher";
 import { AssistantPanel } from "./AssistantPanel";
 
@@ -6,6 +6,15 @@ export function AssistantContainer({ userRole }: { userRole?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const handleOpen = () => {
+      setIsOpen(true);
+      setIsMinimized(false);
+    };
+    window.addEventListener("arkpet:open-assistant", handleOpen);
+    return () => window.removeEventListener("arkpet:open-assistant", handleOpen);
+  }, []);
 
   return (
     <>

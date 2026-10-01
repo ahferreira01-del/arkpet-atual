@@ -239,7 +239,11 @@ export default function PetsDirectory() {
         description="Gerencie perfis, registros médicos e rastreamento."
         icon={Dog}
         action={
-          <Button onClick={() => { resetModal(); setIsModalOpen(true); }}>
+          <Button
+            id="pet-create-button"
+            data-guidance-target="pet-create-button"
+            onClick={() => { resetModal(); setIsModalOpen(true); }}
+          >
             <Plus className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Cadastrar Pet</span><span className="sm:hidden">Novo</span>
           </Button>
         }

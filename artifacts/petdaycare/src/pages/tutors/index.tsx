@@ -303,7 +303,12 @@ export default function TutorsPage() {
         description="Gerencie os tutores cadastrados na sua creche."
         icon={Users}
         action={
-          <Button onClick={() => { setShowModal(true); setCreatedPassword(null); }} className="min-h-[44px]">
+          <Button
+            id="tutor-create-button"
+            data-guidance-target="tutor-create-button"
+            onClick={() => { setShowModal(true); setCreatedPassword(null); }}
+            className="min-h-[44px]"
+          >
             <Plus className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">Novo Tutor</span>
           </Button>

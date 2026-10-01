@@ -14,12 +14,34 @@ export interface AssistantCitation {
   path: string;
 }
 
+export type AssistantUIAction =
+  | {
+      type: "navigate";
+      route: string;
+    }
+  | {
+      type: "highlight";
+      targetId: string;
+    }
+  | {
+      type: "scroll_to";
+      targetId: string;
+    };
+
 export interface AssistantUIMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
   citations?: AssistantCitation[];
+  uiActions?: AssistantUIAction[];
+  onboarding?: {
+    isComplete: boolean;
+    progressPercent: number;
+    currentStep?: string | null;
+    completedSteps?: string[];
+    pendingSteps?: string[];
+  };
   isPending?: boolean;
   error?: string;
 }

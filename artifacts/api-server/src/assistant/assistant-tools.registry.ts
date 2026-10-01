@@ -9,10 +9,13 @@ import {
 import { eq, and, sql, count, desc, like } from "drizzle-orm";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
+import { AssistantGuidanceService } from "./assistant-guidance.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type {
   AssistantSecurityContext,
   AssistantToolDefinition,
+  GuidedOnboardingStatus,
+  GuidedOnboardingStep,
 } from "./assistant.types.js";
 
 export class AssistantToolsRegistry {
@@ -35,100 +38,7 @@ export class AssistantToolsRegistry {
         if (!context.crecheId) {
           throw new Error("Usuário não está associado a nenhuma creche");
         }
-
-        const crecheId = context.crecheId;
-        const [creche] = await db
-          .select()
-          .from(crechesTable)
-          .where(eq(crechesTable.id, crecheId))
-          .limit(1);
-
-        if (!creche) {
-          throw new Error("Creche não encontrada");
-        }
-
-        const [staffCountRes] = await db
-          .select({ count: count() })
-          .from(usersTable)
-          .where(
-            and(
-              eq(usersTable.crecheId, crecheId),
-              sql`role IN ('creche_admin', 'staff')`
-            )
-          );
-
-        const [tutorsCountRes] = await db
-          .select({ count: count() })
-          .from(usersTable)
-          .where(
-            and(
-              eq(usersTable.crecheId, crecheId),
-              eq(usersTable.role, "tutor")
-            )
-          );
-
-        const [petsCountRes] = await db
-          .select({ count: count() })
-          .from(petsTable)
-          .where(eq(petsTable.crecheId, crecheId));
-
-        const [bookingsCountRes] = await db
-          .select({ count: count() })
-          .from(bookingsTable)
-          .where(eq(bookingsTable.crecheId, crecheId));
-
-        const steps = [
-          {
-            id: "creche_details" as const,
-            title: "Completar dados da creche",
-            description: "Informe telefone e endereço da creche",
-            completed: Boolean(creche.phone && creche.address),
-            route: "/settings",
-            actionLabel: "Configurar",
-          },
-          {
-            id: "staff" as const,
-            title: "Cadastrar equipe",
-            description: "Convide ou adicione membros da equipe",
-            completed: (staffCountRes?.count || 0) > 1,
-            route: "/staff/manage",
-            actionLabel: "Equipe",
-          },
-          {
-            id: "tutors" as const,
-            title: "Cadastrar tutor",
-            description: "Cadastre seu primeiro tutor",
-            completed: (tutorsCountRes?.count || 0) > 0,
-            route: "/tutors",
-            actionLabel: "Tutores",
-          },
-          {
-            id: "pets" as const,
-            title: "Cadastrar primeiro pet",
-            description: "Cadastre um pet vinculado a um tutor",
-            completed: (petsCountRes?.count || 0) > 0,
-            route: "/pets",
-            actionLabel: "Pets",
-          },
-          {
-            id: "bookings" as const,
-            title: "Conhecer reservas",
-            description: "Crie sua primeira reserva ou veja a agenda",
-            completed: (bookingsCountRes?.count || 0) > 0,
-            route: "/bookings",
-            actionLabel: "Reservas",
-          },
-        ];
-
-        const completedCount = steps.filter((s) => s.completed).length;
-
-        return {
-          crecheId,
-          isComplete: completedCount === steps.length,
-          completedCount,
-          totalSteps: steps.length,
-          steps,
-        };
+        return await AssistantToolsRegistry.getOnboardingStatus(context.crecheId);
       },
     });
 
@@ -326,6 +236,134 @@ export class AssistantToolsRegistry {
         return bookings;
       },
     });
+
+    // ── Tool 7: get_guided_onboarding_plan ─────────────────────────────────────
+    this.register({
+      name: "get_guided_onboarding_plan",
+      description: "Gera o plano contextual de onboarding guiado para a creche atual, recomendando ações e navegação segura para o próximo passo pendente.",
+      allowedRoles: ["creche_admin", "master_admin"],
+      inputSchema: z.object({
+        currentRoute: z.string().optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_guided_onboarding_plan",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Usuário não está associado a nenhuma creche");
+        }
+        const status = await AssistantToolsRegistry.getOnboardingStatus(context.crecheId);
+        return AssistantGuidanceService.generatePlan(status, input.currentRoute, context.role);
+      },
+    });
+  }
+
+  public static async getOnboardingStatus(crecheId: number): Promise<GuidedOnboardingStatus> {
+    const [creche] = await db
+      .select()
+      .from(crechesTable)
+      .where(eq(crechesTable.id, crecheId))
+      .limit(1);
+
+    if (!creche) {
+      throw new Error("Creche não encontrada");
+    }
+
+    const [staffCountRes] = await db
+      .select({ count: count() })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.crecheId, crecheId),
+          sql`role IN ('creche_admin', 'staff')`
+        )
+      );
+
+    const [tutorsCountRes] = await db
+      .select({ count: count() })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.crecheId, crecheId),
+          eq(usersTable.role, "tutor")
+        )
+      );
+
+    const [petsCountRes] = await db
+      .select({ count: count() })
+      .from(petsTable)
+      .where(eq(petsTable.crecheId, crecheId));
+
+    const [bookingsCountRes] = await db
+      .select({ count: count() })
+      .from(bookingsTable)
+      .where(eq(bookingsTable.crecheId, crecheId));
+
+    const steps: GuidedOnboardingStep[] = [
+      {
+        id: "creche_details",
+        title: "Completar dados da creche",
+        description: "Informe telefone e endereço da creche",
+        completed: Boolean(creche.phone && creche.address),
+        route: "/settings",
+        target: "creche-profile-form",
+        actionLabel: "Configurar",
+      },
+      {
+        id: "staff",
+        title: "Cadastrar equipe",
+        description: "Convide ou adicione membros da equipe",
+        completed: (staffCountRes?.count || 0) > 1,
+        route: "/staff/manage",
+        target: "staff-create-button",
+        actionLabel: "Equipe",
+      },
+      {
+        id: "tutors",
+        title: "Cadastrar tutor",
+        description: "Cadastre seu primeiro tutor",
+        completed: (tutorsCountRes?.count || 0) > 0,
+        route: "/tutors",
+        target: "tutor-create-button",
+        actionLabel: "Tutores",
+      },
+      {
+        id: "pets",
+        title: "Cadastrar primeiro pet",
+        description: "Cadastre um pet vinculado a um tutor",
+        completed: (petsCountRes?.count || 0) > 0,
+        route: "/pets",
+        target: "pet-create-button",
+        actionLabel: "Pets",
+      },
+      {
+        id: "bookings",
+        title: "Conhecer reservas",
+        description: "Crie sua primeira reserva ou veja a agenda",
+        completed: (bookingsCountRes?.count || 0) > 0,
+        route: "/bookings",
+        target: "booking-create-button",
+        actionLabel: "Reservas",
+      },
+    ];
+
+    const completedSteps = steps.filter((s) => s.completed).map((s) => s.id);
+    const pendingSteps = steps.filter((s) => !s.completed).map((s) => s.id);
+    const completedCount = completedSteps.length;
+    const isComplete = completedCount === steps.length;
+    const progressPercent = Math.round((completedCount / steps.length) * 100);
+    const currentStep = steps.find((s) => !s.completed) || null;
+
+    return {
+      crecheId,
+      isComplete,
+      completedCount,
+      totalSteps: steps.length,
+      progressPercent,
+      completedSteps,
+      pendingSteps,
+      currentStep,
+      steps,
+    };
   }
 
   public static register(tool: AssistantToolDefinition) {

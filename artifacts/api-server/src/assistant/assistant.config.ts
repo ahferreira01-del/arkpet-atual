@@ -5,11 +5,11 @@ export const ASSISTANT_CONFIG = {
     return true;
   },
   get isVoiceEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED in R41.A
+    // Strictly NOT_IMPLEMENTED in R41.A & R41.B
     return false;
   },
   get isActionsEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED for mutations in R41.A
+    // Strictly NOT_IMPLEMENTED for domain mutations in R41.B
     return false;
   },
   get isKillSwitchActive(): boolean {
@@ -17,7 +17,7 @@ export const ASSISTANT_CONFIG = {
   },
 
   // Versioning
-  promptVersion: "r41-a-1",
+  promptVersion: "r41-b-1",
   knowledgeVersion: "arkpet-v32-r41",
 
   // Model & Provider defaults
@@ -35,5 +35,25 @@ export const ASSISTANT_CONFIG = {
 
   // Rate Limiting
   rateLimitPerMinute: 60,
-};
 
+  // Guidance Route Allowlist (ARBITRARY_NAVIGATION = 0, ASSISTANT_EXTERNAL_REDIRECT = 0)
+  allowedGuidanceRoutes: [
+    "/",
+    "/settings",
+    "/staff/manage",
+    "/tutors",
+    "/pets",
+    "/bookings",
+    "/financial",
+    "/chat",
+  ] as const,
+
+  // Guidance Target Allowlist (ARBITRARY_CSS_SELECTOR_FROM_MODEL = 0, ASSISTANT_ARBITRARY_DOM_TARGETING = 0)
+  allowedGuidanceTargets: [
+    "creche-profile-form",
+    "staff-create-button",
+    "tutor-create-button",
+    "pet-create-button",
+    "booking-create-button",
+  ] as const,
+};

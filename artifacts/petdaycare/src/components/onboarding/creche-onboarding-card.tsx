@@ -244,18 +244,37 @@ export function CrecheOnboardingCard({ crecheId, userRole }: CrecheOnboardingCar
           })}
         </div>
 
-        <div className="flex items-center justify-between pt-2">
-          <span className="text-[11px] text-muted-foreground">
-            Configure sua creche no seu próprio ritmo.
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
           <Button
-            variant="link"
+            variant="outline"
             size="sm"
-            onClick={() => handleSetCollapsed(true)}
-            className="text-xs text-muted-foreground hover:text-foreground h-auto p-0"
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent("arkpet:open-assistant", {
+                  detail: { prompt: "Qual é o próximo passo para configurar minha creche?" },
+                })
+              );
+            }}
+            className="text-xs h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10 w-full sm:w-auto"
+            data-testid="onboarding-open-assistant-btn"
           >
-            Continuar depois
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Continuar com Assistente</span>
           </Button>
+
+          <div className="flex items-center justify-between sm:justify-end gap-3">
+            <span className="text-[11px] text-muted-foreground">
+              Configure sua creche no seu próprio ritmo.
+            </span>
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => handleSetCollapsed(true)}
+              className="text-xs text-muted-foreground hover:text-foreground h-auto p-0"
+            >
+              Continuar depois
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -6,18 +6,30 @@ import type {
   AssistantSecurityContext,
   AssistantCitation,
   KnowledgeSnippet,
+  ScreenContext,
+  AssistantUIAction,
+  CanonicalOnboardingStepId,
 } from "./assistant.types.js";
 
 export interface AIProviderResponse {
   content: string;
   citations?: AssistantCitation[];
   toolCalls?: Array<{ name: string; arguments: any; result: any }>;
+  uiActions?: AssistantUIAction[];
+  onboarding?: {
+    isComplete: boolean;
+    progressPercent: number;
+    currentStep?: CanonicalOnboardingStepId | null;
+    completedSteps?: CanonicalOnboardingStepId[];
+    pendingSteps?: CanonicalOnboardingStepId[];
+  };
 }
 
 export interface AIProviderOptions {
   systemPrompt: string;
   messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
   securityContext: AssistantSecurityContext;
+  screenContext?: ScreenContext;
   knowledgeSnippets?: KnowledgeSnippet[];
 }
 
@@ -131,25 +143,55 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("passos para configurar") ||
       lowerQuery.includes("passos do onboarding") ||
       lowerQuery.includes("progresso da creche") ||
-      lowerQuery.includes("configuro minha creche pela primeira vez")
+      lowerQuery.includes("configuro minha creche") ||
+      lowerQuery.includes("o que falta configurar") ||
+      lowerQuery.includes("proximo passo") ||
+      lowerQuery.includes("etapa pendente") ||
+      lowerQuery.includes("status do onboarding") ||
+      lowerQuery.includes("primeiros passos")
     ) {
       if (context.role === "creche_admin" || context.role === "master_admin") {
+        if (!context.crecheId) {
+          return {
+            content: "Você precisa selecionar ou estar vinculado a uma creche para consultar o onboarding.",
+          };
+        }
         try {
-          const result = await AssistantToolsRegistry.executeTool("get_onboarding_status", {}, context);
-          toolCalls.push({ name: "get_onboarding_status", arguments: {}, result });
+          const currentRoute = options.screenContext?.route || "/";
+          const plan = await AssistantToolsRegistry.executeTool(
+            "get_guided_onboarding_plan",
+            { currentRoute },
+            context
+          );
+          toolCalls.push({ name: "get_guided_onboarding_plan", arguments: { currentRoute }, result: plan });
 
-          const pendingSteps = result.steps.filter((s: any) => !s.completed);
-          if (result.isComplete) {
+          const status = await AssistantToolsRegistry.getOnboardingStatus(context.crecheId);
+
+          if (status.isComplete) {
             return {
               content: `Parabéns! O onboarding da sua creche está 100% completo com todos os 5 passos canônicos concluídos: 1) Dados da creche, 2) Equipe, 3) Tutor, 4) Pet e 5) Reservas.`,
               toolCalls,
+              onboarding: {
+                isComplete: true,
+                progressPercent: 100,
+                currentStep: null,
+                completedSteps: status.completedSteps,
+                pendingSteps: [],
+              },
             };
           }
 
-          const nextStep = pendingSteps[0];
           return {
-            content: `Para configurar sua creche pela primeira vez, o onboarding possui 5 passos canônicos: 1) Dados da creche (/settings), 2) Equipe (/staff/manage), 3) Tutor (/tutors), 4) Pet (/pets) e 5) Reservas (/bookings). O próximo passo pendente é **${nextStep.title}** (${nextStep.description}) em \`${nextStep.route}\`.`,
+            content: plan.content,
             toolCalls,
+            uiActions: plan.uiActions,
+            onboarding: {
+              isComplete: false,
+              progressPercent: status.progressPercent,
+              currentStep: status.currentStep?.id || null,
+              completedSteps: status.completedSteps,
+              pendingSteps: status.pendingSteps,
+            },
           };
         } catch {
           return {
@@ -188,10 +230,42 @@ export class MockAIProvider implements AIProvider {
     }
 
     // 8. Pet Registration & Care Details
-    if (lowerQuery.includes("cadastrar um pet") || lowerQuery.includes("cadastrar pet")) {
+    if (
+      lowerQuery.includes("cadastrar um pet") ||
+      lowerQuery.includes("cadastrar pet") ||
+      lowerQuery.includes("primeiro pet") ||
+      lowerQuery.includes("meu primeiro pet")
+    ) {
       return {
         content: "Para cadastrar um pet no sistema, acesse a tela /pets. Todo pet deve ser vinculado a um tutor responsável já cadastrado.",
         citations: [{ title: "Pets > Dados do Pet", category: "pets", path: "knowledge/pets.md" }],
+        uiActions: [{ type: "navigate", route: "/pets" }, { type: "highlight", targetId: "pet-create-button" }],
+      };
+    }
+
+    // 8b. Tutor Registration
+    if (
+      lowerQuery.includes("cadastrar um tutor") ||
+      lowerQuery.includes("cadastrar tutor") ||
+      lowerQuery.includes("cadastrar tutores") ||
+      lowerQuery.includes("novo tutor")
+    ) {
+      return {
+        content: "Para cadastrar um tutor, acesse o módulo de tutores em /tutors e clique em 'Novo Tutor'.",
+        citations: [{ title: "Tutores > Visão Geral", category: "tutors", path: "knowledge/tutors.md" }],
+        uiActions: [{ type: "navigate", route: "/tutors" }, { type: "highlight", targetId: "tutor-create-button" }],
+      };
+    }
+
+    // 8c. Step Progression Inquiries
+    if (
+      lowerQuery.includes("depois de cadastrar a equipe") ||
+      lowerQuery.includes("apos cadastrar a equipe") ||
+      lowerQuery.includes("depois da equipe")
+    ) {
+      return {
+        content: "Após cadastrar a equipe, o próximo passo do onboarding é cadastrar os tutores em /tutors (passo 3).",
+        uiActions: [{ type: "navigate", route: "/tutors" }, { type: "highlight", targetId: "tutor-create-button" }],
       };
     }
 
@@ -478,6 +552,13 @@ export class OpenAICompatibleProvider implements AIProvider {
           type: "object",
           properties: {
             limit: { type: "integer", description: "Número máximo de itens" },
+          },
+        };
+      } else if (t.name === "get_guided_onboarding_plan") {
+        parameters = {
+          type: "object",
+          properties: {
+            currentRoute: { type: "string", description: "Rota atual na tela do usuário (ex: /settings, /pets)" },
           },
         };
       }

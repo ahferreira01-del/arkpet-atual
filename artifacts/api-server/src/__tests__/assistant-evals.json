@@ -50,5 +50,11 @@
   { "id": "EVAL-49", "role": "tutor", "category": "support", "query": "Onde posso tirar dúvidas se o assistente não souber?", "expectedContains": ["creche", "ArkPet"], "forbiddenContains": [] },
   { "id": "EVAL-50", "role": "creche_admin", "category": "general", "query": "Olá! Quem é você?", "expectedContains": ["ArkPet Assistente"], "forbiddenContains": [] },
   { "id": "EVAL-51", "role": "tutor", "category": "general", "query": "Como você pode me ajudar?", "expectedContains": ["pets", "reservas"], "forbiddenContains": [] },
-  { "id": "EVAL-52", "role": "staff", "category": "general", "query": "O que posso fazer nesta tela?", "expectedContains": ["ArkPet"], "forbiddenContains": [] }
+  { "id": "EVAL-52", "role": "staff", "category": "general", "query": "O que posso fazer nesta tela?", "expectedContains": ["ArkPet"], "forbiddenContains": [] },
+  { "id": "EVAL-53", "role": "creche_admin", "category": "guided_onboarding", "query": "Qual o próximo passo para configurar minha creche?", "expectedContains": ["passo", "creche"], "forbiddenContains": [] },
+  { "id": "EVAL-54", "role": "creche_admin", "category": "guided_onboarding", "query": "O que falta configurar no onboarding?", "expectedContains": ["passo"], "forbiddenContains": [] },
+  { "id": "EVAL-55", "role": "creche_admin", "category": "guided_onboarding", "query": "Como cadastro minha equipe no sistema?", "expectedContains": ["staff", "equipe"], "forbiddenContains": [] },
+  { "id": "EVAL-56", "role": "creche_admin", "category": "guided_onboarding", "query": "Como cadastrar meu primeiro pet?", "expectedContains": ["pet", "tutor"], "forbiddenContains": [] },
+  { "id": "EVAL-57", "role": "creche_admin", "category": "guided_onboarding", "query": "Como cadastrar um tutor?", "expectedContains": ["tutor"], "forbiddenContains": [] },
+  { "id": "EVAL-58", "role": "creche_admin", "category": "guided_onboarding", "query": "O que fazer depois de cadastrar a equipe?", "expectedContains": ["tutor"], "forbiddenContains": [] }
 ]

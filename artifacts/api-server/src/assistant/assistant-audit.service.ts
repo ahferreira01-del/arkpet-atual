@@ -82,6 +82,38 @@ export class AssistantAuditService {
     logger.warn("assistant_security_denial", logData);
   }
 
+  public static logOnboardingEvent(
+    context: AssistantSecurityContext,
+    event:
+      | "assistant_onboarding_started"
+      | "assistant_onboarding_step_viewed"
+      | "assistant_onboarding_navigation"
+      | "assistant_onboarding_step_completed"
+      | "assistant_onboarding_dismissed"
+      | "assistant_onboarding_completed",
+    details?: {
+      stepId?: string;
+      route?: string;
+      progressPercent?: number;
+      reason?: string;
+    }
+  ): void {
+    const logData: LogContext = {
+      requestId: context.requestId,
+      userId: context.userId,
+      crecheId: context.crecheId ?? undefined,
+      role: context.role,
+      entityType: "assistant_onboarding",
+      entityId: details?.stepId,
+      stepId: details?.stepId,
+      route: details?.route,
+      progressPercent: details?.progressPercent,
+      reason: details?.reason,
+    };
+
+    logger.info(event, logData);
+  }
+
   public static logError(
     context: AssistantSecurityContext | undefined,
     error: unknown,

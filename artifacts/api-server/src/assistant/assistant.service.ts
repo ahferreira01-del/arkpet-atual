@@ -3,6 +3,7 @@ import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import { AssistantContextService } from "./assistant-context.service.js";
 import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
 import { AssistantAuditService } from "./assistant-audit.service.js";
+import { AssistantGuidanceService } from "./assistant-guidance.service.js";
 import { getAIProvider, type AIProvider } from "./assistant.provider.js";
 import type {
   AssistantSecurityContext,
@@ -98,6 +99,21 @@ export class AssistantService {
     const systemPrompt = `Você é o "ArkPet Assistente" (ArkPet AI), o copiloto inteligente integrado do ArkPet.
 Sua missão é ajudar os usuários a utilizarem o sistema com eficiência, segurança e rapidez.
 
+=== ORIENTAÇÃO DE ONBOARDING GUIADO (R41.B) ===
+- Para administradores de creche (creche_admin), você atua ativamente como COPILOTO DE ONBOARDING GUIADO (GUIDE, não DO FOR ME).
+- Os 5 passos canônicos de configuração inicial da creche são:
+  1) Dados da creche (rota: /settings, target: creche-profile-form)
+  2) Cadastrar equipe (rota: /staff/manage, target: staff-create-button)
+  3) Cadastrar tutor (rota: /tutors, target: tutor-create-button)
+  4) Cadastrar primeiro pet (rota: /pets, target: pet-create-button)
+  5) Conhecer reservas (rota: /bookings, target: booking-create-button)
+- Consciência de Tela (R41B-CONTEXT-001):
+  - Se o usuário já está na rota do passo pendente (ex: /pets), reconheça a tela atual e oriente a ação no elemento destacado (ex: pet-create-button).
+  - Se o usuário estiver em outra rota, explique o próximo passo e recomende a navegação para a tela correta.
+- O progresso do onboarding é 100% derivado dos registros no banco de dados do servidor via 'get_onboarding_status' ou 'get_guided_onboarding_plan'. NUNCA declare passos concluídos sem confirmação do servidor.
+- Guie UM passo de cada vez com clareza e brevidade.
+- NUNCA realize mutações ou cadastros automáticos no banco de dados (zero mutações automáticas no R41.B).
+
 === SEGURANÇA E AUTORIZAÇÃO (NÍVEL 1) ===
 - Papel do Usuário: ${context.role}
 - ID do Usuário: ${context.userId}
@@ -133,8 +149,32 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
         systemPrompt,
         messages: session.messages.map((m) => ({ role: m.role, content: m.content })),
         securityContext: context,
+        screenContext: resolvedContext.screen,
         knowledgeSnippets: snippets,
       });
+
+      let uiActions = AssistantGuidanceService.sanitizeUIActions(response.uiActions);
+      let onboardingSummary = response.onboarding;
+
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        for (const tc of response.toolCalls) {
+          if (tc.name === "get_guided_onboarding_plan" && tc.result) {
+            if (Array.isArray(tc.result.uiActions)) {
+              const sanitizedFromTool = AssistantGuidanceService.sanitizeUIActions(tc.result.uiActions);
+              uiActions = [...uiActions, ...sanitizedFromTool];
+            }
+          }
+          if (tc.name === "get_onboarding_status" && tc.result) {
+            onboardingSummary = {
+              isComplete: tc.result.isComplete,
+              progressPercent: tc.result.progressPercent,
+              currentStep: tc.result.currentStep?.id || null,
+              completedSteps: tc.result.completedSteps,
+              pendingSteps: tc.result.pendingSteps,
+            };
+          }
+        }
+      }
 
       const assistantMsgRecord: AssistantMessage = {
         id: `msg_${crypto.randomUUID()}`,
@@ -143,6 +183,8 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
         createdAt: new Date().toISOString(),
         citations: response.citations,
         toolCalls: response.toolCalls,
+        uiActions: uiActions.length > 0 ? uiActions : undefined,
+        onboarding: onboardingSummary,
       };
 
       session.messages.push(assistantMsgRecord);

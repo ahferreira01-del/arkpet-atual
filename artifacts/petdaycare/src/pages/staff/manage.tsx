@@ -246,7 +246,12 @@ export default function ManageStaff() {
         description="Gerencie os membros da sua equipe."
         icon={Users}
         action={
-          <Button onClick={() => setIsAddModalOpen(true)} className="shrink-0">
+          <Button
+            id="staff-create-button"
+            data-guidance-target="staff-create-button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="shrink-0"
+          >
             <Plus className="mr-2 h-4 w-4" /> Adicionar
           </Button>
         }
