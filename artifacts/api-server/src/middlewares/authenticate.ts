@@ -15,6 +15,52 @@ export interface AuthRequest extends Request {
   };
 }
 
+/**
+ * Validates whether the normalized request path belongs to the explicit suspended tenant
+ * recovery allowlist:
+ * - /api/billing and its children (/api/billing/...) or /billing and its children (/billing/...)
+ * - /api/auth/me or /auth/me
+ *
+ * Strictly parses normalized path segment boundaries and ignores query-string parameters.
+ */
+export function isSuspendedTenantRecoveryPath(req: {
+  baseUrl?: string;
+  path?: string;
+  originalUrl?: string;
+}): boolean {
+  let rawPath = "";
+  if (req.originalUrl) {
+    rawPath = req.originalUrl.split("?")[0].split("#")[0];
+  } else if (req.baseUrl !== undefined && req.path !== undefined) {
+    rawPath = (req.baseUrl + req.path).split("?")[0].split("#")[0];
+  } else if (req.path) {
+    rawPath = req.path.split("?")[0].split("#")[0];
+  }
+
+  // Normalize duplicate slashes and strip trailing slash (except root)
+  let normalized = rawPath.replace(/\/+/g, "/");
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  // 1. Self-auth endpoint
+  if (normalized === "/api/auth/me" || normalized === "/auth/me") {
+    return true;
+  }
+
+  // 2. Billing namespace (exact match or path-segment child)
+  if (
+    normalized === "/api/billing" ||
+    normalized.startsWith("/api/billing/") ||
+    normalized === "/billing" ||
+    normalized.startsWith("/billing/")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export async function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -68,17 +114,10 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     }
 
     if (creche && (creche.status as string) === "suspended") {
-      const requestPath = req.originalUrl || (req.baseUrl ? req.baseUrl + req.path : req.path) || "";
-      const isRecoveryOrBilling =
-        requestPath.startsWith("/api/billing") ||
-        requestPath.startsWith("/billing") ||
-        requestPath === "/api/auth/me" ||
-        requestPath === "/auth/me" ||
-        requestPath.includes("/billing") ||
-        requestPath.includes("/subscription");
+      const isRecovery = isSuspendedTenantRecoveryPath(req);
 
-      if (user.role === "creche_admin" && isRecoveryOrBilling) {
-        // creche_admin is allowed access to recovery/billing endpoints
+      if (user.role === "creche_admin" && isRecovery) {
+        // creche_admin is allowed access to explicit recovery/billing endpoints
       } else {
         logger.warn("authorization_denied", {
           requestId: (req as any).id,

@@ -29,6 +29,7 @@ const { mockState } = vi.hoisted(() => ({
       { id: 32, name: "Tutor Suspended", email: "tutor3@arkpet.test", role: "tutor", crecheId: 3, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
       { id: 33, name: "Admin Suspended", email: "admin3@arkpet.test", role: "creche_admin", crecheId: 3, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
       { id: 41, name: "User Archived", email: "user4@arkpet.test", role: "tutor", crecheId: 4, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 50, name: "Creche Admin Peer", email: "adminpeer@arkpet.test", role: "creche_admin", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
       { id: 99, name: "Foreign Tutor Creche 2", email: "tutor2@arkpet.test", role: "tutor", crecheId: 2, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
     ] as any[],
     creches: [
@@ -38,8 +39,15 @@ const { mockState } = vi.hoisted(() => ({
       { id: 4, name: "Creche Archived", status: "archived" },
     ] as any[],
     subscriptions: [
-      { id: 1, crecheId: 1, status: "active", plan: "pro", trialEndsAt: null },
-      { id: 2, crecheId: 2, status: "active", plan: "pro", trialEndsAt: null },
+      { id: 1, crecheId: 1, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+      { id: 2, crecheId: 2, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+      { id: 3, crecheId: 3, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+    ] as any[],
+    plans: [
+      { id: 1, name: "Plano Pro", priceBrl: "199.00", isActive: true, petLimit: 50, description: "Plano Pro", stripePriceId: "price_123" },
+    ] as any[],
+    planPrices: [
+      { id: 1, planId: 1, interval: "month", priceBrl: "199.00", discountPct: 0, isActive: true, stripePriceId: "price_123" },
     ] as any[],
     pets: [
       { id: 101, name: "Pipoca", species: "dog", breed: "Poodle", crecheId: 1, tutorId: 10, status: "active" },
@@ -72,6 +80,8 @@ function evaluateWhereClause(sqlStr: string, params: any[], row: any): boolean {
     else if (col === "tutor_id") rowVal = row.tutorId ?? row.tutor_id;
     else if (col === "pet_id") rowVal = row.petId ?? row.pet_id;
     else if (col === "user_id") rowVal = row.userId ?? row.user_id;
+    else if (col === "plan_id") rowVal = row.planId ?? row.plan_id;
+    else if (col === "is_active") rowVal = row.isActive ?? row.is_active;
     else if (col === "id") rowVal = row.id;
     else if (col === "email") rowVal = row.email;
     else if (col === "token") rowVal = row.token;
@@ -117,7 +127,9 @@ vi.mock("@workspace/db", () => {
         if (mockState.throwOnSearchQuery && (name === "pets" || name === "bookings")) {
           throw mockState.throwOnSearchQuery;
         }
-        if (name.includes("subscription")) rows = [...mockState.subscriptions];
+        if (name.includes("plan_price")) rows = [...mockState.planPrices];
+        else if (name.includes("plan")) rows = [...mockState.plans];
+        else if (name.includes("subscription")) rows = [...mockState.subscriptions];
         else if (name.includes("user")) rows = [...mockState.users];
         else if (name.includes("creche")) rows = [...mockState.creches];
         else if (name.includes("pet")) rows = [...mockState.pets];
@@ -256,13 +268,13 @@ vi.mock("../services/tutorCommercialPricing.js", () => ({
   TutorCommercialPricingService: {},
 }));
 
-// Import actual production routers, helpers and middleware
 import petsRouter from "../routes/pets.js";
 import bookingsRouter from "../routes/bookings.js";
 import usersRouter from "../routes/users.js";
 import authRouter from "../routes/auth.js";
+import billingRouter from "../routes/billing.js";
 import searchRouter from "../routes/search.js";
-import { authenticate, requireRole } from "../middlewares/authenticate.js";
+import { authenticate, requireRole, isSuspendedTenantRecoveryPath } from "../middlewares/authenticate.js";
 import { isAllowedOrigin } from "../app.js";
 import {
   generateToken,
@@ -298,11 +310,12 @@ function createTestApp() {
   app.use("/api/creches/:crecheId/pets", petsRouter);
   app.use("/api/creches/:crecheId/bookings", bookingsRouter);
   app.use("/api/users", usersRouter);
+  app.use("/api/billing", billingRouter);
   app.use("/api/search", searchRouter);
 
-  // Recovery endpoint for suspended creche checks
-  app.get("/api/billing/invoices", authenticate, (_req: Request, res: Response) => {
-    res.status(200).json({ status: "recovery_billing_allowed" });
+  // Protected route specifically verifying prefix boundary check with production authenticate
+  app.get("/api/billing-attacker", authenticate, (_req: Request, res: Response) => {
+    res.status(200).json({ ok: true });
   });
 
   return app;
@@ -313,6 +326,50 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockState.users = [
+      { id: 1, name: "Master Admin", email: "master@arkpet.test", role: "master_admin", crecheId: null, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 5, name: "Creche Admin 1", email: "admin1@arkpet.test", role: "creche_admin", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 6, name: "Staff Lucas", email: "staff1@arkpet.test", role: "staff", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 10, name: "Tutor A", email: "tutora@arkpet.test", role: "tutor", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 20, name: "Tutor B", email: "tutorb@arkpet.test", role: "tutor", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 31, name: "Staff Suspended", email: "staff3@arkpet.test", role: "staff", crecheId: 3, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 32, name: "Tutor Suspended", email: "tutor3@arkpet.test", role: "tutor", crecheId: 3, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 33, name: "Admin Suspended", email: "admin3@arkpet.test", role: "creche_admin", crecheId: 3, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 41, name: "User Archived", email: "user4@arkpet.test", role: "tutor", crecheId: 4, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 50, name: "Creche Admin Peer", email: "adminpeer@arkpet.test", role: "creche_admin", crecheId: 1, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+      { id: 99, name: "Foreign Tutor Creche 2", email: "tutor2@arkpet.test", role: "tutor", crecheId: 2, isActive: true, passwordHash: "$2a$10$abcdefghijklmnopqrstuu" },
+    ];
+    mockState.creches = [
+      { id: 1, name: "Creche Alpha", status: "active" },
+      { id: 2, name: "Creche Beta", status: "active" },
+      { id: 3, name: "Creche Suspended", status: "suspended" },
+      { id: 4, name: "Creche Archived", status: "archived" },
+    ];
+    mockState.subscriptions = [
+      { id: 1, crecheId: 1, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+      { id: 2, crecheId: 2, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+      { id: 3, crecheId: 3, status: "active", plan: "pro", planId: 1, billingInterval: "month", trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 86400000) },
+    ];
+    mockState.plans = [
+      { id: 1, name: "Plano Pro", priceBrl: "199.00", isActive: true, petLimit: 50, description: "Plano Pro", stripePriceId: "price_123" },
+    ];
+    mockState.planPrices = [
+      { id: 1, planId: 1, interval: "month", priceBrl: "199.00", discountPct: 0, isActive: true, stripePriceId: "price_123" },
+    ];
+    mockState.pets = [
+      { id: 101, name: "Pipoca", species: "dog", breed: "Poodle", crecheId: 1, tutorId: 10, status: "active" },
+      { id: 102, name: "Thor", species: "dog", breed: "Bulldog", crecheId: 1, tutorId: 20, status: "active" },
+      { id: 103, name: "Rex", species: "dog", breed: "Labrador", crecheId: 2, tutorId: 99, status: "active" },
+    ];
+    mockState.bookings = [
+      { id: 201, crecheId: 1, tutorId: 10, petId: 101, status: "confirmed", price: 100, startDate: "2026-10-01" },
+      { id: 202, crecheId: 1, tutorId: 20, petId: 102, status: "confirmed", price: 150, startDate: "2026-10-01" },
+      { id: 203, crecheId: 2, tutorId: 99, petId: 103, status: "confirmed", price: 200, startDate: "2026-10-01" },
+    ];
+    mockState.resetTokens = [
+      { id: 1, userId: 10, token: "valid-reset-token-123", usedAt: null, expiresAt: new Date(Date.now() + 3600000) },
+      { id: 2, userId: 10, token: "expired-reset-token-456", usedAt: null, expiresAt: new Date(Date.now() - 3600000) },
+    ];
     mockState.throwOnUsersMutation = null;
     mockState.throwOnSearchQuery = null;
     app = createTestApp();
@@ -388,13 +445,67 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
   });
 
   // ────────────────────────────────────────────────────────────
-  // 4. USER ROLE ESCALATION HANDLER TEST
+  // 4. USER ROLE ESCALATION HANDLER TEST (ROLE_ESCALATION_HANDLER_TEST)
   // ────────────────────────────────────────────────────────────
-  it("USER_ESCALATION_HANDLER_TEST: creche_admin privilege escalation attempts are strictly denied", async () => {
+  it("ROLE_ESCALATION_HANDLER_TEST: creche_admin role assignments strictly constrained to staff and tutor, peer admin protected", async () => {
     const tokenAdmin = generateToken(5, "creche_admin");
 
-    // Attempt POST create user with role=master_admin
-    const postRes = await request(app)
+    // SEC-ROLE-01: Creche Admin A edits Staff A -> role="creche_admin" -> Expected: 403
+    const resRole01 = await request(app)
+      .put("/api/users/6")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "creche_admin" });
+    expect(resRole01.status).toBe(403);
+    expect(resRole01.body.error).toContain("Admins de creche só podem atribuir as funções staff e tutor");
+
+    // SEC-ROLE-02: Creche Admin A edits Tutor A -> role="creche_admin" -> Expected: 403
+    const resRole02 = await request(app)
+      .put("/api/users/10")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "creche_admin" });
+    expect(resRole02.status).toBe(403);
+    expect(resRole02.body.error).toContain("Admins de creche só podem atribuir as funções staff e tutor");
+
+    // SEC-ROLE-03: Creche Admin A edits Staff A -> role="master_admin" -> Expected: 403
+    const resRole03 = await request(app)
+      .put("/api/users/6")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "master_admin" });
+    expect(resRole03.status).toBe(403);
+    expect(resRole03.body.error).toContain("Admins de creche só podem atribuir as funções staff e tutor");
+
+    // SEC-ROLE-04: Creche Admin A edits Staff A -> role="tutor" -> Expected: 200
+    const resRole04 = await request(app)
+      .put("/api/users/6")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "tutor" });
+    expect(resRole04.status).toBe(200);
+
+    // SEC-ROLE-05: Creche Admin A edits Tutor A -> role="staff" -> Expected: 200
+    const resRole05 = await request(app)
+      .put("/api/users/10")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "staff" });
+    expect(resRole05.status).toBe(200);
+
+    // Peer admin protection: Creche Admin A attempts to change role of Creche Admin B -> Expected: 403
+    const resPeerRole = await request(app)
+      .put("/api/users/50")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ role: "staff" });
+    expect(resPeerRole.status).toBe(403);
+    expect(resPeerRole.body.error).toContain("Sem permissão para alterar role de outro administrador");
+
+    // Peer admin protection: Creche Admin A attempts to deactivate Creche Admin B -> Expected: 403
+    const resPeerActive = await request(app)
+      .put("/api/users/50")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({ isActive: false });
+    expect(resPeerActive.status).toBe(403);
+    expect(resPeerActive.body.error).toContain("Sem permissão para alterar status de outro administrador");
+
+    // Attempt POST create user with role=master_admin -> Expected: 403
+    const postMasterRes = await request(app)
       .post("/api/users")
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({
@@ -403,30 +514,42 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
         password: "password123",
         role: "master_admin",
       });
-    expect(postRes.status).toBe(403);
+    expect(postMasterRes.status).toBe(403);
 
-    // Attempt PUT update target master_admin user
+    // Attempt POST create user with role=creche_admin -> Expected: 403
+    const postAdminRes = await request(app)
+      .post("/api/users")
+      .set("Authorization", `Bearer ${tokenAdmin}`)
+      .send({
+        name: "Rogue Admin",
+        email: "rogueadmin@arkpet.test",
+        password: "password123",
+        role: "creche_admin",
+      });
+    expect(postAdminRes.status).toBe(403);
+
+    // Attempt PUT update target master_admin user -> Expected: 403
     const putMasterRes = await request(app)
       .put("/api/users/1")
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({ name: "Compromised Master" });
     expect(putMasterRes.status).toBe(403);
 
-    // Attempt PUT update user in another creche (creche 2)
+    // Attempt PUT update user in another creche (creche 2) -> Expected: 404
     const putCrossRes = await request(app)
       .put("/api/users/99")
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({ name: "Compromised Foreign" });
     expect(putCrossRes.status).toBe(404);
 
-    // Attempt PUT self-escalation to master_admin
+    // Attempt PUT self-escalation to master_admin -> Expected: 403
     const putSelfRes = await request(app)
       .put("/api/users/5")
       .set("Authorization", `Bearer ${tokenAdmin}`)
       .send({ role: "master_admin" });
     expect(putSelfRes.status).toBe(403);
 
-    // Attempt PUT self crecheId modification
+    // Attempt PUT self crecheId modification -> Expected: 403
     const putCrecheRes = await request(app)
       .put("/api/users/5")
       .set("Authorization", `Bearer ${tokenAdmin}`)
@@ -516,7 +639,7 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
   });
 
   // ────────────────────────────────────────────────────────────
-  // 7. SUSPENDED CRECHE STATUS TESTS
+  // 7. SUSPENDED CRECHE STATUS & RECOVERY ROUTE TESTS
   // ────────────────────────────────────────────────────────────
   it("CRECHE_STATUS_SUSPENDED_STAFF_TEST: staff on suspended creche receives 403 tenant_suspended", async () => {
     const tokenStaff3 = generateToken(31, "staff");
@@ -546,12 +669,96 @@ describe("ARKPET — R40.G SECURITY HARDENING & SECRET REMEDIATION TEST SUITE", 
     expect(opRes.status).toBe(403);
     expect(opRes.body.error).toBe("tenant_suspended");
 
-    // Recovery / billing route -> permitted
+    // Real recovery route on real billing router (/api/billing/plans) -> permitted
     const recRes = await request(app)
-      .get("/api/billing/invoices")
+      .get("/api/billing/plans")
       .set("Authorization", `Bearer ${tokenAdmin3}`);
     expect(recRes.status).toBe(200);
-    expect(recRes.body.status).toBe("recovery_billing_allowed");
+    expect(Array.isArray(recRes.body)).toBe(true);
+  });
+
+  it("SUSPENDED_TENANT_QUERY_BYPASS_TEST: query string cannot bypass suspended tenant operational block (SEC-SUSP-01 & SEC-SUSP-02)", async () => {
+    const tokenAdmin3 = generateToken(33, "creche_admin");
+
+    // SEC-SUSP-01: Suspended creche_admin GET /api/users?next=/billing -> 403 tenant_suspended
+    const resSusp01 = await request(app)
+      .get("/api/users?next=/billing")
+      .set("Authorization", `Bearer ${tokenAdmin3}`);
+    expect(resSusp01.status).toBe(403);
+    expect(resSusp01.body.error).toBe("tenant_suspended");
+
+    // SEC-SUSP-02: Suspended creche_admin POST /api/users?return=/subscription -> 403 tenant_suspended
+    const resSusp02 = await request(app)
+      .post("/api/users?return=/subscription")
+      .set("Authorization", `Bearer ${tokenAdmin3}`)
+      .send({ name: "NewStaff", email: "newstaff@arkpet.test", password: "password123", role: "staff" });
+    expect(resSusp02.status).toBe(403);
+    expect(resSusp02.body.error).toBe("tenant_suspended");
+
+    // Prefix boundary attack: /api/billing-attacker is NOT a recovery path
+    const resPrefixAttack = await request(app)
+      .get("/api/billing-attacker")
+      .set("Authorization", `Bearer ${tokenAdmin3}`);
+    expect(resPrefixAttack.status).toBe(403);
+    expect(resPrefixAttack.body.error).toBe("tenant_suspended");
+  });
+
+  it("REAL_BILLING_ROUTER_RECOVERY_TEST: suspended creche_admin can access real billingRouter routes but staff/tutor cannot (SEC-SUSP-03..05)", async () => {
+    const tokenAdmin3 = generateToken(33, "creche_admin");
+    const tokenStaff3 = generateToken(31, "staff");
+    const tokenTutor3 = generateToken(32, "tutor");
+
+    // SEC-SUSP-03: Suspended creche_admin GET /api/billing/subscription -> allowed (200 on real billing router)
+    const resSub = await request(app)
+      .get("/api/billing/subscription")
+      .set("Authorization", `Bearer ${tokenAdmin3}`);
+    expect(resSub.status).toBe(200);
+    expect(resSub.body.crecheId).toBe(3);
+
+    // SEC-SUSP-04: Suspended creche_admin GET /api/billing/plans -> allowed (200 on real billing router)
+    const resPlans = await request(app)
+      .get("/api/billing/plans")
+      .set("Authorization", `Bearer ${tokenAdmin3}`);
+    expect(resPlans.status).toBe(200);
+    expect(Array.isArray(resPlans.body)).toBe(true);
+
+    // /api/auth/me -> allowed for suspended creche_admin
+    const resMe = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${tokenAdmin3}`);
+    expect(resMe.status).toBe(200);
+    expect(resMe.body.id).toBe(33);
+
+    // SEC-SUSP-05: Suspended staff on real /api/billing/* -> 403 tenant_suspended
+    const resStaffBilling = await request(app)
+      .get("/api/billing/plans")
+      .set("Authorization", `Bearer ${tokenStaff3}`);
+    expect(resStaffBilling.status).toBe(403);
+    expect(resStaffBilling.body.error).toBe("tenant_suspended");
+
+    // SEC-SUSP-05: Suspended tutor on real /api/billing/* -> 403 tenant_suspended
+    const resTutorBilling = await request(app)
+      .get("/api/billing/plans")
+      .set("Authorization", `Bearer ${tokenTutor3}`);
+    expect(resTutorBilling.status).toBe(403);
+    expect(resTutorBilling.body.error).toBe("tenant_suspended");
+  });
+
+  it("isSuspendedTenantRecoveryPath: correctly matches recovery routes and rejects query-string or prefix trickery", () => {
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/billing" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/billing/plans" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/billing/subscription" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/billing" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/billing/plans" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/auth/me" })).toBe(true);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/auth/me" })).toBe(true);
+
+    // Adversarial / non-recovery cases
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/users?next=/billing" })).toBe(false);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/users?return=/subscription" })).toBe(false);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/billing-attacker" })).toBe(false);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/billingattacker" })).toBe(false);
+    expect(isSuspendedTenantRecoveryPath({ originalUrl: "/api/creches/1/pets" })).toBe(false);
   });
 
   // ────────────────────────────────────────────────────────────

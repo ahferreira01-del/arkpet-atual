@@ -300,10 +300,10 @@ router.put("/:userId", async (req: AuthRequest, res) => {
           return;
         }
       } else {
-        // Target is staff or tutor
+        // Target is staff or tutor: creche_admin can only assign 'staff' or 'tutor'
         if (role !== undefined) {
-          if (role === "master_admin") {
-            res.status(403).json({ error: "Sem permissão para definir role master_admin" });
+          if (!["staff", "tutor"].includes(role)) {
+            res.status(403).json({ error: "Admins de creche só podem atribuir as funções staff e tutor" });
             return;
           }
           updates.role = role;
