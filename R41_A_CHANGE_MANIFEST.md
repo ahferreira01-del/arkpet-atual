@@ -1,10 +1,10 @@
 # ARKPET — R41.A CHANGE MANIFEST
-## FILE INVENTORY & IMPLEMENTATION ARTIFACTS (R41.A-FINAL.5)
+## FILE INVENTORY & IMPLEMENTATION ARTIFACTS (R41.A-FINAL.6)
 
-**Release Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.5)`  
+**Release Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.6)`  
 **Git Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Base Commit (R40 Frozen RC):** `58b4ff0e5cabd958d0f601af202378900427caab`  
-**Parent SHA:** `c2ea3e097492de50986e7346b427141e8bf53a89`  
+**Parent SHA:** `cdbcafe83207c6ec61189990dedc87a38e796c43`  
 
 ---
 
@@ -20,6 +20,8 @@
 | `artifacts/api-server/src/assistant/assistant-audit.service.ts` | Audit | Tracks provider in `assistant_message_turn` without exposing keys. |
 | `scripts/live-provider-connectivity-smoke.mjs` | Smoke script | Enforces normal TLS certificate validation (`NODE_TLS_REJECT_UNAUTHORIZED_OVERRIDE = 0`). |
 | `scripts/live-provider-authenticated-smoke.mjs` | Smoke script | Enforces normal TLS validation, fail-closed without real key. |
+| `scripts/live-groq-connectivity-smoke.mjs` | Smoke script | Verifies live HTTPS reachability to `api.groq.com` with TLS validation enabled. |
+| `scripts/live-groq-authenticated-smoke.mjs` | Smoke script | Executes live authenticated inference (HTTP 200) and function calling roundtrip. |
 
 ---
 
@@ -60,7 +62,7 @@
 | :--- | :--- |
 | `groqProviderSmoke.unit.test.ts` | 11 unit tests covering Groq HTTP contract, Model→Tool→Model roundtrip, role boundaries, loop limiter, prompt injection defense, rate-limiting, and fail-closed routing. |
 | `realProviderSmoke.unit.test.ts` | 8 unit tests covering OpenAI wire contract, Model→Tool→Model roundtrip, and error sanitization. |
-| `assistantSecurity.unit.test.ts` | 11 unit tests covering injection, PII redaction, RBAC, isolation, and rate-limiting. |
+| `assistantSecurity.unit.test.ts` | 14 unit tests covering injection, PII redaction, RBAC, isolation, and rate-limiting. |
 | `assistantKnowledge.unit.test.ts` | 8 unit tests covering knowledge indexing, retrieval scoring, and citations. |
 | `assistantEvals.unit.test.ts` | 53 unit tests executing 52 golden cases across all 4 roles. |
 | `assistant-evals.json` | 52 golden question test cases with role contexts, expected concepts, and boundary checks. |
@@ -96,7 +98,7 @@
 | File Path | Purpose |
 | :--- | :--- |
 | `scripts/live-groq-connectivity-smoke.mjs` | Verifies live HTTPS reachability to `api.groq.com` with TLS validation enabled. |
-| `scripts/live-groq-authenticated-smoke.mjs` | Performs live authenticated model inference on Groq endpoint; fails closed if no credential. |
+| `scripts/live-groq-authenticated-smoke.mjs` | Performs live authenticated model inference on Groq endpoint (HTTP 200) and function calling roundtrip. |
 | `scripts/live-provider-connectivity-smoke.mjs` | Verifies live HTTPS reachability to `api.openai.com` with TLS validation enabled. |
 | `scripts/live-provider-authenticated-smoke.mjs` | Performs live authenticated model inference on OpenAI endpoint; fails closed if no credential. |
 

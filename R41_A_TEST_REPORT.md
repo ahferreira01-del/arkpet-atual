@@ -1,10 +1,10 @@
 # ARKPET — R41.A TEST REPORT
-## COMPREHENSIVE AUTOMATED TEST EXECUTION & REGRESSION VERIFICATION (R41.A-FINAL.5)
+## COMPREHENSIVE AUTOMATED TEST EXECUTION & REGRESSION VERIFICATION (R41.A-FINAL.6)
 
 **Date:** 2026-10-01  
-**Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.5)`  
+**Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.6)`  
 **Candidate Base:** `58b4ff0e5cabd958d0f601af202378900427caab`  
-**Parent SHA:** `c2ea3e097492de50986e7346b427141e8bf53a89`  
+**Parent SHA:** `cdbcafe83207c6ec61189990dedc87a38e796c43`  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Status:** `ALL TEST SUITES PASSED (100%)`  
 
@@ -12,9 +12,9 @@
 
 ## 1. Executive Summary
 
-This report certifies the successful execution of all unit, integration, UX, regression, provider adapter, and quality gate tests for Phase **R41.A-FINAL.5**.
+This report certifies the successful execution of all unit, integration, UX, regression, provider adapter, and quality gate tests for Phase **R41.A-FINAL.6**.
 
-Zero regressions were introduced to existing R40 functional baselines. The assistant runtime has transitioned to a multi-provider architecture supporting `MockAIProvider`, `GroqProvider`, and `OpenAIProvider`, with `groq` configured as the primary development / free-tier provider. All tests conform strictly to security, privacy, role-based boundary, and performance constraints.
+Zero regressions were introduced to existing R40 functional baselines. The assistant runtime operates on a multi-provider architecture supporting `MockAIProvider`, `GroqProvider`, and `OpenAIProvider`, with `groq` configured as the primary development / free-tier provider. All tests conform strictly to security, privacy, role-based boundary, and performance constraints.
 
 ---
 
@@ -50,18 +50,21 @@ Zero regressions were introduced to existing R40 functional baselines. The assis
    - `OPENAI-007`: Multiple tool calls in a single turn.
    - `OPENAI-008`: Strip sensitive credentials in provider error responses.
 
-3. **`assistantSecurity.unit.test.ts` (11 tests):**
-   - `AI-SEC-001`: Injects system prompt and denies prompt injection attempts.
-   - `AI-SEC-002`: Refuses sensitive data extraction (passwords, tokens, keys).
-   - `AI-SEC-003`: Denies cross-tenant data requests.
-   - `AI-SEC-004`: Server-side RBAC: tutor cannot run staff/admin tools.
-   - `AI-SEC-005`: Server-side RBAC: staff cannot run financial/admin tools.
-   - `AI-SEC-006`: Server-side RBAC: creche_admin cannot access other creches.
-   - `AI-SEC-007`: Sanitizes input before processing (strips control chars, limits length).
-   - `AI-SEC-008`: Redacts PII/tokens in audit logs.
-   - `AI-SEC-009`: Rejects direct mutation attempts in R41.A (`MODEL_SELF_CONFIRMATION = 0`).
-   - `AI-SEC-010`: Verifies read-only tool contracts (`GENERAL_DB_ACCESS_TOOL = 0`).
-   - `AI-SEC-011`: Enforces rate-limiting on assistant endpoints.
+3. **`assistantSecurity.unit.test.ts` (14 tests):**
+   - `AI-SEC-001`: Rejects tool execution or message processing if user context is missing.
+   - `AI-SEC-002`: Tutor role cannot execute tools scoped exclusively to creche_admin or access other tenants.
+   - `AI-SEC-003`: Cross-tenant access is rejected when crecheId is missing or unauthorized.
+   - `AI-SEC-004`: Strictly forbids execution of any unregistered tool (`UNREGISTERED_TOOL_EXECUTION = 0`).
+   - `AI-SEC-004b`: Strictly forbids generic database access tools (`GENERAL_DB_ACCESS_TOOL = 0`).
+   - `AI-SEC-005`: Prompt injection attempting role elevation does not override server-side authorization.
+   - `AI-SEC-006`: Retrieved knowledge or user data cannot grant tool execution if role check fails.
+   - `AI-SEC-007`: Requests for internal secrets or API keys are strictly rejected.
+   - `AI-SEC-008`: Tool schema validation via Zod rejects malformed or invalid parameter types.
+   - `AI-SEC-009`: Every assistant action and tool execution generates a structured audit log.
+   - `AI-SEC-010`: AI kill switch returns graceful 503 error without crashing process (`ASSISTANT_KILL_SWITCH = PASS`).
+   - `AI-SEC-011`: Verifies text enabled, voice runtime strictly disabled, mutation actions disabled.
+   - `AI-SEC-012`: Disabling assistant via feature flag returns 503 without crashing (`AI_FAILURE_BREAKS_ARKPET = NO`).
+   - `AI-SEC-013`: Server-side rate limits are configured (`ASSISTANT_TEXT_RATE_LIMIT = PASS`, `ASSISTANT_SESSION_RATE_LIMIT = PASS`).
 
 4. **`assistantKnowledge.unit.test.ts` (8 tests):**
    - `AI-KNOW-001`: Loads all 8 domain markdown documents into cache.
@@ -73,9 +76,9 @@ Zero regressions were introduced to existing R40 functional baselines. The assis
    - `AI-KNOW-007`: Formats domain excerpts within token budget.
    - `AI-KNOW-008`: Preserves knowledge integrity across concurrent searches.
 
-5. **`assistantEvals.unit.test.ts` (53 tests):**
-   - 52 golden question cases evaluated across 4 user roles.
-   - 1 aggregate evaluation coverage test confirming 100% boundary compliance.
+5. **`assistantEvals.unit.test.ts` (53 test executions, 52 domain cases):**
+   - `AI_GOLDEN_EVAL_CASES`: 52/52 golden question cases evaluated across 4 user roles.
+   - `AI_GOLDEN_EVAL_TEST_EXECUTIONS`: 53/53 (52 cases + 1 aggregate evaluation coverage test confirming 100% boundary compliance).
 
 ---
 
@@ -111,11 +114,11 @@ Zero regressions were introduced to existing R40 functional baselines. The assis
 1. **API Server:**
    - Command: `pnpm --filter @workspace/api-server build`
    - Output: `dist/index.cjs` (2.8 MB)
-   - Status: Success (0 errors, build time 553ms).
+   - Status: Success (0 errors).
 2. **Frontend Client:**
    - Command: `pnpm --filter @workspace/petdaycare build`
    - Lazy-loaded bundle: `dist/public/assets/index-ADVPRhpr.js` (15.62 kB │ gzip: 5.01 kB)
-   - Status: Success (0 errors, build time 27.39s).
+   - Status: Success (0 errors).
 
 ---
 
@@ -132,9 +135,10 @@ Zero regressions were introduced to existing R40 functional baselines. The assis
 | :--- | :--- | :---: | :---: | :---: |
 | **Backend Groq Provider Adapter** | `groqProviderSmoke.unit.test.ts` | 11 | 0 | **PASS** |
 | **Backend OpenAI Provider Adapter** | `realProviderSmoke.unit.test.ts` | 8 | 0 | **PASS** |
-| **Backend Assistant Security** | `assistantSecurity.unit.test.ts` | 11 | 0 | **PASS** |
+| **Backend Assistant Security** | `assistantSecurity.unit.test.ts` | 14 | 0 | **PASS** |
 | **Backend Knowledge Retrieval** | `assistantKnowledge.unit.test.ts` | 8 | 0 | **PASS** |
-| **Backend Golden Evaluations** | `assistantEvals.unit.test.ts` | 53 | 0 | **PASS** |
+| **Backend Golden Evaluations (Cases)** | `assistantEvals.unit.test.ts` | 52 | 0 | **PASS** |
+| **Backend Golden Evaluations (Executions)**| `assistantEvals.unit.test.ts` | 53 | 0 | **PASS** |
 | **Backend Full Unit Regression** | All 46 api-server suites | 716 | 0 | **PASS** |
 | **Frontend Assistant UX** | `assistant-ux.test.tsx` | 9 | 0 | **PASS** |
 | **Frontend Full Unit Regression**| All 38 petdaycare suites | 524 | 0 | **PASS** |

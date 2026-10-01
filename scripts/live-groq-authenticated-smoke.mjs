@@ -6,7 +6,21 @@
  * Strictly avoids logging secrets, API keys, or customer data.
  */
 
+import fs from "fs";
+import os from "os";
+import path from "path";
+import { spawnSync } from "child_process";
 import dotenv from "dotenv";
+
+const defaultCaCert = path.join(os.homedir(), ".kaspersky-ca.pem");
+if (!process.env.NODE_EXTRA_CA_CERTS && fs.existsSync(defaultCaCert) && !process.env.__CHILD_SPAWNED) {
+  const result = spawnSync(process.execPath, process.argv.slice(1), {
+    env: { ...process.env, NODE_EXTRA_CA_CERTS: defaultCaCert, __CHILD_SPAWNED: "1" },
+    stdio: "inherit",
+  });
+  process.exit(result.status ?? 0);
+}
+
 dotenv.config({ quiet: true });
 dotenv.config({ path: "artifacts/api-server/.env", quiet: true });
 

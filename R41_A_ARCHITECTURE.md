@@ -94,6 +94,12 @@ flowchart TD
    - `GroqProvider`: Primary development and free-tier LLM provider (`AI_PROVIDER=groq`, `AI_MODEL=openai/gpt-oss-20b`, `https://api.groq.com/openai/v1`).
    - `OpenAIProvider`: Optional production LLM provider (`AI_PROVIDER=openai`, `AI_MODEL=gpt-4o-mini`, `https://api.openai.com/v1`).
    - `getAIProvider()` factory: Configuration-driven selection (`mock`, `groq`, `openai`). Fails closed on unknown provider (`UNKNOWN_AI_PROVIDER_FAILS_CLOSED = YES`).
+   - Provider Invariants:
+     - `AUTOMATED_TEST_DEFAULT_PROVIDER = mock`
+     - `RUNTIME_DEFAULT_PROVIDER = groq`
+     - `RUNTIME_FALLBACK_PROVIDER = NONE`
+     - `SILENT_REAL_TO_MOCK_RUNTIME_FALLBACK = 0`
+     - `UNKNOWN_AI_PROVIDER_FAILS_CLOSED = YES`
    - Configuration environment variables:
      - `AI_PROVIDER`: `mock` | `groq` | `openai` (defaults to `mock` in test, `groq` in development)
      - `AI_MODEL`: Model identifier (defaults to `openai/gpt-oss-20b` for Groq, `gpt-4o-mini` for OpenAI)
