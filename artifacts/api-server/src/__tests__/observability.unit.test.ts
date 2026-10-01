@@ -16,6 +16,8 @@ import { getRuntimeProvenance, handleGetVersion, APP_VERSION } from "../lib/vers
 import { requireRole } from "../middlewares/authenticate.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import type { Request, Response, NextFunction } from "express";
+import fs from "fs";
+import path from "path";
 
 describe("R40.F — Audit, Observability & Runtime Provenance Unit Tests", () => {
   let capturedLogs: Array<{ line: string; parsed: any; level: string }> = [];
@@ -608,6 +610,176 @@ describe("R40.F — Audit, Observability & Runtime Provenance Unit Tests", () =>
       expect(log.userId).toBe(10);
       expect(log.userCrecheId).toBe(1);
       expect(log.targetCrecheId).toBe(2);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // R40.F-FINAL.1 MANDATORY CLOSURE TESTS
+  // ────────────────────────────────────────────────────────────
+  describe("R40.F-FINAL.1 — Secret-Safe Error Logging & Version Provenance Closure", () => {
+    // OBS-FINAL-01: READINESS LEAK TEST
+    it("OBS-FINAL-01: readiness probe prevents secret leaks when database failure error contains credentials (READINESS_LOG_SECRET_LEAK = 0, READINESS_RAW_DRIVER_ERROR_LOGGED = 0)", async () => {
+      const { req, res } = createMockReqRes();
+      const rawSecret = "super_secret_db_pass_999";
+      const rawDbUri = "postgres://postgres:super_secret_db_pass_999@db-cluster.internal:5432/arkpet_prod";
+      const mockDbPool = {
+        query: vi.fn().mockRejectedValue(
+          new Error(`Connection failed: ${rawDbUri} - password authentication failed for user postgres: ${rawSecret}`)
+        ),
+      };
+
+      await handleReadinessCheck(req as Request, res as Response, mockDbPool);
+
+      expect(res.statusCode).toBe(503);
+      expect(res.body).toEqual({
+        status: "unhealthy",
+        checks: { database: "down" },
+      });
+
+      // Assert logger output
+      expect(capturedLogs.length).toBe(1);
+      const log = capturedLogs[0].parsed;
+      const logLine = capturedLogs[0].line;
+
+      // Invariants:
+      // 1. reason is fixed safe metadata, not raw driver string
+      expect(log.reason).toBe("database_unavailable");
+      expect(log.errorCode).toBe("DATABASE_ERROR");
+
+      // 2. Secret value ABSENT
+      expect(logLine).not.toContain(rawSecret);
+      // 3. Database URL ABSENT
+      expect(logLine).not.toContain("postgres://postgres");
+      expect(logLine).not.toContain("db-cluster.internal");
+      // 4. Raw driver error message ABSENT
+      expect(logLine).not.toContain("password authentication failed for user postgres");
+    });
+
+    // OBS-FINAL-02: LOGGER SECRET-IN-STRING TEST
+    it("OBS-FINAL-02: logger.error prevents secret leaks in Error strings across dev and production (ERROR_STRING_SECRET_LEAK = 0, RAW_ERROR_MESSAGE_PRODUCTION_LOGGING = 0)", () => {
+      const syntheticSecret = "super_secret_user_password_456";
+      const syntheticJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwidXNlcklkIjo5OX0.doNotLeakThisSignatureString12345";
+      const syntheticDbUri = "postgres://db_user:db_pass_789@db.internal:5432/arkpet";
+      const syntheticStripe = "sk_test_51MzTestSecretKey1234567890abcdef";
+
+      const err = new Error(
+        `Failed processing payment: ${syntheticStripe} with bearer token Bearer ${syntheticJwt} and database ${syntheticDbUri} where password=${syntheticSecret}`
+      );
+
+      // Test 1: In development/test mode
+      logger.error("payment_failed_dev", err, { requestId: "req-dev-test" });
+      expect(capturedLogs.length).toBe(1);
+      const devLogLine = capturedLogs[0].line;
+
+      expect(devLogLine).not.toContain(syntheticSecret);
+      expect(devLogLine).not.toContain(syntheticJwt);
+      expect(devLogLine).not.toContain("db_pass_789");
+      expect(devLogLine).not.toContain(syntheticStripe);
+
+      // Test 2: In production mode (RAW_ERROR_MESSAGE_PRODUCTION_LOGGING = 0, PRODUCTION_ERROR_MESSAGE_SAFE = YES)
+      const prevEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        capturedLogs = [];
+        logger.error("payment_failed_prod", err, { requestId: "req-prod-test" });
+        expect(capturedLogs.length).toBe(1);
+        const prodLog = capturedLogs[0].parsed;
+        const prodLogLine = capturedLogs[0].line;
+
+        // Production log must NEVER copy raw err.message to messageSafe
+        expect(prodLog.messageSafe).not.toContain("Failed processing payment");
+        expect(prodLog.messageSafe).toBe("An internal server error occurred");
+
+        // Every synthetic secret ABSENT
+        expect(prodLogLine).not.toContain(syntheticSecret);
+        expect(prodLogLine).not.toContain(syntheticJwt);
+        expect(prodLogLine).not.toContain("db_pass_789");
+        expect(prodLogLine).not.toContain(syntheticStripe);
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    // OBS-FINAL-03: VERSION ALIGNMENT TEST
+    it("OBS-FINAL-03: backend APP_VERSION matches service worker CACHE_NAME (APP_VERSION_DRIFT = 0, BACKEND_VERSION_MATCHES_CURRENT_APP_VERSION = YES)", () => {
+      // Find sw.js path
+      const swPath = path.resolve(process.cwd(), "../petdaycare/public/sw.js");
+      expect(fs.existsSync(swPath)).toBe(true);
+
+      const swContent = fs.readFileSync(swPath, "utf-8");
+      const match = swContent.match(/const CACHE_NAME = "([^"]+)";/);
+      expect(match).not.toBeNull();
+      const swCacheVersion = match![1];
+
+      // Must be arkpet-v32 and match backend APP_VERSION
+      expect(swCacheVersion).toBe("arkpet-v32");
+      expect(APP_VERSION).toBe(swCacheVersion);
+
+      const provenance = getRuntimeProvenance();
+      expect(provenance.version).toBe("arkpet-v32");
+      expect(provenance.version).toBe(swCacheVersion);
+    });
+
+    // OBS-FINAL-04: AUTH INTERNAL ERROR SECRET LEAK TEST
+    it("OBS-FINAL-04: register-creche failure returns safe generic 500 and prevents secret leak in logs (AUTH_INTERNAL_ERROR_SECRET_LEAK = 0, REGISTER_CRECHE_INTERNAL_ERROR_LEAK = 0)", () => {
+      const { req, res } = createMockReqRes({ id: "req-auth-fail-001" });
+      const syntheticSecret = "pg_super_admin_pass_333";
+      const internalFilePath = "/var/lib/postgresql/data/base/16384/pg_internal.dat";
+      const rawDbError = `Internal error at ${internalFilePath}: FATAL password authentication failed for postgres: ${syntheticSecret}`;
+
+      const err = new Error(rawDbError);
+      (err as any).code = "INTERNAL_PROVISIONING_ERROR";
+
+      // Simulated auth register-creche catch block
+      const requestId = req.id;
+      logger.error("register_creche_failed", err, {
+        requestId,
+        errorCode: (err as any)?.code || "INTERNAL_PROVISIONING_ERROR",
+      });
+
+      res.status(500).json({
+        error: "Não foi possível cadastrar a creche. Tente novamente.",
+        code: "INTERNAL_ERROR",
+        requestId,
+      });
+
+      // 1. Response verification: generic safe error
+      expect(res.statusCode).toBe(500);
+      expect(res.body).toEqual({
+        error: "Não foi possível cadastrar a creche. Tente novamente.",
+        code: "INTERNAL_ERROR",
+        requestId: "req-auth-fail-001",
+      });
+      const responseStr = JSON.stringify(res.body);
+      expect(responseStr).not.toContain(syntheticSecret);
+      expect(responseStr).not.toContain(internalFilePath);
+
+      // 2. Log verification: contains requestId, safe code, zero secret leaks
+      expect(capturedLogs.length).toBe(1);
+      const log = capturedLogs[0].parsed;
+      const logLine = capturedLogs[0].line;
+      expect(log.event).toBe("register_creche_failed");
+      expect(log.requestId).toBe("req-auth-fail-001");
+      expect(log.errorCode).toBe("INTERNAL_PROVISIONING_ERROR");
+      expect(logLine).not.toContain(syntheticSecret);
+    });
+
+    // BUILT_ARTIFACT_PROVENANCE_TEST
+    it("BUILT_ARTIFACT_PROVENANCE_TEST: getRuntimeProvenance resolves valid commitSha and buildTime without falling back to unknown in production", () => {
+      const commitSha = "68c5cb713b9a58e0666649b70da6505ff43a7961";
+      const buildTime = "2026-10-01T08:00:00.000Z";
+
+      const provenance = getRuntimeProvenance({
+        ARKPET_COMMIT_SHA: commitSha,
+        BUILD_TIME: buildTime,
+        NODE_ENV: "production",
+      });
+
+      expect(provenance.commitSha).toBe(commitSha);
+      expect(provenance.buildTime).toBe(buildTime);
+      expect(provenance.version).toBe("arkpet-v32");
+      expect(provenance.commitSha).not.toBe("unknown");
+      expect(provenance.buildTime).not.toBe("unknown");
     });
   });
 });

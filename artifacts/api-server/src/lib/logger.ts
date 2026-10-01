@@ -13,8 +13,10 @@ export interface LogContext {
   crecheId?: number;
   entityType?: string;
   entityId?: string | number;
+  errorName?: string;
   errorCode?: string;
   messageSafe?: string;
+  reason?: string;
   [key: string]: unknown;
 }
 
@@ -68,10 +70,74 @@ export function isForbiddenKey(key: string): boolean {
 }
 
 /**
- * Recursively redacts sensitive keys from objects and arrays with circular-reference protection.
+ * Defensive string sanitization for common credentials, tokens, connection URIs, and sensitive fields.
+ * Masks:
+ * - Connection strings: postgres://user:password@host:port/db
+ * - Bearer tokens: Bearer <token>
+ * - Basic auth: Basic <base64>
+ * - Stripe secret keys: sk_live_..., sk_test_..., rk_live_..., rk_test_...
+ * - JWT tokens: eyJ...
+ * - Key-value sensitive parameters: password=..., token=..., secret=...
+ */
+export function sanitizeString(input: string): string {
+  if (!input || typeof input !== "string") return input;
+
+  let sanitized = input;
+
+  // 1. Database URLs / Connection URIs with credentials
+  sanitized = sanitized.replace(
+    /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^:\s\/@]+):([^@\s\/]+)@/g,
+    "$1[REDACTED_USER]:[REDACTED_SECRET]@"
+  );
+
+  // Standalone connection strings
+  sanitized = sanitized.replace(
+    /(postgres(?:ql)?|mysql|mongodb|redis):\/\/[^\s"'`]+/gi,
+    (match) => match.replace(/:([^\/@\s]+)@/, ":[REDACTED_SECRET]@")
+  );
+
+  // 2. Bearer tokens
+  sanitized = sanitized.replace(/Bearer\s+[a-zA-Z0-9\-._~+/]+=*/gi, "Bearer [REDACTED]");
+
+  // 3. Basic auth
+  sanitized = sanitized.replace(/Basic\s+[a-zA-Z0-9+/=]+/gi, "Basic [REDACTED]");
+
+  // 4. Stripe API keys (sk_live_..., sk_test_..., rk_live_..., rk_test_...)
+  sanitized = sanitized.replace(/(?:sk|rk)_(?:live|test)_[a-zA-Z0-9]+/g, "[REDACTED_STRIPE_KEY]");
+
+  // 5. JWT tokens (header.payload.signature)
+  sanitized = sanitized.replace(/eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+/g, "[REDACTED_JWT]");
+
+  // 6. Sensitive key-value / query string parameters
+  sanitized = sanitized.replace(
+    /(password|passwordhash|token|secret|jwt|cvv|cpf|authorization|cookie|session)=([^&\s,;]+)/gi,
+    "$1=[REDACTED]"
+  );
+
+  // 7. Driver password auth errors (e.g. password authentication failed for postgres: pass, or for user postgres: pass)
+  sanitized = sanitized.replace(
+    /(password(?: authentication failed)?(?: for (?:user )?[^:]+)?:?)\s*\S+/gi,
+    "$1: [REDACTED]"
+  );
+
+  // 8. General password pattern in error messages e.g. "password: secret" or "password is secret"
+  sanitized = sanitized.replace(
+    /(password|passwd|pwd)\s*(?:is\s*|:\s*|=\s*|\s+)(\S+)/gi,
+    "$1: [REDACTED]"
+  );
+
+  return sanitized;
+}
+
+/**
+ * Recursively redacts sensitive keys from objects and arrays with circular-reference protection
+ * and deep string sanitization against embedded secret values.
  */
 export function redact(value: unknown, seen = new WeakSet()): unknown {
   if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    return sanitizeString(value);
+  }
   if (typeof value !== "object") return value;
 
   if (seen.has(value as object)) {
@@ -84,12 +150,16 @@ export function redact(value: unknown, seen = new WeakSet()): unknown {
   }
 
   if (value instanceof Error) {
-    return {
+    const isProd = process.env.NODE_ENV === "production";
+    const res: Record<string, unknown> = {
       name: value.name,
-      message: value.message,
-      code: (value as any).code,
+      code: (value as any).code || "INTERNAL_ERROR",
       statusCode: (value as any).statusCode || (value as any).status,
     };
+    if (!isProd) {
+      res.message = sanitizeString(value.message);
+    }
+    return res;
   }
 
   const result: Record<string, unknown> = {};
@@ -203,18 +273,30 @@ export const logger = {
 
   error(event: string, errOrContext?: unknown, context?: LogContext): void {
     let finalContext: LogContext = context ? { ...context } : {};
+    const isProd = process.env.NODE_ENV === "production";
 
     if (errOrContext instanceof Error) {
-      finalContext.messageSafe = errOrContext.message;
+      finalContext.errorName = errOrContext.name;
       finalContext.errorCode = (errOrContext as any).code || "INTERNAL_ERROR";
-      // Only include stack internally on server-side logs, sanitized
-      if (process.env.NODE_ENV !== "production") {
-        finalContext.stack = errOrContext.stack;
+      if (!isProd) {
+        finalContext.messageSafe = sanitizeString(finalContext.messageSafe || errOrContext.message);
+        if (errOrContext.stack) {
+          finalContext.stack = sanitizeString(errOrContext.stack);
+        }
+      } else {
+        // In production: NEVER assign arbitrary err.message to messageSafe!
+        // RAW_ERROR_MESSAGE_PRODUCTION_LOGGING = 0
+        finalContext.messageSafe = finalContext.messageSafe
+          ? sanitizeString(finalContext.messageSafe)
+          : "An internal server error occurred";
       }
     } else if (typeof errOrContext === "object" && errOrContext !== null) {
       finalContext = { ...(errOrContext as LogContext), ...finalContext };
+      if (finalContext.messageSafe) {
+        finalContext.messageSafe = sanitizeString(finalContext.messageSafe);
+      }
     } else if (typeof errOrContext === "string") {
-      finalContext.messageSafe = errOrContext;
+      finalContext.messageSafe = sanitizeString(errOrContext);
     }
 
     formatAndEmit("error", event, finalContext);

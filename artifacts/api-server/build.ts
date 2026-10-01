@@ -41,11 +41,40 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+import { writeFile } from "fs/promises";
+import { execSync } from "child_process";
+
 async function buildAll() {
   const distDir = path.resolve(__dirname, "dist");
   await rm(distDir, { recursive: true, force: true });
 
   console.log("building server...");
+
+  // Resolve authoritative commit SHA
+  let commitSha =
+    process.env.BUILD_COMMIT_SHA ||
+    process.env.ARKPET_COMMIT_SHA ||
+    process.env.RENDER_GIT_COMMIT ||
+    process.env.VERCEL_GIT_COMMIT_SHA ||
+    process.env.GITHUB_SHA;
+
+  if (!commitSha) {
+    try {
+      commitSha = execSync("git rev-parse HEAD", { encoding: "utf-8" }).trim();
+    } catch {
+      // Failed to execute git rev-parse HEAD
+    }
+  }
+
+  if (!commitSha || commitSha === "unknown") {
+    throw new Error(
+      "PRODUCTION_BUILD_UNKNOWN_COMMIT_ALLOWED = NO: Failed to resolve Git commit SHA for production build"
+    );
+  }
+
+  const buildTime = new Date().toISOString();
+  console.log(`[build] Embedded provenance: commitSha=${commitSha}, buildTime=${buildTime}`);
+
   const pkgPath = path.resolve(__dirname, "package.json");
   const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
   const allDeps = [
@@ -66,6 +95,8 @@ async function buildAll() {
     outfile: path.resolve(distDir, "index.cjs"),
     define: {
       "process.env.NODE_ENV": '"production"',
+      "__BUILD_COMMIT_SHA__": JSON.stringify(commitSha),
+      "__BUILD_TIME__": JSON.stringify(buildTime),
     },
     minify: true,
     external: externals,

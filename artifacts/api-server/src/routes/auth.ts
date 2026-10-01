@@ -184,7 +184,14 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
       name: result.user.name,
       email: result.user.email,
       crecheName: result.creche.name,
-    }).catch((err) => console.error("[auth] welcome email failed:", err));
+    }).catch((err) => {
+      logger.warn("welcome_email_failed", {
+        requestId: (req as any).id,
+        errorCode: (err as any)?.code || "EMAIL_DELIVERY_FAILED",
+        crecheId: result.creche.id,
+        userId: result.user.id,
+      });
+    });
 
     const token      = generateToken(result.user.id, result.user.role);
     const mediaToken = generateMediaToken(result.user.id, result.user.crecheId);
@@ -208,8 +215,18 @@ router.post("/register-creche", sensitiveLimiter, async (req, res) => {
       res.status(409).json({ error: "Este e-mail já está cadastrado." });
       return;
     }
-    console.error("[register-creche] error:", err);
-    res.status(500).json({ error: err.message || "Erro ao cadastrar creche." });
+    const requestId = (req as any).id;
+    logger.error("register_creche_failed", err, {
+      requestId,
+      errorCode: (err as any)?.code || "INTERNAL_PROVISIONING_ERROR",
+    });
+    // Never leak arbitrary err.message or driver/filesystem details to clients
+    // REGISTER_CRECHE_INTERNAL_ERROR_LEAK = 0
+    res.status(500).json({
+      error: "Não foi possível cadastrar a creche. Tente novamente.",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -337,7 +354,7 @@ router.post("/forgot-password", sensitiveLimiter, async (req, res) => {
     res.json({ mediaToken });
   });
 
-  router.post("/logout", (req: Request, res: Response) => {
+  router.post("/logout", (req, res) => {
     logger.info("logout", {
       requestId: (req as any).id,
     });

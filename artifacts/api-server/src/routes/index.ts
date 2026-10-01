@@ -87,7 +87,7 @@ router.use(logsRouter);
 // quebre compatibilidade com clientes antigos.
 import { handleGetVersion, APP_VERSION } from "../lib/version.js";
 export { APP_VERSION };
-router.get("/version", handleGetVersion);
+router.get("/version", (req, res) => handleGetVersion(req, res));
 
 // ── Catch-all: rota não encontrada → sempre JSON, nunca HTML ─────────────────
 // Garante que qualquer requisição a /api/* que não bater em nenhuma rota

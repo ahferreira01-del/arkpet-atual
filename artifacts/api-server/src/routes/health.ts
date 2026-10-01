@@ -43,9 +43,11 @@ export async function handleReadinessCheck(
     });
   } catch (err) {
     clearTimeout(timeoutHandle!);
-    // Safe technical logging without leaking credentials
+    // Safe technical logging without leaking credentials or raw driver strings
+    // READINESS_RAW_DRIVER_ERROR_LOGGED = 0
     logger.warn("readiness_check_failed", {
-      reason: err instanceof Error ? err.message : "Database unavailable",
+      reason: "database_unavailable",
+      errorCode: (err as any)?.code || "DATABASE_ERROR",
     });
 
     res.status(503).json({
