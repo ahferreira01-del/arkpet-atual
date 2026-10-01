@@ -66,6 +66,37 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
       });
       return;
     }
+
+    if (creche && (creche.status as string) === "suspended") {
+      const requestPath = req.originalUrl || (req.baseUrl ? req.baseUrl + req.path : req.path) || "";
+      const isRecoveryOrBilling =
+        requestPath.startsWith("/api/billing") ||
+        requestPath.startsWith("/billing") ||
+        requestPath === "/api/auth/me" ||
+        requestPath === "/auth/me" ||
+        requestPath.includes("/billing") ||
+        requestPath.includes("/subscription");
+
+      if (user.role === "creche_admin" && isRecoveryOrBilling) {
+        // creche_admin is allowed access to recovery/billing endpoints
+      } else {
+        logger.warn("authorization_denied", {
+          requestId: (req as any).id,
+          userId: user.id,
+          role: user.role,
+          crecheId: user.crecheId,
+          reason: "tenant_suspended",
+          path: req.path,
+          method: req.method,
+        });
+        res.status(403).json({
+          error: "tenant_suspended",
+          code: "tenant_suspended",
+          message: "Esta creche está suspensa. Acesso bloqueado.",
+        });
+        return;
+      }
+    }
   }
   req.user = { id: user.id, role: user.role, crecheId: user.crecheId, name: user.name, email: user.email };
   next();

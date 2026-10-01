@@ -4,6 +4,7 @@ import { petsTable, usersTable, bookingsTable, crechesTable } from "@workspace/d
 import { eq, and, or, ilike } from "drizzle-orm";
 import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
+import { logger } from "../lib/logger.js";
 
 const router = Router();
 router.use(authenticate);
@@ -343,8 +344,17 @@ router.get("/", async (req: AuthRequest, res: Response): Promise<void> => {
     const result = await executeGlobalSearch(req.user!, rawQuery);
     res.json(result);
   } catch (error) {
-    console.error("Global search error:", error);
-    res.status(500).json({ error: "Erro interno ao processar a busca" });
+    const requestId = (req as any).id;
+    logger.error("search_error", error, {
+      requestId,
+      userId: req.user?.id,
+      errorCode: (error as any)?.code || "SEARCH_EXECUTION_FAILED",
+    });
+    res.status(500).json({
+      error: "Erro interno ao processar a busca",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 

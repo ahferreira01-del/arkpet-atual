@@ -47,12 +47,19 @@ const allowedOrigins = (() => {
   return [...origins];
 })();
 
+export function isAllowedOrigin(origin: string | undefined, allowedOriginsList: string[] = allowedOrigins): boolean {
+  if (!origin) return true;
+  const isDev = process.env.NODE_ENV !== "production";
+  if (isDev && /^http:\/\/localhost(:\d+)?$/.test(origin)) {
+    return true;
+  }
+  return allowedOriginsList.includes(origin);
+}
+
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (origin.startsWith("http://localhost:")) return cb(null, true);
-      if (allowedOrigins.some((o) => origin === o || origin.startsWith(o))) {
+      if (isAllowedOrigin(origin)) {
         return cb(null, true);
       }
       cb(new Error(`CORS: origin '${origin}' não permitido.`));

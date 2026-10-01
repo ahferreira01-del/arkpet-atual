@@ -1,9 +1,19 @@
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
+import { logger } from "./logger.js";
 
 // Password salt is ONLY used for legacy SHA-256 fallback hash verification.
-// In production, no hardcoded secret fallback is allowed (PRODUCTION_HARDCODED_SECRET_FALLBACK = 0).
-const PASSWORD_SALT = process.env.PASSWORD_SALT ?? (process.env.NODE_ENV === "production" ? "" : "pet_daycare_salt");
+// In production, when PASSWORD_SALT is absent, legacy verification fails closed (LEGACY_HASH_EMPTY_SALT_VERIFICATION = 0).
+export function getPasswordSalt(): string | null {
+  if (process.env.PASSWORD_SALT) {
+    return process.env.PASSWORD_SALT;
+  }
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+  return "pet_daycare_salt";
+}
+
 const BCRYPT_ROUNDS = 10;
 
 // Maximum validity period for stateful/stateless bearer auth tokens (30 days)
@@ -27,8 +37,9 @@ export function validateJwtConfig(): void {
 
 // Legacy hashing kept ONLY to verify pre-bcrypt credentials so existing users
 // are not locked out. New hashes are always bcrypt (see hashPassword).
-function legacyHash(password: string): string {
-  return crypto.createHash("sha256").update(password + PASSWORD_SALT).digest("hex");
+export function legacyHash(password: string, customSalt?: string): string {
+  const salt = customSalt !== undefined ? customSalt : (getPasswordSalt() ?? "");
+  return crypto.createHash("sha256").update(password + salt).digest("hex");
 }
 
 function isBcryptHash(hash: string): boolean {
@@ -43,8 +54,19 @@ export function verifyPassword(password: string, hash: string): boolean {
   if (isBcryptHash(hash)) {
     return bcrypt.compareSync(password, hash);
   }
-  // Legacy SHA-256 fallback (constant-time compare).
-  const expected = legacyHash(password);
+  // Legacy SHA-256 fallback:
+  // If stored credential is legacy and production PASSWORD_SALT is unavailable,
+  // fail closed safely without attempting sha256(password + "").
+  const salt = getPasswordSalt();
+  if (salt === null) {
+    logger.warn("auth_legacy_salt_missing", {
+      errorCode: "LEGACY_PASSWORD_SALT_UNAVAILABLE",
+      messageSafe: "Legacy password verification failed closed: PASSWORD_SALT is not configured in production environment.",
+    });
+    return false;
+  }
+
+  const expected = crypto.createHash("sha256").update(password + salt).digest("hex");
   const a = Buffer.from(expected);
   const b = Buffer.from(hash);
   return a.length === b.length && crypto.timingSafeEqual(a, b);

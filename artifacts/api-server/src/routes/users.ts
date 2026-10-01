@@ -12,6 +12,7 @@ import {
   TenantArchivedError,
 } from "../services/tenantLifecycleLock.js";
 import { checkQuota, checkCreationQuota } from "../services/entitlementsService.js";
+import { logger } from "../lib/logger.js";
 
 const userRoleEnum = z.enum(["master_admin", "creche_admin", "staff", "tutor"]);
 
@@ -147,7 +148,17 @@ router.post("/", requireRole("master_admin", "creche_admin"), async (req: AuthRe
       res.status(409).json({ error: "Email já está em uso" });
       return;
     }
-    res.status(500).json({ error: err.message || "Erro ao criar usuário" });
+    const requestId = (req as any).id;
+    logger.error("users_create_error", err, {
+      requestId,
+      userId: req.user?.id,
+      errorCode: (err as any)?.code || "USER_CREATE_FAILED",
+    });
+    res.status(500).json({
+      error: "Erro ao criar usuário",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -361,7 +372,18 @@ router.put("/:userId", async (req: AuthRequest, res) => {
       });
       return;
     }
-    res.status(500).json({ error: err.message || "Erro ao atualizar usuário" });
+    const requestId = (req as any).id;
+    logger.error("users_update_error", err, {
+      requestId,
+      userId: req.user?.id,
+      targetUserId: userId,
+      errorCode: (err as any)?.code || "USER_UPDATE_FAILED",
+    });
+    res.status(500).json({
+      error: "Erro ao atualizar usuário",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -460,7 +482,18 @@ router.post("/:tutorId/anonymize", async (req: AuthRequest, res) => {
 
     res.json({ success: true, message: "Dados anonimizados com sucesso" });
   } catch (err: any) {
-    res.status(500).json({ error: "Erro ao anonimizar tutor: " + err.message });
+    const requestId = (req as any).id;
+    logger.error("tutor_anonymize_error", err, {
+      requestId,
+      userId: req.user?.id,
+      tutorId,
+      errorCode: (err as any)?.code || "TUTOR_ANONYMIZE_FAILED",
+    });
+    res.status(500).json({
+      error: "Erro ao anonimizar tutor",
+      code: "INTERNAL_ERROR",
+      requestId,
+    });
   }
 });
 
