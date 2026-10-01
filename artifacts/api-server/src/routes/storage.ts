@@ -402,7 +402,7 @@ router.get("/storage/objects/*path", async (req: AuthRequest, res: Response) => 
     logger.error("storage_serve_error", error, {
       requestId,
       userId: req.user?.id,
-      crecheId: req.user?.crecheId,
+      crecheId: req.user?.crecheId ?? undefined,
       errorCode: (error as any)?.code || "INTERNAL_ERROR",
     });
     res.status(500).json({
