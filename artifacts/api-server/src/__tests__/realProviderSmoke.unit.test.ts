@@ -10,17 +10,19 @@ describe("ArkPet R41.A-FINAL.1 — Real AI Provider Integration Smoke Suite", ()
   });
 
   const syntheticAdminContext: AssistantSecurityContext = {
-    userId: "usr_synth_admin",
-    crecheId: "creche_synth_01",
+    userId: 901,
+    crecheId: 101,
     role: "creche_admin",
     name: "Admin Sintético",
+    email: "admin@synth.test",
   };
 
   const syntheticTutorContext: AssistantSecurityContext = {
-    userId: "usr_synth_tutor",
-    crecheId: "creche_synth_01",
+    userId: 902,
+    crecheId: 101,
     role: "tutor",
     name: "Tutor Sintético",
+    email: "tutor@synth.test",
   };
 
   // Section 15: Controlled Real Provider Smoke
