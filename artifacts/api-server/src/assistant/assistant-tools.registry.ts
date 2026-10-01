@@ -9,7 +9,8 @@ import {
 import { eq, and, sql, count, desc, like } from "drizzle-orm";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
-import { AssistantGuidanceService } from "./assistant-guidance.service.js";
+import { AssistantGuidanceService, CANONICAL_ONBOARDING_TARGETS } from "./assistant-guidance.service.js";
+import { getCanonicalOnboardingStatus } from "../services/onboarding.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type {
   AssistantSecurityContext,
@@ -30,7 +31,7 @@ export class AssistantToolsRegistry {
     this.register({
       name: "get_onboarding_status",
       description: "Consulta o status e progresso real dos 5 passos de onboarding da creche.",
-      allowedRoles: ["creche_admin", "master_admin"],
+      allowedRoles: ["creche_admin"],
       inputSchema: z.object({}),
       confirmationRequired: false,
       auditEvent: "assistant_tool_get_onboarding_status",
@@ -241,7 +242,7 @@ export class AssistantToolsRegistry {
     this.register({
       name: "get_guided_onboarding_plan",
       description: "Gera o plano contextual de onboarding guiado para a creche atual, recomendando ações e navegação segura para o próximo passo pendente.",
-      allowedRoles: ["creche_admin", "master_admin"],
+      allowedRoles: ["creche_admin"],
       inputSchema: z.object({
         currentRoute: z.string().optional(),
       }),
@@ -258,93 +259,16 @@ export class AssistantToolsRegistry {
   }
 
   public static async getOnboardingStatus(crecheId: number): Promise<GuidedOnboardingStatus> {
-    const [creche] = await db
-      .select()
-      .from(crechesTable)
-      .where(eq(crechesTable.id, crecheId))
-      .limit(1);
+    const canonical = await getCanonicalOnboardingStatus(crecheId);
 
-    if (!creche) {
+    if (!canonical) {
       throw new Error("Creche não encontrada");
     }
 
-    const [staffCountRes] = await db
-      .select({ count: count() })
-      .from(usersTable)
-      .where(
-        and(
-          eq(usersTable.crecheId, crecheId),
-          sql`role IN ('creche_admin', 'staff')`
-        )
-      );
-
-    const [tutorsCountRes] = await db
-      .select({ count: count() })
-      .from(usersTable)
-      .where(
-        and(
-          eq(usersTable.crecheId, crecheId),
-          eq(usersTable.role, "tutor")
-        )
-      );
-
-    const [petsCountRes] = await db
-      .select({ count: count() })
-      .from(petsTable)
-      .where(eq(petsTable.crecheId, crecheId));
-
-    const [bookingsCountRes] = await db
-      .select({ count: count() })
-      .from(bookingsTable)
-      .where(eq(bookingsTable.crecheId, crecheId));
-
-    const steps: GuidedOnboardingStep[] = [
-      {
-        id: "creche_details",
-        title: "Completar dados da creche",
-        description: "Informe telefone e endereço da creche",
-        completed: Boolean(creche.phone && creche.address),
-        route: "/settings",
-        target: "creche-profile-form",
-        actionLabel: "Configurar",
-      },
-      {
-        id: "staff",
-        title: "Cadastrar equipe",
-        description: "Convide ou adicione membros da equipe",
-        completed: (staffCountRes?.count || 0) > 1,
-        route: "/staff/manage",
-        target: "staff-create-button",
-        actionLabel: "Equipe",
-      },
-      {
-        id: "tutors",
-        title: "Cadastrar tutor",
-        description: "Cadastre seu primeiro tutor",
-        completed: (tutorsCountRes?.count || 0) > 0,
-        route: "/tutors",
-        target: "tutor-create-button",
-        actionLabel: "Tutores",
-      },
-      {
-        id: "pets",
-        title: "Cadastrar primeiro pet",
-        description: "Cadastre um pet vinculado a um tutor",
-        completed: (petsCountRes?.count || 0) > 0,
-        route: "/pets",
-        target: "pet-create-button",
-        actionLabel: "Pets",
-      },
-      {
-        id: "bookings",
-        title: "Conhecer reservas",
-        description: "Crie sua primeira reserva ou veja a agenda",
-        completed: (bookingsCountRes?.count || 0) > 0,
-        route: "/bookings",
-        target: "booking-create-button",
-        actionLabel: "Reservas",
-      },
-    ];
+    const steps: GuidedOnboardingStep[] = canonical.steps.map((s) => ({
+      ...s,
+      target: CANONICAL_ONBOARDING_TARGETS[s.id] || "",
+    }));
 
     const completedSteps = steps.filter((s) => s.completed).map((s) => s.id);
     const pendingSteps = steps.filter((s) => !s.completed).map((s) => s.id);

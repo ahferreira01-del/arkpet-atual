@@ -21,6 +21,7 @@ import {
   TenantArchivedError,
 } from "../services/tenantLifecycleLock.js";
 import { checkQuota, checkCreationQuota } from "../services/entitlementsService.js";
+import { getCanonicalOnboardingStatus } from "../services/onboarding.service.js";
 
 const staffRoleEnum = z.enum(["creche_admin", "staff"]);
 
@@ -438,85 +439,14 @@ export async function getCrecheOnboardingHandler(req: AuthRequest, res: Response
     res.status(403).json({ error: "Sem permissão" });
     return;
   }
-  const [creche] = await dbInstance.select().from(crechesTable).where(eq(crechesTable.id, id)).limit(1);
-  if (!creche) {
+
+  const status = await getCanonicalOnboardingStatus(id, dbInstance);
+  if (!status) {
     res.status(404).json({ error: "Not found" });
     return;
   }
 
-  const [staffMembersCount] = await dbInstance
-    .select({ count: count() })
-    .from(usersTable)
-    .where(and(eq(usersTable.crecheId, id), sql`role IN ('creche_admin', 'staff')`));
-
-  const [tutorsCount] = await dbInstance
-    .select({ count: count() })
-    .from(usersTable)
-    .where(and(eq(usersTable.crecheId, id), eq(usersTable.role, "tutor")));
-
-  const [petsCount] = await dbInstance
-    .select({ count: count() })
-    .from(petsTable)
-    .where(eq(petsTable.crecheId, id));
-
-  const [bookingsCount] = await dbInstance
-    .select({ count: count() })
-    .from(bookingsTable)
-    .where(eq(bookingsTable.crecheId, id));
-
-  const steps = [
-    {
-      id: "creche_details",
-      title: "Completar dados da creche",
-      description: "Informe telefone e endereço da creche",
-      completed: Boolean(creche.phone && creche.address),
-      route: "/settings",
-      actionLabel: "Configurar",
-    },
-    {
-      id: "staff",
-      title: "Cadastrar equipe",
-      description: "Convide ou adicione membros da equipe",
-      completed: (staffMembersCount?.count || 0) > 1,
-      route: "/staff/manage",
-      actionLabel: "Equipe",
-    },
-    {
-      id: "tutors",
-      title: "Cadastrar tutor",
-      description: "Cadastre seu primeiro tutor",
-      completed: (tutorsCount?.count || 0) > 0,
-      route: "/tutors",
-      actionLabel: "Tutores",
-    },
-    {
-      id: "pets",
-      title: "Cadastrar primeiro pet",
-      description: "Cadastre um pet vinculado a um tutor",
-      completed: (petsCount?.count || 0) > 0,
-      route: "/pets",
-      actionLabel: "Pets",
-    },
-    {
-      id: "bookings",
-      title: "Conhecer reservas",
-      description: "Crie sua primeira reserva ou veja a agenda",
-      completed: (bookingsCount?.count || 0) > 0,
-      route: "/bookings",
-      actionLabel: "Reservas",
-    },
-  ];
-
-  const completedCount = steps.filter((s) => s.completed).length;
-  const isComplete = completedCount === steps.length;
-
-  res.json({
-    crecheId: id,
-    isComplete,
-    completedCount,
-    totalSteps: steps.length,
-    steps,
-  });
+  res.json(status);
 }
 
 router.get("/:crecheId/onboarding", (req: AuthRequest, res: Response) => getCrecheOnboardingHandler(req, res));

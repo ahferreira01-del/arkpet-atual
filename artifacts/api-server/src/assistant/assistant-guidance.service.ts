@@ -16,6 +16,14 @@ export interface CanonicalStepMetadata {
   actionLabel: string;
 }
 
+export const CANONICAL_ONBOARDING_TARGETS: Record<CanonicalOnboardingStepId, string> = {
+  creche_details: "creche-profile-form",
+  staff: "staff-create-button",
+  tutors: "tutor-create-button",
+  pets: "pet-create-button",
+  bookings: "booking-create-button",
+};
+
 export const CANONICAL_ONBOARDING_METADATA: readonly CanonicalStepMetadata[] = [
   {
     id: "creche_details",
@@ -177,8 +185,8 @@ export class AssistantGuidanceService {
     currentStep: GuidedOnboardingStep | null;
     isCurrentScreen: boolean;
   } {
-    // Role boundary guard
-    if (userRole !== "creche_admin" && userRole !== "master_admin") {
+    // Role boundary guard: only creche_admin is authorized for tenant onboarding guidance
+    if (userRole !== "creche_admin") {
       return {
         content: "O onboarding da creche é gerenciado exclusivamente pelos administradores da creche.",
         uiActions: [],

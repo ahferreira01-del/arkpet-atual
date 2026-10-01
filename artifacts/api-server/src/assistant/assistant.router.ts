@@ -145,7 +145,7 @@ assistantRouter.get("/context", async (req: AuthRequest, res: Response) => {
 assistantRouter.get("/onboarding", async (req: AuthRequest, res: Response) => {
   try {
     const context = extractSecurityContext(req);
-    if (context.role !== "creche_admin" && context.role !== "master_admin") {
+    if (context.role !== "creche_admin") {
       res.status(403).json({ error: "Acesso negado ao onboarding da creche.", code: "FORBIDDEN" });
       return;
     }

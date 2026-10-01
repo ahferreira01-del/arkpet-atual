@@ -4,10 +4,19 @@ import { AssistantGuidanceService } from "../assistant/assistant-guidance.servic
 import { AssistantService } from "../assistant/assistant.service.js";
 import { AssistantAuditService } from "../assistant/assistant-audit.service.js";
 import { ASSISTANT_CONFIG } from "../assistant/assistant.config.js";
+import { getCrecheOnboardingHandler } from "../routes/creches.js";
+import * as onboardingService from "../services/onboarding.service.js";
+import {
+  getCanonicalOnboardingStatus,
+  CANONICAL_ONBOARDING_STEP_IDS,
+} from "../services/onboarding.service.js";
 import type {
   AssistantSecurityContext,
   GuidedOnboardingStatus,
 } from "../assistant/assistant.types.js";
+
+import { PgDialect } from "drizzle-orm/pg-core";
+import { getTableName } from "drizzle-orm";
 
 // Mock DB module
 vi.mock("@workspace/db", () => {
@@ -21,6 +30,8 @@ vi.mock("@workspace/db", () => {
 import { db } from "@workspace/db";
 
 describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
+  const dialect = new PgDialect();
+
   const crecheAdminContext: AssistantSecurityContext = {
     userId: 10,
     role: "creche_admin",
@@ -48,6 +59,31 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     requestId: "req-r41b-003",
   };
 
+  const masterAdminContext: AssistantSecurityContext = {
+    userId: 999,
+    role: "master_admin",
+    crecheId: null,
+    name: "Master Operator",
+    email: "master@arkpet.test",
+    requestId: "req-r41b-004",
+  };
+
+  function createMockRes() {
+    const res: any = {
+      statusCode: 200,
+      body: null,
+      status: vi.fn((code: number) => {
+        res.statusCode = code;
+        return res;
+      }),
+      json: vi.fn((data: any) => {
+        res.body = data;
+        return res;
+      }),
+    };
+    return res;
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -60,13 +96,54 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     tutorsCount?: number;
     petsCount?: number;
     bookingsCount?: number;
+    crecheExists?: boolean;
   }) {
-    let callIndex = 0;
-    (db.select as any).mockImplementation(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(() => ({
-          limit: vi.fn(async () => {
-            // First call is crechesTable
+    (db.select as any).mockImplementation((fields?: any) => {
+      let targetTable = "";
+      let whereCondition: any = null;
+
+      const chain: any = {
+        from: (tableObj: any) => {
+          try {
+            targetTable = getTableName(tableObj);
+          } catch {
+            targetTable = tableObj?._?.name || tableObj?.name || "";
+          }
+          return chain;
+        },
+        where: (condition: any) => {
+          whereCondition = condition;
+          return chain;
+        },
+        limit: vi.fn(async () => {
+          if (state.crecheExists === false) return [];
+          return [
+            {
+              id: 1,
+              name: "Creche Paws",
+              phone: state.phone ?? null,
+              address: state.address ?? null,
+            },
+          ];
+        }),
+        execute: async () => chain.resolve(),
+        then: (resolve: any, reject: any) => chain.resolve().then(resolve, reject),
+        resolve: async () => {
+          let sqlStr = "";
+          let paramValues: string[] = [];
+          if (whereCondition && typeof whereCondition.getSQL === "function") {
+            try {
+              const query = dialect.sqlToQuery(whereCondition.getSQL());
+              sqlStr = query.sql.toLowerCase();
+              paramValues = (query.params || []).map((p: any) => String(p).toLowerCase());
+            } catch {
+              sqlStr = "";
+              paramValues = [];
+            }
+          }
+
+          if (targetTable === "creches" || (!fields || !fields.count)) {
+            if (state.crecheExists === false) return [];
             return [
               {
                 id: 1,
@@ -75,49 +152,298 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
                 address: state.address ?? null,
               },
             ];
-          }),
-        })),
-        // For count queries:
-        then: undefined,
-        // Drizzle select({ count: count() }).from().where()
-      })),
-    }));
+          }
 
-    // Better explicit mock matching query chain
-    (db.select as any).mockImplementation((fields?: any) => {
-      callIndex++;
-      return {
-        from: vi.fn((_table: any) => ({
-          where: vi.fn((_condition: any) => {
-            // If selecting creche (no fields object with count)
-            if (!fields || !fields.count) {
-              return {
-                limit: vi.fn(async () => [
-                  {
-                    id: 1,
-                    name: "Creche Paws",
-                    phone: state.phone ?? null,
-                    address: state.address ?? null,
-                  },
-                ]),
-              };
+          if (targetTable === "users") {
+            const hasTutor = sqlStr.includes("tutor") || paramValues.includes("tutor");
+            if (hasTutor) {
+              return [{ count: state.tutorsCount ?? 0 }];
             }
-            // Count queries: callIndex 2 = staff, 3 = tutors, 4 = pets, 5 = bookings
-            let countVal = 0;
-            if (callIndex === 2) countVal = state.staffCount ?? 0;
-            else if (callIndex === 3) countVal = state.tutorsCount ?? 0;
-            else if (callIndex === 4) countVal = state.petsCount ?? 0;
-            else if (callIndex === 5) countVal = state.bookingsCount ?? 0;
+            return [{ count: state.staffCount ?? 0 }];
+          }
 
-            return Promise.resolve([{ count: countVal }]);
-          }),
-        })),
+          if (targetTable === "pets") {
+            return [{ count: state.petsCount ?? 0 }];
+          }
+
+          if (targetTable === "bookings") {
+            return [{ count: state.bookingsCount ?? 0 }];
+          }
+
+          return [{ count: 0 }];
+        },
       };
+
+      return chain;
     });
   }
 
-  // ── R41B-ONBOARD-001..007: Canonical State & Progression ──
-  describe("R41B-ONBOARD: Canonical State & Progression", () => {
+  // ────────────────────────────────────────────────────────────
+  // 1. CANONICAL PARITY & SINGLE SOURCE OF TRUTH (R41B-CANONICAL-001..007)
+  // ────────────────────────────────────────────────────────────
+  describe("R41B-CANONICAL: Canonical Parity & Single Source of Truth", () => {
+    it("R41B-CANONICAL-001: canonical endpoint and assistant tool agree on step IDs, completion state, completed count, total steps, isComplete", async () => {
+      setupDbMocks({
+        phone: "(11) 99999-9999",
+        address: "Rua das Flores, 123",
+        staffCount: 2,
+        tutorsCount: 1,
+        petsCount: 1,
+        bookingsCount: 1,
+      });
+
+      // 1. Canonical Endpoint
+      const req: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res = createMockRes();
+      await getCrecheOnboardingHandler(req, res, db);
+
+      // 2. Assistant Tool
+      const assistantResult = await AssistantToolsRegistry.executeTool(
+        "get_onboarding_status",
+        {},
+        crecheAdminContext
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body.crecheId).toBe(assistantResult.crecheId);
+      expect(res.body.totalSteps).toBe(assistantResult.totalSteps);
+      expect(res.body.completedCount).toBe(assistantResult.completedCount);
+      expect(res.body.isComplete).toBe(assistantResult.isComplete);
+
+      // Agree on step IDs and completion states
+      for (let i = 0; i < 5; i++) {
+        expect(res.body.steps[i].id).toBe(assistantResult.steps[i].id);
+        expect(res.body.steps[i].completed).toBe(assistantResult.steps[i].completed);
+      }
+    });
+
+    it("ASSISTANT_DUPLICATE_ONBOARDING_STATE = 0: proves assistant onboarding consumes shared canonical service", async () => {
+      setupDbMocks({
+        phone: "(11) 99999-9999",
+        address: "Rua das Flores, 123",
+        staffCount: 2,
+        tutorsCount: 1,
+        petsCount: 1,
+        bookingsCount: 1,
+      });
+
+      const spy = vi.spyOn(onboardingService, "getCanonicalOnboardingStatus");
+      const status = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(spy).toHaveBeenCalledWith(1);
+      expect(status.steps).toHaveLength(5);
+      expect(status.progressPercent).toBe(100);
+    });
+
+    it("R41B-CANONICAL-002: creche_details parity — missing phone OR address is incomplete, both present is complete", async () => {
+      // Incomplete: phone only
+      setupDbMocks({ phone: "1199999999", address: null, staffCount: 1, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
+      const req1: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res1 = createMockRes();
+      await getCrecheOnboardingHandler(req1, res1, db);
+      const assistant1 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res1.body.steps.find((s: any) => s.id === "creche_details").completed).toBe(false);
+      expect(assistant1.steps.find((s) => s.id === "creche_details")?.completed).toBe(false);
+
+      // Complete: phone + address
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 1, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
+      const req2: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res2 = createMockRes();
+      await getCrecheOnboardingHandler(req2, res2, db);
+      const assistant2 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res2.body.steps.find((s: any) => s.id === "creche_details").completed).toBe(true);
+      expect(assistant2.steps.find((s) => s.id === "creche_details")?.completed).toBe(true);
+    });
+
+    it("R41B-CANONICAL-003: staff parity — staffMembersCount > 1 rule enforced identically", async () => {
+      // staffCount = 1 (admin only) -> incomplete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 1, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
+      const req1: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res1 = createMockRes();
+      await getCrecheOnboardingHandler(req1, res1, db);
+      const assistant1 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res1.body.steps.find((s: any) => s.id === "staff").completed).toBe(false);
+      expect(assistant1.steps.find((s) => s.id === "staff")?.completed).toBe(false);
+
+      // staffCount = 2 (admin + 1 staff) -> complete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
+      const req2: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res2 = createMockRes();
+      await getCrecheOnboardingHandler(req2, res2, db);
+      const assistant2 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res2.body.steps.find((s: any) => s.id === "staff").completed).toBe(true);
+      expect(assistant2.steps.find((s) => s.id === "staff")?.completed).toBe(true);
+    });
+
+    it("R41B-CANONICAL-004: tutor parity — tutorsCount > 0 rule enforced identically", async () => {
+      // tutorsCount = 0 -> incomplete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
+      const req1: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res1 = createMockRes();
+      await getCrecheOnboardingHandler(req1, res1, db);
+      const assistant1 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res1.body.steps.find((s: any) => s.id === "tutors").completed).toBe(false);
+      expect(assistant1.steps.find((s) => s.id === "tutors")?.completed).toBe(false);
+
+      // tutorsCount = 1 -> complete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 0, bookingsCount: 0 });
+      const req2: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res2 = createMockRes();
+      await getCrecheOnboardingHandler(req2, res2, db);
+      const assistant2 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res2.body.steps.find((s: any) => s.id === "tutors").completed).toBe(true);
+      expect(assistant2.steps.find((s) => s.id === "tutors")?.completed).toBe(true);
+    });
+
+    it("R41B-CANONICAL-005: pet parity — petsCount > 0 rule enforced identically", async () => {
+      // petsCount = 0 -> incomplete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 0, bookingsCount: 0 });
+      const req1: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res1 = createMockRes();
+      await getCrecheOnboardingHandler(req1, res1, db);
+      const assistant1 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res1.body.steps.find((s: any) => s.id === "pets").completed).toBe(false);
+      expect(assistant1.steps.find((s) => s.id === "pets")?.completed).toBe(false);
+
+      // petsCount = 1 -> complete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 1, bookingsCount: 0 });
+      const req2: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res2 = createMockRes();
+      await getCrecheOnboardingHandler(req2, res2, db);
+      const assistant2 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res2.body.steps.find((s: any) => s.id === "pets").completed).toBe(true);
+      expect(assistant2.steps.find((s) => s.id === "pets")?.completed).toBe(true);
+    });
+
+    it("R41B-CANONICAL-006: booking parity — bookingsCount > 0 rule enforced identically", async () => {
+      // bookingsCount = 0 -> incomplete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 1, bookingsCount: 0 });
+      const req1: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res1 = createMockRes();
+      await getCrecheOnboardingHandler(req1, res1, db);
+      const assistant1 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res1.body.steps.find((s: any) => s.id === "bookings").completed).toBe(false);
+      expect(assistant1.steps.find((s) => s.id === "bookings")?.completed).toBe(false);
+
+      // bookingsCount = 1 -> complete
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 1, bookingsCount: 1 });
+      const req2: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res2 = createMockRes();
+      await getCrecheOnboardingHandler(req2, res2, db);
+      const assistant2 = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res2.body.steps.find((s: any) => s.id === "bookings").completed).toBe(true);
+      expect(assistant2.steps.find((s) => s.id === "bookings")?.completed).toBe(true);
+    });
+
+    it("R41B-CANONICAL-007: complete parity — all five complete reports 100% and isComplete=true in both", async () => {
+      setupDbMocks({
+        phone: "(11) 99999-9999",
+        address: "Rua das Flores, 123",
+        staffCount: 3,
+        tutorsCount: 2,
+        petsCount: 4,
+        bookingsCount: 2,
+      });
+
+      const req: any = { params: { crecheId: "1" }, user: crecheAdminContext };
+      const res = createMockRes();
+      await getCrecheOnboardingHandler(req, res, db);
+      const assistant = await AssistantToolsRegistry.getOnboardingStatus(1);
+
+      expect(res.body.isComplete).toBe(true);
+      expect(res.body.completedCount).toBe(5);
+      expect(assistant.isComplete).toBe(true);
+      expect(assistant.completedCount).toBe(5);
+      expect(assistant.progressPercent).toBe(100);
+      expect(assistant.pendingSteps).toHaveLength(0);
+      expect(assistant.currentStep).toBeNull();
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 2. STRICT RBAC ALIGNMENT (R41B-RBAC-001..005)
+  // ────────────────────────────────────────────────────────────
+  describe("R41B-RBAC: Strict Role-Based Access Control Alignment", () => {
+    it("R41B-RBAC-001: Master Admin attempts get_onboarding_status and get_guided_onboarding_plan are both denied", async () => {
+      await expect(
+        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, masterAdminContext)
+      ).rejects.toThrow(/Acesso negado/);
+
+      await expect(
+        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, masterAdminContext)
+      ).rejects.toThrow(/Acesso negado/);
+    });
+
+    it("R41B-RBAC-002: Own tenant creche_admin is allowed", async () => {
+      setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 2, tutorsCount: 1, petsCount: 1, bookingsCount: 1 });
+
+      const status = await AssistantToolsRegistry.executeTool(
+        "get_onboarding_status",
+        {},
+        crecheAdminContext
+      );
+      expect(status).toBeDefined();
+      expect(status.crecheId).toBe(1);
+
+      const plan = await AssistantToolsRegistry.executeTool(
+        "get_guided_onboarding_plan",
+        { currentRoute: "/" },
+        crecheAdminContext
+      );
+      expect(plan).toBeDefined();
+      expect(plan.content).toBeDefined();
+    });
+
+    it("R41B-RBAC-003: Staff role is denied", async () => {
+      await expect(
+        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, staffContext)
+      ).rejects.toThrow(/Acesso negado/);
+
+      await expect(
+        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, staffContext)
+      ).rejects.toThrow(/Acesso negado/);
+    });
+
+    it("R41B-RBAC-004: Tutor role is denied", async () => {
+      await expect(
+        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, tutorContext)
+      ).rejects.toThrow(/Acesso negado/);
+
+      await expect(
+        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, tutorContext)
+      ).rejects.toThrow(/Acesso negado/);
+    });
+
+    it("R41B-RBAC-005: Cross-tenant access is denied", async () => {
+      const crossTenantContext: AssistantSecurityContext = {
+        ...crecheAdminContext,
+        crecheId: null,
+      };
+
+      await expect(
+        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, crossTenantContext)
+      ).rejects.toThrow("Usuário não está associado a nenhuma creche");
+
+      await expect(
+        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, crossTenantContext)
+      ).rejects.toThrow("Usuário não está associado a nenhuma creche");
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // 3. STEP PROGRESSION & ENRICHMENT
+  // ────────────────────────────────────────────────────────────
+  describe("R41B-ONBOARD: Progression & Enrichment", () => {
     it("R41B-ONBOARD-001: returns all 5 canonical steps with target identifiers", async () => {
       setupDbMocks({
         phone: "(11) 99999-9999",
@@ -273,7 +599,9 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     });
   });
 
-  // ── R41B-CONTEXT-001: Screen Awareness ──
+  // ────────────────────────────────────────────────────────────
+  // 4. SCREEN AWARENESS (R41B-CONTEXT)
+  // ────────────────────────────────────────────────────────────
   describe("R41B-CONTEXT-001: Screen Awareness", () => {
     it("recognizes when user is already on the pending step screen", () => {
       const mockStatus: GuidedOnboardingStatus = {
@@ -295,12 +623,10 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
         steps: [],
       };
 
-      // User is already on /pets
       const plan = AssistantGuidanceService.generatePlan(mockStatus, "/pets", "creche_admin");
 
       expect(plan.isCurrentScreen).toBe(true);
       expect(plan.content).toContain("Você já está na tela correta");
-      // Only highlights target; does not emit unnecessary navigate action
       expect(plan.uiActions).toEqual([{ type: "highlight", targetId: "pet-create-button" }]);
     });
 
@@ -324,7 +650,6 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
         steps: [],
       };
 
-      // User is on /settings but needs /pets
       const plan = AssistantGuidanceService.generatePlan(mockStatus, "/settings", "creche_admin");
 
       expect(plan.isCurrentScreen).toBe(false);
@@ -336,7 +661,9 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     });
   });
 
-  // ── R41B-GUIDE-001..002: Navigation and Highlighting Safety ──
+  // ────────────────────────────────────────────────────────────
+  // 5. NAVIGATION AND HIGHLIGHTING SAFETY
+  // ────────────────────────────────────────────────────────────
   describe("R41B-GUIDE: Safe Navigation & Target Highlighting", () => {
     it("R41B-GUIDE-001: validates and sanitizes allowed internal routes", () => {
       expect(AssistantGuidanceService.isValidRoute("/settings")).toBe(true);
@@ -346,8 +673,6 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
       expect(AssistantGuidanceService.isValidRoute("/bookings")).toBe(true);
       expect(AssistantGuidanceService.isValidRoute("/financial")).toBe(true);
       expect(AssistantGuidanceService.isValidRoute("/chat")).toBe(true);
-
-      // Strips query parameters safely for internal validation
       expect(AssistantGuidanceService.isValidRoute("/pets?filter=dogs")).toBe(true);
     });
 
@@ -360,8 +685,10 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     });
   });
 
-  // ── R41B-SEC-001..006: Security & Role Boundaries ──
-  describe("R41B-SEC: Security & Role Boundaries", () => {
+  // ────────────────────────────────────────────────────────────
+  // 6. SECURITY & SANITIZATION
+  // ────────────────────────────────────────────────────────────
+  describe("R41B-SEC: Security & Sanitization", () => {
     it("R41B-SEC-001: strictly rejects external URLs and dangerous schemes", () => {
       expect(AssistantGuidanceService.isValidRoute("https://malicious-site.com")).toBe(false);
       expect(AssistantGuidanceService.isValidRoute("http://attacker.com")).toBe(false);
@@ -379,41 +706,6 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
       expect(AssistantGuidanceService.isValidTarget("unregistered-target")).toBe(false);
     });
 
-    it("R41B-SEC-003: rejects tutor role from executing onboarding tools", async () => {
-      await expect(
-        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, tutorContext)
-      ).rejects.toThrow(/Acesso negado/);
-
-      await expect(
-        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, tutorContext)
-      ).rejects.toThrow(/Acesso negado/);
-    });
-
-    it("R41B-SEC-004: rejects staff role from executing onboarding tools", async () => {
-      await expect(
-        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, staffContext)
-      ).rejects.toThrow(/Acesso negado/);
-
-      await expect(
-        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, staffContext)
-      ).rejects.toThrow(/Acesso negado/);
-    });
-
-    it("R41B-SEC-005: rejects cross-tenant or missing crecheId with safe error", async () => {
-      const noTenantContext: AssistantSecurityContext = {
-        ...crecheAdminContext,
-        crecheId: null,
-      };
-
-      await expect(
-        AssistantToolsRegistry.executeTool("get_onboarding_status", {}, noTenantContext)
-      ).rejects.toThrow("Usuário não está associado a nenhuma creche");
-
-      await expect(
-        AssistantToolsRegistry.executeTool("get_guided_onboarding_plan", {}, noTenantContext)
-      ).rejects.toThrow("Usuário não está associado a nenhuma creche");
-    });
-
     it("R41B-SEC-006: sanitizes invalid candidate actions into empty array", () => {
       const maliciousActions = [
         { type: "navigate", route: "https://evil.com" },
@@ -428,15 +720,15 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     });
   });
 
-  // ── R41B-STATE-001..002: Dynamic Server State ──
+  // ────────────────────────────────────────────────────────────
+  // 7. SERVER AUTHORITATIVE STATE
+  // ────────────────────────────────────────────────────────────
   describe("R41B-STATE: Server Authoritative State", () => {
     it("R41B-STATE-001: server status reflects database changes dynamically", async () => {
-      // First check: Step 1 pending
       setupDbMocks({ phone: null, address: null, staffCount: 1, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
       const status1 = await AssistantToolsRegistry.getOnboardingStatus(1);
       expect(status1.currentStep?.id).toBe("creche_details");
 
-      // Admin updates phone and address in the DB:
       setupDbMocks({ phone: "1199999999", address: "Rua 1", staffCount: 1, tutorsCount: 0, petsCount: 0, bookingsCount: 0 });
       const status2 = await AssistantToolsRegistry.getOnboardingStatus(1);
       expect(status2.currentStep?.id).toBe("staff");
@@ -444,7 +736,9 @@ describe("ArkPet R41.B — AI Guided Onboarding Unit Tests", () => {
     });
   });
 
-  // ── R41B-RESILIENCE-001..002: Resilience & Telemetry ──
+  // ────────────────────────────────────────────────────────────
+  // 8. RESILIENCE & TELEMETRY
+  // ────────────────────────────────────────────────────────────
   describe("R41B-RESILIENCE & Telemetry", () => {
     it("R41B-RESILIENCE-001: audit service logs onboarding operational telemetry", () => {
       const spy = vi.spyOn(AssistantAuditService, "logOnboardingEvent");

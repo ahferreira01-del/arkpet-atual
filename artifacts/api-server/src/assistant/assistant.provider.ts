@@ -150,7 +150,7 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("status do onboarding") ||
       lowerQuery.includes("primeiros passos")
     ) {
-      if (context.role === "creche_admin" || context.role === "master_admin") {
+      if (context.role === "creche_admin") {
         if (!context.crecheId) {
           return {
             content: "Você precisa selecionar ou estar vinculado a uma creche para consultar o onboarding.",
