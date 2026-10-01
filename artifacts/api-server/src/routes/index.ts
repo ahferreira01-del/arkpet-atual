@@ -85,10 +85,9 @@ router.use(logsRouter);
 // ── Versão do app ────────────────────────────────────────────────────────────
 // Deve ser bumped junto com CACHE_NAME em public/sw.js a cada deploy que
 // quebre compatibilidade com clientes antigos.
-export const APP_VERSION = "arkpet-v19";
-router.get("/version", (_req, res) => {
-  res.json({ version: APP_VERSION });
-});
+import { handleGetVersion, APP_VERSION } from "../lib/version.js";
+export { APP_VERSION };
+router.get("/version", handleGetVersion);
 
 // ── Catch-all: rota não encontrada → sempre JSON, nunca HTML ─────────────────
 // Garante que qualquer requisição a /api/* que não bater em nenhuma rota

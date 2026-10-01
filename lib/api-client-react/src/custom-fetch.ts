@@ -129,6 +129,7 @@ export class ApiError<T = unknown> extends Error {
   readonly response: Response;
   readonly method: string;
   readonly url: string;
+  readonly requestId?: string;
 
   constructor(
     response: Response,
@@ -145,6 +146,10 @@ export class ApiError<T = unknown> extends Error {
     this.response = response;
     this.method = requestInfo.method;
     this.url = response.url || requestInfo.url;
+    this.requestId =
+      response.headers.get("x-request-id") ??
+      getStringField(data, "requestId") ??
+      undefined;
   }
 }
 

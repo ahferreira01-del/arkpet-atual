@@ -1,19 +1,65 @@
-import { Router, type IRouter } from "express";
-import { HealthCheckResponse } from "@workspace/api-zod";
+import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
+import { logger } from "../lib/logger.js";
 
-const router: IRouter = Router();
+const router = Router();
 
-router.get("/healthz", async (_req, res) => {
+/**
+ * Liveness Probe: Inexpensive, zero database dependency.
+ * Proves the HTTP process is alive and accepting traffic.
+ * Contract: LIVENESS_DB_DEPENDENCY = NO
+ */
+export function handleLivenessCheck(_req: Request, res: Response): void {
+  res.status(200).json({ status: "ok" });
+}
+
+/**
+ * Readiness Probe: Checks database connectivity with a strict timeout.
+ * Zero external paid dependencies (no Stripe, no Resend).
+ * Contract: READINESS_EXPENSIVE_EXTERNAL_DEPENDENCY = 0
+ */
+export async function handleReadinessCheck(
+  _req: Request,
+  res: Response,
+  dbPool: any = pool
+): Promise<void> {
+  const timeoutMs = 2000;
+  let timeoutHandle: NodeJS.Timeout;
+
   try {
-    await pool.query("SELECT 1");
+    const queryPromise = dbPool.query("SELECT 1");
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("Database readiness probe timed out")), timeoutMs);
+    });
 
+    await Promise.race([queryPromise, timeoutPromise]);
+    clearTimeout(timeoutHandle!);
 
-    const data = HealthCheckResponse.parse({ status: "ok" });
-    res.status(200).json(data);
+    res.status(200).json({
+      status: "ok",
+      checks: {
+        database: "healthy",
+      },
+    });
   } catch (err) {
-    console.error("[healthz] Database health check failed:", err instanceof Error ? err.message : String(err));
-    res.status(503).json({ status: "unavailable" });
+    clearTimeout(timeoutHandle!);
+    // Safe technical logging without leaking credentials
+    logger.warn("readiness_check_failed", {
+      reason: err instanceof Error ? err.message : "Database unavailable",
+    });
+
+    res.status(503).json({
+      status: "unhealthy",
+      checks: {
+        database: "down",
+      },
+    });
   }
-});
+}
+
+// ── Route Mounts ──
+router.get("/health", handleLivenessCheck);
+router.get("/healthz", handleLivenessCheck);
+router.get("/ready", (req: Request, res: Response) => handleReadinessCheck(req, res));
+
 export default router;

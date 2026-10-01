@@ -44,9 +44,21 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
   next();
 }
 
+import { logger } from "../lib/logger.js";
+
 export function requireRole(...roles: string[]) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {
+      logger.warn("authorization_denied", {
+        requestId: (req as any).id,
+        userId: req.user?.id,
+        role: req.user?.role,
+        crecheId: req.user?.crecheId ?? undefined,
+        requiredRoles: roles,
+        reason: "insufficient_role",
+        path: req.path,
+        method: req.method,
+      });
       res.status(403).json({ error: "Forbidden" });
       return;
     }

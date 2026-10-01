@@ -5,10 +5,17 @@ import compression from "compression";
 import router from "./routes";
 import { WebhookHandlers } from "./lib/webhookHandlers.js";
 import { getAppBaseUrl } from "./lib/config.js";
+import { requestIdMiddleware } from "./middlewares/requestId.js";
+import { requestLoggerMiddleware } from "./middlewares/requestLogger.js";
+import { logger } from "./lib/logger.js";
 
 const app: Express = express();
 
 app.set("trust proxy", 1);
+
+// ── Correlation & Request Observability Middlewares ─────────────────────────
+app.use(requestIdMiddleware);
+app.use(requestLoggerMiddleware);
 
 app.use(helmet({
   contentSecurityPolicy: {
@@ -77,7 +84,9 @@ app.post(
       await WebhookHandlers.processWebhook(req.body as Buffer, sig);
       res.status(200).json({ received: true });
     } catch (error) {
-      console.error("[stripe] webhook error:", error);
+      logger.error("stripe_webhook_error", error, {
+        requestId: (req as any).id,
+      });
       res.status(400).json({ error: "Webhook processing error" });
     }
   },
@@ -89,27 +98,38 @@ app.use(express.urlencoded({ extended: true, limit: "12mb" }));
 app.use("/api", router);
 
 app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
-  const isDev = process.env.NODE_ENV === "development";
-  const status: number | undefined = err.status ?? err.statusCode;
+  const status: number = err.status ?? err.statusCode ?? 500;
+  const requestId = (req as any).id;
 
-  // 4xx errors are client errors — return the status + message without
-  // polluting logs with stack traces.
-  if (status && status >= 400 && status < 500) {
-    res.status(status).json({ error: err.message });
+  // 4xx errors are client errors — log as warn without stack trace
+  if (status >= 400 && status < 500) {
+    logger.warn("client_error", {
+      requestId,
+      method: req.method,
+      path: req.path,
+      statusCode: status,
+      messageSafe: err.message,
+    });
+    res.status(status).json({
+      error: err.message,
+      requestId,
+    });
     return;
   }
 
-  // 5xx / unexpected errors: log fully for debugging.
-  console.error("SERVER ERROR:", err.stack ?? err.message);
-  console.error({
-    message: err.message,
-    path: req.path,
+  // 5xx unexpected errors: structured logging with requestId
+  logger.error("unhandled_error", err, {
+    requestId,
     method: req.method,
+    path: req.path,
+    statusCode: 500,
   });
+
+  // Never leak stack trace, SQL, or internal filesystem paths to client
   res.status(500).json({
     error: "Erro interno do servidor",
     code: "INTERNAL_ERROR",
-    ...(isDev && { detail: err.message }),
+    requestId,
   });
 });
 

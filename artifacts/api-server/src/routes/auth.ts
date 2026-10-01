@@ -13,6 +13,8 @@ import { loginLimiter, sensitiveLimiter } from "../middlewares/rateLimit.js";
 import { getAppBaseUrl } from "../lib/config.js";
 import { provisionTenant } from "../services/tenantProvisioning.js";
 
+import { logger, maskEmail } from "../lib/logger.js";
+
 const router = Router();
 
 const TRIAL_DAYS = 10;
@@ -27,12 +29,22 @@ router.post("/login", loginLimiter, async (req, res) => {
   const normalizedEmail = String(email).trim().toLowerCase();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
   const passwordOk = !!user && verifyPassword(password, user.passwordHash);
-  console.log(`[login] email="${normalizedEmail}" userFound=${!!user} passwordOk=${passwordOk} ua="${String(req.headers["user-agent"] ?? "").slice(0, 80)}"`);
+
   if (!user || !passwordOk) {
+    logger.warn("login_failed", {
+      requestId: (req as any).id,
+      emailMasked: maskEmail(normalizedEmail),
+      reason: "invalid_credentials",
+    });
     res.status(401).json({ error: "E-mail ou senha inválidos." });
     return;
   }
   if (!user.isActive) {
+    logger.warn("login_failed", {
+      requestId: (req as any).id,
+      userId: user.id,
+      reason: "account_deactivated",
+    });
     res.status(403).json({ error: "Conta desativada. Contate o administrador." });
     return;
   }
@@ -46,6 +58,12 @@ router.post("/login", loginLimiter, async (req, res) => {
       .limit(1);
 
     if (creche && creche.status === "archived") {
+      logger.warn("login_failed", {
+        requestId: (req as any).id,
+        userId: user.id,
+        crecheId: user.crecheId,
+        reason: "tenant_archived",
+      });
       res.status(403).json({
         error: "tenant_archived",
         code: "tenant_archived",
@@ -60,11 +78,18 @@ router.post("/login", loginLimiter, async (req, res) => {
     try {
       await db.update(usersTable).set({ passwordHash: hashPassword(password) }).where(eq(usersTable.id, user.id));
     } catch (err) {
-      console.error("[auth] password rehash failed:", err);
+      logger.warn("password_rehash_failed", { userId: user.id });
     }
   }
   const token      = generateToken(user.id, user.role);
   const mediaToken = generateMediaToken(user.id, user.crecheId);
+
+  logger.info("login_success", {
+    requestId: (req as any).id,
+    userId: user.id,
+    role: user.role,
+    crecheId: user.crecheId ?? undefined,
+  });
   res.json({
     token,
     mediaToken,
@@ -219,89 +244,104 @@ router.post("/forgot-password", sensitiveLimiter, async (req, res) => {
   const normalizedEmail = String(email).trim().toLowerCase();
   const [user] = await db.select().from(usersTable).where(eq(usersTable.email, normalizedEmail)).limit(1);
 
-  if (user && user.isActive) {
-    const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
-    try {
-      await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
-      const resetLink = `${getAppBaseUrl()}/redefinir-senha?token=${token}`;
-      sendPasswordResetEmail({ name: user.name, email: user.email, resetLink })
-        .catch((err) => console.error("[auth] reset email failed:", err));
-    } catch (err) {
-      console.error("[auth] forgot-password failed:", err);
+    if (user && user.isActive) {
+      const token = crypto.randomBytes(32).toString("hex");
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+      try {
+        await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
+        const resetLink = `${getAppBaseUrl()}/redefinir-senha?token=${token}`;
+        sendPasswordResetEmail({ name: user.name, email: user.email, resetLink })
+          .catch((err) => logger.warn("password_reset_email_failed", { userId: user.id, error: String(err) }));
+        logger.info("password_reset_requested", {
+          requestId: (req as any).id,
+          userId: user.id,
+        });
+      } catch (err) {
+        logger.error("forgot_password_failed", err, { requestId: (req as any).id, userId: user.id });
+      }
     }
-  }
 
-  res.status(200).json(genericOk);
-});
+    res.status(200).json(genericOk);
+  });
 
-router.post("/reset-password", sensitiveLimiter, async (req, res) => {
-  const { token, password } = req.body;
-  if (!token || !password) {
-    res.status(400).json({ error: "Token e nova senha são obrigatórios." });
-    return;
-  }
-  if (String(password).length < 6) {
-    res.status(400).json({ error: "A senha deve ter no mínimo 6 caracteres." });
-    return;
-  }
-
-  try {
-    let claimedUserId: number | null = null;
-    const now = new Date();
-    await db.transaction(async (tx) => {
-      // Atomically claim the token: only one concurrent request can flip
-      // usedAt from NULL, so the token is strictly single-use (no TOCTOU race).
-      const claimed = await tx.update(passwordResetTokensTable)
-        .set({ usedAt: now })
-        .where(and(
-          eq(passwordResetTokensTable.token, String(token)),
-          isNull(passwordResetTokensTable.usedAt),
-          gt(passwordResetTokensTable.expiresAt, now),
-        ))
-        .returning({ userId: passwordResetTokensTable.userId });
-      if (claimed.length === 0) return;
-      claimedUserId = claimed[0].userId;
-      // Set new password and stamp passwordChangedAt to invalidate any
-      // outstanding auth tokens issued before this reset.
-      await tx.update(usersTable)
-        .set({ passwordHash: hashPassword(password), mustChangePassword: false, passwordChangedAt: now })
-        .where(eq(usersTable.id, claimedUserId));
-      // Invalidate any other outstanding reset tokens for this user.
-      await tx.update(passwordResetTokensTable)
-        .set({ usedAt: now })
-        .where(and(
-          eq(passwordResetTokensTable.userId, claimedUserId),
-          isNull(passwordResetTokensTable.usedAt),
-        ));
-    });
-
-    if (claimedUserId === null) {
-      res.status(400).json({ error: "Token inválido ou expirado. Solicite uma nova redefinição." });
+  router.post("/reset-password", sensitiveLimiter, async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      res.status(400).json({ error: "Token e nova senha são obrigatórios." });
       return;
     }
-    res.status(200).json({ message: "Senha redefinida com sucesso. Você já pode entrar." });
-  } catch (err) {
-    console.error("[auth] reset-password failed:", err);
-    res.status(500).json({ error: "Não foi possível redefinir a senha. Tente novamente." });
-  }
-});
+    if (String(password).length < 6) {
+      res.status(400).json({ error: "A senha deve ter no mínimo 6 caracteres." });
+      return;
+    }
 
-/**
- * Silently refresh the caller's media token without requiring re-login.
- * The client should call this when the stored token is within 2 h of expiry.
- */
-router.get("/refresh-media-token", authenticate, async (req: AuthRequest, res) => {
-  if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
-  const [user] = await db.select({ id: usersTable.id, crecheId: usersTable.crecheId })
-    .from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  const mediaToken = generateMediaToken(user.id, user.crecheId);
-  res.json({ mediaToken });
-});
+    try {
+      let claimedUserId: number | null = null;
+      const now = new Date();
+      await db.transaction(async (tx) => {
+        // Atomically claim the token: only one concurrent request can flip
+        // usedAt from NULL, so the token is strictly single-use (no TOCTOU race).
+        const claimed = await tx.update(passwordResetTokensTable)
+          .set({ usedAt: now })
+          .where(and(
+            eq(passwordResetTokensTable.token, String(token)),
+            isNull(passwordResetTokensTable.usedAt),
+            gt(passwordResetTokensTable.expiresAt, now),
+          ))
+          .returning({ userId: passwordResetTokensTable.userId });
+        if (claimed.length === 0) return;
+        claimedUserId = claimed[0].userId;
+        // Set new password and stamp passwordChangedAt to invalidate any
+        // outstanding auth tokens issued before this reset.
+        await tx.update(usersTable)
+          .set({ passwordHash: hashPassword(password), mustChangePassword: false, passwordChangedAt: now })
+          .where(eq(usersTable.id, claimedUserId));
+        // Invalidate any other outstanding reset tokens for this user.
+        await tx.update(passwordResetTokensTable)
+          .set({ usedAt: now })
+          .where(and(
+            eq(passwordResetTokensTable.userId, claimedUserId),
+            isNull(passwordResetTokensTable.usedAt),
+          ));
+      });
 
-router.post("/logout", (_req, res) => {
-  res.json({ message: "Logged out" });
-});
+      if (claimedUserId === null) {
+        logger.warn("password_reset_failed", {
+          requestId: (req as any).id,
+          reason: "invalid_or_expired_token",
+        });
+        res.status(400).json({ error: "Token inválido ou expirado. Solicite uma nova redefinição." });
+        return;
+      }
+      logger.info("password_reset_completed", {
+        requestId: (req as any).id,
+        userId: claimedUserId,
+      });
+      res.status(200).json({ message: "Senha redefinida com sucesso. Você já pode entrar." });
+    } catch (err) {
+      logger.error("reset_password_failed", err, { requestId: (req as any).id });
+      res.status(500).json({ error: "Não foi possível redefinir a senha. Tente novamente." });
+    }
+  });
 
-export default router;
+  /**
+   * Silently refresh the caller's media token without requiring re-login.
+   * The client should call this when the stored token is within 2 h of expiry.
+   */
+  router.get("/refresh-media-token", authenticate, async (req: AuthRequest, res) => {
+    if (!req.user) { res.status(401).json({ error: "Not authenticated" }); return; }
+    const [user] = await db.select({ id: usersTable.id, crecheId: usersTable.crecheId })
+      .from(usersTable).where(eq(usersTable.id, req.user.id)).limit(1);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    const mediaToken = generateMediaToken(user.id, user.crecheId);
+    res.json({ mediaToken });
+  });
+
+  router.post("/logout", (req: Request, res: Response) => {
+    logger.info("logout", {
+      requestId: (req as any).id,
+    });
+    res.json({ message: "Logged out" });
+  });
+
+  export default router;

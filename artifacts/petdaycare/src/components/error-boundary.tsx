@@ -10,12 +10,12 @@ interface Props {
 
 interface State {
   hasError: boolean;
-  message: string;
+  requestId?: string;
 }
 
 /**
  * React Error Boundary — catches synchronous render/lifecycle errors in the
- * component tree, logs them via error-logger, and shows a recovery screen.
+ * component tree, logs them via error-logger, and shows a safe recovery screen.
  *
  * Usage:
  *   <ErrorBoundary>
@@ -25,7 +25,7 @@ interface State {
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, message: "" };
+    this.state = { hasError: false };
     this.reset = this.reset.bind(this);
   }
 
@@ -40,9 +40,12 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: unknown): State {
-    const message =
-      error instanceof Error ? error.message : String(error);
-    return { hasError: true, message };
+    const requestId =
+      error && typeof error === "object" && "requestId" in error && typeof (error as any).requestId === "string"
+        ? (error as any).requestId
+        : undefined;
+
+    return { hasError: true, requestId };
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
@@ -69,7 +72,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   reset(): void {
     sessionStorage.removeItem("arkpet_chunk_reload");
-    this.setState({ hasError: false, message: "" });
+    this.setState({ hasError: false, requestId: undefined });
   }
 
   render(): ReactNode {
@@ -78,7 +81,11 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.props.fallback) return this.props.fallback(this.reset);
 
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div
+        role="alert"
+        aria-live="assertive"
+        className="min-h-screen bg-background flex items-center justify-center p-6"
+      >
         <div className="max-w-sm w-full text-center space-y-6">
           <div className="flex justify-center">
             <div className="h-20 w-20 rounded-full bg-destructive/10 flex items-center justify-center">
@@ -94,23 +101,25 @@ export class ErrorBoundary extends Component<Props, State> {
               O ArkPet encontrou um erro inesperado. O problema foi registrado
               automaticamente.
             </p>
-            {this.state.message && (
-              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-lg px-3 py-2 font-mono break-all">
-                {this.state.message}
+            {this.state.requestId && (
+              <p className="text-xs text-muted-foreground bg-muted/40 border border-border/40 rounded-lg px-3 py-1.5 font-mono select-all inline-block">
+                Código de referência: {this.state.requestId}
               </p>
             )}
           </div>
 
-          <button
-            onClick={this.reset}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Tentar novamente
-          </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2">
+            <button
+              onClick={this.reset}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-2xs"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Tentar novamente
+            </button>
+          </div>
 
           <p className="text-xs text-muted-foreground">
-            Se o problema persistir, recarregue o app.
+            Se o problema persistir, recarregue a página ou contate o suporte.
           </p>
         </div>
       </div>
