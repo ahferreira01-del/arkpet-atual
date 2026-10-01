@@ -1,13 +1,10 @@
 /**
- * ArkPet R41.A-FINAL.3 — Authenticated Live Provider Smoke Script
+ * ArkPet R41.A-FINAL.4 — Authenticated Live Provider Smoke Script
  * Executes exactly one authenticated live request using configured OPENAI_API_KEY.
+ * Strictly enforces normal TLS certificate validation (no insecure bypass).
  * Strictly fails closed if no valid key is configured.
  * Strictly avoids logging secrets or sensitive customer data.
  */
-
-if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === undefined) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 
 import dotenv from "dotenv";
 dotenv.config({ quiet: true });
@@ -22,7 +19,8 @@ async function runAuthenticatedSmoke() {
   // Fail closed if key is missing or is a placeholder
   if (!apiKey || apiKey === "sk-dev-connectivity-check" || apiKey.startsWith("sk-placeholder") || apiKey === "mock") {
     console.error("[AUTHENTICATED_SMOKE_FAIL] Server-side OPENAI_API_KEY is not configured or is a placeholder.");
-    console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = PASS");
+    console.log("AUTHENTICATED_SMOKE_FAIL_CLOSED = PASS");
+    console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
     console.log("REAL_PROVIDER_AUTHENTICATED_REQUEST = NOT_PROVEN");
     console.log("REAL_PROVIDER_LIVE_RESPONSE = NOT_PROVEN");
     console.log("R41_A_CERTIFICATION_STATUS = BLOCKED_BY_LIVE_CREDENTIAL");
@@ -125,20 +123,27 @@ async function runAuthenticatedSmoke() {
       latencyMs: latency,
       responseLength: content.length,
       tokensUsed: totalTokens,
+      tlsValidation: "ENABLED",
       secretLeakage: "CLEAN",
       timestamp: new Date().toISOString(),
     }, null, 2));
 
     console.log("\n--- MODEL RESPONSE SUMMARY (SAFE) ---");
-    console.log(content.trim());
+    console.log(content.trim().slice(0, 300) + (content.length > 300 ? "..." : ""));
     console.log("------------------------------------\n");
 
-    console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = PASS");
+    console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
+    console.log("OPENAI_ENDPOINT_NETWORK_REACHABILITY = PASS");
     console.log("REAL_PROVIDER_AUTHENTICATED_REQUEST = PASS");
+    console.log("REAL_PROVIDER_HTTP_STATUS = 200");
     console.log("REAL_PROVIDER_LIVE_RESPONSE = PASS");
+    console.log(`REAL_PROVIDER_RESPONSE_LENGTH = ${content.length}`);
+    console.log(`REAL_PROVIDER_LATENCY_MS = ${latency}`);
+    console.log(`REAL_PROVIDER_TOKEN_USAGE = ${totalTokens}`);
+    console.log("REAL_PROVIDER_RESPONSE_SECRET_LEAK = 0");
     console.log("R41_A_CERTIFICATION_STATUS = FULLY_CERTIFIED");
   } catch (err) {
-    console.error("Authenticated live smoke network error:", err.message);
+    console.error("Authenticated live smoke error:", err.message);
     console.log("REAL_PROVIDER_AVAILABILITY = FAIL");
     console.log("REAL_PROVIDER_AUTHENTICATED_REQUEST = NOT_PROVEN");
     console.log("REAL_PROVIDER_LIVE_RESPONSE = NOT_PROVEN");

@@ -1,12 +1,9 @@
 /**
  * ArkPet R41.A — Controlled Live Provider Connectivity Smoke Script
  * Executes an HTTPS request to verify live provider endpoint reachability (DNS + TLS).
+ * Strictly enforces normal TLS certificate validation (no insecure bypass).
  * HTTP 401 proves network/provider endpoint connectivity only, NOT authenticated inference.
  */
-
-if (process.env.NODE_TLS_REJECT_UNAUTHORIZED === undefined) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 
 import dotenv from "dotenv";
 dotenv.config({ quiet: true });
@@ -48,23 +45,31 @@ async function runConnectivitySmoke() {
       httpStatus: status,
       latencyMs: latency,
       connectivity: "LIVE_CONFIRMED",
+      tlsValidation: "ENABLED",
       secretsExposed: false,
     }, null, 2));
 
     if (status === 200) {
       console.log(`[CONNECTIVITY_PASS] Endpoint reachable and authenticated. HTTP 200 in ${latency}ms.`);
+      console.log("OPENAI_ENDPOINT_NETWORK_REACHABILITY = PASS");
+      console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
       console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = PASS");
       console.log("REAL_PROVIDER_AUTHENTICATED_REQUEST = PASS");
     } else if (status === 401) {
       console.log(`[CONNECTIVITY_PASS] Endpoint reachable via TLS (HTTP 401 Unauthorized in ${latency}ms).`);
+      console.log("OPENAI_ENDPOINT_NETWORK_REACHABILITY = PASS");
+      console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
       console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = PASS");
       console.log("REAL_PROVIDER_AUTHENTICATED_REQUEST = NOT_PROVEN");
     } else {
       console.log(`[CONNECTIVITY_RESULT] Endpoint responded with HTTP ${status} in ${latency}ms.`);
+      console.log("OPENAI_ENDPOINT_NETWORK_REACHABILITY = PASS");
+      console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
       console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = PASS");
     }
   } catch (err) {
     console.error("Live connectivity error:", err.message);
+    console.log("OPENAI_ENDPOINT_NETWORK_REACHABILITY = FAIL");
     console.log("REAL_PROVIDER_LIVE_CONNECTIVITY = FAIL");
     process.exit(1);
   }

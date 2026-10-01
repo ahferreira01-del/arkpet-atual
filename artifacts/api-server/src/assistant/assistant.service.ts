@@ -151,6 +151,8 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
       AssistantAuditService.logMessageTurn(context, {
         messageId: assistantMsgRecord.id,
         role: "assistant",
+        provider: this.provider.getProviderName ? this.provider.getProviderName() : ASSISTANT_CONFIG.defaultProvider,
+        model: this.provider.getModel ? this.provider.getModel() : ASSISTANT_CONFIG.defaultModel,
         durationMs: Date.now() - startTime,
         toolsInvoked: response.toolCalls?.map((t) => t.name),
       });

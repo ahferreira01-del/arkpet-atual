@@ -8,6 +8,7 @@ export class AssistantAuditService {
     details: {
       messageId: string;
       role: "user" | "assistant";
+      provider?: string;
       model?: string;
       toolsInvoked?: string[];
       durationMs?: number;
@@ -20,6 +21,7 @@ export class AssistantAuditService {
       role: context.role,
       entityType: "assistant_message",
       entityId: details.messageId,
+      provider: details.provider || ASSISTANT_CONFIG.defaultProvider,
       promptVersion: ASSISTANT_CONFIG.promptVersion,
       knowledgeVersion: ASSISTANT_CONFIG.knowledgeVersion,
       model: details.model || ASSISTANT_CONFIG.defaultModel,

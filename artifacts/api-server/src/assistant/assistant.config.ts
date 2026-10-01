@@ -21,10 +21,19 @@ export const ASSISTANT_CONFIG = {
   knowledgeVersion: "arkpet-v32-r41",
 
   // Model & Provider defaults
-  defaultModel: process.env.AI_MODEL || "gpt-4o-mini",
+  get defaultProvider(): string {
+    return (process.env.AI_PROVIDER || "groq").toLowerCase();
+  },
+  get defaultModel(): string {
+    if (process.env.AI_MODEL) return process.env.AI_MODEL;
+    const provider = (process.env.AI_PROVIDER || "").toLowerCase();
+    if (provider === "openai") return "gpt-4o-mini";
+    return "openai/gpt-oss-20b";
+  },
   requestTimeoutMs: 15000,
   maxSessionTurns: 30,
 
   // Rate Limiting
   rateLimitPerMinute: 60,
 };
+

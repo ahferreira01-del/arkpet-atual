@@ -86,9 +86,21 @@ flowchart TD
 
 2. **`assistant.provider.ts`**:
    - `AIProvider` TypeScript interface:
-     - `generateResponse(options: GenerateResponseOptions): Promise<AssistantResponse>`
+     - `getProviderName?(): string`
+     - `getModel?(): string`
+     - `generateResponse(options: AIProviderOptions): Promise<AIProviderResponse>`
    - `MockAIProvider`: Deterministic, zero external network dependency, zero cost provider. Interprets user prompts, invokes matching tools via the registry, consults knowledge service, and generates structured copilot replies. Default for all automated tests.
-   - `OpenAICompatibleProvider`: Configurable provider invoking OpenAI/compatible endpoints when `OPENAI_API_KEY` is present.
+   - `OpenAICompatibleProvider`: Universal OpenAI-compatible `/chat/completions` transport implementation. Enforces tool validation, server-side RBAC, bounded tool roundtrip loop (`MAX_ASSISTANT_TOOL_ROUNDS = 3`), multi-tool dispatch, and canonical error mapping.
+   - `GroqProvider`: Primary development and free-tier LLM provider (`AI_PROVIDER=groq`, `AI_MODEL=openai/gpt-oss-20b`, `https://api.groq.com/openai/v1`).
+   - `OpenAIProvider`: Optional production LLM provider (`AI_PROVIDER=openai`, `AI_MODEL=gpt-4o-mini`, `https://api.openai.com/v1`).
+   - `getAIProvider()` factory: Configuration-driven selection (`mock`, `groq`, `openai`). Fails closed on unknown provider (`UNKNOWN_AI_PROVIDER_FAILS_CLOSED = YES`).
+   - Configuration environment variables:
+     - `AI_PROVIDER`: `mock` | `groq` | `openai` (defaults to `mock` in test, `groq` in development)
+     - `AI_MODEL`: Model identifier (defaults to `openai/gpt-oss-20b` for Groq, `gpt-4o-mini` for OpenAI)
+     - `GROQ_API_KEY`: Server-side API key for Groq (never exposed to client or logged)
+     - `GROQ_BASE_URL`: Base URL for Groq API (defaults to `https://api.groq.com/openai/v1`)
+     - `OPENAI_API_KEY`: Server-side API key for OpenAI
+     - `OPENAI_BASE_URL`: Base URL for OpenAI API (defaults to `https://api.openai.com/v1`)
 
 3. **`assistant.service.ts`**:
    - Session management: In-memory session store mapped by `sessionId` (or `userId` fallback).

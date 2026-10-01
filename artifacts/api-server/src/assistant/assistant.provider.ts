@@ -22,6 +22,8 @@ export interface AIProviderOptions {
 }
 
 export interface AIProvider {
+  getProviderName?(): string;
+  getModel?(): string;
   generateResponse(options: AIProviderOptions): Promise<AIProviderResponse>;
 }
 
@@ -31,6 +33,14 @@ export interface AIProvider {
  * and reliable adherence to security, knowledge, and anti-hallucination policies.
  */
 export class MockAIProvider implements AIProvider {
+  public getProviderName(): string {
+    return "mock";
+  }
+
+  public getModel(): string {
+    return "mock-deterministic";
+  }
+
   public async generateResponse(options: AIProviderOptions): Promise<AIProviderResponse> {
     const lastUserMessage = [...options.messages].reverse().find((m) => m.role === "user");
     const userQuery = lastUserMessage?.content || "";
@@ -397,26 +407,40 @@ export class AIProviderError extends Error {
   }
 }
 
-/**
- * Real AI Provider: OpenAI (gpt-4o-mini)
- * Operates strictly server-side with RBAC enforcement and tool registry bounds.
- */
-export class OpenAIProvider implements AIProvider {
-  private apiKey: string;
-  private model: string;
-  private baseUrl: string;
-  private fetcher: typeof fetch;
+export interface OpenAICompatibleProviderOptions {
+  providerName: "openai" | "groq";
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  fetcher?: typeof fetch;
+  missingKeyErrorMessage?: string;
+}
 
-  constructor(options?: {
-    apiKey?: string;
-    model?: string;
-    baseUrl?: string;
-    fetcher?: typeof fetch;
-  }) {
-    this.apiKey = options?.apiKey || process.env.OPENAI_API_KEY || "";
-    this.model = options?.model || process.env.AI_MODEL || ASSISTANT_CONFIG.defaultModel;
-    this.baseUrl = options?.baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-    this.fetcher = options?.fetcher || globalThis.fetch;
+/**
+ * Universal OpenAI-Compatible AI Provider.
+ * Powers both OpenAI and Groq runtimes using standard /chat/completions transport.
+ * Operates strictly server-side with RBAC enforcement, tool registry bounds, and safe error masking.
+ */
+export class OpenAICompatibleProvider implements AIProvider {
+  protected providerName: "openai" | "groq";
+  protected apiKey: string;
+  protected model: string;
+  protected baseUrl: string;
+  protected fetcher: typeof fetch;
+  protected missingKeyErrorMessage: string;
+
+  constructor(options: OpenAICompatibleProviderOptions) {
+    this.providerName = options.providerName;
+    this.apiKey = options.apiKey;
+    this.model = options.model;
+    this.baseUrl = options.baseUrl;
+    this.fetcher = options.fetcher || globalThis.fetch;
+    this.missingKeyErrorMessage =
+      options.missingKeyErrorMessage || `${options.providerName.toUpperCase()}_API_KEY não configurada no servidor.`;
+  }
+
+  public getProviderName(): string {
+    return this.providerName;
   }
 
   public getModel(): string {
@@ -428,8 +452,13 @@ export class OpenAIProvider implements AIProvider {
   }
 
   public async generateResponse(options: AIProviderOptions): Promise<AIProviderResponse> {
-    if (!this.apiKey) {
-      throw new AIProviderError("AI_PROVIDER_AUTH_ERROR", "OPENAI_API_KEY não configurada no servidor.", 502);
+    if (
+      !this.apiKey ||
+      this.apiKey.startsWith("sk-placeholder") ||
+      this.apiKey.startsWith("gsk-placeholder") ||
+      this.apiKey === "mock"
+    ) {
+      throw new AIProviderError("AI_PROVIDER_AUTH_ERROR", this.missingKeyErrorMessage, 502);
     }
 
     // Build tool definitions from registry for user's role
@@ -610,15 +639,94 @@ export class OpenAIProvider implements AIProvider {
 }
 
 /**
- * Factory providing the configured AI provider.
- * Defaults to MockAIProvider for guaranteed deterministic testing and zero cost.
+ * Groq AI Provider (openai/gpt-oss-20b)
+ * Primary development and free-tier runtime for ArkPet R41.
  */
-export function getAIProvider(): AIProvider {
-  if (
-    process.env.NODE_ENV !== "test" &&
-    (process.env.AI_PROVIDER === "openai" || process.env.OPENAI_API_KEY)
-  ) {
+export class GroqProvider extends OpenAICompatibleProvider {
+  constructor(options?: {
+    apiKey?: string;
+    model?: string;
+    baseUrl?: string;
+    fetcher?: typeof fetch;
+  }) {
+    super({
+      providerName: "groq",
+      apiKey: options?.apiKey || process.env.GROQ_API_KEY || "",
+      model: options?.model || process.env.AI_MODEL || "openai/gpt-oss-20b",
+      baseUrl: options?.baseUrl || process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1",
+      fetcher: options?.fetcher,
+      missingKeyErrorMessage: "GROQ_API_KEY não configurada no servidor.",
+    });
+  }
+}
+
+/**
+ * OpenAI Provider (gpt-4o-mini)
+ * Optional production provider for ArkPet R41.
+ */
+export class OpenAIProvider extends OpenAICompatibleProvider {
+  constructor(options?: {
+    apiKey?: string;
+    model?: string;
+    baseUrl?: string;
+    fetcher?: typeof fetch;
+  }) {
+    super({
+      providerName: "openai",
+      apiKey: options?.apiKey || process.env.OPENAI_API_KEY || "",
+      model: options?.model || process.env.AI_MODEL || "gpt-4o-mini",
+      baseUrl: options?.baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      fetcher: options?.fetcher,
+      missingKeyErrorMessage: "OPENAI_API_KEY não configurada no servidor.",
+    });
+  }
+}
+
+/**
+ * Factory providing the configured AI provider.
+ * Supports: mock | groq | openai
+ * Defaults to MockAIProvider in automated regression test suites.
+ * Defaults to GroqProvider in active development.
+ * Fails closed on unknown provider configurations.
+ */
+export function getAIProvider(overrideProvider?: string): AIProvider {
+  const configured = (overrideProvider || process.env.AI_PROVIDER || "").toLowerCase().trim();
+
+  // In automated unit/integration test runs (NODE_ENV === "test"), default to MockAIProvider
+  // unless an explicit AI_PROVIDER is provided
+  if (process.env.NODE_ENV === "test" && !overrideProvider && !process.env.AI_PROVIDER) {
+    return new MockAIProvider();
+  }
+
+  if (configured === "mock") {
+    return new MockAIProvider();
+  }
+
+  if (configured === "groq") {
+    return new GroqProvider();
+  }
+
+  if (configured === "openai") {
     return new OpenAIProvider();
   }
-  return new MockAIProvider();
+
+  // Outside test environment, if no explicit AI_PROVIDER is set:
+  if (!configured) {
+    if (process.env.GROQ_API_KEY) {
+      return new GroqProvider();
+    }
+    if (process.env.OPENAI_API_KEY) {
+      return new OpenAIProvider();
+    }
+    // Default development provider is groq (fails closed if GROQ_API_KEY is not configured)
+    return new GroqProvider();
+  }
+
+  // Unknown provider fails closed
+  throw new AIProviderError(
+    "UNKNOWN_AI_PROVIDER",
+    `Provedor de IA desconhecido: '${configured}'. Provedores válidos: mock, groq, openai.`,
+    500
+  );
 }
+

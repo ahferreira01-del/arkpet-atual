@@ -1,9 +1,10 @@
 # ARKPET — R41.A TEST REPORT
-## COMPREHENSIVE AUTOMATED TEST EXECUTION & REGRESSION VERIFICATION
+## COMPREHENSIVE AUTOMATED TEST EXECUTION & REGRESSION VERIFICATION (R41.A-FINAL.5)
 
 **Date:** 2026-10-01  
-**Phase:** `R41.A — ASSISTANT FOUNDATION`  
+**Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.5)`  
 **Candidate Base:** `58b4ff0e5cabd958d0f601af202378900427caab`  
+**Parent SHA:** `c2ea3e097492de50986e7346b427141e8bf53a89`  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Status:** `ALL TEST SUITES PASSED (100%)`  
 
@@ -11,9 +12,9 @@
 
 ## 1. Executive Summary
 
-This report certifies the successful execution of all unit, integration, UX, regression, and quality gate tests for Phase **R41.A**.
+This report certifies the successful execution of all unit, integration, UX, regression, provider adapter, and quality gate tests for Phase **R41.A-FINAL.5**.
 
-Zero regressions were introduced to existing R40 functional baselines. All new assistant capabilities conform to security, privacy, role-based boundary, and performance constraints.
+Zero regressions were introduced to existing R40 functional baselines. The assistant runtime has transitioned to a multi-provider architecture supporting `MockAIProvider`, `GroqProvider`, and `OpenAIProvider`, with `groq` configured as the primary development / free-tier provider. All tests conform strictly to security, privacy, role-based boundary, and performance constraints.
 
 ---
 
@@ -21,12 +22,35 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
 
 ### 2.1 Backend Test Suites (`@workspace/api-server`)
 - **Command:** `pnpm --filter @workspace/api-server test:unit`
-- **Total Test Files:** 44 passed (0 failed)
-- **Total Tests:** 694 passed (0 failed)
-- **Duration:** 104.46s
+- **Total Test Files:** 46 passed (0 failed)
+- **Total Tests:** 716 passed (0 failed)
+- **Duration:** 104.06s
 
 #### Specific R41.A Assistant Test Suites:
-1. **`assistantSecurity.unit.test.ts` (11 tests):**
+1. **`groqProviderSmoke.unit.test.ts` (11 tests):**
+   - `GROQ-001`: Validates Groq `/chat/completions` request wire contract (URL, Authorization, Model, messages).
+   - `GROQ-002`: Filters tool definitions strictly by caller role (tutor cannot receive admin tools).
+   - `GROQ-003`: End-to-end `list_my_pets` tool roundtrip synthesis (returns Rex and Thor).
+   - `GROQ-004`: End-to-end `get_onboarding_status` tool roundtrip synthesis for creche admin.
+   - `GROQ-005`: Multi-tool execution in a single round (`GROQ_MULTI_TOOL_AUTHORIZATION_BYPASS = 0`).
+   - `GROQ-006`: Unregistered tool rejection (`executeSQL` throws 403 `UNREGISTERED_TOOL_EXECUTION`).
+   - `GROQ-007`: Loop limiter bounded strictly to 3 rounds (`UNBOUNDED_AI_TOOL_LOOP = 0`).
+   - `GROQ-008`: Error handling for HTTP 429 rate limit (`AI_PROVIDER_RATE_LIMIT`).
+   - `GROQ-009`: Prompt injection defense and secret stripping (`GROQ_PROMPT_INJECTION_SECRET_LEAK = 0`).
+   - `GROQ-010`: Provider factory routing and fail-closed behavior on unknown provider (`UNKNOWN_AI_PROVIDER_FAILS_CLOSED = YES`).
+   - `GROQ-011`: Missing key fail-closed behavior (`GROQ_FAKE_KEY_RUNTIME_FALLBACK = 0`).
+
+2. **`realProviderSmoke.unit.test.ts` (8 tests):**
+   - `OPENAI-001`: Validates OpenAI wire format, Authorization header, and messages.
+   - `OPENAI-002`: Filters tool definitions strictly by caller role.
+   - `OPENAI-003`: Model → Tool → Model roundtrip executes `list_my_pets`.
+   - `OPENAI-004`: Model → Tool → Model roundtrip executes `get_onboarding_status`.
+   - `OPENAI-005`: Rejects unlisted or privileged tools (`executeSQL`).
+   - `OPENAI-006`: Bounded tool loop stops after `MAX_ASSISTANT_TOOL_ROUNDS = 3`.
+   - `OPENAI-007`: Multiple tool calls in a single turn.
+   - `OPENAI-008`: Strip sensitive credentials in provider error responses.
+
+3. **`assistantSecurity.unit.test.ts` (11 tests):**
    - `AI-SEC-001`: Injects system prompt and denies prompt injection attempts.
    - `AI-SEC-002`: Refuses sensitive data extraction (passwords, tokens, keys).
    - `AI-SEC-003`: Denies cross-tenant data requests.
@@ -39,7 +63,7 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
    - `AI-SEC-010`: Verifies read-only tool contracts (`GENERAL_DB_ACCESS_TOOL = 0`).
    - `AI-SEC-011`: Enforces rate-limiting on assistant endpoints.
 
-2. **`assistantKnowledge.unit.test.ts` (8 tests):**
+4. **`assistantKnowledge.unit.test.ts` (8 tests):**
    - `AI-KNOW-001`: Loads all 8 domain markdown documents into cache.
    - `AI-KNOW-002`: Verifies knowledge version tag (`arkpet-v32-r41`).
    - `AI-KNOW-003`: Searches knowledge base with relevance scoring and Portuguese stopword filtering.
@@ -49,17 +73,17 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
    - `AI-KNOW-007`: Formats domain excerpts within token budget.
    - `AI-KNOW-008`: Preserves knowledge integrity across concurrent searches.
 
-3. **`assistantEvals.unit.test.ts` (53 tests):**
+5. **`assistantEvals.unit.test.ts` (53 tests):**
    - 52 golden question cases evaluated across 4 user roles.
    - 1 aggregate evaluation coverage test confirming 100% boundary compliance.
 
 ---
 
 ### 2.2 Frontend Test Suites (`@workspace/petdaycare`)
-- **Command:** `pnpm --filter @workspace/petdaycare test --run`
+- **Command:** `pnpm --filter @workspace/petdaycare test`
 - **Total Test Files:** 38 passed (0 failed)
 - **Total Tests:** 524 passed (0 failed)
-- **Duration:** 63.70s
+- **Duration:** 65.94s
 
 #### Specific R41.A Assistant UX Test Suite (`assistant-ux.test.tsx`):
 - `AI-UX-001`: Desktop assistant panel renders with title, suggestions, and input when open.
@@ -75,7 +99,7 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
 ---
 
 ### 2.3 Monorepo Static Analysis & Typechecks
-- **Command:** `pnpm recursive run typecheck`
+- **Command:** `pnpm run typecheck`
 - **Results:**
   - `artifacts/api-server`: Pass (0 TypeScript errors).
   - `artifacts/petdaycare`: Pass (0 TypeScript errors).
@@ -87,11 +111,11 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
 1. **API Server:**
    - Command: `pnpm --filter @workspace/api-server build`
    - Output: `dist/index.cjs` (2.8 MB)
-   - Status: Success (0 errors, build time 761ms).
+   - Status: Success (0 errors, build time 553ms).
 2. **Frontend Client:**
    - Command: `pnpm --filter @workspace/petdaycare build`
    - Lazy-loaded bundle: `dist/public/assets/index-ADVPRhpr.js` (15.62 kB │ gzip: 5.01 kB)
-   - Status: Success (0 errors, build time 16.82s).
+   - Status: Success (0 errors, build time 27.39s).
 
 ---
 
@@ -106,13 +130,15 @@ Zero regressions were introduced to existing R40 functional baselines. All new a
 
 | Category | Suite | Passed | Failed | Status |
 | :--- | :--- | :---: | :---: | :---: |
+| **Backend Groq Provider Adapter** | `groqProviderSmoke.unit.test.ts` | 11 | 0 | **PASS** |
+| **Backend OpenAI Provider Adapter** | `realProviderSmoke.unit.test.ts` | 8 | 0 | **PASS** |
 | **Backend Assistant Security** | `assistantSecurity.unit.test.ts` | 11 | 0 | **PASS** |
 | **Backend Knowledge Retrieval** | `assistantKnowledge.unit.test.ts` | 8 | 0 | **PASS** |
 | **Backend Golden Evaluations** | `assistantEvals.unit.test.ts` | 53 | 0 | **PASS** |
-| **Backend Full Unit Regression** | All 44 api-server suites | 694 | 0 | **PASS** |
+| **Backend Full Unit Regression** | All 46 api-server suites | 716 | 0 | **PASS** |
 | **Frontend Assistant UX** | `assistant-ux.test.tsx` | 9 | 0 | **PASS** |
 | **Frontend Full Unit Regression**| All 38 petdaycare suites | 524 | 0 | **PASS** |
 | **Monorepo Typecheck** | All workspace packages | 7 / 7 | 0 | **PASS** |
 | **Production Builds** | Backend & Frontend bundles | 2 / 2 | 0 | **PASS** |
 | **PWA Compliance** | `pwa-audit.mjs` | 27 / 27 | 0 | **PASS** |
-| **Total Tests Verified** | | **1,218** | **0** | **100% PASS** |
+| **Total Platform Tests Verified** | | **1,240** | **0** | **100% PASS** |

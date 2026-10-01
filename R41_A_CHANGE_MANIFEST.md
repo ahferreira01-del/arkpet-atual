@@ -1,9 +1,10 @@
 # ARKPET — R41.A CHANGE MANIFEST
-## FILE INVENTORY & IMPLEMENTATION ARTIFACTS
+## FILE INVENTORY & IMPLEMENTATION ARTIFACTS (R41.A-FINAL.5)
 
-**Release Phase:** `R41.A — ASSISTANT FOUNDATION`  
+**Release Phase:** `R41.A — FREE PROVIDER ACTIVATION, GROQ INTEGRATION & MULTI-PROVIDER AI CLOSURE (R41.A-FINAL.5)`  
 **Git Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Base Commit (R40 Frozen RC):** `58b4ff0e5cabd958d0f601af202378900427caab`  
+**Parent SHA:** `c2ea3e097492de50986e7346b427141e8bf53a89`  
 
 ---
 
@@ -13,6 +14,12 @@
 | :--- | :--- | :--- |
 | `artifacts/api-server/src/routes/index.ts` | Route index | Mounted `assistantRouter` under `/api/assistant`. Zero changes to existing routes. |
 | `artifacts/petdaycare/src/components/layout/app-layout.tsx` | Layout | Imported `AssistantContainer` via `React.lazy` wrapped in `<React.Suspense fallback={null}>`. Non-blocking. |
+| `artifacts/api-server/src/assistant/assistant.provider.ts` | Provider engine | Evolved into Multi-Provider AI Architecture with `OpenAICompatibleProvider` base, `GroqProvider` (default dev), `OpenAIProvider`, and `MockAIProvider`. |
+| `artifacts/api-server/src/assistant/assistant.config.ts` | Config | Dynamic getters for `defaultProvider` (`groq`) and `defaultModel` (`openai/gpt-oss-20b`). |
+| `artifacts/api-server/src/assistant/assistant.service.ts` | Service | Injects active provider and model into audit telemetry. |
+| `artifacts/api-server/src/assistant/assistant-audit.service.ts` | Audit | Tracks provider in `assistant_message_turn` without exposing keys. |
+| `scripts/live-provider-connectivity-smoke.mjs` | Smoke script | Enforces normal TLS certificate validation (`NODE_TLS_REJECT_UNAUTHORIZED_OVERRIDE = 0`). |
+| `scripts/live-provider-authenticated-smoke.mjs` | Smoke script | Enforces normal TLS validation, fail-closed without real key. |
 
 ---
 
@@ -26,7 +33,7 @@
 | `assistant-knowledge.service.ts` | In-memory search with stopword filtering, section weighting, and `isKnownFeature` detection. |
 | `assistant-context.service.ts` | Resolves user, creche, and screen context from server session. |
 | `assistant-tools.registry.ts` | Read-only registry containing 6 validated tools (`GENERAL_DB_ACCESS_TOOL = 0`). |
-| `assistant.provider.ts` | Deterministic `MockAIProvider` with fallback to OpenAI/Gemini providers when keys exist. |
+| `assistant.provider.ts` | Multi-provider architecture (`MockAIProvider`, `GroqProvider`, `OpenAIProvider`). |
 | `assistant.service.ts` | Assistant orchestration engine, session manager, and boundary guard. |
 | `assistant.router.ts` | Express router exposing `/api/assistant` endpoints (`/message`, `/context`, `/onboarding`, `/session`). |
 
@@ -51,6 +58,8 @@
 
 | File Path | Content |
 | :--- | :--- |
+| `groqProviderSmoke.unit.test.ts` | 11 unit tests covering Groq HTTP contract, Model→Tool→Model roundtrip, role boundaries, loop limiter, prompt injection defense, rate-limiting, and fail-closed routing. |
+| `realProviderSmoke.unit.test.ts` | 8 unit tests covering OpenAI wire contract, Model→Tool→Model roundtrip, and error sanitization. |
 | `assistantSecurity.unit.test.ts` | 11 unit tests covering injection, PII redaction, RBAC, isolation, and rate-limiting. |
 | `assistantKnowledge.unit.test.ts` | 8 unit tests covering knowledge indexing, retrieval scoring, and citations. |
 | `assistantEvals.unit.test.ts` | 53 unit tests executing 52 golden cases across all 4 roles. |
@@ -82,17 +91,28 @@
 
 ---
 
-## 7. Architecture & Certification Documentation (`artifacts directory`)
+## 7. Live Smoke Scripts (`scripts/`)
+
+| File Path | Purpose |
+| :--- | :--- |
+| `scripts/live-groq-connectivity-smoke.mjs` | Verifies live HTTPS reachability to `api.groq.com` with TLS validation enabled. |
+| `scripts/live-groq-authenticated-smoke.mjs` | Performs live authenticated model inference on Groq endpoint; fails closed if no credential. |
+| `scripts/live-provider-connectivity-smoke.mjs` | Verifies live HTTPS reachability to `api.openai.com` with TLS validation enabled. |
+| `scripts/live-provider-authenticated-smoke.mjs` | Performs live authenticated model inference on OpenAI endpoint; fails closed if no credential. |
+
+---
+
+## 8. Architecture & Certification Documentation (`artifacts directory` & root)
 
 | File Name | Description |
 | :--- | :--- |
-| `R41_A_ARCHITECTURE.md` | Complete end-to-end architecture specification for R41.A. |
+| `R41_A_ARCHITECTURE.md` | Complete end-to-end architecture specification for R41.A including multi-provider design. |
 | `R41_A_SECURITY_MODEL.md` | Security boundaries, RBAC matrix, prompt injection defenses. |
 | `R41_A_PRIVACY_MODEL.md` | Data privacy, PII scrubbing, zero multi-tenant leakage. |
 | `R41_A_TOOL_REGISTRY.md` | Catalog of 6 read-only tools with parameter schemas and access levels. |
 | `R41_A_KNOWLEDGE_ARCHITECTURE.md` | Domain knowledge ingestion, versioning, search, and citation model. |
 | `R41_A_ASSISTANT_SYSTEM_PROMPT.md` | Master system prompt definition with role-specific operational parameters. |
 | `R41_A_EVAL_REPORT.md` | Results of the 52 golden question domain evaluations. |
-| `R41_A_TEST_REPORT.md` | Complete automated test report across backend, frontend, and build gates. |
+| `R41_A_TEST_REPORT.md` | Complete automated test report across backend (716 tests), frontend (524 tests), and build gates. |
 | `R41_A_CHANGE_MANIFEST.md` | This file inventory. |
 | `R41_A_CERTIFICATION_REPORT.md` | Final certification scorecard and release sign-off. |
