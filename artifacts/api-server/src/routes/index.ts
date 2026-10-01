@@ -27,6 +27,7 @@ import marketingOpportunityRouter from "./marketingOpportunity.routes.js";
 import crecheCommercialMetricsRouter from "./crecheCommercialMetrics.routes.js";
 import tutorCommercialOffersRouter from "./tutorCommercialOffers.routes.js";
 import searchRouter from "./search.js";
+import assistantRouter from "../assistant/assistant.router.js";
 import { authenticate } from "../middlewares/authenticate.js";
 import { requireActiveSubscription } from "../middlewares/requireActiveSubscription.js";
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
@@ -80,6 +81,7 @@ router.use("/users", usersRouter);
 router.use("/push", pushRouter);
 router.use("/billing", billingRouter);
 router.use("/search", searchRouter);
+router.use("/assistant", assistantRouter);
 router.use(logsRouter);
 
 // ── Versão do app ────────────────────────────────────────────────────────────

@@ -9,6 +9,8 @@ import { SubscriptionBanner } from "./subscription-banner";
 import { OfflineBanner } from "./offline-banner";
 import { Loader2, PhoneCall, Settings } from "lucide-react";
 
+const AssistantContainer = React.lazy(() => import("@/features/assistant"));
+
 // Routes accessible even when subscription is blocked — needed to authenticate,
 // view plans, complete payment, and log out. Keep this list minimal.
 const RECOVERY_PATHS = [
@@ -181,6 +183,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom navigation */}
       {!hideBottomNav && <BottomNav user={user} />}
+
+      {/* R41.A Intelligent Assistant Copilot (lazy loaded) */}
+      <React.Suspense fallback={null}>
+        <AssistantContainer userRole={user.role} />
+      </React.Suspense>
     </div>
   );
 }
