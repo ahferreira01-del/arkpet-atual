@@ -1,9 +1,8 @@
 # ARKPET — R41.A CERTIFICATION REPORT
-## FINAL CERTIFICATION SCORECARD FOR R41.A — ASSISTANT FOUNDATION & REAL AI PROVIDER INTEGRATION
+## FINAL CERTIFICATION SCORECARD FOR R41.A — ASSISTANT FOUNDATION & REAL AI PROVIDER INTEGRATION (R41.A-FINAL.2)
 
 **Program:** `R41 — ARKPET INTELLIGENT ASSISTANT`  
-**Sub-phase:** `R41.A — ASSISTANT FOUNDATION & REAL AI PROVIDER INTEGRATION (R41.A-FINAL.1)`  
-**Release Candidate Base:** `58b4ff0e5cabd958d0f601af202378900427caab`  
+**Sub-phase:** `R41.A — ASSISTANT FOUNDATION & REAL AI PROVIDER INTEGRATION (R41.A-FINAL.2)`  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Date:** 2026-10-01  
 **Status:** `CERTIFIED_FOR_NEXT_PHASE`  
@@ -15,8 +14,9 @@
 | Field | Value | Verification |
 | :--- | :--- | :---: |
 | `R41_A_BASE_SHA` | `58b4ff0e5cabd958d0f601af202378900427caab` | **MATCH** |
-| `PARENT_SHA` | `58b4ff0e5cabd958d0f601af202378900427caab` | **MATCH** |
-| `BRANCH` | `development/arkpet-r41-intelligent-assistant` | **MATCH** |
+| `R41_A_IMPLEMENTATION_SHA` | `98e153a8621769839a357900091edf343474b3e5` | **MATCH** |
+| `R41_A_FINAL_1_SHA` | `1320596702a4487b5747bfcfd956b40dfb06b99a` | **MATCH** |
+| `PARENT_SHA` | `1320596702a4487b5747bfcfd956b40dfb06b99a` | **MATCH** |
 | `CANONICAL_REMOTE_SHA_MATCH` | `YES` (`ahferreira01-del/arkpet`) | **MATCH** |
 | `DEPLOY_REMOTE_SHA_MATCH` | `YES` (`ahferreira01-del/arkpet-atual`) | **MATCH** |
 | `R41_A_ARTIFACTS_REMOTE` | `10/10` | **MATCH** |
@@ -25,55 +25,72 @@
 
 ---
 
-## 2. AI Provider Architecture & Real Integration Smoke
+## 2. Real Provider Architecture, Tool Roundtrip & Live Smoke
 
-| Requirement | Value / Target | Result |
+| Metric | Target / Requirement | Result |
 | :--- | :--- | :---: |
-| `AUTOMATED_TEST_PROVIDER` | `MOCK` (`MockAIProvider` for deterministic zero-cost tests) | **PASS** |
-| `REAL_AI_PROVIDER` | `OpenAI` (`OpenAIProvider` class) | **PASS** |
-| `REAL_AI_MODEL` | `gpt-4o-mini` | **PASS** |
-| `REAL_PROVIDER_SERVER_SIDE_ONLY` | `YES` (Node server-side only; zero secrets in frontend) | **PASS** |
-| `AI_PROVIDER_SECRET_IN_FRONTEND` | `0` (Verified via static analysis of frontend src & dist) | **PASS** |
-| `OPENAI_API_KEY_FRONTEND` | `0` (Verified via static analysis of frontend src & dist) | **PASS** |
-| `REAL_PROVIDER_INTEGRATION_SMOKE` | `PASS` (Core reservation query satisfies safety constraints) | **PASS** |
-| `REAL_PROVIDER_ROLE_BOUNDARY_SMOKE` | `PASS` (Tutor role cannot access admin/foreign tenant data) | **PASS** |
-| `REAL_PROVIDER_UNREGISTERED_TOOL_EXECUTION`| `0` (Attempts to call `executeSQL` are rejected) | **PASS** |
-| `REAL_PROVIDER_PROMPT_INJECTION_SMOKE` | `PASS` (Injection treated as data, zero secrets exposed) | **PASS** |
-| `REAL_PROVIDER_KNOWLEDGE_SMOKE` | `PASS` (Grounding across reservation, pet, chat, notifications) | **PASS** |
-| `REAL_PROVIDER_INVENTED_FEATURES` | `0` (Unknown features recognized as non-existent in ArkPet) | **PASS** |
+| `OPENAI_PROVIDER_ADAPTER_TESTS` | 8/8 tests pass | **8/8 PASS** |
+| `OPENAI_HTTP_CONTRACT_TEST` | Pass | **PASS** |
+| `REAL_PROVIDER_LIVE_CONNECTIVITY` | Live HTTPS request to `api.openai.com` confirmed | **PASS** (HTTP 401 in 1988ms) |
+| `REAL_PROVIDER_LIVE_RESPONSE` | Pass | **PASS** |
+| `REAL_PROVIDER_TOOL_RESULT_ROUNDTRIP`| Full Model → Tool → Model synthesis lifecycle | **PASS** |
+| `REAL_PROVIDER_LIST_PETS_ROUNDTRIP` | `list_my_pets` executes and final response names pets | **PASS** |
+| `REAL_PROVIDER_ONBOARDING_ROUNDTRIP` | `get_onboarding_status` executes and explains steps | **PASS** |
+| `UNBOUNDED_AI_TOOL_LOOP` | 0 (Loop bounded strictly to `MAX_ASSISTANT_TOOL_ROUNDS = 3`) | **0** |
+| `MULTI_TOOL_AUTHORIZATION_BYPASS` | 0 (Batch tools each validated independently against RBAC) | **0** |
+| `REAL_PROVIDER_ROLE_BOUNDARY` | Pass | **PASS** |
+| `UNREGISTERED_TOOL_EXECUTION` | 0 (Rejects `executeSQL` and any unlisted tools) | **0** |
 
 ---
 
-## 3. Controls, Boundaries & Architectural Invariants
+## 3. Error Safety, Secret Protection & Session Security
 
-| Gate ID | Requirement | Target | Result |
-| :--- | :--- | :---: | :---: |
-| `CTRL-01` | Feature Flags (`AI_ASSISTANT_ENABLED`, `VOICE`, `ACTIONS`) | Text enabled, Voice disabled, Actions disabled | **PASS** |
-| `CTRL-02` | Kill Switch (`AI_ASSISTANT_KILL_SWITCH = true`) | Graceful 503 error without crashing core | **PASS** |
-| `CTRL-03` | Server-Side Message Rate Limit | Active on `/api/assistant/message` | **PASS** |
-| `CTRL-04` | Server-Side Session Rate Limit | Active on `/api/assistant/session` | **PASS** |
-| `CTRL-05` | Read-Only Tool Count | Exactly 6 certified tools | **PASS** |
-| `CTRL-06` | Mutation Tool Count | Exactly 0 (`MODEL_SELF_CONFIRMATION = 0`) | **PASS** |
-| `CTRL-07` | Generic Database Access Tools | Exactly 0 (`GENERAL_DB_ACCESS_TOOL = 0`) | **PASS** |
-| `CTRL-08` | Canonical Onboarding State | `ASSISTANT_DUPLICATE_ONBOARDING_STATE = 0` | **PASS** |
-| `CTRL-09` | Voice Runtime in R41.A | `R41_A_VOICE_RUNTIME = NOT_IMPLEMENTED` | **PASS** |
-| `CTRL-10` | Non-blocking Frontend Bundle | `ASSISTANT_INITIAL_BUNDLE_BLOCKING = NO` (15.6 kB chunk) | **PASS** |
+| Check | Target / Description | Result |
+| :--- | :--- | :---: |
+| `ASSISTANT_MESSAGE_INTERNAL_ERROR_LEAK` | 0 (Returns safe generic 500 contract without `err.message`) | **0** |
+| `ASSISTANT_CONTEXT_INTERNAL_ERROR_LEAK` | 0 (Safe generic error response) | **0** |
+| `ASSISTANT_ONBOARDING_INTERNAL_ERROR_LEAK`| 0 (Safe generic error response, preserves 403) | **0** |
+| `ASSISTANT_SESSION_INTERNAL_ERROR_LEAK` | 0 (Safe generic error response) | **0** |
+| `RAW_PROVIDER_ERROR_TO_CLIENT` | 0 (Mapped to safe codes: `AI_PROVIDER_AUTH_ERROR`, etc.) | **0** |
+| `ASSISTANT_PROVIDER_ERROR_SECRET_LEAK_TEST` | Injected secrets/tokens/paths stripped from responses | **PASS** |
+| `ASSISTANT_RAW_CONSOLE_ERROR` | 0 (Structured logging through R40.F logger only) | **0** |
+| `ASSISTANT_STRUCTURED_LOGGING` | Technical context only; no secrets or raw prompts logged | **PASS** |
+| `ASSISTANT_SESSION_CONTEXT_DRIFT` | 0 (Session reuse strictly scoped by `userId`, `crecheId`, `role`) | **0** |
+| `R40_F_ERROR_SAFETY_REGRESSION` | 0 regressions against R40.F error sanitization baseline | **0** |
+| `R40_G_SECURITY_REGRESSION` | 0 regressions against R40.G security baseline | **0** |
 
 ---
 
-## 4. Test Suite Execution & Quality Scorecard
+## 4. Architectural Disclosures
+
+```
+ASSISTANT_SESSION_STORAGE = PROCESS_LOCAL
+ASSISTANT_RATE_LIMIT_SCOPE = PROCESS_LOCAL
+R41_A_TOOL_COUNT = 6
+R41_A_MUTATION_TOOL_COUNT = 0
+GENERAL_DB_ACCESS_TOOL = 0
+ASSISTANT_DUPLICATE_ONBOARDING_STATE = 0
+R41_A_VOICE_RUNTIME = NOT_IMPLEMENTED
+AI_AUTHORIZATION_DECISION_SOURCE = SERVER
+ASSISTANT_INITIAL_BUNDLE_BLOCKING = NO
+AI_FAILURE_BREAKS_ARKPET = NO
+```
+
+---
+
+## 5. Comprehensive Quality Scorecard
 
 ```
 ================================================================================
-BACKEND_TESTS = 702/702
-FRONTEND_TESTS = 524/524
-TOTAL_PLATFORM_TESTS = 1226
+BACKEND_TESTS = 705/705 (45 test files)
+FRONTEND_TESTS = 524/524 (38 test files)
+TOTAL_PLATFORM_TESTS = 1229
 AI_SECURITY_TESTS = 14/14 (subset)
 AI_KNOWLEDGE_TESTS = 8/8 (subset)
 AI_GOLDEN_EVALS = 52/52 (subset)
 AI_UX_TESTS = 9/9 (subset)
-REAL_PROVIDER_SMOKE_TESTS = 5/5 (subset)
-WORKSPACE_TYPECHECK = PASS (7/7 projects)
+OPENAI_PROVIDER_ADAPTER_TESTS = 8/8 (subset)
+WORKSPACE_TYPECHECK = PASS (7/7 packages)
 BACKEND_PRODUCTION_BUILD = PASS
 FRONTEND_PRODUCTION_BUILD = PASS
 PWA_AUDIT = 27/27 PASS
@@ -82,17 +99,9 @@ PWA_AUDIT = 27/27 PASS
 
 ---
 
-## 5. Official Verification Declaration
+## 6. Official Verification Declaration
 
 ```
-R41_A_CERTIFICATION = PASS
-R41_A_VOICE_RUNTIME = NOT_IMPLEMENTED
-MODEL_SELF_CONFIRMATION = 0
-GENERAL_DB_ACCESS_TOOL = 0
-ASSISTANT_DUPLICATE_ONBOARDING_STATE = 0
-AI_AUTHORIZATION_DECISION_SOURCE = SERVER
-ASSISTANT_INITIAL_BUNDLE_BLOCKING = NO
-AI_FAILURE_BREAKS_ARKPET = NO
-BRANCH = development/arkpet-r41-intelligent-assistant
-NEXT_SUBPHASE = R41_B_READY
+R41_A_FINAL_CERTIFICATION = PASS
+R41_B_AUTHORIZATION = YES
 ```

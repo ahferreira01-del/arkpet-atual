@@ -4,6 +4,7 @@ import { authenticate, type AuthRequest } from "../middlewares/authenticate.js";
 import { AssistantService } from "./assistant.service.js";
 import { AssistantContextService } from "./assistant-context.service.js";
 import { AssistantToolsRegistry } from "./assistant-tools.registry.js";
+import { AssistantAuditService } from "./assistant-audit.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type { AssistantSecurityContext, AssistantRole } from "./assistant.types.js";
 
@@ -91,10 +92,31 @@ assistantRouter.post("/message", assistantRateLimiter, async (req: AuthRequest, 
 
     res.json(result);
   } catch (err: any) {
-    const status = err.statusCode || (err.message.includes("negado") ? 403 : 500);
-    res.status(status).json({
-      error: err.message || "Erro ao processar mensagem do assistente",
-      code: status === 503 ? "SERVICE_UNAVAILABLE" : "ASSISTANT_ERROR",
+    const requestId = (req as any).id || (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined);
+    let context: AssistantSecurityContext | undefined;
+    try {
+      context = extractSecurityContext(req);
+    } catch {
+      // Unauthenticated or context error
+    }
+
+    AssistantAuditService.logError(context, err, "assistant_message_error");
+
+    const status = err.statusCode || (err.message && err.message.includes("negado") ? 403 : 500);
+    if (status === 400 || status === 403 || status === 429 || status === 503) {
+      res.status(status).json({
+        error: err.message || "Solicitação não autorizada ou temporariamente indisponível.",
+        code: status === 503 ? "SERVICE_UNAVAILABLE" : err.code || "ASSISTANT_ERROR",
+        requestId,
+      });
+      return;
+    }
+
+    // Safe generic contract for unexpected 500 errors (ASSISTANT_MESSAGE_INTERNAL_ERROR_LEAK = 0)
+    res.status(500).json({
+      error: "Não foi possível processar a solicitação do assistente.",
+      code: "ASSISTANT_ERROR",
+      requestId,
     });
   }
 });
@@ -108,7 +130,14 @@ assistantRouter.get("/context", async (req: AuthRequest, res: Response) => {
     const resolved = await AssistantContextService.resolveContext(context, { route });
     res.json(resolved);
   } catch (err: any) {
-    res.status(500).json({ error: err.message || "Erro ao obter contexto" });
+    const requestId = (req as any).id || (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined);
+    AssistantAuditService.logError(undefined, err, "assistant_context_error");
+    // ASSISTANT_CONTEXT_INTERNAL_ERROR_LEAK = 0
+    res.status(500).json({
+      error: "Não foi possível obter o contexto da tela.",
+      code: "CONTEXT_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -117,15 +146,30 @@ assistantRouter.get("/onboarding", async (req: AuthRequest, res: Response) => {
   try {
     const context = extractSecurityContext(req);
     if (context.role !== "creche_admin" && context.role !== "master_admin") {
-      res.status(403).json({ error: "Acesso negado ao onboarding da creche" });
+      res.status(403).json({ error: "Acesso negado ao onboarding da creche.", code: "FORBIDDEN" });
       return;
     }
 
     const status = await AssistantToolsRegistry.executeTool("get_onboarding_status", {}, context);
     res.json(status);
   } catch (err: any) {
-    const status = err.message.includes("negado") ? 403 : 500;
-    res.status(status).json({ error: err.message || "Erro ao consultar onboarding" });
+    const requestId = (req as any).id || (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined);
+    AssistantAuditService.logError(undefined, err, "assistant_onboarding_error");
+    const status = err.statusCode || (err.message && err.message.includes("negado") ? 403 : 500);
+    if (status === 403) {
+      res.status(403).json({
+        error: "Acesso negado ao onboarding da creche.",
+        code: "FORBIDDEN",
+        requestId,
+      });
+      return;
+    }
+    // ASSISTANT_ONBOARDING_INTERNAL_ERROR_LEAK = 0
+    res.status(500).json({
+      error: "Não foi possível consultar o status do onboarding.",
+      code: "ONBOARDING_ERROR",
+      requestId,
+    });
   }
 });
 
@@ -136,7 +180,14 @@ assistantRouter.post("/session", assistantRateLimiter, async (req: AuthRequest, 
     const session = AssistantService.getOrCreateSession(undefined, context);
     res.json({ sessionId: session.id });
   } catch (err: any) {
-    res.status(500).json({ error: err.message || "Erro ao criar sessão" });
+    const requestId = (req as any).id || (typeof req.headers["x-request-id"] === "string" ? req.headers["x-request-id"] : undefined);
+    AssistantAuditService.logError(undefined, err, "assistant_session_error");
+    // ASSISTANT_SESSION_INTERNAL_ERROR_LEAK = 0
+    res.status(500).json({
+      error: "Não foi possível inicializar a sessão do assistente.",
+      code: "SESSION_ERROR",
+      requestId,
+    });
   }
 });
 

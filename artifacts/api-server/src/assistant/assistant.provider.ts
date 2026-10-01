@@ -385,6 +385,18 @@ export class MockAIProvider implements AIProvider {
   }
 }
 
+export class AIProviderError extends Error {
+  public readonly code: string;
+  public readonly statusCode: number;
+
+  constructor(code: string, message: string, statusCode = 500) {
+    super(message);
+    this.name = "AIProviderError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
 /**
  * Real AI Provider: OpenAI (gpt-4o-mini)
  * Operates strictly server-side with RBAC enforcement and tool registry bounds.
@@ -417,7 +429,7 @@ export class OpenAIProvider implements AIProvider {
 
   public async generateResponse(options: AIProviderOptions): Promise<AIProviderResponse> {
     if (!this.apiKey) {
-      throw new Error("OPENAI_API_KEY não configurada no servidor.");
+      throw new AIProviderError("AI_PROVIDER_AUTH_ERROR", "OPENAI_API_KEY não configurada no servidor.", 502);
     }
 
     // Build tool definitions from registry for user's role
@@ -450,7 +462,11 @@ export class OpenAIProvider implements AIProvider {
       };
     });
 
-    const messages = [
+    const MAX_ASSISTANT_TOOL_ROUNDS = 3;
+    let rounds = 0;
+    const toolCallsExecuted: Array<{ name: string; arguments: any; result: any }> = [];
+
+    const conversationMessages: any[] = [
       { role: "system", content: options.systemPrompt },
       ...options.messages.map((m) => ({
         role: m.role,
@@ -458,44 +474,88 @@ export class OpenAIProvider implements AIProvider {
       })),
     ];
 
-    const body: any = {
-      model: this.model,
-      messages,
-      temperature: 0.2,
-      max_tokens: 1000,
-    };
+    while (rounds < MAX_ASSISTANT_TOOL_ROUNDS) {
+      rounds++;
 
-    if (tools.length > 0) {
-      body.tools = tools;
-    }
+      const body: any = {
+        model: this.model,
+        messages: conversationMessages,
+        temperature: 0.2,
+        max_tokens: 1000,
+      };
 
-    const response = await this.fetcher(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+      if (tools.length > 0) {
+        body.tools = tools;
+      }
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`OpenAI Provider HTTP ${response.status}: ${errText}`);
-    }
+      let response: Response;
+      try {
+        response = await this.fetcher(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        throw new AIProviderError("AI_PROVIDER_UNAVAILABLE", "O serviço de IA está temporariamente inacessível.", 503);
+      }
 
-    const data = (await response.json()) as any;
-    const choice = data.choices?.[0];
-    if (!choice) {
-      throw new Error("Resposta vazia retornada pelo provedor OpenAI.");
-    }
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new AIProviderError("AI_PROVIDER_AUTH_ERROR", "Falha de autenticação com o provedor de IA.", 502);
+        }
+        if (response.status === 429) {
+          throw new AIProviderError("AI_PROVIDER_RATE_LIMIT", "Limite de requisições do provedor de IA excedido.", 429);
+        }
+        if (response.status === 408 || response.status === 504) {
+          throw new AIProviderError("AI_PROVIDER_TIMEOUT", "Tempo limite esgotado ao contatar o provedor de IA.", 504);
+        }
+        throw new AIProviderError("AI_PROVIDER_UNAVAILABLE", "O provedor de IA retornou uma falha temporária.", 503);
+      }
 
-    const message = choice.message;
-    const toolCallsExecuted: Array<{ name: string; arguments: any; result: any }> = [];
+      let data: any;
+      try {
+        data = (await response.json()) as any;
+      } catch {
+        throw new AIProviderError("AI_PROVIDER_BAD_RESPONSE", "Resposta malformada recebida do provedor de IA.", 502);
+      }
 
-    // Handle tool calls if returned by model
-    if (message.tool_calls && Array.isArray(message.tool_calls)) {
+      const choice = data.choices?.[0];
+      if (!choice) {
+        throw new AIProviderError("AI_PROVIDER_BAD_RESPONSE", "Resposta vazia recebida do provedor de IA.", 502);
+      }
+
+      const message = choice.message;
+
+      // If model did not request tool execution, return final natural-language response
+      if (!message.tool_calls || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) {
+        const citations: AssistantCitation[] = (options.knowledgeSnippets || []).map((k) => ({
+          title: k.title,
+          category: k.category,
+          path: k.path,
+        }));
+
+        return {
+          content: message.content || "Não foi possível gerar uma resposta detalhada.",
+          citations: citations.length > 0 ? citations : undefined,
+          toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
+        };
+      }
+
+      // Step 5: Append assistant turn with tool_calls
+      conversationMessages.push({
+        role: "assistant",
+        content: message.content || null,
+        tool_calls: message.tool_calls,
+      });
+
+      // Steps 3, 4, 6: Validate each tool independently and append results
       for (const tc of message.tool_calls) {
         const toolName = tc.function?.name;
+        const toolCallId = tc.id || `call_${Date.now()}`;
+
         // Verify tool exists in registry and is allowed for user role
         const toolDef = AssistantToolsRegistry.getTool(toolName);
         if (!toolDef || !toolDef.allowedRoles.includes(options.securityContext.role)) {
@@ -503,7 +563,11 @@ export class OpenAIProvider implements AIProvider {
             action: `unregistered_or_unauthorized_tool_attempt:${toolName}`,
             reason: `Model attempted to execute unauthorized or unregistered tool '${toolName}'`,
           });
-          throw new Error(`Tentativa de execução de ferramenta não autorizada ou inexistente: ${toolName}`);
+          throw new AIProviderError(
+            "UNREGISTERED_TOOL_EXECUTION",
+            `Tentativa de execução de ferramenta não autorizada ou inexistente: ${toolName}`,
+            403
+          );
         }
 
         let parsedArgs = {};
@@ -524,20 +588,24 @@ export class OpenAIProvider implements AIProvider {
           arguments: parsedArgs,
           result: toolResult,
         });
+
+        // Step 6: Append tool result message using correct tool_call_id
+        conversationMessages.push({
+          role: "tool",
+          tool_call_id: toolCallId,
+          content: JSON.stringify(toolResult),
+        });
       }
+
+      // Roundtrip loop continues: send tool outputs to model for final synthesis
     }
 
-    const citations: AssistantCitation[] = (options.knowledgeSnippets || []).map((k) => ({
-      title: k.title,
-      category: k.category,
-      path: k.path,
-    }));
-
-    return {
-      content: message.content || "Ação concluída com sucesso.",
-      citations: citations.length > 0 ? citations : undefined,
-      toolCalls: toolCallsExecuted.length > 0 ? toolCallsExecuted : undefined,
-    };
+    // Step 5 invariant: Loop limit reached
+    throw new AIProviderError(
+      "UNBOUNDED_AI_TOOL_LOOP",
+      "Limite de rodadas de ferramentas do assistente excedido.",
+      500
+    );
   }
 }
 

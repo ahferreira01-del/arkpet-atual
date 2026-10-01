@@ -27,14 +27,19 @@ export class AssistantService {
 
     if (sessionId && this.sessions.has(sessionId)) {
       const session = this.sessions.get(sessionId)!;
-      // Confirm security scoping
-      if (session.userId === context.userId) {
+      // Confirm security scoping (userId, crecheId, and role must all match)
+      if (
+        session.userId === context.userId &&
+        session.crecheId === context.crecheId &&
+        session.role === context.role
+      ) {
         session.lastActivityAt = now;
         return session;
       }
     }
 
-    const newId = sessionId || `sess_${crypto.randomUUID()}`;
+    // If existing sessionId did not match security context, generate a fresh ID
+    const newId = sessionId && !this.sessions.has(sessionId) ? sessionId : `sess_${crypto.randomUUID()}`;
     const newSession: AssistantSession = {
       id: newId,
       userId: context.userId,
