@@ -75,7 +75,7 @@ Phase R41.E and the R41.E-FINAL.1 hardening closure deliver controlled mutations
 ```text
 ab539ae4504d8c18d192e0bd2416805789200f1f (R41_D_FINAL_SHA)
   ↓
-55d228e41921302c794a35b4545d5af2efb8f255 (feat(assistant): implement R41.E safe actions)
+55d228e41921302c794a35b4545d5af2efb8f255 (R41_E_BASE_SHA - feat(assistant): implement R41.E safe actions)
   ↓
-[HEAD] fix(assistant): harden R41.E safe actions and reuse canonical domain services
+9dc6583e16ac6e08e44224db5100c61b545f0126 (R41_E_FINAL_SHA - fix(assistant): harden R41.E safe actions and reuse canonical domain services)
 ```

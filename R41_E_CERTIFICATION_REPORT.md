@@ -4,6 +4,7 @@
 **Phase:** R41.E — Safe Actions (Finalized & Hardened: R41.E-FINAL.1)  
 **Program:** R41 — ArkPet Intelligent Assistant  
 **Baseline Certified Commit:** `ab539ae4504d8c18d192e0bd2416805789200f1f` (`R41_D_FINAL_SHA`)  
+**Certified Final Commit:** `9dc6583e16ac6e08e44224db5100c61b545f0126` (`R41_E_FINAL_SHA`)  
 **Certification Date:** 2026-10-02  
 **Certification Status:** **PASSED & FULLY CERTIFIED**  
 
