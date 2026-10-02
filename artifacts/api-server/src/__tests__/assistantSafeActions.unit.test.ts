@@ -4,6 +4,7 @@ import { AssistantToolsRegistry } from "../assistant/assistant-tools.registry.js
 import { AssistantSafeActionRegistry } from "../assistant/assistant-safe-action.registry.js";
 import { AssistantSafeActionService } from "../assistant/assistant-safe-action.service.js";
 import { AssistantService } from "../assistant/assistant.service.js";
+import { BookingDomainService } from "../services/bookingDomainService.js";
 import type { AssistantSecurityContext } from "../assistant/assistant.types.js";
 
 // Mock DB interactions for unit testing
@@ -115,6 +116,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
   let pendingActionsStore: any[] = [];
   let auditStore: any[] = [];
+  let invoiceStore: any[] = [];
+  let vaccineStore: any[] = [];
+  let activeBookingsOverride: any[] | null = null;
 
   function extractParamValues(obj: any, visited = new Set()): any[] {
     if (!obj || typeof obj !== "object" || visited.has(obj)) return [];
@@ -189,9 +193,13 @@ vi.mock("@workspace/db", async (importOriginal) => {
           const params = extractParamValues(cond);
           if (isBookingTable) {
             if (params.includes("active")) {
-              currentData = params.includes(42)
-                ? dummyBookings.filter((b) => b.id === 42).map((b) => ({ ...b, status: "active" }))
-                : dummyBookings.filter((b) => b.status === "active");
+              if (activeBookingsOverride !== null) {
+                currentData = [...activeBookingsOverride];
+              } else {
+                currentData = params.includes(42)
+                  ? dummyBookings.filter((b) => b.id === 42).map((b) => ({ ...b, status: "active" }))
+                  : dummyBookings.filter((b) => b.status === "active");
+              }
             }
  else if (params.includes("confirmed")) {
               currentData = dummyBookings.filter((b) => b.status === "confirmed");
@@ -280,9 +288,15 @@ vi.mock("@workspace/db", async (importOriginal) => {
     _reset: () => {
       pendingActionsStore = [];
       auditStore = [];
+      invoiceStore = [];
+      vaccineStore = [];
+      activeBookingsOverride = null;
     },
     _getPendingActions: () => pendingActionsStore,
     _getAudits: () => auditStore,
+    _setInvoices: (items: any[]) => { invoiceStore = items; },
+    _setVaccines: (items: any[]) => { vaccineStore = items; },
+    _setActiveBookingsOverride: (items: any[] | null) => { activeBookingsOverride = items; },
     _dummyTasks: dummyTasks,
     execute: vi.fn(async () => []),
     select: vi.fn(() => ({
@@ -300,8 +314,11 @@ vi.mock("@workspace/db", async (importOriginal) => {
         if (name.includes("booking")) {
           return createQueryChain(dummyBookings, true);
         }
-        if (name.includes("invoice") || name.includes("vaccine")) {
-          return createQueryChain([]);
+        if (name.includes("invoice")) {
+          return createQueryChain(invoiceStore);
+        }
+        if (name.includes("vaccine")) {
+          return createQueryChain(vaccineStore);
         }
         return createQueryChain(dummyPets);
       }),
@@ -340,6 +357,15 @@ vi.mock("@workspace/db", async (importOriginal) => {
             }
             if (name.includes("task")) {
               return createQueryChain(dummyTasks, false, true);
+            }
+            if (name.includes("invoice")) {
+              return createQueryChain(invoiceStore);
+            }
+            if (name.includes("vaccine")) {
+              return createQueryChain(vaccineStore);
+            }
+            if (name.includes("pet")) {
+              return createQueryChain(dummyPets);
             }
             return createQueryChain([]);
           }),
@@ -971,6 +997,230 @@ describe("ArkPet R41.E — Safe Actions & Two-Phase Mutations Test Suite", () =>
 
       expect(response.message.content).toContain("não realiza operações financeiras");
       expect(response.message.action).toBeUndefined();
+    });
+  });
+
+  // 6. Canonical Preview / Execution Parity & Business Rule Unification (R41E-FINAL2)
+  describe("Canonical Preview / Execution Parity & Business Rule Unification (R41E-FINAL2)", () => {
+    beforeEach(() => {
+      (db as any)._reset();
+    });
+
+    it("R41E-FINAL2-PARITY-001: Cancellation preview and execution parity", async () => {
+      // 1. Valid booking fixture: preview and execution both approve
+      const previewRes = await BookingDomainService.previewCancellation({
+        bookingId: 42,
+        crecheId: 1,
+        actorUserId: 50,
+        actorRole: "tutor",
+      });
+      expect(previewRes.targetId).toBe(42);
+      expect(previewRes.previewData.bookingId).toBe(42);
+
+      const { action: paPreview } = await AssistantSafeActionService.createPendingAction(
+        "cancel_my_booking",
+        { bookingId: 42, reason: "Motivo viagem" },
+        tutorContext
+      );
+      expect(paPreview.state).toBe("confirmation_required");
+
+      const executionRes = await AssistantSafeActionService.confirmPendingAction(
+        paPreview.pendingActionId!,
+        tutorContext
+      );
+      expect(executionRes.status).toBe("executed");
+
+      // 2. Invalid non-cancellable fixture (booking 43 with status checked_in):
+      // Preview rejects, SafeAction preview rejects, canonical execution rejects with exact same rule
+      await expect(
+        BookingDomainService.previewCancellation({
+          bookingId: 43,
+          crecheId: 1,
+          actorUserId: 50,
+          actorRole: "tutor",
+        })
+      ).rejects.toThrow("checked_in");
+
+      await expect(
+        AssistantSafeActionService.createPendingAction(
+          "cancel_my_booking",
+          { bookingId: 43 },
+          tutorContext
+        )
+      ).rejects.toThrow("checked_in");
+
+      await expect(
+        BookingDomainService.cancelBooking({
+          bookingId: 43,
+          crecheId: 1,
+          actorUserId: 50,
+          actorRole: "tutor",
+          reason: "Tentativa inválida",
+        })
+      ).rejects.toThrow("checked_in");
+    });
+
+    it("R41E-FINAL2-PARITY-002: Paid invoice parity (both preview and execution reject)", async () => {
+      // Simulate paid invoice item linked to booking 42
+      (db as any)._setInvoices([{ itemId: 88, status: "paid" }]);
+
+      // Preview rejects with 422
+      await expect(
+        BookingDomainService.previewCancellation({
+          bookingId: 42,
+          crecheId: 1,
+          actorUserId: 50,
+          actorRole: "tutor",
+        })
+      ).rejects.toMatchObject({ statusCode: 422, code: "paid_invoice_exists" });
+
+      // Direct canonical cancellation rejects with 422
+      await expect(
+        BookingDomainService.cancelBooking({
+          bookingId: 42,
+          crecheId: 1,
+          actorUserId: 50,
+          actorRole: "tutor",
+          reason: "Estorno pendente",
+        })
+      ).rejects.toMatchObject({ statusCode: 422, code: "paid_invoice_exists" });
+
+      // Safe action preview rejects with 422
+      await expect(
+        AssistantSafeActionService.createPendingAction(
+          "cancel_my_booking",
+          { bookingId: 42 },
+          tutorContext
+        )
+      ).rejects.toMatchObject({ statusCode: 422, code: "paid_invoice_exists" });
+    });
+
+    it("R41E-FINAL2-PARITY-003: Check-in vaccine parity (expired rabies vaccine rejected by preview & execution)", async () => {
+      // Simulate expired rabies vaccine for pet 101
+      (db as any)._setVaccines([{ id: 77, name: "Vacina Antirrábica", nextDueDate: "2020-01-01" }]);
+
+      // Preview rejects with 403 VACCINE_EXPIRED
+      await expect(
+        BookingDomainService.previewCheckIn({
+          bookingId: 42,
+          petId: 101,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+        })
+      ).rejects.toMatchObject({ statusCode: 403, code: "VACCINE_EXPIRED" });
+
+      // Execution rejects with 403 VACCINE_EXPIRED
+      await expect(
+        BookingDomainService.checkInBooking({
+          bookingId: 42,
+          petId: 101,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+        })
+      ).rejects.toMatchObject({ statusCode: 403, code: "VACCINE_EXPIRED" });
+
+      // Safe action preview rejects with 403 VACCINE_EXPIRED
+      await expect(
+        AssistantSafeActionService.createPendingAction(
+          "check_in_pet",
+          { bookingId: 42, petId: 101 },
+          staffContext
+        )
+      ).rejects.toMatchObject({ statusCode: 403, code: "VACCINE_EXPIRED" });
+    });
+
+    it("R41E-FINAL2-PARITY-004: Active check-in parity (existing active same-semantic-category booking)", async () => {
+      // Simulate an existing active daycare booking for pet 101
+      (db as any)._setActiveBookingsOverride([{ id: 89, type: "daycare", status: "active" }]);
+
+      // Preview rejects with 409 active_checkin_exists
+      await expect(
+        BookingDomainService.previewCheckIn({
+          bookingId: 42,
+          petId: 101,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+        })
+      ).rejects.toMatchObject({ statusCode: 409, code: "active_checkin_exists" });
+
+      // Execution rejects with 409 active_checkin_exists
+      await expect(
+        BookingDomainService.checkInBooking({
+          bookingId: 42,
+          petId: 101,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+        })
+      ).rejects.toMatchObject({ statusCode: 409, code: "active_checkin_exists" });
+
+      // Safe action preview rejects with 409 active_checkin_exists
+      await expect(
+        AssistantSafeActionService.createPendingAction(
+          "check_in_pet",
+          { bookingId: 42, petId: 101 },
+          staffContext
+        )
+      ).rejects.toMatchObject({ statusCode: 409, code: "active_checkin_exists" });
+    });
+
+    it("R41E-FINAL2-PARITY-005: Check-out parity (non-active booking rejected by preview & execution)", async () => {
+      // Booking 43 is checked_in / not active in mock
+      await expect(
+        BookingDomainService.previewCheckOut({
+          bookingId: 43,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+        })
+      ).rejects.toMatchObject({ statusCode: 400, code: "invalid_domain_state" });
+
+      await expect(
+        BookingDomainService.checkOutBooking({
+          bookingId: 43,
+          crecheId: 1,
+          actorUserId: 10,
+          actorRole: "staff",
+          notes: undefined,
+        })
+      ).rejects.toMatchObject({ statusCode: 400, code: "invalid_domain_state" });
+
+      await expect(
+        AssistantSafeActionService.createPendingAction(
+          "check_out_pet",
+          { bookingId: 43, petId: 101 },
+          staffContext
+        )
+      ).rejects.toMatchObject({ statusCode: 400, code: "invalid_domain_state" });
+    });
+
+    it("EXECUTION_REVALIDATES_DOMAIN_STATE = YES: State change after preview causes execution to revalidate & reject", async () => {
+      // Step 1: Preview is generated when booking is eligible (clean invoice state)
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "cancel_my_booking",
+        { bookingId: 42, reason: "Mudança de planos" },
+        tutorContext
+      );
+      expect(preview.state).toBe("confirmation_required");
+      expect(preview.pendingActionId).toBeDefined();
+
+      // Step 2: Between preview and user confirmation, state changes in domain (e.g. invoice is paid)
+      (db as any)._setInvoices([{ itemId: 123, status: "paid" }]);
+
+      // Step 3: User confirms action. Execution must revalidate domain state and reject mutation!
+      await expect(
+        AssistantSafeActionService.confirmPendingAction(
+          preview.pendingActionId!,
+          tutorContext
+        )
+      ).rejects.toThrow("pagamento já processado");
+
+      // Verify the pending action is marked failed due to domain validation failure
+      const stored = (db as any)._getPendingActions().find((a: any) => a.id === preview.pendingActionId);
+      expect(stored.status).toBe("failed");
     });
   });
 });

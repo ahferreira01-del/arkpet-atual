@@ -1,10 +1,15 @@
 # ARKPET — R41.E ARCHITECTURE SPECIFICATION
-## SAFE ACTIONS: IDENTITY-BOUND CAS, CANONICAL DOMAIN SERVICE REUSE, DETERMINISTIC EXECUTION, RBAC & AUDIT
+## SAFE ACTIONS: CANONICAL PREVIEW VALIDATION, ZERO BUSINESS-RULE DUPLICATION, IDENTITY-BOUND CAS, CANONICAL DOMAIN SERVICE REUSE, DETERMINISTIC EXECUTION, RBAC & AUDIT
 
-**Phase:** R41.E — Safe Actions (Finalized & Hardened: R41.E-FINAL.1)  
+**Phase:** R41.E — Safe Actions (Finalized & Certified: R41.E-FINAL.2)  
 **Program:** R41 — ArkPet Intelligent Assistant  
-**Baseline Commit:** `ab539ae4504d8c18d192e0bd2416805789200f1f` (`R41_D_FINAL_SHA`)  
-**Status:** Certified Architecture & Implemented  
+**Lineage & SHA Reconciliation:**
+- `R41_D_FINAL_SHA`: `ab539ae4504d8c18d192e0bd2416805789200f1f`
+- `R41_E_IMPLEMENTATION_SHA`: `55d228e41921302c794a35b4545d5af2efb8f255`
+- `R41_E_FINAL1_HARDENING_SHA`: `9dc6583e16ac6e08e44224db5100c61b545f0126`
+- `R41_E_FINAL1_CLOSURE_HEAD_SHA`: `9e0f689e7851b3d5fef0f13e42bad7648ae581c7`
+- `R41_E_FINAL_SHA`: Forward commit HEAD (FINAL.2 Closure)  
+**Status:** Certified Architecture & Fully Implemented (FINAL.2)  
 
 ---
 
@@ -69,7 +74,14 @@ SAFE STRUCTURED RESULT (Generic error messages on 500, zero DB URI/token leaks)
 | `PENDING_ACTION_ID_ENUMERATION` | `0` | Guessed or foreign IDs return safe 404 without metadata leak |
 | `CROSS_USER_IDEMPOTENT_RESULT_LEAK` | `0` | Cached execution results returned only to authenticated owner |
 | `STALE_AUTHORIZATION_MUTATION` | `0` | Stale role changes fail closed before domain execution |
-| `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES` | `0` | Zero duplicate business rules in assistant service |
+| `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES` | `0` | Zero duplicate business rules across preview and execution |
+| `BOOKING_CANCEL_PREVIEW_RULE_DUPLICATION` | `0` | Preview and execution share `BookingDomainService.validateCancellation` |
+| `CHECK_IN_PREVIEW_RULE_DUPLICATION` | `0` | Preview and execution share `BookingDomainService.validateCheckIn` |
+| `CHECK_OUT_PREVIEW_RULE_DUPLICATION` | `0` | Preview and execution share `BookingDomainService.validateCheckOut` |
+| `TASK_DOMAIN_RULE_DUPLICATION` | `0` | Preview and execution share `TaskDomainService.validateTaskCompletion` |
+| `PREVIEW_CANONICAL_DOMAIN_REUSE` | `PASS` | All preview proposals build directly from canonical domain service methods |
+| `EXECUTION_CANONICAL_DOMAIN_REUSE` | `PASS` | All mutations execute directly via canonical domain service methods |
+| `EXECUTION_REVALIDATES_DOMAIN_STATE` | `YES` | Execution revalidates domain state under transaction row locks |
 | `BOOKING_MUTATION_CANONICAL_SERVICE_REUSE` | `YES` | HTTP routes and Assistant share `BookingDomainService` |
 | `TASK_MUTATION_CANONICAL_SERVICE_REUSE` | `YES` | HTTP routes and Assistant share `TaskDomainService` |
 | `ASSISTANT_BOOKING_CANCEL_SIDE_EFFECT_PARITY` | `PASS` | Invoice items, credits, audit, and push notifications parity |
@@ -197,31 +209,32 @@ If the CAS update affects 0 rows, the system performs a scoped inspection strict
 
 ---
 
-## 5. Canonical Domain Service Extraction Architecture
+## 5. Canonical Domain Service Extraction Architecture & Pure Preview Validation
 
-To satisfy `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES = 0`, all domain mutations are centralized in canonical services shared between standard REST routes and Assistant Safe Actions:
+To satisfy `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES = 0`, both preview proposals and execution mutations derive business eligibility strictly from the same canonical domain layer:
 
+```text
+Assistant Preview ────────┐
+                          ├── Canonical Domain Service / Validator
+Normal HTTP Route ────────┤   (BookingDomainService & TaskDomainService)
+                          │
+Safe Action Execute ──────┘
 ```
-HTTP REST ROUTES (/api/bookings, /api/tasks) ──┐
-                                                ├──> CANONICAL DOMAIN SERVICES
-ASSISTANT SAFE ACTIONS (/api/assistant/actions) ─┘        │
-                                                          ├── BookingDomainService
-                                                          │   ├── cancelBooking
-                                                          │   ├── checkInBooking
-                                                          │   └── checkOutBooking
-                                                          └── TaskDomainService
-                                                              ├── completeTask
-                                                              └── recordMedicationAdministration
-```
+
+Assistant preview orchestration remains strictly responsible for natural language target disambiguation (e.g. resolving pet names to pet IDs), while all domain business rules are enforced by canonical methods.
 
 ### 5.1. `BookingDomainService`
-- **`cancelBooking(bookingId, actorId, crecheId, reason)`**: Validates booking ownership, tenant isolation, and status (`pending` or `confirmed`). Validates invoice items guard (`paidItems.length === 0`, returning 422 if paid items exist). Enforces state machine invariants (active/completed bookings cannot be cancelled, returning 400). Restores package credits, restores service credits, cancels add-ons with credit restoration, logs financial audit (`credits_deduct`), releases campaign reservations, updates booking status to `cancelled`, and sends tutor push notifications.
-- **`checkInBooking(bookingId, actorId, crecheId, notes)`**: Validates booking status is `confirmed`. Transitions booking to `active` (ArkPet semantic check-in), marks `isCheckedIn = true`, records `checkInTime = NOW()`, creates pet log entry, updates tenant occupancy count safely.
-- **`checkOutBooking(bookingId, actorId, crecheId, notes)`**: Validates booking is currently `active` / `isCheckedIn = true`. Transitions booking to `completed`, marks `isCheckedIn = false`, records `checkOutTime = NOW()`, computes consumable charges, creates pet log entry.
+- **`validateCancellation(params)` / `previewCancellation(params)`**: Single source of truth for cancellation eligibility. Validates booking ownership (tutors only cancel own bookings), status invariants (rejects `cancelled`, `checked_in`, `active`, `completed`), and the paid invoice items guard (rejects with 422 `paid_invoice_exists` if paid/refunded invoices exist). Pure preview returns preview data and summary; `cancelBooking` invokes `validateCancellation` under transaction row lock.
+- **`validateCheckIn(params)` / `previewCheckIn(params)`**: Single source of truth for check-in eligibility. Validates pet existence in creche, confirmed booking status, rabies vaccine validity (rejects with 403 `VACCINE_EXPIRED` if overdue), and existing active booking semantic conflict (rejects with 409 `active_checkin_exists` if an active booking of the same stay/service category exists). Pure preview returns target pet and booking details; `checkInBooking` invokes `validateCheckIn` under transaction row lock.
+- **`validateCheckOut(params)` / `previewCheckOut(params)`**: Single source of truth for check-out eligibility. Validates pet existence, active booking status (rejects with 400 `invalid_domain_state` if not active), and service vs stay/day-use eligibility. Pure preview returns target pet and booking summary; `checkOutBooking` invokes `validateCheckOut` under transaction row lock.
+- **`cancelBooking(params)`**: Execution orchestrator. Restores package credits, restores service credits, cancels add-ons with credit restoration, logs financial audit (`credits_deduct`), releases campaign reservations, updates booking status to `cancelled`, and sends tutor push notifications.
+- **`checkInBooking(params)`**: Execution orchestrator. Transitions booking to `active` (ArkPet semantic check-in), marks `isCheckedIn = true`, records `checkInTime = NOW()`, updates tenant occupancy count, triggers background task generation, and sends tutor push notifications.
+- **`checkOutBooking(params)`**: Execution orchestrator. Acquires tenant operational lock and tutor financial lock, transitions booking to `completed`, marks `isCheckedIn = false`, records `checkOutTime = NOW()`, and computes unbilled consumable charges.
 
 ### 5.2. `TaskDomainService`
-- **`completeTask(taskId, actorId, crecheId, notes)`**: Acquires tenant-level operational advisory lock. Performs atomic CAS `status = 'pending' -> 'completed'`, records `completedBy = actorId` and `completedAt = NOW()`. Returns `isNewCompletion: false` if already completed (strict idempotency).
-- **`recordMedicationAdministration(target, actorId, crecheId, notes)`**: Validates pet checked in. Resolves exact medication task target (`BROAD_MEDICATION_UPDATE = 0`). Records administration with exact prescribed dosage and unit. Fails closed if multiple matching medication tasks exist without explicit ID (`ambiguous_target`).
+- **`validateTaskCompletion(params)` / `previewTaskCompletion(params)`**: Single source of truth for task completion eligibility. Validates task existence, creche tenant boundary, expected task type (`operational`, `feeding`, `medication`, `walk`), and pending status (rejects already completed tasks with 409 `invalid_domain_state`). Pure preview enriches pet details and returns human-readable summary.
+- **`completeTask(params)`**: Execution orchestrator. Acquires tenant operational advisory lock, invokes canonical domain logic, updates task status to `completed`, records timestamps and actor ID, and emits audit logs and notifications.
+- **`recordMedicationAdministration(params)`**: Execution orchestrator. Revalidates task under lock, resolves exact medication target (`BROAD_MEDICATION_UPDATE = 0`), records administration with exact veterinary prescribed dosage, and emits notification.
 
 ---
 

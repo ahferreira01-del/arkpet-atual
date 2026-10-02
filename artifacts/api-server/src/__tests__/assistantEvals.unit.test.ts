@@ -154,26 +154,48 @@ vi.mock("@workspace/db", async (importOriginal) => {
     return vals;
   }
 
-  const createQueryChain = (data: any[] = [], isTask = false) => {
+  let lastBookingQueryWasConfirmed = false;
+
+  const createQueryChain = (data: any[] = [], isTask = false, isBooking = false) => {
     let currentData = [...data];
     const chain: any = {
       where: vi.fn((cond: any) => {
-        if (cond && isTask) {
+        if (cond) {
           const params = extractParamValues(cond);
-          if (params.includes("feeding")) {
-            currentData = dummyTasks.filter((t) => t.type === "feeding");
-          } else if (params.includes("medication")) {
-            currentData = dummyTasks.filter((t) => t.type === "medication");
-          } else if (params.includes("walk")) {
-            currentData = dummyTasks.filter((t) => t.type === "walk");
-          } else if (params.includes("operational")) {
-            currentData = dummyTasks.filter((t) => t.type === "operational");
+          if (isTask) {
+            if (params.includes("feeding")) {
+              currentData = dummyTasks.filter((t) => t.type === "feeding");
+            } else if (params.includes("medication")) {
+              currentData = dummyTasks.filter((t) => t.type === "medication");
+            } else if (params.includes("walk")) {
+              currentData = dummyTasks.filter((t) => t.type === "walk");
+            } else if (params.includes("operational")) {
+              currentData = dummyTasks.filter((t) => t.type === "operational");
+            }
+          }
+          if (isBooking) {
+            if (params.includes("confirmed")) {
+              lastBookingQueryWasConfirmed = true;
+              currentData = dummyBookings.filter((b) => b.status === "confirmed");
+            } else if (params.includes("active")) {
+              if (lastBookingQueryWasConfirmed) {
+                // Secondary active check during check-in: no conflicting active booking
+                lastBookingQueryWasConfirmed = false;
+                currentData = [];
+              } else {
+                // Primary active lookup during check-out: pet has active booking
+                currentData = dummyBookings.map((b) => ({ ...b, status: "active" }));
+              }
+            } else {
+              lastBookingQueryWasConfirmed = false;
+            }
           }
         }
         return chain;
       }),
       orderBy: vi.fn(() => chain),
       limit: vi.fn(() => chain),
+      leftJoin: vi.fn(() => chain),
       innerJoin: vi.fn(() => chain),
       set: vi.fn(() => chain),
       values: vi.fn(() => chain),
@@ -195,7 +217,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
           return createQueryChain(dummyTasks, true);
         }
         if (name.includes("booking")) {
-          return createQueryChain(dummyBookings);
+          return createQueryChain(dummyBookings, false, true);
         }
         if (name.includes("creche")) {
           return createQueryChain(dummyCreches);
@@ -222,12 +244,18 @@ vi.mock("@workspace/db", async (importOriginal) => {
             return createQueryChain(dummyPendingActions);
           }
           if (name.includes("booking")) {
-            return createQueryChain(dummyBookings);
+            return createQueryChain(dummyBookings, false, true);
           }
           if (name.includes("task")) {
             return createQueryChain(dummyTasks, true);
           }
-          return createQueryChain([]);
+          if (name.includes("vaccine") || name.includes("invoice")) {
+            return createQueryChain([]);
+          }
+          if (name.includes("pet")) {
+            return createQueryChain(dummyPets);
+          }
+          return createQueryChain(dummyPets);
         }),
       })),
       insert: vi.fn(() => ({ values: vi.fn(() => createQueryChain([])) })),

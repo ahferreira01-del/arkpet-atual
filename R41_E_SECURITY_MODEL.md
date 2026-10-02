@@ -1,9 +1,14 @@
 # ARKPET — R41.E SECURITY MODEL SPECIFICATION
 ## SAFE ACTIONS: IDENTITY-BOUND CAS, ANTI-ENUMERATION, RBAC TRUTH, SANITIZATION & DEFENSE-IN-DEPTH
 
-**Phase:** R41.E — Safe Actions (Finalized & Hardened: R41.E-FINAL.1)  
+**Phase:** R41.E — Safe Actions (Finalized: R41.E-FINAL.2)  
 **Program:** R41 — ArkPet Intelligent Assistant  
-**Baseline Commit:** `ab539ae4504d8c18d192e0bd2416805789200f1f` (`R41_D_FINAL_SHA`)  
+**Lineage & SHA Tracking:**
+- `R41_D_FINAL_SHA`: `ab539ae4504d8c18d192e0bd2416805789200f1f`
+- `R41_E_IMPLEMENTATION_SHA`: `55d228e41921302c794a35b4545d5af2efb8f255`
+- `R41_E_FINAL1_HARDENING_SHA`: `9dc6583e16ac6e08e44224db5100c61b545f0126`
+- `R41_E_FINAL1_CLOSURE_HEAD_SHA`: `9e0f689e7851b3d5fef0f13e42bad7648ae581c7`
+- `R41_E_FINAL_SHA`: Forward commit HEAD (FINAL.2 Closure)  
 **Status:** Certified Architecture & Implemented  
 
 ---

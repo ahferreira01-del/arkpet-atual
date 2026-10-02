@@ -709,6 +709,7 @@ export class AssistantSafeActionService {
 
   /**
    * Domain Preview Builders (Read-Only Validation)
+   * Delegates 100% of business eligibility to canonical domain services (BookingDomainService & TaskDomainService).
    * Resolves target strictly without ambiguity (AMBIGUOUS_SAFE_ACTION_TARGET_SELECTION = 0).
    */
   private static async buildDomainPreview(
@@ -720,234 +721,44 @@ export class AssistantSafeActionService {
 
     switch (actionType) {
       case "cancel_my_booking": {
-        const bookingId = payload.bookingId;
-        const [booking] = await db
-          .select({
-            id: bookingsTable.id,
-            tutorId: bookingsTable.tutorId,
-            petId: bookingsTable.petId,
-            status: bookingsTable.status,
-            startDate: bookingsTable.startDate,
-            type: bookingsTable.type,
-          })
-          .from(bookingsTable)
-          .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.crecheId, crecheId)))
-          .limit(1);
-
-        if (!booking) {
-          throw Object.assign(new Error("Reserva não encontrada nesta creche."), { statusCode: 404, code: "target_not_found" });
-        }
-
-        if (context.role === "tutor" && booking.tutorId !== context.userId) {
-          throw Object.assign(new Error("Você só tem permissão para cancelar suas próprias reservas."), { statusCode: 403, code: "ownership_mismatch" });
-        }
-
-        if (booking.status === "cancelled") {
-          throw Object.assign(new Error("Esta reserva já se encontra cancelada."), { statusCode: 400, code: "invalid_domain_state" });
-        }
-
-        if ((booking.status as string) === "checked_in" || booking.status === "active") {
-          throw Object.assign(new Error("Não é possível cancelar uma reserva com check-in já realizado (status: checked_in/active)."), { statusCode: 400, code: "invalid_domain_state" });
-        }
-
-
-        if (booking.status === "completed") {
-          throw Object.assign(new Error("Não é possível cancelar uma reserva já finalizada (completed)."), { statusCode: 400, code: "invalid_domain_state" });
-        }
-
-        // Paid items guard
-        const paidItems = await db
-          .select({ itemId: invoiceItemsTable.id })
-          .from(invoiceItemsTable)
-          .innerJoin(invoicesTable, eq(invoiceItemsTable.invoiceId, invoicesTable.id))
-          .where(and(
-            eq(invoiceItemsTable.bookingId, bookingId),
-            eq(invoicesTable.crecheId, crecheId),
-            inArray(invoicesTable.status, ["paid", "refunded"])
-          ))
-          .limit(1);
-
-        if (paidItems.length > 0) {
-          throw Object.assign(new Error("Não é possível cancelar — a reserva possui cobranças com pagamento já processado. Solicite o estorno manualmente antes de cancelar."), { statusCode: 422, code: "paid_invoice_exists" });
-        }
-
-        const [pet] = await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, booking.petId)).limit(1);
-        const petName = pet?.name || "Pet";
-        const dateStr = new Date(booking.startDate).toLocaleDateString("pt-BR");
-
-        return {
-          targetId: booking.id,
-          previewData: {
-            bookingId: booking.id,
-            petId: booking.petId,
-            petName,
-            date: dateStr,
-            serviceType: booking.type,
-            status: booking.status,
-          },
-          summary: `Cancelar reserva #${booking.id} (${booking.type}) de ${petName} para ${dateStr}`,
-        };
+        return BookingDomainService.previewCancellation({
+          bookingId: payload.bookingId,
+          crecheId,
+          actorUserId: context.userId,
+          actorRole: context.role,
+          reason: payload.reason,
+        });
       }
 
       case "check_in_pet": {
-        const petId = payload.petId;
-        const [pet] = await db
-          .select({ id: petsTable.id, name: petsTable.name, isCheckedIn: petsTable.isCheckedIn })
-          .from(petsTable)
-          .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-          .limit(1);
-
-        if (!pet) {
-          throw Object.assign(new Error("Pet não encontrado nesta creche."), { statusCode: 404, code: "target_not_found" });
-        }
-
-        const conditions: any[] = [
-          eq(bookingsTable.crecheId, crecheId),
-          eq(bookingsTable.petId, petId),
-          eq(bookingsTable.status, "confirmed"),
-        ];
-        if (payload.bookingId) {
-          conditions.push(eq(bookingsTable.id, payload.bookingId));
-        }
-
-        const [booking] = await db
-          .select({
-            id: bookingsTable.id,
-            type: bookingsTable.type,
-            startDate: bookingsTable.startDate,
-            status: bookingsTable.status,
-          })
-          .from(bookingsTable)
-          .where(and(...conditions))
-          .limit(1);
-
-        if (!booking) {
-          throw Object.assign(new Error("Não há reserva confirmada para este pet realizar check-in."), { statusCode: 400, code: "invalid_domain_state" });
-        }
-
-        // Rabies vaccine check
-        const [rabies] = await db
-          .select()
-          .from(vaccinesTable)
-          .where(and(
-            eq(vaccinesTable.petId, petId),
-            eq(vaccinesTable.crecheId, crecheId),
-            ilike(vaccinesTable.name, "%antirr%")
-          ))
-          .orderBy(desc(vaccinesTable.appliedDate))
-          .limit(1);
-
-        if (rabies?.nextDueDate && new Date(rabies.nextDueDate) < new Date()) {
-          throw Object.assign(new Error("Vacina antirrábica vencida. Check-in bloqueado por razões de saúde e segurança."), { statusCode: 403, code: "VACCINE_EXPIRED" });
-        }
-
-        // Active check-in check
-        const [activeBooking] = await db
-          .select({ id: bookingsTable.id, status: bookingsTable.status })
-          .from(bookingsTable)
-          .where(and(
-            eq(bookingsTable.crecheId, crecheId),
-            eq(bookingsTable.petId, petId),
-            eq(bookingsTable.status, "active")
-          ))
-          .limit(1);
-
-        if (activeBooking && activeBooking.status === "active") {
-          throw Object.assign(new Error("Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo."), { statusCode: 409, code: "active_checkin_exists" });
-        }
-
-        return {
-          targetId: pet.id,
-          previewData: {
-            petId: pet.id,
-            petName: pet.name,
-            bookingId: booking.id,
-            serviceType: booking.type,
-            notes: payload.notes || null,
-          },
-          summary: `Realizar check-in do pet ${pet.name} (Reserva #${booking.id} - ${booking.type})`,
-        };
+        return BookingDomainService.previewCheckIn({
+          petId: payload.petId,
+          bookingId: payload.bookingId,
+          crecheId,
+          actorUserId: context.userId,
+          actorRole: context.role,
+          notes: payload.notes,
+        });
       }
 
       case "check_out_pet": {
-        const petId = payload.petId;
-        const [pet] = await db
-          .select({ id: petsTable.id, name: petsTable.name, isCheckedIn: petsTable.isCheckedIn })
-          .from(petsTable)
-          .where(and(eq(petsTable.id, petId), eq(petsTable.crecheId, crecheId)))
-          .limit(1);
-
-        if (!pet) {
-          throw Object.assign(new Error("Pet não encontrado nesta creche."), { statusCode: 404, code: "target_not_found" });
-        }
-
-        const conditions: any[] = [
-          eq(bookingsTable.crecheId, crecheId),
-          eq(bookingsTable.petId, petId),
-          eq(bookingsTable.status, "active"),
-        ];
-        if (payload.bookingId) {
-          conditions.push(eq(bookingsTable.id, payload.bookingId));
-        }
-
-        const [activeBooking] = await db
-          .select({
-            id: bookingsTable.id,
-            type: bookingsTable.type,
-            checkInTime: bookingsTable.checkInTime,
-          })
-          .from(bookingsTable)
-          .where(and(...conditions))
-          .limit(1);
-
-        if (!activeBooking) {
-          throw Object.assign(new Error("O pet não possui reserva ativa para check-out."), { statusCode: 400, code: "invalid_domain_state" });
-        }
-
-        return {
-          targetId: pet.id,
-          previewData: {
-            petId: pet.id,
-            petName: pet.name,
-            bookingId: activeBooking.id,
-            serviceType: activeBooking.type,
-            checkInTime: activeBooking.checkInTime,
-            notes: payload.notes || null,
-          },
-          summary: `Realizar check-out do pet ${pet.name} (Reserva #${activeBooking.id})`,
-        };
+        return BookingDomainService.previewCheckOut({
+          petId: payload.petId,
+          bookingId: payload.bookingId,
+          crecheId,
+          actorUserId: context.userId,
+          actorRole: context.role,
+          notes: payload.notes,
+        });
       }
 
       case "complete_operational_task": {
-        const taskId = payload.taskId;
-        const [task] = await db
-          .select()
-          .from(tasksTable)
-          .where(and(
-            eq(tasksTable.id, taskId),
-            eq(tasksTable.crecheId, crecheId)
-          ))
-          .limit(1);
-
-        if (!task) {
-          throw Object.assign(new Error("Tarefa operacional não encontrada."), { statusCode: 404, code: "target_not_found" });
-        }
-
-        if (task.status !== "pending") {
-          throw Object.assign(new Error("Esta tarefa já foi concluída."), { statusCode: 409, code: "invalid_domain_state" });
-        }
-
-        return {
-          targetId: task.id,
-          previewData: {
-            taskId: task.id,
-            title: task.title,
-            scheduledFor: task.scheduledFor,
-            description: task.description,
-            notes: payload.notes || null,
-          },
-          summary: `Concluir tarefa operacional: ${task.title}`,
-        };
+        return TaskDomainService.previewTaskCompletion({
+          taskId: payload.taskId,
+          crecheId,
+          expectedType: "operational",
+          notes: payload.notes,
+        });
       }
 
       case "complete_feeding_task":
@@ -960,98 +771,56 @@ export class AssistantSafeActionService {
         };
         const taskType = typeMap[actionType];
 
-        let task: any = null;
+        let resolvedTaskId = payload.taskId;
 
-        if (payload.taskId) {
-          // Explicit task specified
-          [task] = await db
-            .select()
-            .from(tasksTable)
-            .where(and(
-              eq(tasksTable.id, payload.taskId),
-              eq(tasksTable.crecheId, crecheId),
-              eq(tasksTable.type, taskType as any)
-            ))
-            .limit(1);
-
-          if (!task) {
-            throw Object.assign(new Error(`Tarefa de ${taskType} não encontrada.`), { statusCode: 404, code: "target_not_found" });
+        if (!resolvedTaskId) {
+          const conditions: any[] = [
+            eq(tasksTable.crecheId, crecheId),
+            eq(tasksTable.type, taskType as any),
+            eq(tasksTable.status, "pending"),
+          ];
+          if (payload.petId) {
+            conditions.push(eq(tasksTable.petId, payload.petId));
           }
-        } else if (payload.petId) {
-          // Pet specified without task ID: check for ambiguity
+
           const matchingTasks = await db
-            .select()
+            .select({ id: tasksTable.id })
             .from(tasksTable)
-            .where(and(
-              eq(tasksTable.crecheId, crecheId),
-              eq(tasksTable.petId, payload.petId),
-              eq(tasksTable.type, taskType as any),
-              eq(tasksTable.status, "pending")
-            ))
+            .where(and(...conditions))
             .orderBy(tasksTable.scheduledFor);
 
           if (matchingTasks.length === 0) {
-            throw Object.assign(new Error(`Nenhuma tarefa de ${taskType} pendente encontrada para este pet.`), { statusCode: 404, code: "target_not_found" });
+            throw Object.assign(
+              new Error(
+                payload.petId
+                  ? `Nenhuma tarefa de ${taskType} pendente encontrada para este pet.`
+                  : `Nenhuma tarefa de ${taskType} pendente encontrada na creche.`
+              ),
+              { statusCode: 404, code: "target_not_found" }
+            );
           }
 
           if (matchingTasks.length > 1) {
-            // Ambiguity detected for this pet! (AMBIGUOUS_SAFE_ACTION_TARGET_SELECTION = 0)
-            throw Object.assign(new Error(`Existem múltiplas tarefas de ${taskType} pendentes para este pet. Especifique qual tarefa deseja concluir.`), {
-              statusCode: 400,
-              code: "ambiguous_target",
-            });
+            throw Object.assign(
+              new Error(
+                payload.petId
+                  ? `Existem múltiplas tarefas de ${taskType} pendentes para este pet. Especifique qual tarefa deseja concluir.`
+                  : `Existem múltiplas tarefas de ${taskType} pendentes. Especifique o pet ou o identificador da tarefa.`
+              ),
+              { statusCode: 400, code: "ambiguous_target" }
+            );
           }
 
-          task = matchingTasks[0];
-        } else {
-          // Neither taskId nor petId provided: check tenant-wide pending tasks
-          const matchingTasks = await db
-            .select()
-            .from(tasksTable)
-            .where(and(
-              eq(tasksTable.crecheId, crecheId),
-              eq(tasksTable.type, taskType as any),
-              eq(tasksTable.status, "pending")
-            ))
-            .orderBy(tasksTable.scheduledFor);
-
-          if (matchingTasks.length === 0) {
-            throw Object.assign(new Error(`Nenhuma tarefa de ${taskType} pendente encontrada na creche.`), { statusCode: 404, code: "target_not_found" });
-          }
-
-          if (matchingTasks.length > 1) {
-            // Ambiguity detected across tenant! (AMBIGUOUS_SAFE_ACTION_TARGET_SELECTION = 0)
-            throw Object.assign(new Error(`Existem múltiplas tarefas de ${taskType} pendentes. Especifique o pet ou o identificador da tarefa.`), {
-              statusCode: 400,
-              code: "ambiguous_target",
-            });
-          }
-
-          task = matchingTasks[0];
+          resolvedTaskId = matchingTasks[0].id;
         }
 
-        if (task.status !== "pending") {
-          throw Object.assign(new Error(`Esta tarefa de ${taskType} já foi concluída.`), { statusCode: 409, code: "invalid_domain_state" });
-        }
-
-        const [pet] = task.petId
-          ? await db.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, task.petId)).limit(1)
-          : [null];
-        const petName = pet?.name || "Pet";
-
-        return {
-          targetId: task.id,
-          previewData: {
-            taskId: task.id,
-            petId: task.petId,
-            petName,
-            title: task.title,
-            scheduledFor: task.scheduledFor,
-            description: task.description,
-            notes: payload.notes || null,
-          },
-          summary: `Concluir ${taskType}: ${task.title} para ${petName}`,
-        };
+        // Delegate domain business validation and preview construction to canonical TaskDomainService
+        return TaskDomainService.previewTaskCompletion({
+          taskId: resolvedTaskId,
+          crecheId,
+          expectedType: taskType,
+          notes: payload.notes,
+        });
       }
 
       default:

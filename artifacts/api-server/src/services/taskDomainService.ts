@@ -7,11 +7,27 @@ import {
   TenantArchivedError,
 } from "./tenantLifecycleLock.js";
 
-function clientError(message: string, status = 400): Error & { status: number; statusCode: number; code?: string } {
+function clientError(message: string, status = 400, code?: string): Error & { status: number; statusCode: number; code?: string } {
   const err = new Error(message) as Error & { status: number; statusCode: number; code?: string };
   err.status = status;
   err.statusCode = status;
+  if (code) err.code = code;
   return err;
+}
+
+export interface ValidateTaskCompletionParams {
+  taskId: number;
+  crecheId: number;
+  expectedType?: string;
+  tx?: any;
+}
+
+export interface PreviewTaskCompletionParams {
+  taskId: number;
+  crecheId: number;
+  expectedType?: string;
+  notes?: string;
+  tx?: any;
 }
 
 export interface CompleteTaskParams {
@@ -35,6 +51,90 @@ export interface RecordMedicationParams {
 }
 
 export class TaskDomainService {
+  /**
+   * Pure Canonical Task Completion Validation.
+   * Single source of truth for task existence, creche isolation, matching type, and pending status.
+   * Reused by previewTaskCompletion and safe action orchestration.
+   */
+  public static async validateTaskCompletion(params: ValidateTaskCompletionParams) {
+    const { taskId, crecheId, expectedType, tx } = params;
+    const dbHandle = tx || db;
+
+    const conditions: any[] = [
+      eq(tasksTable.id, taskId),
+      eq(tasksTable.crecheId, crecheId),
+    ];
+    if (expectedType) {
+      conditions.push(eq(tasksTable.type, expectedType as any));
+    }
+
+    const [task] = await dbHandle
+      .select()
+      .from(tasksTable)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (!task) {
+      throw clientError(
+        expectedType ? `Tarefa de ${expectedType} não encontrada.` : "Tarefa não encontrada",
+        404,
+        "target_not_found"
+      );
+    }
+
+    if (task.status !== "pending") {
+      throw clientError(
+        `Esta tarefa${expectedType ? " de " + expectedType : ""} já foi concluída.`,
+        409,
+        "invalid_domain_state"
+      );
+    }
+
+    return { task };
+  }
+
+  /**
+   * Pure Canonical Task Completion Preview.
+   * Performs zero mutation and delegates 100% of business eligibility to validateTaskCompletion.
+   */
+  public static async previewTaskCompletion(params: PreviewTaskCompletionParams) {
+    const { task } = await this.validateTaskCompletion(params);
+    const dbHandle = params.tx || db;
+
+    const [pet] = task.petId
+      ? await dbHandle.select({ name: petsTable.name }).from(petsTable).where(eq(petsTable.id, task.petId)).limit(1)
+      : [null];
+    const petName = pet?.name || "Pet";
+
+    const typeLabels: Record<string, string> = {
+      operational: "tarefa operacional",
+      feeding: "alimentação",
+      medication: "medicação",
+      walk: "passeio",
+      grooming: "banho/tosa",
+      checkup: "avaliação",
+      other: "tarefa",
+    };
+    const label = typeLabels[task.type] ?? task.type;
+
+    return {
+      targetId: task.id,
+      previewData: {
+        taskId: task.id,
+        petId: task.petId,
+        petName,
+        title: task.title,
+        scheduledFor: task.scheduledFor,
+        description: task.description,
+        notes: params.notes || null,
+      },
+      summary:
+        task.type === "operational"
+          ? `Concluir tarefa operacional: ${task.title}`
+          : `Concluir ${label}: ${task.title} para ${petName}`,
+    };
+  }
+
   /**
    * Canonical Task Completion Logic.
    * Shared between REST endpoints (POST /tasks/:taskId/complete) and Assistant Safe Actions.
@@ -93,7 +193,7 @@ export class TaskDomainService {
         .limit(1);
 
       if (!existing) {
-        throw clientError("Tarefa não encontrada", 404);
+        throw clientError("Tarefa não encontrada", 404, "target_not_found");
       }
 
       return { task: existing, details: null, isNewCompletion: false };
@@ -167,7 +267,6 @@ export class TaskDomainService {
             task.title?.toLowerCase().includes(m.name.toLowerCase()) ||
             task.description?.toLowerCase().includes(m.name.toLowerCase())
           );
-
 
           if (matched.length === 1) {
             exactMedId = matched[0].id;

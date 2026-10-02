@@ -1,18 +1,22 @@
 # ARKPET — R41.E CHANGE MANIFEST
 ## COMPLETE REPOSITORY DIFF, FILE-BY-FILE ACCOUNTING & MODIFICATION INVENTORY
 
-**Phase:** R41.E — Safe Actions (Finalized & Hardened: R41.E-FINAL.1)  
+**Phase:** R41.E — Safe Actions (Finalized & Certified: R41.E-FINAL.2)  
 **Program:** R41 — ArkPet Intelligent Assistant  
-**Baseline Certified Commit:** `ab539ae4504d8c18d192e0bd2416805789200f1f` (`R41_D_FINAL_SHA`)  
-**Initial R41.E Commit:** `55d228e41921302c794a35b4545d5af2efb8f255`  
+**Lineage & SHA Reconciliation:**
+- `R41_D_FINAL_SHA`: `ab539ae4504d8c18d192e0bd2416805789200f1f`
+- `R41_E_IMPLEMENTATION_SHA`: `55d228e41921302c794a35b4545d5af2efb8f255`
+- `R41_E_FINAL1_HARDENING_SHA`: `9dc6583e16ac6e08e44224db5100c61b545f0126`
+- `R41_E_FINAL1_CLOSURE_HEAD_SHA`: `9e0f689e7851b3d5fef0f13e42bad7648ae581c7`
+- `R41_E_FINAL_SHA`: Forward commit HEAD (FINAL.2 Closure)  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
-**Status:** Certified & Implemented  
+**Status:** Certified & Implemented (FINAL.2)  
 
 ---
 
 ## 1. Summary of Changes
 
-Phase R41.E and the R41.E-FINAL.1 hardening closure deliver controlled mutations via the Two-Phase Action Protocol (PREVIEW and CONFIRM) across backend and frontend systems, enforcing server-side RBAC, SHA-256 payload integrity, identity-bound atomic CAS state transitions, anti-enumeration failure lookups, canonical domain service reuse, idempotency caches, error sanitization, and immutable audit logs.
+Phase R41.E and the R41.E-FINAL.2 closure deliver controlled mutations via the Two-Phase Action Protocol (PREVIEW and CONFIRM) across backend and frontend systems, enforcing server-side RBAC, SHA-256 payload integrity, identity-bound atomic CAS state transitions, anti-enumeration failure lookups, zero business-rule duplication via canonical domain service reuse in both preview and execution (`BookingDomainService`, `TaskDomainService`), idempotency caches, error sanitization, and immutable audit logs.
 
 - **Files Created:** 16
 - **Files Modified:** 19
@@ -71,11 +75,15 @@ Phase R41.E and the R41.E-FINAL.1 hardening closure deliver controlled mutations
 ---
 
 ## 4. Git Commit Lineage
-
+ 
 ```text
 ab539ae4504d8c18d192e0bd2416805789200f1f (R41_D_FINAL_SHA)
   ↓
-55d228e41921302c794a35b4545d5af2efb8f255 (R41_E_BASE_SHA - feat(assistant): implement R41.E safe actions)
+55d228e41921302c794a35b4545d5af2efb8f255 (R41_E_IMPLEMENTATION_SHA - feat(assistant): implement R41.E safe actions)
   ↓
-9dc6583e16ac6e08e44224db5100c61b545f0126 (R41_E_FINAL_SHA - fix(assistant): harden R41.E safe actions and reuse canonical domain services)
+9dc6583e16ac6e08e44224db5100c61b545f0126 (R41_E_FINAL1_HARDENING_SHA - fix(assistant): harden R41.E safe actions and reuse canonical domain services)
+  ↓
+9e0f689e7851b3d5fef0f13e42bad7648ae581c7 (R41_E_FINAL1_CLOSURE_HEAD_SHA - chore(assistant): finalize R41.E audit and certification artifacts)
+  ↓
+<R41_E_FINAL_SHA> (R41_E_FINAL_SHA - fix(assistant): unify R41.E preview validation with canonical domain services)
 ```

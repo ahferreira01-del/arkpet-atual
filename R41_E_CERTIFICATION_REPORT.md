@@ -1,20 +1,26 @@
 # ARKPET — R41.E FORMAL CERTIFICATION REPORT
-## SAFE ACTIONS: IDENTITY-BOUND CAS, CANONICAL DOMAIN SERVICE REUSE, DETERMINISTIC EXECUTION, RBAC & AUDIT
+## SAFE ACTIONS: CANONICAL PREVIEW VALIDATION, ZERO BUSINESS-RULE DUPLICATION, IDENTITY-BOUND CAS, CANONICAL DOMAIN SERVICE REUSE, DETERMINISTIC EXECUTION, RBAC & AUDIT
 
-**Phase:** R41.E — Safe Actions (Finalized & Hardened: R41.E-FINAL.1)  
+**Phase:** R41.E — Safe Actions (Finalized & Certified: R41.E-FINAL.2)  
 **Program:** R41 — ArkPet Intelligent Assistant  
-**Baseline Certified Commit:** `ab539ae4504d8c18d192e0bd2416805789200f1f` (`R41_D_FINAL_SHA`)  
-**Certified Final Commit:** `9dc6583e16ac6e08e44224db5100c61b545f0126` (`R41_E_FINAL_SHA`)  
+**Lineage & SHA Reconciliation:**
+- `R41_D_FINAL_SHA`: `ab539ae4504d8c18d192e0bd2416805789200f1f`
+- `R41_E_IMPLEMENTATION_SHA`: `55d228e41921302c794a35b4545d5af2efb8f255`
+- `R41_E_FINAL1_HARDENING_SHA`: `9dc6583e16ac6e08e44224db5100c61b545f0126`
+- `R41_E_FINAL1_CLOSURE_HEAD_SHA`: `9e0f689e7851b3d5fef0f13e42bad7648ae581c7`
+- `R41_E_FINAL_SHA`: Forward commit HEAD (FINAL.2 Closure)  
 **Certification Date:** 2026-10-02  
-**Certification Status:** **PASSED & FULLY CERTIFIED**  
+**Certification Status:** **PASSED & FULLY CERTIFIED (FINAL.2)**  
 
 ---
 
 ## 1. Formal Certification Attestation
 
-This document formally certifies that Phase **R41.E (Safe Actions)** and the **R41.E-FINAL.1 closure suite** of the ArkPet Intelligent Assistant have met and exceeded all architectural, security, operational, and domain integrity requirements.
+This document formally certifies that Phase **R41.E (Safe Actions)** and the **R41.E-FINAL.2 canonical parity closure suite** of the ArkPet Intelligent Assistant have met and exceeded all architectural, security, operational, and domain integrity requirements.
 
-The transition from a purely read-only contextual assistant to an authorized mutation executor has been accomplished with zero unconfirmed mutations, zero LLM involvement in deterministic execution paths, identity-bound atomic CAS transitions, strict anti-enumeration failure lookups, complete canonical domain service reuse, error sanitization, and tamper-evident audit logging.
+In R41.E-FINAL.2, the last remaining business rule duplications identified between preview proposals and canonical service execution have been completely eliminated. Both preview and execution now derive 100% of their business eligibility rules from pure, mutation-free validation methods extracted into `BookingDomainService` (`validateCancellation`/`previewCancellation`, `validateCheckIn`/`previewCheckIn`, `validateCheckOut`/`previewCheckOut`) and `TaskDomainService` (`validateTaskCompletion`/`previewTaskCompletion`).
+
+The transition from a purely read-only contextual assistant to an authorized mutation executor has been accomplished with zero unconfirmed mutations, zero LLM involvement in deterministic execution paths, identity-bound atomic CAS transitions, strict anti-enumeration failure lookups, complete canonical domain service reuse, error sanitization, tamper-evident audit logging, and zero duplicate business rules.
 
 Zero non-canonical roles are recognized or documented (`CANONICAL_ROLE_COUNT = 4`, `DOCUMENTED_NONEXISTENT_ROLES = 0`).
 
@@ -45,7 +51,14 @@ Zero non-canonical roles are recognized or documented (`CANONICAL_ROLE_COUNT = 4
 | `AUDIT_STACK_TRACE_STORAGE` | `0` | **CERTIFIED: 0** | Zero raw stack traces stored in audit records |
 | `APPLICATION_APPEND_ONLY_AUDIT` | `YES` | **CERTIFIED: YES** | Application exposes zero update or delete endpoints |
 | `DATABASE_ENFORCED_AUDIT_IMMUTABILITY` | `NOT_PROVEN` | **CERTIFIED: NOT_PROVEN** | Database schema lacks PostgreSQL catalog-level REVOKE locks |
-| `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES` | `0` | **CERTIFIED: 0** | Zero business logic duplication in assistant service |
+| `ASSISTANT_DUPLICATE_MUTATION_BUSINESS_RULES` | `0` | **CERTIFIED: 0** | Zero business logic duplication across preview and execution |
+| `BOOKING_CANCEL_PREVIEW_RULE_DUPLICATION` | `0` | **CERTIFIED: 0** | Preview and execution share `BookingDomainService.validateCancellation` |
+| `CHECK_IN_PREVIEW_RULE_DUPLICATION` | `0` | **CERTIFIED: 0** | Preview and execution share `BookingDomainService.validateCheckIn` |
+| `CHECK_OUT_PREVIEW_RULE_DUPLICATION` | `0` | **CERTIFIED: 0** | Preview and execution share `BookingDomainService.validateCheckOut` |
+| `TASK_DOMAIN_RULE_DUPLICATION` | `0` | **CERTIFIED: 0** | Preview and execution share `TaskDomainService.validateTaskCompletion` |
+| `PREVIEW_CANONICAL_DOMAIN_REUSE` | `PASS` | **CERTIFIED: PASS** | All preview proposals build directly from canonical domain service methods |
+| `EXECUTION_CANONICAL_DOMAIN_REUSE` | `PASS` | **CERTIFIED: PASS** | All mutations execute directly via canonical domain service methods |
+| `EXECUTION_REVALIDATES_DOMAIN_STATE` | `YES` | **CERTIFIED: YES** | Execution revalidates domain state under transaction row locks |
 | `BOOKING_MUTATION_CANONICAL_SERVICE_REUSE` | `YES` | **CERTIFIED: YES** | Routes and Assistant delegate to `BookingDomainService` |
 | `TASK_MUTATION_CANONICAL_SERVICE_REUSE` | `YES` | **CERTIFIED: YES** | Routes and Assistant delegate to `TaskDomainService` |
 | `ASSISTANT_BOOKING_CANCEL_SIDE_EFFECT_PARITY` | `PASS` | **CERTIFIED: PASS** | Parity across paid items guard, credits, audit, and push |
@@ -79,15 +92,16 @@ Zero non-canonical roles are recognized or documented (`CANONICAL_ROLE_COUNT = 4
 
 ```text
 ========================================================================================
-                          R41.E VERIFICATION AUDIT
+                          R41.E-FINAL.2 VERIFICATION AUDIT
 ========================================================================================
-  Backend Unit & Integration:  50 / 50 test files passed (906 / 906 tests, 100%)
+  Backend Unit & Integration:  50 / 50 test files passed (912 / 912 tests, 100%)
   Frontend Component Suites:   42 / 42 test files passed (559 / 559 tests, 100%)
   Golden Evaluation Suite:     118 / 118 tests passed (100% eval accuracy)
+  Safe Action Unit Suite:      41 / 41 tests passed (100% pass rate)
   TypeScript Typecheck:        0 errors across all packages
   Production Bundle Builds:    Clean (api-server CJS bundle & petdaycare Vite bundle)
   PWA Audit:                   27 / 27 checks passed (100%)
-  Live Groq STT Smoke:         200 OK in 699ms (Full Voice-to-Tool roundtrip PASS)
+  Live Groq STT Smoke:         200 OK in 652ms (Full Voice-to-Tool roundtrip PASS)
 ========================================================================================
 ```
 
@@ -111,4 +125,12 @@ R41E-FINAL1-DOMAIN-003 = PASS
 R41E-FINAL1-DOMAIN-004 = PASS
 R41E-FINAL1-ERROR-001 = PASS
 R41E-FINAL1-MED-001 = PASS
+
+--- R41.E-FINAL.2 PARITY GATES ---
+R41E-FINAL2-PARITY-001 = PASS
+R41E-FINAL2-PARITY-002 = PASS
+R41E-FINAL2-PARITY-003 = PASS
+R41E-FINAL2-PARITY-004 = PASS
+R41E-FINAL2-PARITY-005 = PASS
+EXECUTION_REVALIDATES_DOMAIN_STATE = YES
 ```
