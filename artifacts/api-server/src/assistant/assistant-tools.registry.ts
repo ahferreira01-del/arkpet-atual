@@ -346,6 +346,10 @@ export class AssistantToolsRegistry {
     return Array.from(this.tools.values());
   }
 
+  public static getAllRegisteredToolNames(): string[] {
+    return Array.from(this.tools.keys());
+  }
+
   public static getToolsForRole(role: string): AssistantToolDefinition[] {
     return Array.from(this.tools.values()).filter((t) =>
       t.allowedRoles.includes(role as any)

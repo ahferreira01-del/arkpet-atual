@@ -5,11 +5,11 @@ export const ASSISTANT_CONFIG = {
     return true;
   },
   get isVoiceEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED in R41.C (Reserved for R41.D)
-    return false;
+    if (this.isKillSwitchActive) return false;
+    return process.env.AI_VOICE_ENABLED === "true";
   },
   get isActionsEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED for domain mutations in R41.C (Reserved for R41.E)
+    // Strictly NOT_IMPLEMENTED for domain mutations in R41.D (Reserved for R41.E)
     return false;
   },
   get isKillSwitchActive(): boolean {
@@ -17,8 +17,28 @@ export const ASSISTANT_CONFIG = {
   },
 
   // Versioning
-  promptVersion: "r41-c-1",
+  promptVersion: "r41-d-1",
   knowledgeVersion: "arkpet-v32-r41c",
+
+  // Voice & Speech-to-Text Configuration (R41.D)
+  get voiceSttProvider(): string {
+    return (process.env.VOICE_STT_PROVIDER || "groq").toLowerCase();
+  },
+  get voiceSttModel(): string {
+    return process.env.VOICE_STT_MODEL || "whisper-large-v3-turbo";
+  },
+  get voiceSttLanguage(): string {
+    return process.env.VOICE_STT_LANGUAGE || "pt";
+  },
+  voiceMaxDurationSeconds: 60,
+  voiceMaxUploadBytes: 10 * 1024 * 1024, // 10 MB
+  allowedAudioMimeTypes: [
+    "audio/webm",
+    "audio/ogg",
+    "audio/wav",
+    "audio/mpeg",
+    "audio/mp4",
+  ] as const,
 
   // Model & Provider defaults
   get defaultProvider(): string {

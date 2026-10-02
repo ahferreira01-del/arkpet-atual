@@ -7,6 +7,7 @@ import { AssistantToolsRegistry } from "./assistant-tools.registry.js";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type { AssistantSecurityContext, AssistantRole } from "./assistant.types.js";
+import voiceRouter from "./voice/voice.router.js";
 
 const assistantRouter = Router();
 
@@ -61,6 +62,9 @@ function extractSecurityContext(req: AuthRequest): AssistantSecurityContext {
 
 // All assistant routes require authentication
 assistantRouter.use(authenticate);
+
+// ── Voice Transcription Routes (R41.D) ────────────────────────────────────────
+assistantRouter.use("/voice", voiceRouter);
 
 // ── POST /message ─────────────────────────────────────────────────────────────
 const messageBodySchema = z.object({

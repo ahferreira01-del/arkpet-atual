@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Minimize2, Maximize2, Sparkles, WifiOff } from "lucide-react";
+import { X, Minimize2, Maximize2, Sparkles, WifiOff, Volume2, VolumeX } from "lucide-react";
 import { useLocation } from "wouter";
 import { AssistantConversation } from "./AssistantConversation";
 import { useAssistantContext } from "./useAssistantContext";
+import { useSpeechSynthesis } from "./useSpeechSynthesis";
 import type { AssistantUIMessage, AssistantVisualState, AssistantUIAction } from "./assistant.types";
 
 const ALLOWED_GUIDANCE_ROUTES = [
@@ -80,6 +81,7 @@ export function AssistantPanel({
   const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true));
   const panelRef = useRef<HTMLDivElement>(null);
   const screenContext = useAssistantContext();
+  const { isSupported: ttsSupported, ttsEnabled, toggleTts, speak, cancelSpeech } = useSpeechSynthesis();
 
   // Save conversation state to session storage
   useEffect(() => {
@@ -230,6 +232,11 @@ export function AssistantPanel({
       setMessages((prev) => [...prev, assistantMessage]);
       setStatus("idle");
 
+      // Optional PT-BR spoken playback (TTS_AUTOPLAY_DEFAULT = NO, VOICE_INPUT_DEPENDS_ON_TTS = NO)
+      if (data.message?.content) {
+        speak(data.message.content);
+      }
+
       // Auto-trigger navigation and highlighting safely (AI-GUIDE-001..002)
       if (Array.isArray(data.message.uiActions)) {
         for (const act of data.message.uiActions) {
@@ -311,6 +318,21 @@ export function AssistantPanel({
         </div>
 
         <div className="flex items-center gap-1">
+          {ttsSupported && (
+            <button
+              type="button"
+              onClick={toggleTts}
+              data-testid="assistant-tts-toggle"
+              className={`p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer ${
+                ttsEnabled ? "text-primary hover:text-primary" : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-label={ttsEnabled ? "Desativar leitura de respostas em voz alta" : "Ativar leitura de respostas em voz alta"}
+              aria-pressed={ttsEnabled}
+              title={ttsEnabled ? "Desativar leitura em voz alta" : "Ativar leitura em voz alta"}
+            >
+              {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleMinimize}
@@ -322,7 +344,10 @@ export function AssistantPanel({
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              cancelSpeech();
+              onClose();
+            }}
             className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             aria-label="Fechar assistente"
             title="Fechar"

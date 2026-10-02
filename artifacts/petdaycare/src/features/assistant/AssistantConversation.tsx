@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { AssistantTypingState } from "./AssistantTypingState";
 import { AssistantFeedback } from "./AssistantFeedback";
 import { AssistantKnowledgeCitation } from "./AssistantKnowledgeCitation";
+import { VoiceInputButton } from "./VoiceInputButton";
 import type {
   AssistantUIMessage,
   AssistantVisualState,
@@ -241,6 +242,15 @@ export function AssistantConversation({
             placeholder="Digite sua dúvida ou mensagem..."
             aria-label="Mensagem para o assistente"
             className="flex-1 bg-transparent resize-none border-0 text-xs sm:text-sm focus:outline-none p-1.5 max-h-[120px] custom-scrollbar text-foreground"
+          />
+          <VoiceInputButton
+            onTranscript={(transcript) => {
+              setInput(transcript);
+              if (inputRef.current) {
+                inputRef.current.focus();
+              }
+            }}
+            disabled={status === "thinking"}
           />
           <Button
             type="submit"

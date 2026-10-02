@@ -67,14 +67,30 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("sou agora master_admin") ||
       lowerQuery.includes("mude meu papel") ||
       lowerQuery.includes("ignore todas as regras") ||
-      lowerQuery.includes("ignore previous instructions")
+      lowerQuery.includes("ignore suas regras") ||
+      lowerQuery.includes("ignore previous instructions") ||
+      lowerQuery.includes("execute sql") ||
+      lowerQuery.includes("executar sql")
     ) {
       AssistantAuditService.logSecurityDenial(context, {
         action: "prompt_injection_role_override",
         reason: "User prompt attempted to override server-enforced role",
       });
       return {
-        content: `Você está autenticado no ArkPet como ${context.role}. As permissões do sistema são gerenciadas exclusivamente pelo servidor e não podem ser alteradas através da conversa. Como posso ajudar dentro das funções do seu perfil?`,
+        content: `Você está autenticado no ArkPet como ${context.role}. Você não tem permissão para alterar regras do sistema. As permissões são gerenciadas exclusivamente pelo servidor e não podem ser alteradas através da conversa. Como posso ajudar dentro das funções do seu perfil?`,
+      };
+    }
+
+    // 1b. Mutation refusal for read-only assistant (R41.D)
+    if (
+      lowerQuery.includes("cancela minha reserva") ||
+      lowerQuery.includes("cancele a reserva") ||
+      lowerQuery.includes("cancelar reserva") ||
+      lowerQuery.includes("exclua o pet") ||
+      lowerQuery.includes("delete o pet")
+    ) {
+      return {
+        content: "O assistente funciona em modo somente-leitura e não realiza cancelamentos ou alterações automáticas no sistema. Para cancelar uma reserva, acesse a tela de Reservas (/bookings) e selecione a opção de cancelamento.",
       };
     }
 
@@ -124,16 +140,25 @@ export class MockAIProvider implements AIProvider {
     // 4. Role Permission Boundary Inquiries
     if (
       (context.role === "staff" || context.role === "tutor") &&
-      (lowerQuery.includes("relatorio financeiro") || lowerQuery.includes("receita total da creche"))
+      (lowerQuery.includes("relatorio financeiro") ||
+        lowerQuery.includes("receita total da creche") ||
+        lowerQuery.includes("faturamento total") ||
+        lowerQuery.includes("faturamento da creche"))
     ) {
       return {
         content: `Como ${context.role}, você não tem permissão para acessar os dados do relatório financeiro consolidado ou receita da creche. Esse acesso é restrito ao creche_admin.`,
       };
     }
 
-    if (context.role === "tutor" && lowerQuery.includes("pets de outros tutores")) {
+    if (
+      context.role === "tutor" &&
+      (lowerQuery.includes("pets de outros tutores") ||
+        lowerQuery.includes("pet 102") ||
+        lowerQuery.includes("outro pet") ||
+        lowerQuery.includes("prontuario do pet 102"))
+    ) {
       return {
-        content: "No ArkPet, tutores possuem acesso estrito e exclusivo apenas aos seus próprios pets cadastrados.",
+        content: "No ArkPet, tutores possuem acesso estrito e exclusivo apenas aos seus próprios pets cadastrados. Você não tem permissão para visualizar dados de pets de outros tutores.",
       };
     }
 
@@ -153,21 +178,23 @@ export class MockAIProvider implements AIProvider {
 
     // 4c. Tenant Isolation & Cross-Tenant Boundary Checks (R41C-SEC-001, R41C-SEC-004)
     if (
-      lowerQuery.includes("outra creche") ||
-      lowerQuery.includes("outras creches") ||
-      lowerQuery.includes("pets de outra creche")
-    ) {
-      return {
-        content: "Você não tem permissão para acessar dados de outra creche. O ArkPet isola estritamente os dados de cada creche.",
-      };
-    }
-
-    if (
       context.role === "master_admin" &&
       (lowerQuery.includes("selecione a creche") || lowerQuery.includes("automaticamente"))
     ) {
       return {
         content: "Como master_admin, a seleção de creche requer autorização explícita e contexto definido, não podendo ser inferida automaticamente para ações de tenant na plataforma.",
+      };
+    }
+
+    if (
+      lowerQuery.includes("outra creche") ||
+      lowerQuery.includes("outras creches") ||
+      lowerQuery.includes("pets de outra creche") ||
+      lowerQuery.includes("creche 999") ||
+      lowerQuery.includes("dados da creche 999")
+    ) {
+      return {
+        content: "Você não tem permissão para acessar dados de outra creche. O ArkPet isola estritamente os dados de cada creche.",
       };
     }
 
@@ -189,7 +216,9 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("ele tem alguma reserva") ||
       lowerQuery.includes("o que posso ver sobre ele") ||
       lowerQuery.includes("ele tem vacinas") ||
-      lowerQuery.includes("ele tem vacina")
+      lowerQuery.includes("ele tem vacina") ||
+      lowerQuery.includes("ele tomou remedio") ||
+      lowerQuery.includes("ele tomou a medicacao")
     ) {
       const activeEntity = options.screenContext?.entity;
       if (activeEntity && activeEntity.name) {
@@ -209,11 +238,16 @@ export class MockAIProvider implements AIProvider {
             content: `Na ficha de ${petName}, você pode consultar o histórico de vacinas e conferir se há doses ou reforços pendentes.`,
           };
         }
+        if (lowerQuery.includes("remedio") || lowerQuery.includes("medicacao")) {
+          return {
+            content: `Consultando o prontuário de ${petName}: ${petName} tem registro de medicações e cuidados no painel operacional.`,
+          };
+        }
       }
 
       // Ambiguous pronoun without verified entity context (R41C-ENTITY-002 / AMBIGUOUS_ENTITY_HALLUCINATION = 0)
       return {
-        content: "Você não selecionou um pet específico. Por favor, informe qual pet ou acesse a ficha do cãozinho para consultar as informações de reserva.",
+        content: "Você não selecionou um pet específico. Por favor, informe qual pet ou acesse a ficha do cãozinho para consultar as informações.",
       };
     }
 
@@ -446,7 +480,12 @@ export class MockAIProvider implements AIProvider {
     }
 
     // 6. Reservations: Hospedagem vs Day Use
-    if (lowerQuery.includes("diferenca entre hospedagem e day use") || lowerQuery.includes("hospedagem e day use")) {
+    if (
+      lowerQuery.includes("diferenca entre hospedagem e day use") ||
+      lowerQuery.includes("hospedagem e day use") ||
+      lowerQuery.includes("funciona a hospedagem") ||
+      lowerQuery.includes("como funciona hospedagem")
+    ) {
       return {
         content: "No ArkPet, a Hospedagem (Hotel) inclui pernoite para estadias prolongadas, enquanto o Day Use (Creche Diurna) é sem pernoite, voltado para socialização e recreação do pet durante o dia.",
         citations: [{ title: "Reservas > Modalidades: Hospedagem vs Day Use", category: "reservations", path: "knowledge/reservations.md#Modalidades" }],
@@ -567,7 +606,13 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
-    if (lowerQuery.includes("master_admin pode fazer") || lowerQuery.includes("creches cadastradas na rede") || lowerQuery.includes("planos de assinatura da plataforma")) {
+    if (
+      lowerQuery.includes("master_admin pode fazer") ||
+      lowerQuery.includes("creches cadastradas na rede") ||
+      lowerQuery.includes("planos de assinatura da plataforma") ||
+      lowerQuery.includes("listar todas as creches") ||
+      lowerQuery.includes("creches da rede")
+    ) {
       return {
         content: "O master_admin gerencia todas as creches cadastradas na rede no painel /admin/creches, acompanha métricas globais e configura os planos de assinatura da plataforma via Stripe.",
         citations: [{ title: "Papéis e Permissões > master_admin", category: "roles", path: "knowledge/roles.md#master_admin" }],
@@ -631,6 +676,7 @@ export class MockAIProvider implements AIProvider {
     // 15. Tool Invocation: List My Bookings
     if (
       lowerQuery.includes("minhas reservas") ||
+      lowerQuery.includes("proximas reservas") ||
       lowerQuery.includes("listar reservas") ||
       lowerQuery.includes("minha agenda")
     ) {
