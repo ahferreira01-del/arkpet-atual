@@ -21,3 +21,4 @@ export * from "./unresolvedSubscriptionVersions";
 export * from "./billingWebhookErrors";
 export * from "./storage";
 export * from "./crecheInvitations";
+export * from "./assistantSafeActions";

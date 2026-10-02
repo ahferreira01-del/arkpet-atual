@@ -8,6 +8,7 @@ import { AssistantAuditService } from "./assistant-audit.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type { AssistantSecurityContext, AssistantRole } from "./assistant.types.js";
 import voiceRouter from "./voice/voice.router.js";
+import { assistantActionsRouter } from "./assistant-actions.router.js";
 
 const assistantRouter = Router();
 
@@ -65,6 +66,9 @@ assistantRouter.use(authenticate);
 
 // ── Voice Transcription Routes (R41.D) ────────────────────────────────────────
 assistantRouter.use("/voice", voiceRouter);
+
+// ── Safe Action Routes (R41.E) ────────────────────────────────────────────────
+assistantRouter.use("/actions", assistantActionsRouter);
 
 // ── POST /message ─────────────────────────────────────────────────────────────
 const messageBodySchema = z.object({

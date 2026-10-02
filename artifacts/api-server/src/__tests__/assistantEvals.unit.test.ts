@@ -5,8 +5,11 @@ import { fileURLToPath } from "url";
 import { AssistantService } from "../assistant/assistant.service.js";
 import type { AssistantSecurityContext, AssistantRole } from "../assistant/assistant.types.js";
 
+process.env.AI_SAFE_ACTIONS_ENABLED = "true";
+
 // Mock DB interactions for unit testing
-vi.mock("@workspace/db", () => {
+vi.mock("@workspace/db", async (importOriginal) => {
+  const actual: any = await importOriginal();
   const dummyPets = [
     {
       id: 101,
@@ -41,26 +44,166 @@ vi.mock("@workspace/db", () => {
     },
   ];
 
-  return {
-    db: {
-      select: vi.fn(() => ({
-        from: vi.fn(() => ({
-          where: vi.fn(() => ({
-            limit: vi.fn(async () => dummyPets),
-            orderBy: vi.fn(() => ({
-              limit: vi.fn(async () => []),
-            })),
-          })),
-          innerJoin: vi.fn(() => ({
-            where: vi.fn(() => ({
-              orderBy: vi.fn(() => ({
-                limit: vi.fn(async () => []),
-              })),
-            })),
-          })),
-        })),
-      })),
+  const dummyBookings = [
+    {
+      id: 42,
+      crecheId: 1,
+      tutorId: 50,
+      petId: 101,
+      type: "daycare",
+      startDate: new Date(),
+      endDate: new Date(),
+      checkInTime: new Date(),
+      status: "confirmed",
+      totalPrice: 100,
     },
+  ];
+
+  const dummyTasks = [
+    {
+      id: 1,
+      crecheId: 1,
+      petId: 101,
+      type: "operational",
+      title: "Limpeza de canil",
+      status: "pending",
+      scheduledFor: new Date(),
+      description: "Limpeza geral",
+    },
+    {
+      id: 2,
+      crecheId: 1,
+      petId: 101,
+      type: "feeding",
+      title: "Ração da manhã",
+      status: "pending",
+      scheduledFor: new Date(),
+      description: "Ração premier",
+    },
+    {
+      id: 3,
+      crecheId: 1,
+      petId: 101,
+      type: "medication",
+      title: "Antibiótico",
+      status: "pending",
+      scheduledFor: new Date(),
+      description: "Cefalexina 250mg",
+    },
+    {
+      id: 4,
+      crecheId: 1,
+      petId: 101,
+      type: "walk",
+      title: "Passeio matinal",
+      status: "pending",
+      scheduledFor: new Date(),
+      description: "Passeio de 30 minutos",
+    },
+    {
+      id: 15,
+      crecheId: 1,
+      petId: 101,
+      type: "operational",
+      title: "Higienização de brinquedos",
+      status: "pending",
+      scheduledFor: new Date(),
+      description: "Higienização",
+    },
+  ];
+
+  const dummyValidatedPayload = { bookingId: 42, reason: "Teste" };
+  const dummyPayloadHash = "88a7059879f87c657aa1b1dfdc50c1fd0bcd5a3ba9aa061e5956c2e39661c0b0";
+
+  const dummyPendingActions = [
+    {
+      id: "pa_test_eval_1",
+      userId: 50,
+      crecheId: 1,
+      role: "tutor",
+      actionType: "cancel_my_booking",
+      targetType: "booking",
+      targetId: 42,
+      validatedPayload: dummyValidatedPayload,
+      payloadHash: dummyPayloadHash,
+      status: "pending_confirmation",
+      previewData: { bookingId: 42, petName: "Thor" },
+      summary: "Cancelamento da reserva #42 do Thor",
+      requestId: "eval-req",
+      expiresAt: new Date(Date.now() + 300000),
+      createdAt: new Date(),
+    },
+  ];
+
+  const createQueryChain = (data: any[] = []) => {
+    const chain: any = {
+      where: vi.fn(() => chain),
+      orderBy: vi.fn(() => chain),
+      limit: vi.fn(() => chain),
+      innerJoin: vi.fn(() => chain),
+      set: vi.fn(() => chain),
+      values: vi.fn(() => chain),
+      returning: vi.fn(() => chain),
+      for: vi.fn(() => chain),
+      then: (resolve: any, reject?: any) => Promise.resolve(data).then(resolve, reject),
+    };
+    return chain;
+  };
+
+  const dbMock: any = {
+    select: vi.fn(() => ({
+      from: vi.fn((table: any) => {
+        const name = table?.[Symbol.for("drizzle:Name")] || "";
+        if (name.includes("pending")) {
+          return createQueryChain(dummyPendingActions);
+        }
+        if (name.includes("task")) {
+          return createQueryChain(dummyTasks);
+        }
+        if (name.includes("booking")) {
+          return createQueryChain(dummyBookings);
+        }
+        if (name.includes("creche")) {
+          return createQueryChain(dummyCreches);
+        }
+        if (name.includes("vaccine") || name.includes("invoice")) {
+          return createQueryChain([]);
+        }
+        return createQueryChain(dummyPets);
+      }),
+    })),
+    insert: vi.fn(() => ({
+      values: vi.fn(() => createQueryChain(dummyPendingActions)),
+    })),
+    update: vi.fn(() => ({
+      set: vi.fn(() => createQueryChain(dummyPendingActions)),
+    })),
+    execute: vi.fn(async () => []),
+    transaction: vi.fn(async (cb: any) => cb({
+      execute: vi.fn(async () => []),
+      select: vi.fn(() => ({
+        from: vi.fn((table: any) => {
+          const name = table?.[Symbol.for("drizzle:Name")] || "";
+          if (name.includes("pending")) {
+            return createQueryChain(dummyPendingActions);
+          }
+          if (name.includes("booking")) {
+            return createQueryChain(dummyBookings);
+          }
+          if (name.includes("task")) {
+            return createQueryChain(dummyTasks);
+          }
+          return createQueryChain([]);
+        }),
+      })),
+      insert: vi.fn(() => ({ values: vi.fn(() => createQueryChain([])) })),
+      update: vi.fn(() => ({ set: vi.fn(() => createQueryChain(dummyPendingActions)) })),
+    })),
+  };
+
+  return {
+    ...actual,
+    db: dbMock,
   };
 });
 
@@ -76,9 +219,9 @@ const evalCases: Array<{
   forbiddenContains: string[];
 }> = JSON.parse(fs.readFileSync(evalsPath, "utf-8"));
 
-describe("ArkPet R41.C — Golden Evaluation Dataset (80 Cases)", () => {
-  it("verifies the evaluation dataset contains at least 78 test cases across 4 roles", () => {
-    expect(evalCases.length).toBeGreaterThanOrEqual(78);
+describe("ArkPet R41.E — Golden Evaluation Dataset (117 Cases)", () => {
+  it("verifies the evaluation dataset contains at least 117 test cases across 4 roles", () => {
+    expect(evalCases.length).toBeGreaterThanOrEqual(117);
 
     const roles = new Set(evalCases.map((c) => c.role));
     expect(roles.has("master_admin")).toBe(true);

@@ -227,10 +227,11 @@ export function AssistantPanel({
         citations: data.message.citations,
         uiActions: data.message.uiActions,
         onboarding: data.message.onboarding,
+        action: data.message.action,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      setStatus("idle");
+      setStatus(data.message.action?.state === "confirmation_required" ? "waiting_confirmation" : "idle");
 
       // Optional PT-BR spoken playback (TTS_AUTOPLAY_DEFAULT = NO, VOICE_INPUT_DEPENDS_ON_TTS = NO)
       if (data.message?.content) {
@@ -273,6 +274,99 @@ export function AssistantPanel({
       sessionStorage.removeItem("arkpet_assistant_messages");
       sessionStorage.removeItem("arkpet_assistant_session_id");
     } catch {}
+  };
+
+  const handleConfirmSafeAction = async (pendingActionId: string) => {
+    try {
+      setStatus("executing_action");
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/assistant/actions/${pendingActionId}/confirm`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao confirmar ação.");
+      }
+
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.action?.pendingActionId === pendingActionId) {
+            return {
+              ...msg,
+              action: {
+                ...msg.action,
+                state: "executed",
+                summary: data.action?.summary || msg.action.summary,
+                result: data.result,
+              },
+            };
+          }
+          return msg;
+        })
+      );
+
+      setStatus("idle");
+      window.dispatchEvent(new CustomEvent("arkpet:data-mutated", { detail: { action: data.action } }));
+    } catch (err: any) {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.action?.pendingActionId === pendingActionId) {
+            return {
+              ...msg,
+              action: {
+                ...msg.action,
+                state: "failed",
+                error: err.message,
+              },
+            };
+          }
+          return msg;
+        })
+      );
+      setStatus("idle");
+    }
+  };
+
+  const handleCancelSafeAction = async (pendingActionId: string) => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`/api/assistant/actions/${pendingActionId}/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erro ao cancelar ação.");
+      }
+
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.action?.pendingActionId === pendingActionId) {
+            return {
+              ...msg,
+              action: {
+                ...msg.action,
+                state: "cancelled",
+              },
+            };
+          }
+          return msg;
+        })
+      );
+      setStatus("idle");
+    } catch (err: any) {
+      console.error("Cancel action error:", err);
+    }
   };
 
   if (!isOpen) return null;
@@ -377,6 +471,8 @@ export function AssistantPanel({
               onSendMessage={handleSendMessage}
               onClearSession={handleClearSession}
               onExecuteAction={executeUIAction}
+              onConfirmSafeAction={handleConfirmSafeAction}
+              onCancelSafeAction={handleCancelSafeAction}
             />
           )}
         </div>

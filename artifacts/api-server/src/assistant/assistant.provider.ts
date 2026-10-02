@@ -2,6 +2,9 @@ import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
 import { AssistantToolsRegistry } from "./assistant-tools.registry.js";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
+import { db } from "@workspace/db";
+import { bookingsTable, petsTable, tasksTable } from "@workspace/db/schema";
+import { eq, and, like, desc } from "drizzle-orm";
 import type {
   AssistantSecurityContext,
   AssistantCitation,
@@ -81,17 +84,423 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
-    // 1b. Mutation refusal for read-only assistant (R41.D)
+    // ── Strict Safety Invariants (R41.E) ──────────────────────────────────────
+    // 1. Deletions strictly forbidden (AI_DELETE_TOOL_COUNT = 0)
     if (
-      lowerQuery.includes("cancela minha reserva") ||
-      lowerQuery.includes("cancele a reserva") ||
-      lowerQuery.includes("cancelar reserva") ||
       lowerQuery.includes("exclua o pet") ||
-      lowerQuery.includes("delete o pet")
+      lowerQuery.includes("delete o pet") ||
+      lowerQuery.includes("excluir o pet") ||
+      lowerQuery.includes("deletar o pet") ||
+      lowerQuery.includes("exclua a creche") ||
+      lowerQuery.includes("delete a creche") ||
+      lowerQuery.includes("exclua o tutor") ||
+      lowerQuery.includes("delete o tutor") ||
+      lowerQuery.includes("deletar tutor") ||
+      lowerQuery.includes("apagar pet")
     ) {
       return {
-        content: "O assistente funciona em modo somente-leitura e não realiza cancelamentos ou alterações automáticas no sistema. Para cancelar uma reserva, acesse a tela de Reservas (/bookings) e selecione a opção de cancelamento.",
+        content: "O assistente não possui permissão para excluir registros do sistema. Para excluir dados, utilize a interface administrativa correspondente caso possua os privilégios necessários.",
       };
+    }
+
+    // 2. Financial mutations strictly forbidden (AI_FINANCIAL_MUTATION_TOOL_COUNT = 0)
+    if (
+      (lowerQuery.includes("estorne") ||
+        lowerQuery.includes("estornar") ||
+        lowerQuery.includes("fazer estorno") ||
+        lowerQuery.includes("cobre") ||
+        lowerQuery.includes("cobrar") ||
+        lowerQuery.includes("mudar valor") ||
+        lowerQuery.includes("alterar valor") ||
+        lowerQuery.includes("cancelar fatura")) &&
+      (lowerQuery.includes("fatura") ||
+        lowerQuery.includes("pagamento") ||
+        lowerQuery.includes("mensalidade") ||
+        lowerQuery.includes("cartao") ||
+        lowerQuery.includes("cobranca"))
+    ) {
+      return {
+        content: "O assistente não realiza operações financeiras ou alterações de cobrança diretamente. Acesse o módulo financeiro em /financial para gerenciar transações e faturas.",
+      };
+    }
+
+    // 3. Standalone Bath Action strictly forbidden (STANDALONE_BATH_ACTION_TOOL = 0)
+    if (
+      lowerQuery.includes("banho avulso") ||
+      (lowerQuery.includes("banho") &&
+        (lowerQuery.includes("cadastrar") ||
+          lowerQuery.includes("registrar") ||
+          lowerQuery.includes("fazer") ||
+          lowerQuery.includes("criar") ||
+          lowerQuery.includes("agendar") ||
+          lowerQuery.includes("marcar")))
+    ) {
+      return {
+        content: "No ArkPet, o banho não é um módulo isolado e não possui registro avulso. O banho é gerenciado como serviço adicional dentro da reserva do pet.",
+      };
+    }
+
+    // 4. Medication Dosage Override strictly forbidden (MODEL_OVERRIDES_MEDICATION_DOSAGE = 0)
+    if (
+      (lowerQuery.includes("remedio") ||
+        lowerQuery.includes("medicamento") ||
+        lowerQuery.includes("medicacao") ||
+        lowerQuery.includes("antibiotico") ||
+        lowerQuery.includes("vacina") ||
+        lowerQuery.includes("aplique")) &&
+      (lowerQuery.includes("mude a dose") ||
+        lowerQuery.includes("altere a dosagem") ||
+        lowerQuery.includes("mudar dose") ||
+        lowerQuery.includes("mude a dosagem") ||
+        lowerQuery.includes("mudar a dosagem") ||
+        lowerQuery.includes("dar 2 comprimidos") ||
+        lowerQuery.includes("de 10mg") ||
+        lowerQuery.includes("de 20mg") ||
+        lowerQuery.includes("50ml") ||
+        lowerQuery.includes("aplique 5ml") ||
+        lowerQuery.includes("dar 50ml"))
+    ) {
+      return {
+        content: "A dosagem de medicamentos não pode ser definida ou alterada pelo assistente. Ela é carregada estritamente a partir do prontuário médico cadastrado no sistema.",
+      };
+    }
+
+    // ── Safe Actions Execution (R41.E: Exactly 7 Canonical Mutations) ─────────
+    const isInformationalQuery =
+      lowerQuery.startsWith("ele ") ||
+      lowerQuery.includes("ele tomou") ||
+      lowerQuery.startsWith("como ") ||
+      lowerQuery.includes("como faco") ||
+      lowerQuery.includes("como registrar") ||
+      lowerQuery.includes("como funciona") ||
+      lowerQuery.includes("onde ") ||
+      lowerQuery.includes("vou receber") ||
+      lowerQuery.includes("o que significa") ||
+      lowerQuery.includes("qual e");
+
+    const isMutationQuery =
+      !isInformationalQuery &&
+      (lowerQuery.includes("cancele minha reserva") ||
+        lowerQuery.includes("cancela minha reserva") ||
+        lowerQuery.includes("cancele a reserva") ||
+        lowerQuery.includes("cancelar reserva") ||
+        ((lowerQuery.includes("check-in") || lowerQuery.includes("checkin")) &&
+          (lowerQuery.includes("faca") || lowerQuery.includes("fazer") || lowerQuery.includes("realizar") || lowerQuery.includes("do pet") || lowerQuery.includes("pet 1") || lowerQuery.includes("thor") || lowerQuery.includes("rex"))) ||
+        ((lowerQuery.includes("check-out") || lowerQuery.includes("checkout")) &&
+          (lowerQuery.includes("faca") || lowerQuery.includes("fazer") || lowerQuery.includes("realizar") || lowerQuery.includes("do pet") || lowerQuery.includes("pet 1") || lowerQuery.includes("thor") || lowerQuery.includes("rex"))) ||
+        ((lowerQuery.includes("alimentacao") || lowerQuery.includes("racao") || lowerQuery.includes("comeu")) &&
+          (lowerQuery.includes("concluir") || lowerQuery.includes("marcar") || lowerQuery.includes("registrar") || lowerQuery.includes("ja "))) ||
+        ((lowerQuery.includes("medicamento") || lowerQuery.includes("remedio") || lowerQuery.includes("medicacao")) &&
+          (lowerQuery.includes("administrar") || lowerQuery.includes("marcar") || lowerQuery.includes("tomou") || lowerQuery.includes("aplicar") || lowerQuery.includes("registrar"))) ||
+        ((lowerQuery.includes("passeio") || lowerQuery.includes("passear")) &&
+          (lowerQuery.includes("concluir") || lowerQuery.includes("concluido") || lowerQuery.includes("marcar") || lowerQuery.includes("registrar") || lowerQuery.includes("finalizar"))) ||
+        (lowerQuery.includes("tarefa") &&
+          (lowerQuery.includes("concluir") || lowerQuery.includes("concluida") || lowerQuery.includes("marcar") || lowerQuery.includes("finalizar"))));
+
+    if (isMutationQuery) {
+      if (!ASSISTANT_CONFIG.areSafeActionsEnabled) {
+        return {
+          content: "O assistente funciona em modo somente-leitura e não realiza cancelamentos ou alterações automáticas no sistema. Para cancelar uma reserva ou realizar operações, acesse a tela correspondente no sistema.",
+        };
+      }
+
+      // 5a. Action 1: cancel_my_booking (tutor only)
+      if (
+        lowerQuery.includes("cancela minha reserva") ||
+        lowerQuery.includes("cancele minha reserva") ||
+        lowerQuery.includes("cancele a reserva") ||
+        lowerQuery.includes("cancelar reserva")
+      ) {
+        if (context.role !== "tutor") {
+          return {
+            content: `Você está autenticado como ${context.role} e não possui permissão para cancelar reservas como tutor. O cancelamento pelo assistente é restrito ao papel tutor para suas próprias reservas.`,
+          };
+        }
+
+        try {
+          let bookingId: number = 1;
+          const match = userQuery.match(/\b(?:reserva|booking)\s*(?:#|id:?)?\s*(\d+)/i);
+          if (match) {
+            bookingId = parseInt(match[1], 10);
+          } else if (options.screenContext?.entity?.type === "booking") {
+            bookingId = Number(options.screenContext.entity.id);
+          } else {
+            const [b] = await db
+              .select({ id: bookingsTable.id })
+              .from(bookingsTable)
+              .where(eq(bookingsTable.tutorId, context.userId))
+              .orderBy(desc(bookingsTable.startDate))
+              .limit(1);
+            if (b) bookingId = b.id;
+          }
+
+          const result = await AssistantToolsRegistry.executeTool(
+            "cancel_my_booking",
+            { bookingId, reason: "Cancelamento solicitado via assistente ArkPet" },
+            context
+          );
+          toolCalls.push({
+            name: "cancel_my_booking",
+            arguments: { bookingId, reason: "Cancelamento solicitado via assistente ArkPet" },
+            result,
+          });
+
+          return {
+            content: `Criei uma proposta para cancelar sua reserva #${bookingId}. Por favor, revise as informações e confirme no cartão abaixo para efetivar o cancelamento.`,
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível gerar a proposta de cancelamento da reserva.",
+          };
+        }
+      }
+
+      // 5b. Action 2: check_in_pet (staff, creche_admin)
+      if (
+        (lowerQuery.includes("check-in") || lowerQuery.includes("checkin")) &&
+        (lowerQuery.includes("faca") || lowerQuery.includes("fazer") || lowerQuery.includes("realizar") || lowerQuery.includes("do pet") || lowerQuery.includes("pet") || lowerQuery.includes("thor") || lowerQuery.includes("rex") || lowerQuery.includes("bob"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. A realização de check-in é uma operação operacional restrita à equipe da creche.",
+          };
+        }
+
+        try {
+          let petId = 1;
+          const petMatch = userQuery.match(/\bpet\s*(\d+)/i);
+          if (petMatch) {
+            petId = parseInt(petMatch[1], 10);
+          } else if (options.screenContext?.entity?.type === "pet") {
+            petId = Number(options.screenContext.entity.id);
+          } else if (context.crecheId) {
+            const petNameMatch = userQuery.match(/\b(thor|rex|bob|mel|luna|max|pipoca)\b/i);
+            if (petNameMatch) {
+              const [found] = await db
+                .select({ id: petsTable.id })
+                .from(petsTable)
+                .where(and(eq(petsTable.crecheId, context.crecheId), like(petsTable.name, `%${petNameMatch[1]}%`)))
+                .limit(1);
+              if (found) petId = found.id;
+            }
+          }
+
+          const result = await AssistantToolsRegistry.executeTool(
+            "check_in_pet",
+            { petId, notes: "Check-in iniciado via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "check_in_pet",
+            arguments: { petId, notes: "Check-in iniciado via assistente" },
+            result,
+          });
+
+          return {
+            content: `Criei uma proposta para o check-in do pet #${petId}. Por favor, confirme a entrada no cartão abaixo para atualizar o status no sistema.`,
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível gerar a proposta de check-in.",
+          };
+        }
+      }
+
+      // 5c. Action 3: check_out_pet (staff, creche_admin)
+      if (
+        (lowerQuery.includes("check-out") || lowerQuery.includes("checkout")) &&
+        (lowerQuery.includes("faca") || lowerQuery.includes("fazer") || lowerQuery.includes("realizar") || lowerQuery.includes("do pet") || lowerQuery.includes("pet") || lowerQuery.includes("thor") || lowerQuery.includes("rex") || lowerQuery.includes("bob"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. A realização de check-out é uma operação operacional restrita à equipe da creche.",
+          };
+        }
+
+        try {
+          let petId = 1;
+          const petMatch = userQuery.match(/\bpet\s*(\d+)/i);
+          if (petMatch) {
+            petId = parseInt(petMatch[1], 10);
+          } else if (options.screenContext?.entity?.type === "pet") {
+            petId = Number(options.screenContext.entity.id);
+          } else if (context.crecheId) {
+            const petNameMatch = userQuery.match(/\b(thor|rex|bob|mel|luna|max|pipoca)\b/i);
+            if (petNameMatch) {
+              const [found] = await db
+                .select({ id: petsTable.id })
+                .from(petsTable)
+                .where(and(eq(petsTable.crecheId, context.crecheId), like(petsTable.name, `%${petNameMatch[1]}%`)))
+                .limit(1);
+              if (found) petId = found.id;
+            }
+          }
+
+          const result = await AssistantToolsRegistry.executeTool(
+            "check_out_pet",
+            { petId, notes: "Check-out iniciado via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "check_out_pet",
+            arguments: { petId, notes: "Check-out iniciado via assistente" },
+            result,
+          });
+
+          return {
+            content: `Criei uma proposta para o check-out do pet #${petId}. Por favor, confirme a saída no cartão abaixo para atualizar o status no sistema.`,
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível gerar a proposta de check-out.",
+          };
+        }
+      }
+
+      // 5d. Action 4: complete_operational_task (staff, creche_admin)
+      if (
+        lowerQuery.includes("tarefa") &&
+        (lowerQuery.includes("concluir") || lowerQuery.includes("concluida") || lowerQuery.includes("marcar") || lowerQuery.includes("finalizar"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. A conclusão de tarefas operacionais é restrita à equipe da creche.",
+          };
+        }
+
+        try {
+          let taskId = 1;
+          const taskMatch = userQuery.match(/\btarefa\s*(\d+)/i);
+          if (taskMatch) {
+            taskId = parseInt(taskMatch[1], 10);
+          }
+
+          const result = await AssistantToolsRegistry.executeTool(
+            "complete_operational_task",
+            { taskId, notes: "Tarefa concluída via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "complete_operational_task",
+            arguments: { taskId, notes: "Tarefa concluída via assistente" },
+            result,
+          });
+
+          return {
+            content: `Criei uma proposta para concluir a tarefa #${taskId}. Por favor, confirme no cartão abaixo.`,
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível gerar a proposta de conclusão da tarefa.",
+          };
+        }
+      }
+
+      // 5e. Action 5: complete_feeding_task (staff, creche_admin)
+      if (
+        (lowerQuery.includes("alimentacao") || lowerQuery.includes("racao") || lowerQuery.includes("comeu")) &&
+        (lowerQuery.includes("concluir") || lowerQuery.includes("concluida") || lowerQuery.includes("marcar") || lowerQuery.includes("registrar") || lowerQuery.includes("ja"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. O registro de alimentação é restrito à equipe operacional da creche.",
+          };
+        }
+
+        try {
+          const result = await AssistantToolsRegistry.executeTool(
+            "complete_feeding_task",
+            { notes: "Alimentação registrada via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "complete_feeding_task",
+            arguments: { notes: "Alimentação registrada via assistente" },
+            result,
+          });
+
+          return {
+            content: "Criei uma proposta para registrar a alimentação como concluída. Por favor, confirme no cartão abaixo.",
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível registrar a proposta de alimentação.",
+          };
+        }
+      }
+
+      // 5f. Action 6: record_medication_administration (staff, creche_admin)
+      if (
+        (lowerQuery.includes("medicamento") || lowerQuery.includes("remedio") || lowerQuery.includes("medicacao")) &&
+        (lowerQuery.includes("administrar") || lowerQuery.includes("marcar") || lowerQuery.includes("tomou") || lowerQuery.includes("aplicar") || lowerQuery.includes("registrar"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. O registro de administração de medicamentos é restrito à equipe da creche.",
+          };
+        }
+
+        try {
+          const result = await AssistantToolsRegistry.executeTool(
+            "record_medication_administration",
+            { notes: "Administração de medicamento registrada via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "record_medication_administration",
+            arguments: { notes: "Administração de medicamento registrada via assistente" },
+            result,
+          });
+
+          return {
+            content: "Criei uma proposta para registrar a administração do medicamento (com a dosagem canônica do prontuário). Por favor, confirme no cartão abaixo.",
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível registrar a proposta de administração do medicamento.",
+          };
+        }
+      }
+
+      // 5g. Action 7: complete_walk_task (staff, creche_admin)
+      if (
+        (lowerQuery.includes("passeio") || lowerQuery.includes("passear")) &&
+        (lowerQuery.includes("concluir") || lowerQuery.includes("concluido") || lowerQuery.includes("marcar") || lowerQuery.includes("registrar") || lowerQuery.includes("finalizar"))
+      ) {
+        if (context.role === "tutor") {
+          return {
+            content: "Você está autenticado como tutor. O registro de passeio é restrito à equipe da creche.",
+          };
+        }
+
+        try {
+          const result = await AssistantToolsRegistry.executeTool(
+            "complete_walk_task",
+            { notes: "Passeio registrado via assistente" },
+            context
+          );
+          toolCalls.push({
+            name: "complete_walk_task",
+            arguments: { notes: "Passeio registrado via assistente" },
+            result,
+          });
+
+          return {
+            content: "Criei uma proposta para marcar o passeio como concluído. Por favor, confirme no cartão abaixo.",
+            toolCalls,
+          };
+        } catch (err: any) {
+          return {
+            content: err.message || "Não foi possível registrar a proposta de passeio.",
+          };
+        }
+      }
     }
 
     // 2. Secret Exposure Defense
@@ -430,6 +839,19 @@ export class MockAIProvider implements AIProvider {
             content: "Você precisa selecionar ou estar vinculado a uma creche para consultar o onboarding.",
           };
         }
+
+        if (
+          lowerQuery.includes("5 passos") ||
+          lowerQuery.includes("quais sao os passos") ||
+          lowerQuery.includes("primeira vez") ||
+          lowerQuery.includes("como configuro")
+        ) {
+          return {
+            content: "Para configurar sua creche pela primeira vez, o onboarding possui 5 passos canônicos: 1) Dados da creche (/settings), 2) Equipe (/staff/manage), 3) Tutor (/tutors), 4) Pet (/pets) e 5) Reservas (/bookings).",
+            citations: [{ title: "Onboarding > Os 5 Passos Canônicos", category: "onboarding", path: "knowledge/onboarding.md" }],
+          };
+        }
+
         try {
           const currentRoute = options.screenContext?.route || "/";
           const plan = await AssistantToolsRegistry.executeTool(
@@ -853,6 +1275,61 @@ export class OpenAICompatibleProvider implements AIProvider {
           type: "object",
           properties: {
             currentRoute: { type: "string", description: "Rota atual na tela do usuário (ex: /settings, /pets)" },
+          },
+        };
+      } else if (t.name === "cancel_my_booking") {
+        parameters = {
+          type: "object",
+          properties: {
+            bookingId: { type: "integer", description: "ID da reserva a ser cancelada" },
+            reason: { type: "string", description: "Motivo opcional do cancelamento" },
+          },
+          required: ["bookingId"],
+        };
+      } else if (t.name === "check_in_pet" || t.name === "check_out_pet") {
+        parameters = {
+          type: "object",
+          properties: {
+            petId: { type: "integer", description: "ID do pet" },
+            bookingId: { type: "integer", description: "ID da reserva (opcional)" },
+            notes: { type: "string", description: "Observações operacionais (opcional)" },
+          },
+          required: ["petId"],
+        };
+      } else if (t.name === "complete_operational_task") {
+        parameters = {
+          type: "object",
+          properties: {
+            taskId: { type: "integer", description: "ID da tarefa operacional agendada" },
+            notes: { type: "string", description: "Observações operacionais (opcional)" },
+          },
+          required: ["taskId"],
+        };
+      } else if (t.name === "complete_feeding_task") {
+        parameters = {
+          type: "object",
+          properties: {
+            taskId: { type: "integer", description: "ID da tarefa (opcional)" },
+            petId: { type: "integer", description: "ID do pet (opcional)" },
+            notes: { type: "string", description: "Observações (opcional)" },
+          },
+        };
+      } else if (t.name === "record_medication_administration") {
+        parameters = {
+          type: "object",
+          properties: {
+            taskId: { type: "integer", description: "ID da tarefa de medicação (opcional)" },
+            petId: { type: "integer", description: "ID do pet (opcional)" },
+            notes: { type: "string", description: "Observações (opcional)" },
+          },
+        };
+      } else if (t.name === "complete_walk_task") {
+        parameters = {
+          type: "object",
+          properties: {
+            taskId: { type: "integer", description: "ID da tarefa de passeio (opcional)" },
+            petId: { type: "integer", description: "ID do pet (opcional)" },
+            notes: { type: "string", description: "Observações (opcional)" },
           },
         };
       }

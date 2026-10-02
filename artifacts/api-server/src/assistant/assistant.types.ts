@@ -98,6 +98,31 @@ export type AssistantUIAction =
       targetId: string;
     };
 
+export type AssistantToolMode = "read" | "mutation";
+export type AssistantSafeActionRiskLevel = "low" | "medium" | "high";
+export type AssistantSafeActionState =
+  | "confirmation_required"
+  | "confirmed"
+  | "executing"
+  | "executed"
+  | "cancelled"
+  | "expired"
+  | "failed";
+
+export interface AssistantSafeActionPayload {
+  type: string;
+  state: AssistantSafeActionState;
+  pendingActionId?: string;
+  targetType?: string;
+  targetId?: number;
+  preview?: Record<string, any>;
+  summary?: string;
+  expiresAt?: string;
+  executedAt?: string;
+  result?: any;
+  error?: string;
+}
+
 export interface AssistantMessage {
   id: string;
   role: "user" | "assistant" | "system";
@@ -110,6 +135,7 @@ export interface AssistantMessage {
     result?: any;
   }>;
   uiActions?: AssistantUIAction[];
+  action?: AssistantSafeActionPayload;
   onboarding?: {
     isComplete: boolean;
     progressPercent: number;
@@ -132,9 +158,12 @@ export interface AssistantSession {
 export interface AssistantToolDefinition<TInput = any, TOutput = any> {
   name: string;
   description: string;
+  mode?: AssistantToolMode;
   allowedRoles: AssistantRole[];
   inputSchema: z.ZodType<TInput>;
   confirmationRequired: boolean;
+  riskLevel?: AssistantSafeActionRiskLevel;
+  targetType?: string;
   auditEvent: string;
   execute: (input: TInput, context: AssistantSecurityContext) => Promise<TOutput>;
 }

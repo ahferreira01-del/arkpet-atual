@@ -5,6 +5,7 @@ import { AssistantTypingState } from "./AssistantTypingState";
 import { AssistantFeedback } from "./AssistantFeedback";
 import { AssistantKnowledgeCitation } from "./AssistantKnowledgeCitation";
 import { VoiceInputButton } from "./VoiceInputButton";
+import { AssistantActionConfirmation } from "./AssistantActionConfirmation";
 import type {
   AssistantUIMessage,
   AssistantVisualState,
@@ -20,6 +21,8 @@ interface AssistantConversationProps {
   onSendMessage: (text: string) => void;
   onClearSession: () => void;
   onExecuteAction?: (action: AssistantUIAction) => void;
+  onConfirmSafeAction?: (pendingActionId: string) => Promise<void>;
+  onCancelSafeAction?: (pendingActionId: string) => Promise<void>;
 }
 
 export function AssistantConversation({
@@ -30,6 +33,8 @@ export function AssistantConversation({
   onSendMessage,
   onClearSession,
   onExecuteAction,
+  onConfirmSafeAction,
+  onCancelSafeAction,
 }: AssistantConversationProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -210,6 +215,14 @@ export function AssistantConversation({
                       return null;
                     })}
                   </div>
+                )}
+
+                {msg.role === "assistant" && msg.action && (
+                  <AssistantActionConfirmation
+                    action={msg.action}
+                    onConfirm={async (id) => onConfirmSafeAction?.(id)}
+                    onCancel={async (id) => onCancelSafeAction?.(id)}
+                  />
                 )}
               </div>
 

@@ -1728,6 +1728,70 @@ export function validateStorageEnforcementModePreflight(env: NodeJS.ProcessEnv =
   return mode;
 }
 
+/**
+ * R41.E: ensures assistant_pending_actions and assistant_safe_action_audit tables,
+ * columns, and indexes exist in all environments.
+ * Idempotent - safe to run on every startup.
+ */
+export async function ensureAssistantSafeActionsSchema(): Promise<void> {
+  await (db as any).execute(`
+    -- 1. assistant_pending_actions table
+    CREATE TABLE IF NOT EXISTS assistant_pending_actions (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      creche_id INTEGER NOT NULL,
+      role VARCHAR(32) NOT NULL,
+      action_type VARCHAR(64) NOT NULL,
+      target_type VARCHAR(64) NOT NULL,
+      target_id INTEGER NOT NULL,
+      validated_payload JSONB NOT NULL,
+      payload_hash VARCHAR(64) NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending_confirmation',
+      preview_data JSONB NOT NULL,
+      summary TEXT NOT NULL,
+      request_id VARCHAR(64),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL,
+      confirmed_at TIMESTAMP,
+      executed_at TIMESTAMP,
+      result_reference JSONB,
+      error_message TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS apa_user_status_idx ON assistant_pending_actions (user_id, status);
+    CREATE INDEX IF NOT EXISTS apa_creche_idx ON assistant_pending_actions (creche_id);
+    CREATE INDEX IF NOT EXISTS apa_expires_idx ON assistant_pending_actions (expires_at);
+    CREATE INDEX IF NOT EXISTS apa_target_idx ON assistant_pending_actions (target_type, target_id);
+
+    -- 2. assistant_safe_action_audit table
+    CREATE TABLE IF NOT EXISTS assistant_safe_action_audit (
+      id SERIAL PRIMARY KEY,
+      action_type VARCHAR(64) NOT NULL,
+      actor_user_id INTEGER NOT NULL,
+      actor_role VARCHAR(32) NOT NULL,
+      creche_id INTEGER NOT NULL,
+      target_type VARCHAR(64) NOT NULL,
+      target_id INTEGER NOT NULL,
+      pending_action_id VARCHAR(64),
+      request_id VARCHAR(64),
+      timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
+      result VARCHAR(32) NOT NULL,
+      before_state JSONB,
+      after_state JSONB,
+      idempotency_key VARCHAR(128) NOT NULL,
+      details TEXT,
+      denial_reason TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS asaa_actor_idx ON assistant_safe_action_audit (actor_user_id);
+    CREATE INDEX IF NOT EXISTS asaa_creche_idx ON assistant_safe_action_audit (creche_id);
+    CREATE INDEX IF NOT EXISTS asaa_pending_action_idx ON assistant_safe_action_audit (pending_action_id);
+    CREATE INDEX IF NOT EXISTS asaa_idempotency_idx ON assistant_safe_action_audit (idempotency_key);
+    CREATE INDEX IF NOT EXISTS asaa_timestamp_idx ON assistant_safe_action_audit (timestamp);
+  `);
+  console.log("[startup] assistant_safe_actions: schema verificado (idempotente).");
+}
+
 export async function initializeDatabase() {
   validateStorageEnforcementModePreflight();
   // Phase 15B: idempotent outbox schema creation (runs in all environments)
@@ -1749,6 +1813,8 @@ export async function initializeDatabase() {
   // Phase R38.A: idempotent tenant integrity schema & safe primary owner backfill
   await ensureTenantIntegritySchema();
   await backfillPrimaryOwners();
+  // Phase R41.E: safe actions pending and audit schema (runs in all environments)
+  await ensureAssistantSafeActionsSchema();
 
   await seedPlans();
 

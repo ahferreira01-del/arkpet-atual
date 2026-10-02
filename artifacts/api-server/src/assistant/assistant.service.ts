@@ -5,11 +5,13 @@ import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { AssistantGuidanceService } from "./assistant-guidance.service.js";
 import { getAIProvider, type AIProvider } from "./assistant.provider.js";
+import { AssistantSafeActionService } from "./assistant-safe-action.service.js";
 import type {
   AssistantSecurityContext,
   AssistantSession,
   AssistantMessage,
   ScreenContext,
+  AssistantSafeActionPayload,
 } from "./assistant.types.js";
 
 export class AssistantService {
@@ -88,6 +90,116 @@ export class AssistantService {
       throw err;
     }
 
+    // 1b. Deterministic Natural Language Safe Actions Resolution (R41.E)
+    // ZERO LLM involvement in confirmation/cancellation execution path (CONFIRMATION_EXECUTION_LLM_CALL = 0)
+    if (ASSISTANT_CONFIG.areSafeActionsEnabled) {
+      // Check confirmation
+      const confirmResolution = await AssistantSafeActionService.resolveAndConfirmFromInput(userMessage, context);
+      if (confirmResolution.confirmed && confirmResolution.result) {
+        const session = this.getOrCreateSession(sessionId, context);
+        session.messages.push({
+          id: `msg_${crypto.randomUUID()}`,
+          role: "user",
+          content: userMessage,
+          createdAt: new Date().toISOString(),
+        });
+
+        const actionPayload: AssistantSafeActionPayload = {
+          type: confirmResolution.result.actionType || "confirmed_action",
+          state: "executed",
+          pendingActionId: confirmResolution.result.pendingActionId,
+          targetType: confirmResolution.result.targetType,
+          targetId: confirmResolution.result.targetId,
+          result: confirmResolution.result.result,
+          summary: "Ação confirmada e executada com sucesso.",
+          executedAt: new Date().toISOString(),
+        };
+
+        const successText =
+          confirmResolution.result.actionType === "cancel_my_booking"
+            ? "Ação confirmada com sucesso! Sua reserva foi cancelada no sistema."
+            : "Ação confirmada com sucesso! A operação foi concluída no sistema.";
+
+        const assistantMsgRecord: AssistantMessage = {
+          id: `msg_${crypto.randomUUID()}`,
+          role: "assistant",
+          content: successText,
+          createdAt: new Date().toISOString(),
+          action: actionPayload,
+        };
+
+        session.messages.push(assistantMsgRecord);
+
+        AssistantAuditService.logMessageTurn(context, {
+          messageId: assistantMsgRecord.id,
+          role: "assistant",
+          provider: "deterministic_safe_action",
+          model: "deterministic_r41_e",
+          durationMs: Date.now() - startTime,
+        });
+
+        return {
+          session: { id: session.id },
+          message: assistantMsgRecord,
+        };
+      } else if (confirmResolution.ambiguous) {
+        // AMBIGUOUS_CONFIRMATION_EXECUTION = 0
+        const session = this.getOrCreateSession(sessionId, context);
+        session.messages.push({
+          id: `msg_${crypto.randomUUID()}`,
+          role: "user",
+          content: userMessage,
+          createdAt: new Date().toISOString(),
+        });
+
+        const assistantMsgRecord: AssistantMessage = {
+          id: `msg_${crypto.randomUUID()}`,
+          role: "assistant",
+          content: "Você possui mais de uma ação pendente de confirmação. Por favor, utilize os botões de confirmação do cartão da ação desejada.",
+          createdAt: new Date().toISOString(),
+        };
+
+        session.messages.push(assistantMsgRecord);
+
+        return {
+          session: { id: session.id },
+          message: assistantMsgRecord,
+        };
+      }
+
+      // Check cancellation
+      const cancelResolution = await AssistantSafeActionService.resolveAndCancelFromInput(userMessage, context);
+      if (cancelResolution.cancelled) {
+        const session = this.getOrCreateSession(sessionId, context);
+        session.messages.push({
+          id: `msg_${crypto.randomUUID()}`,
+          role: "user",
+          content: userMessage,
+          createdAt: new Date().toISOString(),
+        });
+
+        const assistantMsgRecord: AssistantMessage = {
+          id: `msg_${crypto.randomUUID()}`,
+          role: "assistant",
+          content: "A proposta de ação foi cancelada. Nenhuma alteração foi realizada no sistema.",
+          createdAt: new Date().toISOString(),
+          action: {
+            type: "cancelled_action",
+            state: "cancelled",
+            pendingActionId: cancelResolution.pendingActionId,
+            summary: "Proposta de ação cancelada pelo usuário.",
+          },
+        };
+
+        session.messages.push(assistantMsgRecord);
+
+        return {
+          session: { id: session.id },
+          message: assistantMsgRecord,
+        };
+      }
+    }
+
     // 2. Resolve Server Context
     const resolvedContext = await AssistantContextService.resolveContext(context, screenContext);
 
@@ -95,7 +207,7 @@ export class AssistantService {
     const snippets = await AssistantKnowledgeService.search(userMessage, { maxResults: 2 });
     const formattedSnippets = snippets.map((s) => `### ${s.title}\n${s.snippet}`).join("\n\n");
 
-    // 4. Build System Prompt (Hierarchy Level 1 - Level 5) (r41-c-1)
+    // 4. Build System Prompt (Hierarchy Level 1 - Level 5) (r41-e-1)
     const entityInfo = resolvedContext.screen.entity
       ? `Entidade Ativa na Tela: ${resolvedContext.screen.entity.type} "${resolvedContext.screen.entity.name || resolvedContext.screen.entity.id}" (ID: ${resolvedContext.screen.entity.id})`
       : "Nenhuma entidade específica selecionada no momento.";
@@ -116,11 +228,25 @@ Sua missão é ajudar os usuários a utilizarem o sistema com eficiência, segur
   - Para staff, foque em tarefas de rotina (check-in/out, alimentação, remédios, passeios) e NUNCA exponha relatórios financeiros ou configurações restritas a creche_admin.
   - Para tutor, foque em acompanhar seus próprios pets, faturas e agendamentos.
   - Para master_admin, foque estritamente em governança da rede de creches, métricas globais e planos.
-- Estritamente Somente Leitura (Zero Mutações de Domínio):
-  - Você é um guia orientador (GUIDE, não DO FOR ME). NUNCA execute alterações, cadastros, exclusões ou cancelamentos de reservas no banco de dados. Se solicitado, explique como o usuário pode realizar a ação na interface do sistema.
-- Prevenção de Alucinações:
-  - NUNCA invente funcionalidades que não existem no ArkPet.
-  - O banho no ArkPet é um serviço adicional vinculado a reservas ou adquirido na loja, NÃO existindo um módulo isolado de banho.
+
+=== AÇÕES SEGURAS DE DOMÍNIO (R41.E) ===
+- O ArkPet possui 7 ações de mutação controlada registradas:
+  1) cancel_my_booking (tutor cancela reserva própria elegível)
+  2) check_in_pet (staff/creche_admin realiza check-in de pet com reserva confirmada)
+  3) check_out_pet (staff/creche_admin realiza check-out de pet com reserva ativa)
+  4) complete_operational_task (staff/creche_admin conclui tarefa operacional)
+  5) complete_feeding_task (staff/creche_admin conclui tarefa de alimentação)
+  6) record_medication_administration (staff/creche_admin registra administração de remédio agendado)
+  7) complete_walk_task (staff/creche_admin conclui passeio agendado)
+- Regras Invioláveis de Segurança:
+  - NENHUMA mutação é executada diretamente a partir do texto do modelo.
+  - Para realizar qualquer uma dessas 7 ações, você DEVE invocar a respectiva ferramenta registrada.
+  - A ferramenta NÃO executa a mutação imediatamente; ela gera uma PROPOSTA/PREVIEW segura com expiração em 5 minutos que requer confirmação explícita do usuário.
+  - NUNCA afirme que a ação já foi concluída, executada ou cancelada no banco de dados antes da confirmação do usuário. Sempre apresente a proposta e instrua o usuário a confirmar.
+  - NUNCA invente ou altere a dosagem de medicamentos (MODEL_OVERRIDES_MEDICATION_DOSAGE = 0). A dosagem é definida exclusivamente no prontuário cadastrado.
+  - NUNCA execute ou proponha ações financeiras, exclusão de dados ou mutações em lote.
+  - O banho NÃO é um módulo isolado e não possui ferramenta de mutação (STANDALONE_BATH_ACTION_TOOL = 0).
+  - Para ações fora dessas 7, oriente o usuário a executá-las pela interface do sistema.
 
 === ORIENTAÇÃO DE ONBOARDING GUIADO (R41.B) ===
 - Para creche_admin, os 5 passos canônicos de configuração inicial são:
@@ -169,6 +295,7 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
 
       let uiActions = AssistantGuidanceService.sanitizeUIActions(response.uiActions);
       let onboardingSummary = response.onboarding;
+      let safeActionPayload: AssistantSafeActionPayload | undefined;
 
       if (response.toolCalls && response.toolCalls.length > 0) {
         for (const tc of response.toolCalls) {
@@ -187,6 +314,9 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
               pendingSteps: tc.result.pendingSteps,
             };
           }
+          if (tc.result && tc.result.action) {
+            safeActionPayload = tc.result.action;
+          }
         }
       }
 
@@ -199,6 +329,7 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
         toolCalls: response.toolCalls,
         uiActions: uiActions.length > 0 ? uiActions : undefined,
         onboarding: onboardingSummary,
+        action: safeActionPayload,
       };
 
       session.messages.push(assistantMsgRecord);

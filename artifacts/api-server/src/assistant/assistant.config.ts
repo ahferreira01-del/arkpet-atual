@@ -8,17 +8,26 @@ export const ASSISTANT_CONFIG = {
     if (this.isKillSwitchActive) return false;
     return process.env.AI_VOICE_ENABLED === "true";
   },
+  get areSafeActionsEnabled(): boolean {
+    if (this.isKillSwitchActive) return false;
+    return process.env.AI_SAFE_ACTIONS_ENABLED === "true";
+  },
   get isActionsEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED for domain mutations in R41.D (Reserved for R41.E)
-    return false;
+    return this.areSafeActionsEnabled;
   },
   get isKillSwitchActive(): boolean {
     return process.env.AI_ASSISTANT_KILL_SWITCH === "true";
   },
 
   // Versioning
-  promptVersion: "r41-d-1",
+  promptVersion: "r41-e-1",
   knowledgeVersion: "arkpet-v32-r41c",
+
+  // Safe Actions Configuration (R41.E)
+  safeActionConfirmationTtlSeconds: 300, // 5 minutes
+  safeActionMaxPendingPerUser: 20,
+  safeActionPreviewRateLimit: 30, // 30 req/min/user
+  safeActionExecuteRateLimit: 15, // 15 req/min/user
 
   // Voice & Speech-to-Text Configuration (R41.D)
   get voiceSttProvider(): string {

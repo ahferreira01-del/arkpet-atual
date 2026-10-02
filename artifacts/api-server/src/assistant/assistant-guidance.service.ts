@@ -219,7 +219,7 @@ export class AssistantGuidanceService {
     }
 
     return {
-      content: `Sua configuração está em ${status.progressPercent}% concluída. O próximo passo é **${currentStep.title}** (${currentStep.description}). Posso te levar até lá.`,
+      content: `Sua configuração de onboarding da creche está em ${status.progressPercent}% concluída. O próximo passo é **${currentStep.title}** (${currentStep.description}). Posso te levar até lá.`,
       uiActions: [
         { type: "navigate", route: currentStep.route },
         { type: "highlight", targetId: currentStep.target },

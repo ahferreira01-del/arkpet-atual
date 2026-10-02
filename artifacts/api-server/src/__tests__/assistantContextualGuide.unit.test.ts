@@ -128,11 +128,10 @@ describe("ArkPet R41.C — Contextual Product Guide Unit & Security Suite", () =
   // ── 1. Tool Counts & Safety Invariants ─────────────────────────────────────
   // ── 1. Tool Contract & Registry Invariants (R41C-TOOL-CONTRACT-001, R41C-ROUTE-TRUTH-001) ──
   it("R41C-TOOL-CONTRACT-001: verifies R41_C_TOOL_COUNT is exactly 8 registered read-only tools matching source", () => {
-    const tools = AssistantToolsRegistry.listTools();
-    expect(tools.length).toBe(8);
+    const readOnlyToolNames = AssistantToolsRegistry.getReadOnlyToolNames();
+    expect(readOnlyToolNames.length).toBe(8);
 
-    const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toEqual([
+    expect(readOnlyToolNames).toEqual([
       "get_onboarding_status",
       "get_current_user_context",
       "get_current_screen_context",
@@ -142,6 +141,8 @@ describe("ArkPet R41.C — Contextual Product Guide Unit & Security Suite", () =
       "get_guided_onboarding_plan",
       "get_contextual_product_guide",
     ]);
+
+    expect(AssistantToolsRegistry.getAllRegisteredToolNames().length).toBe(15);
   });
 
   it("R41C-ROUTE-TRUTH-001: validates context registry route definitions and absence of fictitious routes", () => {

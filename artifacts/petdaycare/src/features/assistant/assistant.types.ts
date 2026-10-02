@@ -28,6 +28,20 @@ export type AssistantUIAction =
       targetId: string;
     };
 
+export interface AssistantSafeActionUI {
+  type: string;
+  state: "confirmation_required" | "confirmed" | "executing" | "executed" | "cancelled" | "expired" | "failed";
+  pendingActionId?: string;
+  targetType?: string;
+  targetId?: number;
+  preview?: Record<string, any>;
+  summary?: string;
+  expiresAt?: string;
+  executedAt?: string;
+  result?: any;
+  error?: string;
+}
+
 export interface AssistantUIMessage {
   id: string;
   role: "user" | "assistant";
@@ -35,6 +49,7 @@ export interface AssistantUIMessage {
   createdAt: string;
   citations?: AssistantCitation[];
   uiActions?: AssistantUIAction[];
+  action?: AssistantSafeActionUI;
   onboarding?: {
     isComplete: boolean;
     progressPercent: number;

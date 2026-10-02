@@ -447,9 +447,9 @@ describe("ArkPet R41.D — Voice Assistant Unit & Security Test Suite", () => {
 
   // ── R41D-SEC-007: Voice does not add tools ────────────────────────────────
   it("R41D-SEC-007: verifies registered assistant tools count remains exactly 8 (VOICE_TOOL_COUNT = R41_C_TOOL_COUNT)", () => {
-    const tools = AssistantToolsRegistry.getAllRegisteredToolNames();
-    expect(tools.length).toBe(8);
-    expect(tools).toEqual([
+    const readOnlyTools = AssistantToolsRegistry.getReadOnlyToolNames();
+    expect(readOnlyTools.length).toBe(8);
+    expect(readOnlyTools).toEqual([
       "get_onboarding_status",
       "get_current_user_context",
       "get_current_screen_context",

@@ -20,6 +20,11 @@ import type {
   GuidedOnboardingStatus,
   GuidedOnboardingStep,
 } from "./assistant.types.js";
+import { AssistantSafeActionService } from "./assistant-safe-action.service.js";
+import {
+  SAFE_ACTION_REGISTRY,
+  CANONICAL_MUTATION_TOOL_NAMES,
+} from "./assistant-safe-action.registry.js";
 
 export class AssistantToolsRegistry {
   private static tools: Map<string, AssistantToolDefinition> = new Map();
@@ -34,6 +39,9 @@ export class AssistantToolsRegistry {
       name: "get_onboarding_status",
       description: "Consulta o status e progresso real dos 5 passos de onboarding da creche.",
       allowedRoles: ["creche_admin"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({}),
       confirmationRequired: false,
       auditEvent: "assistant_tool_get_onboarding_status",
@@ -50,6 +58,9 @@ export class AssistantToolsRegistry {
       name: "get_current_user_context",
       description: "Obtém dados seguros sobre o usuário autenticado na sessão atual.",
       allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({}),
       confirmationRequired: false,
       auditEvent: "assistant_tool_get_user_context",
@@ -69,6 +80,9 @@ export class AssistantToolsRegistry {
       name: "get_current_screen_context",
       description: "Obtém a rota da tela, metadados cadastrados e as ações disponíveis no contexto atual.",
       allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({
         route: z.string().optional(),
       }),
@@ -95,6 +109,9 @@ export class AssistantToolsRegistry {
       name: "search_arkpet_knowledge",
       description: "Pesquisa a documentação oficial e regras de negócio do ArkPet.",
       allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({
         query: z.string().min(1, "Termo de busca obrigatório").max(200),
         category: z.string().optional(),
@@ -119,6 +136,9 @@ export class AssistantToolsRegistry {
       name: "list_my_pets",
       description: "Lista pets autorizados. Para tutores, retorna apenas seus próprios pets; para staff/admin, retorna pets da creche.",
       allowedRoles: ["tutor", "creche_admin", "staff"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "pet",
       inputSchema: z.object({
         limit: z.number().int().min(1).max(50).default(10).optional(),
         search: z.string().max(100).optional(),
@@ -183,6 +203,9 @@ export class AssistantToolsRegistry {
       name: "list_my_bookings",
       description: "Lista reservas autorizadas. Para tutores, apenas reservas dos seus pets; para creche, reservas da unidade.",
       allowedRoles: ["tutor", "creche_admin", "staff"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "booking",
       inputSchema: z.object({
         limit: z.number().int().min(1).max(50).default(10).optional(),
         status: z.enum(["pending", "confirmed", "checked_in", "checked_out", "cancelled"]).optional(),
@@ -253,6 +276,9 @@ export class AssistantToolsRegistry {
       name: "get_guided_onboarding_plan",
       description: "Gera o plano contextual de onboarding guiado para a creche atual, recomendando ações e navegação segura para o próximo passo pendente.",
       allowedRoles: ["creche_admin"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({
         currentRoute: z.string().optional(),
       }),
@@ -272,6 +298,9 @@ export class AssistantToolsRegistry {
       name: "get_contextual_product_guide",
       description: "Obtém o guia contextual completo da tela atual, incluindo explicações de negócio para o papel autenticado e ações disponíveis.",
       allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
+      mode: "query",
+      riskLevel: "read_only",
+      targetType: "general",
       inputSchema: z.object({
         currentRoute: z.string().optional(),
       }),
@@ -300,6 +329,29 @@ export class AssistantToolsRegistry {
         };
       },
     });
+
+    // ── Safe Mutation Tools (R41.E: Exactly 7 Canonical Actions) ──────────────
+    for (const actionType of CANONICAL_MUTATION_TOOL_NAMES) {
+      const def = SAFE_ACTION_REGISTRY[actionType];
+      this.register({
+        name: def.actionType,
+        description: def.description,
+        allowedRoles: def.allowedRoles,
+        mode: "mutation",
+        riskLevel: def.riskLevel,
+        targetType: def.targetType,
+        inputSchema: def.inputSchema,
+        confirmationRequired: true,
+        auditEvent: `assistant_tool_${def.actionType}`,
+        execute: async (input, context) => {
+          return await AssistantSafeActionService.createPendingAction(
+            def.actionType,
+            input,
+            context
+          );
+        },
+      });
+    }
   }
 
   public static async getOnboardingStatus(crecheId: number): Promise<GuidedOnboardingStatus> {
@@ -346,14 +398,33 @@ export class AssistantToolsRegistry {
     return Array.from(this.tools.values());
   }
 
+  public static getAllTools(): AssistantToolDefinition[] {
+    return this.listTools();
+  }
+
   public static getAllRegisteredToolNames(): string[] {
     return Array.from(this.tools.keys());
   }
 
+  public static getMutationToolNames(): string[] {
+    return Array.from(this.tools.values())
+      .filter((t) => t.mode === "mutation")
+      .map((t) => t.name);
+  }
+
+  public static getReadOnlyToolNames(): string[] {
+    return Array.from(this.tools.values())
+      .filter((t) => t.mode !== "mutation")
+      .map((t) => t.name);
+  }
+
   public static getToolsForRole(role: string): AssistantToolDefinition[] {
-    return Array.from(this.tools.values()).filter((t) =>
-      t.allowedRoles.includes(role as any)
-    );
+    const safeActionsActive = ASSISTANT_CONFIG.areSafeActionsEnabled;
+    return Array.from(this.tools.values()).filter((t) => {
+      if (!t.allowedRoles.includes(role as any)) return false;
+      if (t.mode === "mutation" && !safeActionsActive) return false;
+      return true;
+    });
   }
 
   /**
@@ -396,7 +467,16 @@ export class AssistantToolsRegistry {
       throw new Error(`Acesso negado: o papel '${context.role}' não tem permissão para a ferramenta '${name}'`);
     }
 
-    // 4. Input Schema Validation via Zod (AI-SEC-008)
+    // 4. Safe actions feature flag / kill switch check
+    if (tool.mode === "mutation" && !ASSISTANT_CONFIG.areSafeActionsEnabled) {
+      AssistantAuditService.logSecurityDenial(context, {
+        action: name,
+        reason: "Safe actions currently disabled by configuration or kill switch",
+      });
+      throw new Error("Ações seguras do assistente estão desativadas no momento");
+    }
+
+    // 5. Input Schema Validation via Zod (AI-SEC-008)
     const parseResult = tool.inputSchema.safeParse(rawInput ?? {});
     if (!parseResult.success) {
       const errorMsg = parseResult.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join(", ");
