@@ -26,18 +26,6 @@ export function useAssistantContext(): ScreenContextInfo {
     if (path.startsWith("/bookings/new")) {
       return { feature: "booking_create", title: "Nova Reserva" };
     }
-    const bookingMatch = path.match(/^\/bookings\/([^/?#]+)/);
-    if (bookingMatch && bookingMatch[1] && bookingMatch[1] !== "new") {
-      const parsedId = Number(bookingMatch[1]);
-      return {
-        feature: "booking_detail",
-        title: "Detalhes da Reserva",
-        entity: {
-          type: "booking",
-          id: isNaN(parsedId) ? bookingMatch[1] : parsedId,
-        },
-      };
-    }
     if (path.startsWith("/bookings")) {
       return { feature: "bookings_calendar", title: "Agenda de Reservas" };
     }
@@ -50,18 +38,6 @@ export function useAssistantContext(): ScreenContextInfo {
     if (path.startsWith("/staff/qr-scanner")) {
       return { feature: "qr_scanner", title: "Leitor de QR Code" };
     }
-    const tutorMatch = path.match(/^\/tutors\/([^/?#]+)/);
-    if (tutorMatch && tutorMatch[1] && tutorMatch[1] !== "new") {
-      const parsedId = Number(tutorMatch[1]);
-      return {
-        feature: "tutor_detail",
-        title: "Ficha do Tutor",
-        entity: {
-          type: "tutor",
-          id: isNaN(parsedId) ? tutorMatch[1] : parsedId,
-        },
-      };
-    }
     if (path.startsWith("/tutors")) {
       return { feature: "tutors_directory", title: "Tutores" };
     }
@@ -73,6 +49,9 @@ export function useAssistantContext(): ScreenContextInfo {
     }
     if (path.startsWith("/tutor/financial")) {
       return { feature: "tutor_financial", title: "Minhas Faturas" };
+    }
+    if (path.startsWith("/tutor/store")) {
+      return { feature: "tutor_store", title: "Loja & Serviços" };
     }
     if (path.startsWith("/settings")) {
       return { feature: "creche_settings", title: "Configurações da Creche" };

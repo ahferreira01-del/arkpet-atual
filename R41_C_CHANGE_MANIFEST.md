@@ -1,60 +1,51 @@
 # ARKPET — R41.C CHANGE MANIFEST
-## File Modification and Creation Manifest
+## File Modification and Creation Manifest (including FINAL.1 Reconciliation)
 
 **Phase:** R41.C — Contextual Product Guide  
-**Baseline SHA:** `ba2052fa9a88ca9a9dfd1afe302f528d88db120c`  
+**Baseline SHA:** `ba2052fa9a88ca9a9dfd1afe302f528d88db120c` (R41.B-FINAL.1)  
+**Implementation SHA:** `5bba0bf23d9c1b09901fa45c0b548d76e74c2006`  
 **Date:** 2026-10-02  
-**Status:** FULLY CERTIFIED  
+**Status:** IMPLEMENTATION CERTIFIED (NOT DEPLOYED)  
 
 ---
 
-## 1. Newly Created Files
+## 1. R41.C-FINAL.1 Reconciliation Changes
 
-| File Path | Component | Purpose |
+| File Path | Component | Description of FINAL.1 Fix |
 |---|---|---|
-| `artifacts/api-server/src/assistant/assistant-context-registry.service.ts` | Backend Context Registry | Maps 20 source-verified routes to structured metadata, actions, targets, and role guidance |
-| `artifacts/api-server/src/assistant/knowledge/dashboard.md` | Product Knowledge | Authoritative product documentation on Dashboard KPIs, onboarding, and quick actions |
-| `artifacts/api-server/src/assistant/knowledge/operations.md` | Product Knowledge | Authoritative operational documentation on check-in, check-out, feeding, walks, and bath service semantics |
-| `artifacts/api-server/src/__tests__/assistantContextualGuide.unit.test.ts` | Backend Unit Tests | 24 unit and security tests covering context resolution, RBAC, anti-bypass, pronouns, and state transitions |
-| `artifacts/petdaycare/src/test/assistant-contextual-guide.test.tsx` | Frontend Unit Tests | 9 tests validating hook extraction, context header rendering, entity badge, and message transmission |
-| `R41_C_ARCHITECTURE.md` | Documentation | Architecture specification for Contextual Product Guide |
-| `R41_C_CONTEXT_REGISTRY.md` | Documentation | Inventory of 20 verified routes, action allowlists, and fallback specs |
-| `R41_C_SECURITY_MODEL.md` | Documentation | Zero-trust security model, boundary defenses, and invariant scorecard |
-| `R41_C_TEST_REPORT.md` | Documentation | Comprehensive verification report across all test suites and builds |
-| `R41_C_CHANGE_MANIFEST.md` | Documentation | Inventory of all modified and newly created files |
-| `R41_C_CERTIFICATION_REPORT.md` | Documentation | Final certification sign-off report |
+| `artifacts/api-server/src/assistant/assistant-context-registry.service.ts` | Context Registry | Aligned `/settings` screen metadata `allowedRoles` to `["creche_admin", "staff", "tutor"]` matching `NAVIGATION_CONFIG` and `App.tsx`. Added role-specific guidance for staff and tutors. |
+| `artifacts/petdaycare/src/features/assistant/useAssistantContext.ts` | Frontend Context Hook | Removed dead entity route parsers for nonexistent `/bookings/:id` and `/tutors/:id`. Preserved real `/pets/:id` pet entity extraction (`FRONTEND_FICTITIOUS_ENTITY_ROUTE_PARSERS = 0`). |
+| `artifacts/petdaycare/src/test/assistant-contextual-guide.test.tsx` | Frontend Unit Tests | Removed assertions on nonexistent `/bookings/42` and `/tutors/50`. Added tests for real `/bookings` and `/settings` routes. |
+| `artifacts/api-server/src/__tests__/assistantContextualGuide.unit.test.ts` | Backend Unit Tests | Added `R41C-TOOL-CONTRACT-001` (8 exact tool names), `R41C-ROUTE-TRUTH-001` (20 real routes, 0 fictitious), `R41C-MODEL-CONFIG-001` (Groq default model), and `R41C-RBAC-004` (settings RBAC). |
+| `R41_C_ARCHITECTURE.md` | Architecture Documentation | Reconciled 8 canonical tool names, Groq source default model `openai/gpt-oss-20b`, entity runtime scope (`pet`), and certification status. |
+| `R41_C_CONTEXT_REGISTRY.md` | Context Documentation | Rebuilt 1:1 from `AssistantProductContextRegistry.screens`. Removed fictitious `/bookings/:id` and `/tutors/:id`. Accurately documented 20 screens, route matchers, and aliases. |
+| `R41_C_SECURITY_MODEL.md` | Security Documentation | Clarified supported entity runtime (`pet`), advisory client inputs, and server-authoritative role/tenant checks. |
+| `R41_C_TEST_REPORT.md` | Test Documentation | Documented final test execution results (801 backend, 540 frontend, 80 evals, typecheck clean, dual builds clean, PWA audit 27/27). |
+| `R41_C_CHANGE_MANIFEST.md` | Manifest Documentation | Tracked implementation SHA and FINAL.1 reconciliation changes. |
+| `R41_C_CERTIFICATION_REPORT.md` | Certification Documentation | Updated sign-off status to `IMPLEMENTATION CERTIFIED (NOT DEPLOYED)`, updated tool names, model defaults, and invariant scorecard. |
 
 ---
 
-## 2. Modified Backend Files (`artifacts/api-server`)
+## 2. Core R41.C Implementation Files (from SHA `5bba0bf`)
 
-| File Path | Summary of Modifications |
-|---|---|
-| `src/assistant/assistant.types.ts` | Added `ScreenEntityContext`, enriched `ScreenContext` with `routeId`, `title`, `description`, `allowedActions`, `availableActionIds`, `guidanceTargets`, `knowledgeCategories`, `entity`. Added `ProductScreenDefinition`. |
-| `src/assistant/assistant-context.service.ts` | Re-architected with server-side database entity validation (`petsTable`), cross-tenant defense, tutor ownership guards, role RBAC enforcement, and input string sanitization against script injection. |
-| `src/assistant/assistant.config.ts` | Bumped `promptVersion` to `"r41-c-1"`, `knowledgeVersion` to `"arkpet-v32-r41c"`. Expanded `allowedGuidanceRoutes` (19 routes) and `allowedGuidanceTargets` (12 targets). |
-| `src/assistant/assistant-tools.registry.ts` | Enriched Tool 3 (`get_current_screen_context`) with structured screen & entity metadata. Added Tool 8 (`get_contextual_product_guide`). Hardened tool normalization against generic database tools (`query_database`, etc.). |
-| `src/assistant/assistant.router.ts` | Updated `messageBodySchema` to accept optional `entity` and `availableActionIds` in `screen` payload. |
-| `src/assistant/assistant.service.ts` | Updated system prompt to `r41-c-1` with contextual screen, entity, pronoun ("ele", "dele"), and role-guidance instructions. |
-| `src/assistant/assistant.provider.ts` | Enriched `MockAIProvider` with contextual handlers for all 20 screens, status semantics (`pendente`), pronoun resolution (`Thor`), ambiguous pronoun clarification, bath non-standalone module, cross-tenant rejection, and master admin scoping. |
-| `src/__tests__/assistant-evals.json` | Added 22 new contextual evaluation cases (EVAL-59 through EVAL-80, totaling 80 golden evals). |
-| `src/__tests__/assistantEvals.unit.test.ts` | Updated assertions and schema validation to support 80 eval cases and R41.C versions. |
-| `src/__tests__/assistantKnowledge.unit.test.ts` | Updated version assertions to expect `"arkpet-v32-r41c"` and `"r41-c-1"`. |
-
----
-
-## 3. Modified Frontend Files (`artifacts/petdaycare`)
-
-| File Path | Summary of Modifications |
-|---|---|
-| `src/features/assistant/assistant.types.ts` | Added `ScreenEntityInfo` and optional `entity` property to `ScreenContextInfo`. |
-| `src/features/assistant/useAssistantContext.ts` | Added route parameter parsing to extract entity IDs for `/pets/:id`, `/bookings/:id`, `/tutors/:id`. |
-| `src/features/assistant/AssistantPanel.tsx` | Transmits `entity` in `POST /api/assistant/message` body. Added subtle context title and entity indicator badge in header. Synchronized `ALLOWED_GUIDANCE_ROUTES` and `ALLOWED_GUIDANCE_TARGETS`. |
+| File Path | Component | Summary |
+|---|---|---|
+| `artifacts/api-server/src/assistant/assistant-context-registry.service.ts` | Backend Context Registry | 20 source-verified screen definitions, role guidance, and fallback handling |
+| `artifacts/api-server/src/assistant/assistant-context.service.ts` | Backend Context Resolver | Database entity validation (`petsTable`), tenant boundary checks, tutor ownership guards, script sanitization |
+| `artifacts/api-server/src/assistant/assistant.config.ts` | Configuration | Bumped `promptVersion` to `"r41-c-1"`, `knowledgeVersion` to `"arkpet-v32-r41c"`, allowlists for routes and targets |
+| `artifacts/api-server/src/assistant/assistant-tools.registry.ts` | Tool Registry | Enriched Tool 3 (`get_current_screen_context`), added Tool 8 (`get_contextual_product_guide`), hardened against SQL tools |
+| `artifacts/api-server/src/assistant/assistant.router.ts` | API Router | Accepts `entity` in `screen` payload |
+| `artifacts/api-server/src/assistant/assistant.service.ts` | Assistant Service | Updated system prompt for contextual screens, active pet entity, and pronoun resolution |
+| `artifacts/api-server/src/assistant/assistant.provider.ts` | Mock Provider | Contextual responses for all screens, status semantics, pronoun resolution, and cross-tenant rejections |
+| `artifacts/api-server/src/assistant/knowledge/dashboard.md` | Knowledge Document | Authoritative documentation on dashboard KPIs and quick actions |
+| `artifacts/api-server/src/assistant/knowledge/operations.md` | Knowledge Document | Authoritative operational documentation; asserts bath as service, not standalone module |
+| `artifacts/api-server/src/__tests__/assistant-evals.json` | Eval Dataset | Expanded to 80 golden evaluation cases |
+| `artifacts/petdaycare/src/features/assistant/AssistantPanel.tsx` | Frontend Panel | Header context title and entity indicator, transmits `entity` payload, synchronized allowlists |
 
 ---
 
-## 4. Preservation of Certified Prior Phases
+## 3. Preservation of Prior Phases
 
-- `R41.A` multi-provider architecture (`MockAIProvider`, `GroqProvider`, `OpenAIProvider`) preserved without regression.
-- `R41.B` guided onboarding copilot, `AssistantGuidanceService`, canonical single source of truth (`onboarding.service.ts`), and 5 onboarding steps preserved intact.
-- Zero breaking changes to existing REST endpoints or database schemas.
+- `R41.A` multi-provider architecture (`MockAIProvider`, `GroqProvider`, `OpenAIProvider`) preserved with zero regression (`R41_A_REGRESSION = 0`).
+- `R41.B` guided onboarding copilot, single canonical onboarding service (`onboarding.service.ts`), and 5 onboarding steps preserved with zero regression (`R41_B_REGRESSION = 0`).
+- Zero domain mutations (`R41_C_DOMAIN_MUTATION_COUNT = 0`).

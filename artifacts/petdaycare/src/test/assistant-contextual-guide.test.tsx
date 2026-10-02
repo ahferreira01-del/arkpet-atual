@@ -54,30 +54,24 @@ describe("ArkPet R41.C — Frontend Contextual Product Guide Test Suite", () => 
       });
     });
 
-    it("resolves booking detail and extracts booking entity on '/bookings/42'", () => {
-      mockCurrentLocation = "/bookings/42";
+    it("resolves bookings calendar screen context on '/bookings'", () => {
+      mockCurrentLocation = "/bookings";
       const { result } = renderHook(() => useAssistantContext());
 
-      expect(result.current.route).toBe("/bookings/42");
-      expect(result.current.feature).toBe("booking_detail");
-      expect(result.current.title).toBe("Detalhes da Reserva");
-      expect(result.current.entity).toEqual({
-        type: "booking",
-        id: 42,
-      });
+      expect(result.current.route).toBe("/bookings");
+      expect(result.current.feature).toBe("bookings_calendar");
+      expect(result.current.title).toBe("Agenda de Reservas");
+      expect(result.current.entity).toBeUndefined();
     });
 
-    it("resolves tutor detail and extracts tutor entity on '/tutors/50'", () => {
-      mockCurrentLocation = "/tutors/50";
+    it("resolves settings screen context on '/settings'", () => {
+      mockCurrentLocation = "/settings";
       const { result } = renderHook(() => useAssistantContext());
 
-      expect(result.current.route).toBe("/tutors/50");
-      expect(result.current.feature).toBe("tutor_detail");
-      expect(result.current.title).toBe("Ficha do Tutor");
-      expect(result.current.entity).toEqual({
-        type: "tutor",
-        id: 50,
-      });
+      expect(result.current.route).toBe("/settings");
+      expect(result.current.feature).toBe("creche_settings");
+      expect(result.current.title).toBe("Configurações da Creche");
+      expect(result.current.entity).toBeUndefined();
     });
   });
 

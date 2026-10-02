@@ -130,7 +130,7 @@ export class AssistantProductContextRegistry {
       feature: "creche_settings",
       title: "Configurações da Creche",
       description: "Configurações cadastrais da creche: dados gerais, telefone, endereço, capacidade e parâmetros.",
-      allowedRoles: ["creche_admin"],
+      allowedRoles: ["creche_admin", "staff", "tutor"],
       knowledgeCategories: ["settings", "onboarding"],
       availableActionIds: ["settings.save_profile", "settings.save_capacity", "settings.manage_services"],
       guidanceTargets: ["creche-profile-form", "settings-save-button"],
@@ -357,7 +357,16 @@ export class AssistantProductContextRegistry {
         return "No chat você pode trocar mensagens em tempo real com a creche ou tutores, tirar dúvidas e compartilhar fotos do dia do cãozinho.";
 
       case "settings":
-        return "Nesta tela você configura as informações cadastrais da creche, telefone, endereço, horário de funcionamento e capacidade máxima de cães.";
+        if (role === "creche_admin") {
+          return "Nesta tela você configura as informações cadastrais da creche, telefone, endereço, horário de funcionamento e capacidade máxima de cães.";
+        }
+        if (role === "staff") {
+          return "Nesta tela você pode visualizar as configurações da creche e preferências da sua conta.";
+        }
+        if (role === "tutor") {
+          return "Nesta tela você pode consultar e atualizar seus dados cadastrais, preferências de notificação e senha de acesso.";
+        }
+        return "Nesta tela você configura as informações cadastrais da creche e preferências da conta.";
 
       case "financial":
         return "Nesta tela você gerencia o fluxo financeiro da creche, faturamento por período, status de cobranças e relatórios consolidados.";

@@ -126,19 +126,76 @@ describe("ArkPet R41.C — Contextual Product Guide Unit & Security Suite", () =
   };
 
   // ── 1. Tool Counts & Safety Invariants ─────────────────────────────────────
-  it("verifies R41_C_TOOL_COUNT is exactly 8 registered read-only tools", () => {
+  // ── 1. Tool Contract & Registry Invariants (R41C-TOOL-CONTRACT-001, R41C-ROUTE-TRUTH-001) ──
+  it("R41C-TOOL-CONTRACT-001: verifies R41_C_TOOL_COUNT is exactly 8 registered read-only tools matching source", () => {
     const tools = AssistantToolsRegistry.listTools();
     expect(tools.length).toBe(8);
 
     const toolNames = tools.map((t) => t.name);
-    expect(toolNames).toContain("get_onboarding_status");
-    expect(toolNames).toContain("get_current_user_context");
-    expect(toolNames).toContain("get_current_screen_context");
-    expect(toolNames).toContain("search_arkpet_knowledge");
-    expect(toolNames).toContain("list_my_pets");
-    expect(toolNames).toContain("list_my_bookings");
-    expect(toolNames).toContain("get_guided_onboarding_plan");
-    expect(toolNames).toContain("get_contextual_product_guide");
+    expect(toolNames).toEqual([
+      "get_onboarding_status",
+      "get_current_user_context",
+      "get_current_screen_context",
+      "search_arkpet_knowledge",
+      "list_my_pets",
+      "list_my_bookings",
+      "get_guided_onboarding_plan",
+      "get_contextual_product_guide",
+    ]);
+  });
+
+  it("R41C-ROUTE-TRUTH-001: validates context registry route definitions and absence of fictitious routes", () => {
+    const definitions = AssistantProductContextRegistry.listDefinitions();
+    expect(definitions.length).toBe(20);
+
+    const routeIds = definitions.map((d) => d.routeId);
+    expect(routeIds).not.toContain("bookings.detail");
+    expect(routeIds).not.toContain("tutors.detail");
+    expect(routeIds).toContain("pets.detail");
+
+    // Verify /bookings/123 does not match a registered screen
+    const resolvedBookingDetail = AssistantProductContextRegistry.resolveScreen("/bookings/123");
+    expect(resolvedBookingDetail).toBeNull();
+
+    // Verify /tutors/123 does not match a registered screen
+    const resolvedTutorDetail = AssistantProductContextRegistry.resolveScreen("/tutors/123");
+    expect(resolvedTutorDetail).toBeNull();
+
+    // Verify /pets/101 correctly resolves pets.detail with entityType pet
+    const resolvedPetDetail = AssistantProductContextRegistry.resolveScreen("/pets/101");
+    expect(resolvedPetDetail).not.toBeNull();
+    expect(resolvedPetDetail?.definition.routeId).toBe("pets.detail");
+    expect(resolvedPetDetail?.definition.entityType).toBe("pet");
+    expect(resolvedPetDetail?.params.id).toBe("101");
+  });
+
+  it("R41C-MODEL-CONFIG-001: validates default provider and model configuration", () => {
+    const prevModel = process.env.AI_MODEL;
+    const prevProvider = process.env.AI_PROVIDER;
+
+    try {
+      delete process.env.AI_MODEL;
+      delete process.env.AI_PROVIDER;
+
+      expect(ASSISTANT_CONFIG.defaultProvider).toBe("groq");
+      expect(ASSISTANT_CONFIG.defaultModel).toBe("openai/gpt-oss-20b");
+
+      process.env.AI_MODEL = "llama-3.3-70b-versatile";
+      expect(ASSISTANT_CONFIG.defaultModel).toBe("llama-3.3-70b-versatile");
+    } finally {
+      if (prevModel !== undefined) process.env.AI_MODEL = prevModel;
+      else delete process.env.AI_MODEL;
+      if (prevProvider !== undefined) process.env.AI_PROVIDER = prevProvider;
+      else delete process.env.AI_PROVIDER;
+    }
+  });
+
+  it("R41C-RBAC-004: settings screen metadata exposes allowed roles for creche_admin, staff, and tutor", () => {
+    const settingsDef = AssistantProductContextRegistry.getDefinition("settings");
+    expect(settingsDef).toBeDefined();
+    expect(settingsDef?.allowedRoles).toContain("creche_admin");
+    expect(settingsDef?.allowedRoles).toContain("staff");
+    expect(settingsDef?.allowedRoles).toContain("tutor");
   });
 
   it("verifies R41_C_DOMAIN_MUTATION_COUNT = 0 and GENERAL_DB_ACCESS_TOOL = 0", async () => {
