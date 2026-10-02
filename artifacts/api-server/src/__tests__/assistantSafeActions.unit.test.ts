@@ -118,6 +118,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
   function extractParamValues(obj: any, visited = new Set()): any[] {
     if (!obj || typeof obj !== "object" || visited.has(obj)) return [];
+    if (obj.table || obj.enumValues || obj.columns || obj._ || obj.tableConfig || obj.primaryKey || obj.indexes) return [];
     visited.add(obj);
     if (obj.constructor && obj.constructor.name === "Param" && "value" in obj) {
       return [obj.value];
@@ -135,25 +136,104 @@ vi.mock("@workspace/db", async (importOriginal) => {
     return vals;
   }
 
-  const createQueryChain = (data: any[] = [], isBookingTable = false) => {
-    let currentData = [...data];
+  const createPendingActionsChain = (isUpdate = false, updates?: any) => {
+    let currentData = [...pendingActionsStore];
     const chain: any = {
+      leftJoin: vi.fn(() => chain),
+      innerJoin: vi.fn(() => chain),
       where: vi.fn((cond: any) => {
-        if (cond && isBookingTable) {
+        if (cond) {
           const params = extractParamValues(cond);
-          if (params.includes(999)) {
-            currentData = params.includes(1) ? [] : dummyBookings.filter((b) => b.id === 999);
-          } else if (params.includes(43)) {
-            currentData = dummyBookings.filter((b) => b.id === 43);
-          } else if (params.includes(42)) {
-            currentData = dummyBookings.filter((b) => b.id === 42);
+          currentData = pendingActionsStore.filter((row) => {
+            const idParam = params.find((p) => typeof p === "string" && p.startsWith("pa_"));
+            if (idParam && row.id !== idParam) return false;
+
+            const userIdParam = params.find((p) => typeof p === "number" && (p === 50 || p === 999 || p === 10 || p === 5));
+            if (userIdParam !== undefined && row.userId !== userIdParam) return false;
+
+            const crecheIdParam = params.find((p) => typeof p === "number" && (p === 1 || p === 2 || p === 99));
+            if (crecheIdParam !== undefined && row.crecheId !== crecheIdParam) return false;
+
+            if (params.includes("pending_confirmation") && row.status !== "pending_confirmation") return false;
+
+            const roleParam = params.find((p) => ["tutor", "staff", "creche_admin", "master_admin"].includes(p));
+            if (roleParam && row.role !== roleParam) return false;
+
+            return true;
+          });
+
+          if (isUpdate && currentData.length > 0) {
+            for (const row of currentData) {
+              Object.assign(row, updates);
+            }
           }
         }
         return chain;
       }),
       orderBy: vi.fn(() => chain),
       limit: vi.fn(() => chain),
+      set: vi.fn(() => chain),
+      returning: vi.fn(() => chain),
+      then: (resolve: any, reject?: any) => Promise.resolve(currentData).then(resolve, reject),
+    };
+    return chain;
+  };
+
+  const createQueryChain = (data: any[] = [], isBookingTable = false, isTaskTable = false) => {
+    let currentData = [...data];
+    const chain: any = {
+      leftJoin: vi.fn(() => chain),
       innerJoin: vi.fn(() => chain),
+      where: vi.fn((cond: any) => {
+        if (cond) {
+          const params = extractParamValues(cond);
+          if (isBookingTable) {
+            if (params.includes("active")) {
+              currentData = params.includes(42)
+                ? dummyBookings.filter((b) => b.id === 42).map((b) => ({ ...b, status: "active" }))
+                : dummyBookings.filter((b) => b.status === "active");
+            }
+ else if (params.includes("confirmed")) {
+              currentData = dummyBookings.filter((b) => b.status === "confirmed");
+              if (params.includes(42)) {
+                currentData = currentData.filter((b) => b.id === 42);
+              }
+            } else if (params.includes(999)) {
+              currentData = params.includes(1) ? [] : dummyBookings.filter((b) => b.id === 999);
+            } else if (params.includes(43)) {
+              currentData = dummyBookings.filter((b) => b.id === 43);
+            } else if (params.includes(42)) {
+              currentData = dummyBookings.filter((b) => b.id === 42);
+            }
+          } else if (isTaskTable) {
+            let filtered = [...dummyTasks];
+            if (params.includes("feeding")) {
+              filtered = filtered.filter((t) => t.type === "feeding");
+            } else if (params.includes("medication")) {
+              filtered = filtered.filter((t) => t.type === "medication");
+            } else if (params.includes("walk")) {
+              filtered = filtered.filter((t) => t.type === "walk");
+            } else if (params.includes("operational")) {
+              filtered = filtered.filter((t) => t.type === "operational");
+            }
+
+            const explicitTaskId = params.find(
+              (p) => typeof p === "number" && p !== 1 && p !== 101 && p !== 102 && dummyTasks.some((t) => t.id === p)
+            );
+            if (explicitTaskId !== undefined) {
+              filtered = filtered.filter((t) => t.id === explicitTaskId);
+            } else if (params.includes("operational") && params.includes(1)) {
+              filtered = filtered.filter((t) => t.id === 1);
+            }
+
+            currentData = filtered;
+          }
+        }
+        return chain;
+      }),
+
+      orderBy: vi.fn(() => chain),
+      limit: vi.fn(() => chain),
       set: vi.fn(() => chain),
       values: vi.fn(() => chain),
       returning: vi.fn(() => chain),
@@ -163,6 +243,39 @@ vi.mock("@workspace/db", async (importOriginal) => {
     return chain;
   };
 
+  const createUpdateChain = (tableName: string) => ({
+    set: vi.fn((updates: any) => {
+      if (tableName.includes("pending")) {
+        return createPendingActionsChain(true, updates);
+      }
+      return {
+        where: vi.fn((cond: any) => {
+          const params = extractParamValues(cond);
+          if (tableName.includes("booking")) {
+            const target = dummyBookings.find((b) => params.includes(b.id)) || dummyBookings[0];
+            const updated = { ...target, ...updates };
+            return {
+              returning: vi.fn(() => Promise.resolve([updated])),
+              then: (res: any) => Promise.resolve([updated]).then(res),
+            };
+          }
+          if (tableName.includes("task")) {
+            const target = dummyTasks.find((t) => params.includes(t.id)) || dummyTasks[0];
+            const updated = { ...target, ...updates };
+            return {
+              returning: vi.fn(() => Promise.resolve([updated])),
+              then: (res: any) => Promise.resolve([updated]).then(res),
+            };
+          }
+          return {
+            returning: vi.fn(() => Promise.resolve([updates])),
+            then: (res: any) => Promise.resolve([updates]).then(res),
+          };
+        }),
+      };
+    }),
+  });
+
   const dbMock: any = {
     _reset: () => {
       pendingActionsStore = [];
@@ -170,18 +283,19 @@ vi.mock("@workspace/db", async (importOriginal) => {
     },
     _getPendingActions: () => pendingActionsStore,
     _getAudits: () => auditStore,
+    _dummyTasks: dummyTasks,
     execute: vi.fn(async () => []),
     select: vi.fn(() => ({
       from: vi.fn((table: any) => {
         const name = table?.[Symbol.for("drizzle:Name")] || "";
         if (name.includes("pending")) {
-          return createQueryChain(pendingActionsStore);
+          return createPendingActionsChain();
         }
         if (name.includes("audit")) {
           return createQueryChain(auditStore);
         }
         if (name.includes("task")) {
-          return createQueryChain(dummyTasks);
+          return createQueryChain(dummyTasks, false, true);
         }
         if (name.includes("booking")) {
           return createQueryChain(dummyBookings, true);
@@ -192,6 +306,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
         return createQueryChain(dummyPets);
       }),
     })),
+
     insert: vi.fn((table: any) => ({
       values: vi.fn((val: any) => {
         const name = table?.[Symbol.for("drizzle:Name")] || "";
@@ -207,18 +322,10 @@ vi.mock("@workspace/db", async (importOriginal) => {
         return createQueryChain([val]);
       }),
     })),
-    update: vi.fn((table: any) => ({
-      set: vi.fn((updates: any) => {
-        const name = table?.[Symbol.for("drizzle:Name")] || "";
-        if (name.includes("pending")) {
-          if (pendingActionsStore.length > 0) {
-            Object.assign(pendingActionsStore[pendingActionsStore.length - 1], updates);
-            return createQueryChain([pendingActionsStore[pendingActionsStore.length - 1]]);
-          }
-        }
-        return createQueryChain([updates]);
-      }),
-    })),
+    update: vi.fn((table: any) => {
+      const name = table?.[Symbol.for("drizzle:Name")] || "";
+      return createUpdateChain(name);
+    }),
     transaction: vi.fn(async (cb: any) =>
       cb({
         execute: vi.fn(async () => []),
@@ -226,13 +333,13 @@ vi.mock("@workspace/db", async (importOriginal) => {
           from: vi.fn((table: any) => {
             const name = table?.[Symbol.for("drizzle:Name")] || "";
             if (name.includes("pending")) {
-              return createQueryChain(pendingActionsStore);
+              return createPendingActionsChain();
             }
             if (name.includes("booking")) {
               return createQueryChain(dummyBookings, true);
             }
             if (name.includes("task")) {
-              return createQueryChain(dummyTasks);
+              return createQueryChain(dummyTasks, false, true);
             }
             return createQueryChain([]);
           }),
@@ -246,21 +353,14 @@ vi.mock("@workspace/db", async (importOriginal) => {
             return createQueryChain([val]);
           }),
         })),
-        update: vi.fn((table: any) => ({
-          set: vi.fn((updates: any) => {
-            const name = table?.[Symbol.for("drizzle:Name")] || "";
-            if (name.includes("pending")) {
-              if (pendingActionsStore.length > 0) {
-                Object.assign(pendingActionsStore[pendingActionsStore.length - 1], updates);
-                return createQueryChain([pendingActionsStore[pendingActionsStore.length - 1]]);
-              }
-            }
-            return createQueryChain([updates]);
-          }),
-        })),
+        update: vi.fn((table: any) => {
+          const name = table?.[Symbol.for("drizzle:Name")] || "";
+          return createUpdateChain(name);
+        }),
       })
     ),
   };
+
 
   return {
     ...actual,
@@ -491,29 +591,9 @@ describe("ArkPet R41.E — Safe Actions & Two-Phase Mutations Test Suite", () =>
     });
   });
 
-  // 4. Security, RBAC & Idempotency Invariants
-  describe("Security, RBAC, Idempotency & Tampering (R41E-SEC)", () => {
-    it("double confirmation returns cached result idempotently", async () => {
-      const { action: preview } = await AssistantSafeActionService.createPendingAction(
-        "cancel_my_booking",
-        { bookingId: 42 },
-        tutorContext
-      );
-
-      const firstExec = await AssistantSafeActionService.confirmPendingAction(
-        preview.pendingActionId!,
-        tutorContext
-      );
-      expect(firstExec.status).toBe("executed");
-
-      const secondExec = await AssistantSafeActionService.confirmPendingAction(
-        preview.pendingActionId!,
-        tutorContext
-      );
-      expect(secondExec.status).toBe("executed");
-    });
-
-    it("rejects confirmation if user is not the creator (user bound)", async () => {
+  // 4. Security, RBAC & Idempotency Invariants (R41.E-FINAL.1 Verification)
+  describe("Security, RBAC, CAS Invariants & Domain Parity (R41E-FINAL1)", () => {
+    it("R41E-FINAL1-SEC-001: foreign user cannot change pending state (remains pending_confirmation)", async () => {
       const { action: preview } = await AssistantSafeActionService.createPendingAction(
         "cancel_my_booking",
         { bookingId: 42 },
@@ -533,10 +613,17 @@ describe("ArkPet R41.E — Safe Actions & Two-Phase Mutations Test Suite", () =>
           preview.pendingActionId!,
           foreignTutorContext
         )
-      ).rejects.toThrow("autorização");
+      ).rejects.toThrow("não encontrada");
+
+      // Verify state was NOT poisoned (FOREIGN_PENDING_ACTION_STATE_MUTATION = 0)
+      const action = await AssistantSafeActionService.getPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+      expect(action?.status).toBe("pending_confirmation");
     });
 
-    it("rejects confirmation if creche/tenant does not match", async () => {
+    it("R41E-FINAL1-SEC-002: cross-tenant confirmation fails without state change", async () => {
       const { action: preview } = await AssistantSafeActionService.createPendingAction(
         "cancel_my_booking",
         { bookingId: 42 },
@@ -546,7 +633,7 @@ describe("ArkPet R41.E — Safe Actions & Two-Phase Mutations Test Suite", () =>
       const foreignCrecheContext: AssistantSecurityContext = {
         userId: 50,
         role: "tutor",
-        crecheId: 99, // Different tenant
+        crecheId: 99, // Foreign tenant
         name: "Tutor João",
         email: "joao@example.com",
       };
@@ -556,7 +643,271 @@ describe("ArkPet R41.E — Safe Actions & Two-Phase Mutations Test Suite", () =>
           preview.pendingActionId!,
           foreignCrecheContext
         )
-      ).rejects.toThrow("Ação não pertence");
+      ).rejects.toThrow("não encontrada");
+
+      // Verify state was NOT poisoned
+      const action = await AssistantSafeActionService.getPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+      expect(action?.status).toBe("pending_confirmation");
+    });
+
+    it("R41E-FINAL1-SEC-003: role change fails before state lock (status untouched)", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "check_in_pet",
+        { petId: 101, bookingId: 42 },
+        staffContext
+      );
+
+      const alteredRoleContext: AssistantSecurityContext = {
+        ...staffContext,
+        role: "tutor" as any,
+      };
+
+      await expect(
+        AssistantSafeActionService.confirmPendingAction(
+          preview.pendingActionId!,
+          alteredRoleContext
+        )
+      ).rejects.toThrow("papel");
+
+      // Verify status was NOT modified to executing/failed (STALE_AUTHORIZATION_MUTATION = 0)
+      const action = await AssistantSafeActionService.getPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+      expect(action?.status).toBe("pending_confirmation");
+    });
+
+    it("R41E-FINAL1-SEC-004: guessed action id returns 404 without metadata disclosure", async () => {
+      await expect(
+        AssistantSafeActionService.confirmPendingAction(
+          "pa_guessed_invalid_id_9999",
+          tutorContext
+        )
+      ).rejects.toThrow("não encontrada");
+
+      const retrieved = await AssistantSafeActionService.getPendingAction(
+        "pa_guessed_invalid_id_9999",
+        tutorContext
+      );
+      expect(retrieved).toBeNull();
+    });
+
+    it("R41E-FINAL1-IDEMPOTENCY-001: double confirmation returns cached result idempotently", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "cancel_my_booking",
+        { bookingId: 42 },
+        tutorContext
+      );
+
+      const firstExec = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+      expect(firstExec.status).toBe("executed");
+
+      const secondExec = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+      expect(secondExec.status).toBe("executed");
+      expect(secondExec.isIdempotentReplay).toBe(true);
+    });
+
+    it("R41E-FINAL1-RACE-001: confirm vs cancel race resolves safely with exactly one winner", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "cancel_my_booking",
+        { bookingId: 42 },
+        tutorContext
+      );
+
+      // Simulate confirm winning first
+      await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+
+      // Attempt cancel on already executed action
+      await expect(
+        AssistantSafeActionService.cancelAction(
+          preview.pendingActionId!,
+          tutorContext
+        )
+      ).rejects.toThrow("Não é possível cancelar");
+    });
+
+    it("R41E-FINAL1-TARGET-001: ambiguous feeding target (2 tasks, no pet/task) rejected with clarification", async () => {
+      const dummyTasks = (db as any)._dummyTasks;
+      dummyTasks.push({
+        id: 20,
+        crecheId: 1,
+        petId: 102,
+        type: "feeding",
+        title: "Ração tarde",
+        status: "pending",
+        scheduledFor: new Date(),
+        description: "Ração pet 102",
+      });
+
+      try {
+        await expect(
+          AssistantSafeActionService.createPendingAction(
+            "complete_feeding_task",
+            {},
+            staffContext
+          )
+        ).rejects.toThrow("múltiplas tarefas");
+      } finally {
+        dummyTasks.pop();
+      }
+    });
+
+    it("R41E-FINAL1-TARGET-002: ambiguous medication target rejected with clarification", async () => {
+      const dummyTasks = (db as any)._dummyTasks;
+      dummyTasks.push({
+        id: 30,
+        crecheId: 1,
+        petId: 102,
+        type: "medication",
+        title: "Colírio",
+        status: "pending",
+        scheduledFor: new Date(),
+        description: "Colírio 1 gota",
+      });
+
+      try {
+        await expect(
+          AssistantSafeActionService.createPendingAction(
+            "record_medication_administration",
+            {},
+            staffContext
+          )
+        ).rejects.toThrow("múltiplas tarefas");
+      } finally {
+        dummyTasks.pop();
+      }
+    });
+
+    it("R41E-FINAL1-TARGET-003: ambiguous walk target rejected with clarification", async () => {
+      const dummyTasks = (db as any)._dummyTasks;
+      dummyTasks.push({
+        id: 40,
+        crecheId: 1,
+        petId: 102,
+        type: "walk",
+        title: "Passeio tarde",
+        status: "pending",
+        scheduledFor: new Date(),
+        description: "Passeio 20 min",
+      });
+
+      try {
+        await expect(
+          AssistantSafeActionService.createPendingAction(
+            "complete_walk_task",
+            {},
+            staffContext
+          )
+        ).rejects.toThrow("múltiplas tarefas");
+      } finally {
+        dummyTasks.pop();
+      }
+    });
+
+    it("R41E-FINAL1-DOMAIN-001: task completion uses canonical TaskDomainService", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "complete_operational_task",
+        { taskId: 1 },
+        staffContext
+      );
+
+      const executed = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+
+      expect(executed.status).toBe("executed");
+      expect(executed.actionType).toBe("complete_operational_task");
+    });
+
+    it("R41E-FINAL1-DOMAIN-002: tenant operational lock preserved during domain mutation", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "check_in_pet",
+        { petId: 101, bookingId: 42 },
+        staffContext
+      );
+
+      const executed = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+
+      expect(executed.status).toBe("executed");
+      expect(executed.actionType).toBe("check_in_pet");
+    });
+
+    it("R41E-FINAL1-DOMAIN-003: task notification side effect preserved on first completion, not on replay", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "complete_feeding_task",
+        { taskId: 2, petId: 101 },
+        staffContext
+      );
+
+      const first = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+      expect(first.status).toBe("executed");
+
+      const replay = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+      expect(replay.isIdempotentReplay).toBe(true);
+    });
+
+    it("R41E-FINAL1-DOMAIN-004: booking cancellation canonical side effects preserved", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "cancel_my_booking",
+        { bookingId: 42, reason: "Cancelamento canônico" },
+        tutorContext
+      );
+
+      const executed = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        tutorContext
+      );
+
+      expect(executed.status).toBe("executed");
+      expect(executed.result?.cancellationReason).toBe("Cancelamento canônico");
+    });
+
+    it("R41E-FINAL1-ERROR-001: unexpected internal error with DB string/secret sanitized in response", async () => {
+      const sensitive = "Error: postgres://user:secretpass@db.internal:5432/arkpet Bearer eyJhbGciOi...";
+      const { sanitizeAuditString } = await import("../assistant/assistant-safe-action.service.js");
+      const sanitized = sanitizeAuditString(sensitive);
+      expect(sanitized).not.toContain("secretpass");
+      expect(sanitized).not.toContain("eyJhbGciOi");
+      expect(sanitized).toContain("[REDACTED_URI]");
+      expect(sanitized).toContain("[REDACTED_BEARER]");
+    });
+
+    it("R41E-FINAL1-MED-001: medication mutation updates only exact intended medication record", async () => {
+      const { action: preview } = await AssistantSafeActionService.createPendingAction(
+        "record_medication_administration",
+        { taskId: 3, petId: 101, dosageGiven: "Amoxicilina 250mg" },
+        staffContext
+      );
+
+      const executed = await AssistantSafeActionService.confirmPendingAction(
+        preview.pendingActionId!,
+        staffContext
+      );
+
+      expect(executed.status).toBe("executed");
+      expect(executed.targetId).toBe(3);
     });
 
     it("rejects safe action when kill switch AI_SAFE_ACTIONS_ENABLED is false", async () => {

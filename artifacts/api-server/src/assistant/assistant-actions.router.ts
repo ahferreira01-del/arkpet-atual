@@ -20,14 +20,51 @@ function buildSecurityContext(req: AuthRequest): AssistantSecurityContext {
   };
 }
 
+function sendSafeError(
+  res: Response,
+  err: any,
+  defaultCode: string,
+  fallbackMessage: string,
+  requestId?: string
+): void {
+  const status =
+    typeof err?.statusCode === "number"
+      ? err.statusCode
+      : typeof err?.status === "number"
+      ? err.status
+      : 500;
+
+  if (status >= 500) {
+    res.status(status).json({
+      error: "Ocorreu um erro interno ao processar a ação.",
+      code: "internal_error",
+      requestId: requestId || undefined,
+    });
+    return;
+  }
+
+  // Client-side / domain error (4xx)
+  let safeMessage = err?.message || fallbackMessage;
+  if (/postgres:\/\/|bearer\s+|password\s*=|select\s+.+from/i.test(safeMessage)) {
+    safeMessage = fallbackMessage;
+  }
+
+  res.status(status).json({
+    error: safeMessage,
+    code: err?.code || defaultCode,
+    requestId: requestId || undefined,
+  });
+}
+
 /**
  * POST /api/assistant/actions/preview
  * Creates a server-bound, expiring pending mutation proposal.
  * Zero domain writes.
  */
 assistantActionsRouter.post("/preview", async (req: AuthRequest, res: Response): Promise<void> => {
+  let context: AssistantSecurityContext | undefined;
   try {
-    const context = buildSecurityContext(req);
+    context = buildSecurityContext(req);
     const { actionType, payload } = req.body || {};
 
     if (!actionType || typeof actionType !== "string") {
@@ -43,11 +80,7 @@ assistantActionsRouter.post("/preview", async (req: AuthRequest, res: Response):
 
     res.status(200).json(result);
   } catch (err: any) {
-    const status = err.statusCode || err.status || 500;
-    res.status(status).json({
-      error: err.message || "Erro ao gerar proposta de ação",
-      code: err.code || "preview_failed",
-    });
+    sendSafeError(res, err, "preview_failed", "Erro ao gerar proposta de ação", context?.requestId);
   }
 });
 
@@ -57,11 +90,12 @@ assistantActionsRouter.post("/preview", async (req: AuthRequest, res: Response):
  * Deterministic domain service execution. Zero LLM calls. Idempotent.
  */
 assistantActionsRouter.post("/:pendingActionId/confirm", async (req: AuthRequest, res: Response): Promise<void> => {
+  let context: AssistantSecurityContext | undefined;
   try {
-    const context = buildSecurityContext(req);
-    const pendingActionId = req.params.pendingActionId;
+    context = buildSecurityContext(req);
+    const pendingActionId = String(req.params.pendingActionId);
 
-    if (!pendingActionId || typeof pendingActionId !== "string") {
+    if (!pendingActionId || pendingActionId === "undefined") {
       res.status(400).json({ error: "pendingActionId é obrigatório", code: "missing_action_id" });
       return;
     }
@@ -70,11 +104,7 @@ assistantActionsRouter.post("/:pendingActionId/confirm", async (req: AuthRequest
 
     res.status(200).json(result);
   } catch (err: any) {
-    const status = err.statusCode || err.status || 500;
-    res.status(status).json({
-      error: err.message || "Erro ao executar ação",
-      code: err.code || "execution_failed",
-    });
+    sendSafeError(res, err, "execution_failed", "Erro ao executar ação", context?.requestId);
   }
 });
 
@@ -84,11 +114,12 @@ assistantActionsRouter.post("/:pendingActionId/confirm", async (req: AuthRequest
  * Zero domain writes.
  */
 assistantActionsRouter.post("/:pendingActionId/cancel", async (req: AuthRequest, res: Response): Promise<void> => {
+  let context: AssistantSecurityContext | undefined;
   try {
-    const context = buildSecurityContext(req);
-    const pendingActionId = req.params.pendingActionId;
+    context = buildSecurityContext(req);
+    const pendingActionId = String(req.params.pendingActionId);
 
-    if (!pendingActionId || typeof pendingActionId !== "string") {
+    if (!pendingActionId || pendingActionId === "undefined") {
       res.status(400).json({ error: "pendingActionId é obrigatório", code: "missing_action_id" });
       return;
     }
@@ -97,11 +128,7 @@ assistantActionsRouter.post("/:pendingActionId/cancel", async (req: AuthRequest,
 
     res.status(200).json(result);
   } catch (err: any) {
-    const status = err.statusCode || err.status || 500;
-    res.status(status).json({
-      error: err.message || "Erro ao cancelar ação",
-      code: err.code || "cancel_failed",
-    });
+    sendSafeError(res, err, "cancel_failed", "Erro ao cancelar ação", context?.requestId);
   }
 });
 
@@ -110,11 +137,13 @@ assistantActionsRouter.post("/:pendingActionId/cancel", async (req: AuthRequest,
  * Safe status check of a pending action.
  */
 assistantActionsRouter.get("/:pendingActionId", async (req: AuthRequest, res: Response): Promise<void> => {
+  let context: AssistantSecurityContext | undefined;
   try {
-    const context = buildSecurityContext(req);
-    const pendingActionId = req.params.pendingActionId;
+    context = buildSecurityContext(req);
+    const pendingActionId = String(req.params.pendingActionId);
 
     const action = await AssistantSafeActionService.getPendingAction(pendingActionId, context);
+
     if (!action) {
       res.status(404).json({ error: "Ação não encontrada", code: "not_found" });
       return;
@@ -133,10 +162,7 @@ assistantActionsRouter.get("/:pendingActionId", async (req: AuthRequest, res: Re
       executedAt: action.executedAt,
     });
   } catch (err: any) {
-    const status = err.statusCode || err.status || 500;
-    res.status(status).json({
-      error: err.message || "Erro ao consultar ação",
-      code: err.code || "query_failed",
-    });
+    sendSafeError(res, err, "query_failed", "Erro ao consultar ação", context?.requestId);
   }
 });
+

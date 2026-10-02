@@ -135,9 +135,43 @@ vi.mock("@workspace/db", async (importOriginal) => {
     },
   ];
 
-  const createQueryChain = (data: any[] = []) => {
+  function extractParamValues(obj: any, visited = new Set()): any[] {
+    if (!obj || typeof obj !== "object" || visited.has(obj)) return [];
+    visited.add(obj);
+    if (obj.constructor && obj.constructor.name === "Param" && "value" in obj) {
+      return [obj.value];
+    }
+    const vals: any[] = [];
+    if (Array.isArray(obj)) {
+      for (const item of obj) vals.push(...extractParamValues(item, visited));
+    } else {
+      for (const key of Object.keys(obj)) {
+        if (key !== "table" && key !== "column" && key !== "schema") {
+          vals.push(...extractParamValues(obj[key], visited));
+        }
+      }
+    }
+    return vals;
+  }
+
+  const createQueryChain = (data: any[] = [], isTask = false) => {
+    let currentData = [...data];
     const chain: any = {
-      where: vi.fn(() => chain),
+      where: vi.fn((cond: any) => {
+        if (cond && isTask) {
+          const params = extractParamValues(cond);
+          if (params.includes("feeding")) {
+            currentData = dummyTasks.filter((t) => t.type === "feeding");
+          } else if (params.includes("medication")) {
+            currentData = dummyTasks.filter((t) => t.type === "medication");
+          } else if (params.includes("walk")) {
+            currentData = dummyTasks.filter((t) => t.type === "walk");
+          } else if (params.includes("operational")) {
+            currentData = dummyTasks.filter((t) => t.type === "operational");
+          }
+        }
+        return chain;
+      }),
       orderBy: vi.fn(() => chain),
       limit: vi.fn(() => chain),
       innerJoin: vi.fn(() => chain),
@@ -145,7 +179,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
       values: vi.fn(() => chain),
       returning: vi.fn(() => chain),
       for: vi.fn(() => chain),
-      then: (resolve: any, reject?: any) => Promise.resolve(data).then(resolve, reject),
+      then: (resolve: any, reject?: any) => Promise.resolve(currentData).then(resolve, reject),
     };
     return chain;
   };
@@ -158,7 +192,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
           return createQueryChain(dummyPendingActions);
         }
         if (name.includes("task")) {
-          return createQueryChain(dummyTasks);
+          return createQueryChain(dummyTasks, true);
         }
         if (name.includes("booking")) {
           return createQueryChain(dummyBookings);
@@ -191,7 +225,7 @@ vi.mock("@workspace/db", async (importOriginal) => {
             return createQueryChain(dummyBookings);
           }
           if (name.includes("task")) {
-            return createQueryChain(dummyTasks);
+            return createQueryChain(dummyTasks, true);
           }
           return createQueryChain([]);
         }),

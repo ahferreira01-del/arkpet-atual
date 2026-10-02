@@ -28,6 +28,7 @@ import { requireActiveSubscription } from "../middlewares/requireActiveSubscript
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { logFinancialAudit } from "../services/audit.js";
 import { hasOverdueInvoices, BillingService } from "../services/billing.js";
+import { BookingDomainService } from "../services/bookingDomainService.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 // Fase 7: API interna do CreditService — Booking não conhece mais as tabelas financeiras
 import {
@@ -918,136 +919,16 @@ router.put("/:bookingId", async (req: AuthRequest, res, next) => {
         }, tx);
       }
 
-      // Handle cancellation logic
+      // Handle cancellation logic via canonical BookingDomainService
       if (status === "cancelled" && existing.status !== "cancelled") {
-        // Guard (BEFORE any credit restoration or status change): block
-        // cancellation when ANY invoice item of this booking — primary service
-        // charge OR add-on — belongs to a paid/refunded invoice. A processed
-        // payment cannot be silently voided; it requires an explicit admin
-        // refund/credit-note workflow first.
-        {
-          const paidItems = await tx
-            .select({ itemId: invoiceItemsTable.id })
-            .from(invoiceItemsTable)
-            .innerJoin(invoicesTable, eq(invoiceItemsTable.invoiceId, invoicesTable.id))
-            .where(
-              and(
-                eq(invoiceItemsTable.bookingId, bookingId),
-                inArray(invoicesTable.status, ["paid", "refunded"])
-              )
-            )
-            .limit(1);
-          if (paidItems.length > 0) {
-            throw clientError(
-              "Não é possível cancelar — a reserva possui cobranças com pagamento já processado. Solicite o estorno manualmente antes de cancelar.",
-              422
-            );
-          }
-        }
-
-        // Fase 4+7: CreditService restaura créditos de pacote (com piggyback) e serviço
-        // usando GREATEST(0, ...) para evitar saldos negativos (underflow protection)
-        await restoreBookingPackageCredits(bookingId, tx, crecheId);
-        await restoreBookingServiceCredits(bookingId, tx, crecheId);
-
-        // Restaurar créditos de add-ons e cancelar os booking_services
-        if (existing.tutorId) {
-          await restoreAdditionalServices(bookingId, existing.tutorId, crecheId, tx);
-        }
-
-        // Cancelar faturas vinculadas à reserva de forma segura:
-        // em vez de void incondicional por invoices.bookingId (que poderia destruir
-        // invoices mensais compartilhados), removemos os itens específicos desta reserva
-        // e só anulamos a invoice se ela ficar sem nenhum item restante.
-        {
-          // Find all invoice_items still linked to this booking (add-on items were
-          // already removed by restoreAdditionalServices above).
-          const bookingItems = await tx
-            .select({
-              id: invoiceItemsTable.id,
-              invoiceId: invoiceItemsTable.invoiceId,
-              amount: invoiceItemsTable.amount,
-              quantity: invoiceItemsTable.quantity,
-            })
-            .from(invoiceItemsTable)
-            .where(eq(invoiceItemsTable.bookingId, bookingId));
-
-          // Group by invoiceId
-          const byInvoice = new Map<number, typeof bookingItems>();
-          for (const item of bookingItems) {
-            if (!byInvoice.has(item.invoiceId)) byInvoice.set(item.invoiceId, []);
-            byInvoice.get(item.invoiceId)!.push(item);
-          }
-
-          for (const [affectedInvoiceId, items] of byInvoice) {
-            const [invoice] = await tx
-              .select({
-                id: invoicesTable.id,
-                amount: invoicesTable.amount,
-                status: invoicesTable.status,
-                dueDate: invoicesTable.dueDate,
-              })
-              .from(invoicesTable)
-              .where(eq(invoicesTable.id, affectedInvoiceId))
-              .limit(1);
-
-            // Only a not-yet-due pending invoice is editable. Every other state
-            // is immutable financial history.
-            if (
-              !invoice ||
-              invoice.status !== "pending" ||
-              invoice.dueDate < getBusinessDate()
-            ) continue;
-
-            // Remove this booking's remaining items and tally the amount to subtract
-            let amountToRemove = 0;
-            for (const item of items) {
-              amountToRemove += parseFloat(item.amount) * (item.quantity ?? 1);
-              await tx.delete(invoiceItemsTable).where(eq(invoiceItemsTable.id, item.id));
-            }
-
-            // Count how many items remain on this invoice after removal
-            const [{ remaining }] = await tx
-              .select({ remaining: count(invoiceItemsTable.id) })
-              .from(invoiceItemsTable)
-              .where(eq(invoiceItemsTable.invoiceId, affectedInvoiceId));
-
-            if (Number(remaining) === 0) {
-              // Invoice is now empty — void it entirely
-              await tx.update(invoicesTable)
-                .set({ status: "voided", amount: "0.00", updatedAt: new Date() })
-                .where(eq(invoicesTable.id, affectedInvoiceId));
-            } else {
-              // Shared invoice still has other charges — only reduce the amount
-              const newTotal = Math.max(0, parseFloat(invoice.amount) - amountToRemove);
-              await tx.update(invoicesTable)
-                .set({ amount: newTotal.toFixed(2), updatedAt: new Date() })
-                .where(eq(invoicesTable.id, affectedInvoiceId));
-            }
-          }
-        }
-
-        // Fase 12: audit log movido para dentro do bloco (antes executava em todo status change)
-        await logFinancialAudit({
-          crecheId,
-          userId: req.user!.id,
-          action: "credits_deduct",
-          referenceId: bookingId,
-          referenceType: "bookings",
-          details: "Estorno de créditos devido a cancelamento da reserva."
-        }, tx);
-
-        // R37.C2A: Release reserved promotional campaigns upon booking cancellation
-        await CrecheCampaignReservationService.releaseBookingCampaigns(
-          tx,
-          crecheId,
+        await BookingDomainService.cancelBooking({
           bookingId,
-          "booking_cancelled",
-          {
-            userId: req.user!.id,
-            role: req.user!.role,
-          }
-        );
+          crecheId,
+          actorUserId: req.user!.id,
+          actorRole: req.user!.role,
+          reason: req.body?.cancellationReason,
+          tx,
+        });
       }
 
 
@@ -1346,145 +1227,12 @@ router.post("/:bookingId/checkin", requireRole("staff", "creche_admin", "master_
   const bookingId = parseInt(String(req.params.bookingId));
 
   try {
-    const booking = await db.transaction(async (tx) => {
-      await acquireTenantOperationalLock(crecheId, tx);
-
-      const [row] = await tx
-        .select({
-          booking: bookingsTable,
-          catalogueItemType: catalogueItemsTable.type,
-        })
-        .from(bookingsTable)
-        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-        .where(
-          and(
-            eq(bookingsTable.crecheId, crecheId),
-            eq(bookingsTable.id, bookingId),
-          ),
-        )
-        .limit(1);
-      if (!row) {
-        throw clientError("Reserva não encontrada", 404);
-      }
-      const existingBooking = row.booking;
-      const isCurrentService = isServiceBookingBackend(existingBooking.type, row.catalogueItemType);
-      if (existingBooking.status !== "confirmed") {
-        throw clientError("Apenas reservas confirmadas podem realizar check-in.", 400);
-      }
-
-      // Check for expired rabies vaccine
-      const { vaccinesTable } = await import("@workspace/db/schema");
-      const { ilike, or, lte } = await import("drizzle-orm");
-      const [expiredVaccine] = await tx
-        .select()
-        .from(vaccinesTable)
-        .where(
-          and(
-            eq(vaccinesTable.petId, existingBooking.petId),
-            or(
-              ilike(vaccinesTable.name, "%antirr%"),
-              ilike(vaccinesTable.name, "%raiva%"),
-            ),
-            lte(vaccinesTable.nextDueDate, getBusinessDate()),
-          ),
-        )
-        .limit(1);
-
-      if (expiredVaccine) {
-        const err = new Error("Vacina antirrábica vencida. Check-in bloqueado por razões de saúde e segurança.") as any;
-        err.status = 403;
-        err.code = "VACCINE_EXPIRED";
-        throw err;
-      }
-
-      // Block if pet already has an active check-in of the SAME SEMANTIC CLASS
-      const activeBookings = await tx
-        .select({
-          id: bookingsTable.id,
-          type: bookingsTable.type,
-          catalogueItemType: catalogueItemsTable.type,
-        })
-        .from(bookingsTable)
-        .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-        .where(
-          and(
-            eq(bookingsTable.crecheId, crecheId),
-            eq(bookingsTable.petId, existingBooking.petId),
-            eq(bookingsTable.status, "active"),
-          ),
-        );
-
-      let skipPhysicalCheckin = false;
-
-      if (activeBookings.length > 0) {
-        const hasSameSemanticTypeActive = activeBookings.some((ab) =>
-          isServiceBookingBackend(ab.type, ab.catalogueItemType) === isCurrentService
-        );
-
-        if (hasSameSemanticTypeActive) {
-          throw clientError("Este pet já possui um check-in ativo desta mesma categoria. Realize o check-out antes de fazer um novo.", 409);
-        }
-
-        // Different semantic classes are active (e.g. Presence + Service)
-        // The pet is already physically present, so skip incrementing occupancy
-        skipPhysicalCheckin = true;
-      }
-
-      // Proceed: check-in + clear on-the-way state
-      const [updatedBooking] = await tx
-        .update(bookingsTable)
-        .set({
-          status: "active",
-          checkInTime: new Date(),
-          onTheWayType: null,
-          onTheWayEtaMinutes: null,
-          onTheWayAt: null,
-        })
-        .where(
-          and(
-            eq(bookingsTable.crecheId, crecheId),
-            eq(bookingsTable.id, bookingId),
-          ),
-        )
-        .returning();
-
-      if (!skipPhysicalCheckin) {
-        await tx
-          .update(petsTable)
-          .set({ isCheckedIn: true })
-          .where(eq(petsTable.id, updatedBooking.petId));
-        await tx
-          .update(crechesTable)
-          .set({
-            currentOccupancy: tx.$count(
-              petsTable,
-              and(eq(petsTable.crecheId, crecheId), eq(petsTable.isCheckedIn, true)),
-            ) as any,
-          })
-          .where(eq(crechesTable.id, crecheId));
-      }
-
-      return updatedBooking;
+    const { enriched } = await BookingDomainService.checkInBooking({
+      bookingId,
+      crecheId,
+      actorUserId: req.user!.id,
+      actorRole: req.user!.role,
     });
-
-    const enriched = await getBookingWithNames(booking);
-
-    // Generate tasks for this pet today (fire-and-forget)
-    import("../lib/scheduler.js")
-      .then(({ generateTasksForPetToday }) => {
-        generateTasksForPetToday(booking.petId, crecheId).catch(() => {});
-      })
-      .catch(() => {});
-
-    // Notify tutor of check-in
-    if (booking.tutorId) {
-      sendPushToUser(booking.tutorId, {
-        title: `🐾 ${enriched.petName ?? "Seu pet"} fez check-in!`,
-        body: `${enriched.petName ?? "Seu pet"} chegou à creche com segurança.`,
-        tag: `checkin-${booking.id}`,
-        data: { type: "checkin", bookingId: booking.id, petId: booking.petId },
-      }).catch(() => {});
-    }
 
     res.json(enriched);
   } catch (err: any) {
@@ -1492,11 +1240,8 @@ router.post("/:bookingId/checkin", requireRole("staff", "creche_admin", "master_
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
       return;
     }
-    if (typeof err?.status === "number" && err.status >= 400 && err.status < 500) {
-      res.status(err.status).json({ error: err.message, ...(err.code ? { code: err.code } : {}) });
-      return;
-    }
-    res.status(500).json({ error: err.message || "Erro ao realizar check-in" });
+    const status = typeof err?.status === "number" ? err.status : (typeof err?.statusCode === "number" ? err.statusCode : 500);
+    res.status(status).json({ error: err.message || "Erro ao realizar check-in", ...(err.code ? { code: err.code } : {}) });
   }
 });
 
@@ -1505,145 +1250,17 @@ router.post("/:bookingId/checkout", async (req: AuthRequest, res) => {
   const bookingId = parseInt(String(req.params.bookingId));
 
   try {
-    const [row] = await db
-      .select({
-        booking: bookingsTable,
-        catalogueItemType: catalogueItemsTable.type,
-      })
-      .from(bookingsTable)
-      .leftJoin(catalogueItemsTable, eq(bookingsTable.primaryCatalogueItemId, catalogueItemsTable.id))
-      .where(
-        and(
-          eq(bookingsTable.crecheId, crecheId),
-          eq(bookingsTable.id, bookingId),
-        ),
-      )
-      .limit(1);
-
-    if (!row) {
-      res.status(404).json({ error: "Reserva não encontrada" });
-      return;
-    }
-
-    const existing = row.booking;
-
-    if (isServiceBookingBackend(existing.type, row.catalogueItemType)) {
-      res.status(400).json({ error: "Apenas estadias e day use podem realizar check-out." });
-      return;
-    }
-
-    // Engine Financeira
-    const completedBooking = await db.transaction(async (tx) => {
-      await acquireTenantOperationalLock(crecheId, tx);
-
-      await BillingService.acquireTutorFinancialLock(
-        crecheId,
-        existing.tutorId,
-        tx
-      );
-
-      // 1. Somente a requisição que transicionar active → completed pode
-      // faturar consumíveis. O UPDATE condicional é o gate de idempotência.
-      const [lockedBooking] = await tx
-        .update(bookingsTable)
-        .set({
-          status: "completed",
-          checkOutTime: new Date(),
-          onTheWayType: null,
-          onTheWayEtaMinutes: null,
-          onTheWayAt: null,
-        })
-        .where(
-          and(
-            eq(bookingsTable.crecheId, crecheId),
-            eq(bookingsTable.id, bookingId),
-            eq(bookingsTable.status, "active"),
-          ),
-        )
-        .returning();
-
-      if (!lockedBooking) {
-        throw clientError(
-          "A reserva não está ativa ou o check-out já foi concluído.",
-          409
-        );
-      }
-
-      await tx
-        .update(petsTable)
-        .set({ isCheckedIn: false })
-        .where(eq(petsTable.id, lockedBooking.petId));
-
-      // 2. Coletar Consumables
-      // Nota: o preço base da reserva foi faturado na confirmação (consumePackageCredits +
-      // BillingService.addCharge). O check-out fatura apenas os consumíveis adicionados
-      // durante a estadia para evitar cobrança duplicada do valor base.
-      const consumables = await tx
-        .select({
-          itemId: bookingConsumablesTable.itemId,
-          quantity: bookingConsumablesTable.quantity,
-          chargedPrice: bookingConsumablesTable.chargedPrice,
-          itemName: catalogueItemsTable.name,
-        })
-        .from(bookingConsumablesTable)
-        .leftJoin(catalogueItemsTable, eq(bookingConsumablesTable.itemId, catalogueItemsTable.id))
-        .where(eq(bookingConsumablesTable.bookingId, bookingId));
-
-      // 3. Faturar apenas consumíveis no check-out.
-      // ATENÇÃO: o preço base da reserva é faturado na confirmação (via BillingService.addCharge
-      // na fase de confirmação). Faturar novamente aqui causaria cobrança em duplicidade.
-      // Os créditos de pacote também são consumidos na confirmação via consumePackageCredits.
-      const consumableCharges = consumables.filter(item => Number(item.chargedPrice) > 0);
-      if (consumableCharges.length > 0 && lockedBooking.tutorId) {
-        let firstInvoiceId: number | null = null;
-        for (const item of consumableCharges) {
-          const { invoiceId } = await BillingService.addCharge({
-            crecheId,
-            tutorId: lockedBooking.tutorId,
-            amount: Number(item.chargedPrice),
-            quantity: item.quantity,
-            description: item.itemName || `Consumível #${item.itemId}`,
-            type: "consumable",
-            petId: lockedBooking.petId,
-            bookingId: bookingId,
-            itemDate: new Date(),
-            tx: tx,
-          });
-          if (firstInvoiceId === null) firstInvoiceId = invoiceId;
-        }
-
-        // 5. Auditoria
-        await logFinancialAudit({
-          crecheId,
-          userId: req.user!.id,
-          action: "invoice_create",
-          referenceId: firstInvoiceId!,
-          referenceType: "invoices",
-          details: `Check-out da reserva #${bookingId}. ${consumableCharges.length} consumível(is) faturado(s) no check-out.`,
-        }, tx);
-      }
-      return lockedBooking;
+    const { enriched } = await BookingDomainService.checkOutBooking({
+      bookingId,
+      crecheId,
+      actorUserId: req.user!.id,
+      actorRole: req.user!.role,
     });
-
-    const enriched = await getBookingWithNames(completedBooking);
-
-    // Notify tutor of check-out
-    if (completedBooking.tutorId) {
-      sendPushToUser(completedBooking.tutorId, {
-        title: `🏠 ${enriched.petName ?? "Seu pet"} fez check-out!`,
-        body: `${enriched.petName ?? "Seu pet"} está pronto para ir para casa.`,
-        tag: `checkout-${completedBooking.id}`,
-        data: {
-          type: "checkout",
-          bookingId: completedBooking.id,
-          petId: completedBooking.petId,
-        },
-      }).catch(() => {});
-    }
 
     res.json(enriched);
   } catch (error: any) {
-    res.status(error.status || 500).json({ error: error.message });
+    const status = error.status || error.statusCode || 500;
+    res.status(status).json({ error: error.message || "Erro ao realizar check-out" });
   }
 });
 

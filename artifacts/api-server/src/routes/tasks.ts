@@ -7,6 +7,7 @@ import { authenticate, requireRole, type AuthRequest } from "../middlewares/auth
 import { requireCrecheMembership } from "../middlewares/requireCrecheMembership.js";
 import { sendPushToUser, sendPushToRole } from "../lib/push.js";
 import { acquireTenantOperationalLock, TenantArchivedError } from "../services/tenantLifecycleLock.js";
+import { TaskDomainService } from "../services/taskDomainService.js";
 
 const completeTaskSchema = z.object({
   notes: z.string().optional().nullable(),
@@ -224,74 +225,13 @@ router.post("/:taskId/complete", requireRole("staff", "creche_admin", "master_ad
     }
     const { notes } = parsedComplete.data;
 
-    const result = await db.transaction(async (tx) => {
-      await acquireTenantOperationalLock(crecheId, tx);
-
-      // 1. Attempt atomic transition: pending -> completed
-      const [task] = await tx.update(tasksTable).set({
-        status: "completed",
-        completedAt: new Date(),
-        completedBy: req.user?.name,
-        notes,
-      }).where(
-        and(
-          eq(tasksTable.id, taskId),
-          eq(tasksTable.crecheId, crecheId),
-          eq(tasksTable.status, "pending"),
-        )
-      ).returning();
-
-      if (task) {
-        // First completion: notify creche admins
-        const [details] = await tx.select({
-          title: tasksTable.title,
-          type: tasksTable.type,
-          petId: tasksTable.petId,
-          assignedToId: tasksTable.assignedToId,
-          assignedToName: usersTable.name,
-          petName: petsTable.name,
-        }).from(tasksTable)
-          .leftJoin(usersTable, and(eq(tasksTable.assignedToId, usersTable.id), eq(usersTable.crecheId, crecheId)))
-          .leftJoin(petsTable, and(eq(tasksTable.petId, petsTable.id), eq(petsTable.crecheId, crecheId)))
-          .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
-          .limit(1);
-
-        return { status: 200, task, details, isNewCompletion: true };
-      }
-
-      // 2. If no row was updated, check if the task already exists in this creche
-      const [existing] = await tx.select()
-        .from(tasksTable)
-        .where(and(eq(tasksTable.id, taskId), eq(tasksTable.crecheId, crecheId)))
-        .limit(1);
-
-      if (!existing) {
-        return { status: 404, error: "Tarefa não encontrada" };
-      }
-
-      return { status: 200, task: existing, isNewCompletion: false };
+    const result = await TaskDomainService.completeTask({
+      taskId,
+      crecheId,
+      actorUserId: req.user!.id,
+      actorName: req.user?.name,
+      notes: notes ?? undefined,
     });
-
-    if (result.status !== 200) {
-      res.status(result.status!).json({ error: result.error });
-      return;
-    }
-
-    if (result.isNewCompletion && result.details) {
-      const details = result.details;
-      const typeLabels: Record<string, string> = {
-        feeding: "Alimentação", medication: "Medicação", grooming: "Banho/Tosa",
-        walk: "Passeio", checkup: "Avaliação", other: "Tarefa",
-      };
-      const label = typeLabels[details.type] ?? "Tarefa";
-      const petName = details.petName ? ` (${details.petName})` : "";
-      sendPushToRole(crecheId, "creche_admin", {
-        title: `✅ Tarefa concluída: ${label}${petName}`,
-        body: `${req.user?.name ?? "Staff"} concluiu "${details.title ?? label}".`,
-        tag: `task-done-${result.task!.id}`,
-        data: { type: "task", taskId: result.task!.id, petId: details.petId ?? undefined, crecheId },
-      }).catch(() => {});
-    }
 
     res.json({ ...result.task, petName: null, assignedToName: null });
   } catch (err: any) {
@@ -299,7 +239,8 @@ router.post("/:taskId/complete", requireRole("staff", "creche_admin", "master_ad
       res.status(403).json({ error: "tenant_archived", code: "tenant_archived", message: "Esta creche foi arquivada. Operações desabilitadas." });
       return;
     }
-    res.status(500).json({ error: err.message || "Erro ao concluir tarefa" });
+    const status = err.status || err.statusCode || 500;
+    res.status(status).json({ error: err.message || "Erro ao concluir tarefa" });
   }
 });
 
