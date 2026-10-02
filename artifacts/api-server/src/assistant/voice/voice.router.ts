@@ -124,11 +124,98 @@ function normalizeAndValidateMime(rawMime: string): string {
     throw new VoiceError(
       "VOICE_INVALID_AUDIO",
       `Formato de áudio "${normalized}" não suportado. Formatos aceitos: webm, ogg, wav, mp3, mp4.`,
-      400
+      415
     );
   }
 
   return normalized;
+}
+
+export function detectAudioContainer(buf: Buffer): string | null {
+  if (buf.length < 4) return null;
+
+  // WAV: 'RIFF' at 0..3 and 'WAVE' at 8..11
+  if (
+    buf.length >= 12 &&
+    buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+    buf[8] === 0x57 && buf[9] === 0x41 && buf[10] === 0x56 && buf[11] === 0x45
+  ) {
+    return "audio/wav";
+  }
+
+  // OGG: 'OggS' at 0..3
+  if (buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67 && buf[3] === 0x53) {
+    return "audio/ogg";
+  }
+
+  // WEBM / Matroska: EBML header 0x1A, 0x45, 0xDF, 0xA3
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) {
+    return "audio/webm";
+  }
+
+  // MP4 / M4A: 'ftyp' at 4..7
+  if (
+    buf.length >= 8 &&
+    buf[4] === 0x66 && buf[5] === 0x74 && buf[6] === 0x79 && buf[7] === 0x70
+  ) {
+    return "audio/mp4";
+  }
+
+  // MP3: 'ID3' at 0..2 or MPEG frame sync 0xFF, 0xE0..0xFF
+  if (
+    (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) ||
+    (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0)
+  ) {
+    return "audio/mpeg";
+  }
+
+  return null;
+}
+
+export function validateAudioBinarySignature(buf: Buffer, normalizedMime: string): void {
+  if (buf.length < 4) {
+    return;
+  }
+
+  // Reject obvious non-audio malicious/executable signatures
+  // ELF: 0x7F 'E' 'L' 'F'
+  if (buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46) {
+    throw new VoiceError(
+      "VOICE_INVALID_AUDIO",
+      "Assinatura binária incompatível (executável ELF detectado).",
+      415
+    );
+  }
+  // DOS / Windows PE: 'M' 'Z' (0x4D, 0x5A)
+  if (buf[0] === 0x4d && buf[1] === 0x5a) {
+    throw new VoiceError(
+      "VOICE_INVALID_AUDIO",
+      "Assinatura binária incompatível (executável DOS/PE detectado).",
+      415
+    );
+  }
+  // PDF: '%PDF' (0x25, 0x50, 0x44, 0x46)
+  if (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+    throw new VoiceError(
+      "VOICE_INVALID_AUDIO",
+      "Assinatura binária incompatível (documento PDF detectado).",
+      415
+    );
+  }
+
+  // Container detection and cross-validation against declared MIME
+  const detected = detectAudioContainer(buf);
+  if (detected && detected !== normalizedMime) {
+    throw new VoiceError(
+      "VOICE_INVALID_AUDIO",
+      `Assinatura binária detectada (${detected}) incompatível com o tipo MIME declarado (${normalizedMime}).`,
+      415
+    );
+  }
+}
+
+export function resetVoiceRateLimits(): void {
+  voiceRateLimitMap.clear();
 }
 
 // All voice routes require authentication
@@ -190,6 +277,9 @@ voiceRouter.post(
 
       // 6. Validate and normalize MIME type
       const mimeType = normalizeAndValidateMime(extractedMime);
+
+      // 6b. Validate binary signature against declared container (R41.D-FINAL.1)
+      validateAudioBinarySignature(audioBuffer, mimeType);
 
       // 7. Invoke Speech-To-Text Provider
       const provider = SttProviderFactory.getProvider();

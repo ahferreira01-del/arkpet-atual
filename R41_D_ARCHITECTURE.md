@@ -1,9 +1,10 @@
 # ARKPET — R41.D ARCHITECTURE
 ## Voice Assistant: Secure Push-to-Talk, Speech-to-Text & Spoken Response
 
-**Phase:** R41.D — Voice Assistant  
+**Phase:** R41.D-FINAL.1 — Voice Assistant Certification Closure  
 **Program:** R41 — ArkPet Intelligent Assistant  
 **Certified Baseline:** `9afef90d14a1fed6627f1761562ea270cee837ef` (R41.C-FINAL.1)  
+**Implementation Baseline:** `ad8411849dd0df573f4c8c9ec65cda079a82ad4c`  
 **Date:** 2026-10-02  
 **Status:** Certified Architecture & Implementation  
 
@@ -25,13 +26,13 @@ Phase **R41.D (Voice Assistant)** introduces natural, mobile-first voice interac
    [ USER ACTION ]
          │ (Hold Mic Button / Spacebar)
          ▼
-[ BROWSER CAPTURE ] ── MediaRecorder (audio/webm, audio/wav, etc.)
+[ BROWSER CAPTURE ] ── MediaRecorder (audio/webm, audio/wav, audio/ogg, audio/mp4)
          │ (Push-to-Talk only; max 60s hard limit)
          ▼
-[ SECURE UPLOAD ] ──── POST /api/assistant/voice/transcribe (JWT Auth, Rate Limited, 10MB limit)
-         │ (In-memory buffer only; ZERO DB or Bucket persistence)
+[ SECURE UPLOAD ] ──── POST /api/assistant/voice/transcribe (JWT Auth, Process-Local Rate Limit, 10MB limit)
+         │ (In-memory buffer only; Binary signature validation; ZERO DB or Bucket persistence)
          ▼
-[ SPEECH-TO-TEXT ] ─── Groq Whisper Large V3 Turbo / Mock Provider (pt-BR, temp=0)
+[ SPEECH-TO-TEXT ] ─── Groq Whisper Large V3 Turbo / Mock Provider (pt, temp=0)
          │
          ▼
 [ USER VISIBILITY ] ── Transcript populated in input box before submission
@@ -43,7 +44,7 @@ Phase **R41.D (Voice Assistant)** introduces natural, mobile-first voice interac
 [ TEXT RESPONSE ] ──── Rendered in chat message list with markdown
          │
          ▼
-[ OPTIONAL AUDIO ] ─── Device-Native Web Speech API (window.speechSynthesis, pt-BR, default OFF)
+[ OPTIONAL AUDIO ] ─── Device-Native Web Speech API (window.speechSynthesis, pt-BR, Local-only, default OFF)
 ```
 
 ---
@@ -84,10 +85,27 @@ The client-side voice capture is implemented using web standards without externa
 
 ### 3.1 Endpoint Contract: `POST /api/assistant/voice/transcribe`
 - **Authentication:** Enforced by `authenticateToken`. Unauthenticated requests return `401 Unauthorized`.
-- **Rate Limiting:** Server-side rate limiter enforces 30 requests/minute per IP and 20 requests/minute per authenticated user.
+- **Rate Limiting (Source Truth):**
+  - `VOICE_RATE_LIMIT_SCOPE = PROCESS_LOCAL`
+  - `VOICE_RATE_LIMIT_PER_USER_PER_MINUTE = 30`
+  - `VOICE_RATE_LIMIT_PER_IP = NOT_IMPLEMENTED`
+  - Tracks authenticated requests in an in-memory sliding window per `req.user.id`. The 31st request within 60 seconds returns `429 Too Many Requests`. Not synchronized across multiple server instances.
 - **Size Bounds:** Enforces strict maximum payload size of 10MB (`VOICE_MAX_UPLOAD_BYTES = 10 * 1024 * 1024`). Returns `413 Payload Too Large` when exceeded.
-- **MIME Allowlist:** Validates binary against explicit allowlist (`audio/webm`, `audio/ogg`, `audio/wav`, `audio/mpeg`, `audio/mp4`). Rejects invalid MIME types with `415 Unsupported Media Type`.
-- **Kill Switch:** Obeys `AI_VOICE_ENABLED` and `AI_KILL_SWITCH`. When voice is disabled or killed, returns `503 Service Unavailable` without crashing.
+- **MIME Allowlist & Binary Magic-Byte Validation:**
+  - `VOICE_DECLARED_MIME_ALLOWLIST = YES`
+  - `VOICE_BINARY_SIGNATURE_VALIDATION = PASS`
+  - `VOICE_UNSUPPORTED_MIME_HTTP_STATUS = 415`
+  - Endpoint inspects both declared `Content-Type` header and the raw binary buffer header.
+  - Verified audio container signatures:
+    - WAV: `RIFF....WAVE`
+    - OGG: `OggS`
+    - WebM: EBML header `0x1A 0x45 0xDF 0xA3`
+    - MP4/M4A: `ftyp` signature box
+    - MP3: ID3 header or MPEG audio frame sync
+  - Malicious, executable, or non-audio binary signatures (such as ELF `0x7F 'E' 'L' 'F'`, DOS/PE `MZ`, and PDF `%PDF`) are explicitly rejected with `415 Unsupported Media Type`.
+- **Kill Switch & Feature Flag:**
+  - Global Kill Switch: `AI_ASSISTANT_KILL_SWITCH="true"` returns `503 Service Unavailable` (`assistant_temporarily_unavailable`).
+  - Voice Feature Flag: `AI_VOICE_ENABLED="false"` returns `403 Forbidden` (`voice_feature_disabled`).
 
 ### 3.2 Transient Audio Guarantee (`VOICE_AUDIO_PERSISTED_BY_DEFAULT = NO`)
 - The incoming audio buffer is received and held strictly in RAM memory during the request.
@@ -121,12 +139,18 @@ The system follows a clean provider abstraction matching R41.A multi-provider de
 
 ---
 
-## 4. Spoken Response Architecture (Optional TTS)
+## 4. Spoken Response Architecture (Optional Local TTS)
 
-### 4.1 Device-Native Playback (`useSpeechSynthesis.ts`)
+### 4.1 Device-Native Local Playback (`useSpeechSynthesis.ts`)
 - **Technology:** Browser-native `window.speechSynthesis` and `SpeechSynthesisUtterance`.
+- **Server-Side TTS Provider:** `ARKPET_SERVER_SIDE_TTS_PROVIDER = NONE`. ArkPet operates zero server-side speech generation infrastructure.
 - **Default State:** Default is **OFF** (`TTS_AUTOPLAY_DEFAULT = NO`). Requires explicit user activation via header toggle.
-- **Language:** Strictly configured to `pt-BR`.
+- **Language & Local-Only Voice Selection:**
+  - Helper `selectPortugueseVoice()` selects `pt-BR` / `pt` voices.
+  - Option `requireLocalVoice = true` enforces `TTS_LOCAL_ONLY_ENFORCED = YES`.
+  - When active, voices are filtered strictly to local, on-device voices (`voice.localService === true`).
+  - If only remote browser synthesis voices are available, spoken playback is safely suppressed (`REMOTE_BROWSER_TTS_VOICE_USED = NO`).
+  - Text response rendering in the chat remains completely unaffected (`NO_LOCAL_TTS_VOICE_BREAKS_ASSISTANT = NO`).
 - **Text Normalization:** Markdown syntax is cleaned prior to speech synthesis (strips bold, italics, markdown links, code blocks, lists, and headers) so speech output sounds natural.
 - **Interruption Control:**
   - Speech immediately stops when the user toggles TTS off, closes the assistant panel, starts a new voice recording, or navigates away.
@@ -145,8 +169,19 @@ The system follows a clean provider abstraction matching R41.A multi-provider de
 | `MICROPHONE_STREAM_LEAK` | `0` | All `MediaStream` tracks stopped on stop/cancel/unmount |
 | `VOICE_AUDIO_PERSISTED_BY_DEFAULT` | `NO` | Transient in-memory processing only; 0 DB / 0 bucket writes |
 | `RAW_VOICE_TRANSCRIPT_TELEMETRY_LOGGING` | `0` | Raw text excluded from operational logs |
+| `VOICE_RATE_LIMIT_SCOPE` | `PROCESS_LOCAL` | In-memory sliding window on single process |
+| `VOICE_RATE_LIMIT_PER_USER_PER_MINUTE` | `30` | Enforces 30 reqs/min per authenticated user |
+| `VOICE_RATE_LIMIT_PER_IP` | `NOT_IMPLEMENTED` | Process-local user rate limiting only |
+| `VOICE_DECLARED_MIME_ALLOWLIST` | `YES` | Explicit audio MIME allowlist |
+| `VOICE_BINARY_SIGNATURE_VALIDATION` | `PASS` | Container magic-byte validation (WAV, OGG, WEBM, MP4, MP3) |
+| `VOICE_UNSUPPORTED_MIME_HTTP_STATUS` | `415` | Invalid MIME or magic byte mismatch returns 415 |
+| `ARKPET_SERVER_SIDE_TTS_PROVIDER` | `NONE` | Zero server-side TTS infrastructure |
+| `TTS_LOCAL_ONLY_ENFORCED` | `YES` | Restricts synthesis to localService voices |
+| `REMOTE_BROWSER_TTS_VOICE_USED` | `NO` | Remote browser voices suppressed |
+| `NO_LOCAL_TTS_VOICE_BREAKS_ASSISTANT` | `NO` | Assistant functions normally when TTS is suppressed |
+| `THIRD_PARTY_STT_PROCESSING_DISCLOSED` | `YES` | Groq STT processing explicitly disclosed |
+| `ANDROID_PHYSICAL_VOICE_CERTIFICATION` | `NOT_AVAILABLE` | Physical device testing environment not provisioned |
+| `IOS_PHYSICAL_VOICE_CERTIFICATION` | `NOT_AVAILABLE` | Physical device testing environment not provisioned |
 | `TTS_AUTOPLAY_DEFAULT` | `NO` | Speech synthesis toggle defaults to false |
 | `VOICE_INPUT_DEPENDS_ON_TTS` | `NO` | Input and output modalities are fully decoupled |
 | `GROQ_API_KEY_FRONTEND` | `0` | Groq key is strictly server-side |
-| `R41_D_DOMAIN_MUTATION_COUNT` | `0` | Zero state mutation tools or endpoints |
-| `GENERAL_DB_ACCESS_TOOL` | `0` | Normalizer blocks generic DB query tools |

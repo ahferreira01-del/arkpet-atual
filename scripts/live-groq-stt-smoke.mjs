@@ -67,7 +67,7 @@ function generateSyntheticWav(sampleRate = 16000, durationSeconds = 1.0, freq = 
   return buffer;
 }
 
-async function generateSpeechWavWindows() {
+async function generateSpeechAudio() {
   const tempWavPath = path.join(os.tmpdir(), `arkpet_synth_${Date.now()}.wav`);
   const psScript = `
 Add-Type -AssemblyName System.Speech
@@ -86,13 +86,21 @@ $s.Dispose()
       const buffer = fs.readFileSync(tempWavPath);
       try { fs.unlinkSync(tempWavPath); } catch {}
       if (buffer.length > 1000) {
-        return buffer;
+        return {
+          buffer,
+          source: "WINDOWS_TTS",
+          containsRealSpeech: "YES",
+        };
       }
     }
   } catch {}
 
   // Fallback to synthetic PCM audio buffer if PowerShell speech synthesis is unavailable
-  return generateSyntheticWav(16000, 1.2, 440);
+  return {
+    buffer: generateSyntheticWav(16000, 1.2, 440),
+    source: "SYNTHETIC_TONE",
+    containsRealSpeech: "NO",
+  };
 }
 
 async function runLiveGroqSttSmoke() {
@@ -106,9 +114,13 @@ async function runLiveGroqSttSmoke() {
     console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
     console.log("GROQ_LIVE_STT_AUTHENTICATED_REQUEST = BLOCKED_BY_CREDENTIAL");
     console.log("GROQ_LIVE_STT_HTTP_STATUS = NOT_PROVEN");
+    console.log("GROQ_LIVE_STT_NONEMPTY_TRANSCRIPT = NOT_PROVEN");
     console.log("GROQ_LIVE_STT_PTBR = NOT_PROVEN");
+    console.log("GROQ_LIVE_STT_SEMANTIC_MATCH = NOT_PROVEN");
     console.log("GROQ_LIVE_STT_LATENCY_MS = NOT_PROVEN");
     console.log("LIVE_VOICE_TO_ASSISTANT = NOT_PROVEN");
+    console.log("LIVE_VOICE_TOOL_CALL = NOT_PROVEN");
+    console.log("LIVE_VOICE_TOOL_NAME = NONE");
     console.log("LIVE_VOICE_MODEL_TOOL_MODEL = NOT_PROVEN");
     console.log("R41_D_FINAL_CERTIFICATION = BLOCKED_BY_GROQ_CREDENTIAL");
     process.exit(1);
@@ -121,8 +133,23 @@ async function runLiveGroqSttSmoke() {
   console.log(`[STT_INIT] Model: ${model}, Language: ${language}, Endpoint: ${endpoint}`);
 
   // Generate synthetic spoken audio payload
-  const audioBuffer = await generateSpeechWavWindows();
-  console.log(`[AUDIO_SYNTHESIS] Generated non-customer synthetic WAV: ${audioBuffer.length} bytes`);
+  const audioInfo = await generateSpeechAudio();
+  const liveTestAudioSource = audioInfo.source;
+  const liveTestAudioContainsRealSyntheticSpeech = audioInfo.containsRealSpeech;
+  const audioBuffer = audioInfo.buffer;
+
+  console.log(`[AUDIO_SYNTHESIS] Source: ${liveTestAudioSource}, Real Speech: ${liveTestAudioContainsRealSyntheticSpeech}, Bytes: ${audioBuffer.length}`);
+
+  if (liveTestAudioContainsRealSyntheticSpeech !== "YES") {
+    console.error("[SYNTHETIC_AUDIO_FAIL] Real synthetic Portuguese speech generator is unavailable.");
+    console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
+    console.log(`LIVE_TEST_AUDIO_SOURCE = ${liveTestAudioSource}`);
+    console.log(`LIVE_TEST_AUDIO_CONTAINS_REAL_SYNTHETIC_SPEECH = ${liveTestAudioContainsRealSyntheticSpeech}`);
+    console.log("GROQ_LIVE_STT_AUTHENTICATED_REQUEST = BLOCKED");
+    console.log("GROQ_LIVE_STT_PTBR = NOT_PROVEN");
+    console.log("R41_D_FINAL_CERTIFICATION = BLOCKED_SYNTHETIC_SPEECH_UNAVAILABLE");
+    process.exit(1);
+  }
 
   const formData = new FormData();
   const blob = new Blob([audioBuffer], { type: "audio/wav" });
@@ -161,22 +188,42 @@ async function runLiveGroqSttSmoke() {
     const data = await res.json();
     transcript = (data?.text || "").trim();
     durationSeconds = data?.duration || 0;
-    detectedLang = data?.language || "pt";
+    detectedLang = (data?.language || "").trim();
 
     console.log(`[STT_SUCCESS] HTTP ${httpStatus} in ${latencyMs}ms`);
     console.log(`[STT_RESULT] Detected language: ${detectedLang}`);
     console.log(`[STT_RESULT] Audio duration: ${durationSeconds}s`);
-    console.log(`[STT_RESULT] Sanitized transcript length: ${transcript.length} characters`);
+    console.log(`[STT_RESULT] Sanitized transcript: "${transcript}"`);
 
-    // Verify non-empty and semantic Portuguese speech recognition
-    const isPtBr = detectedLang.toLowerCase().includes("portuguese") || detectedLang.toLowerCase() === "pt" || Boolean(transcript);
+    // Strict Portuguese language detection check (Section 6 & 7)
+    const normalizedLang = detectedLang.toLowerCase();
+    const ptBrPass =
+      liveTestAudioContainsRealSyntheticSpeech === "YES" &&
+      (normalizedLang === "pt" ||
+        normalizedLang === "pt-br" ||
+        normalizedLang.startsWith("pt-") ||
+        normalizedLang.includes("portuguese") ||
+        normalizedLang.includes("português"));
+
+    const nonEmptyTranscriptPass = Boolean(transcript && transcript.length > 0);
+
+    // Semantic check: synthetic phrase is "Quais são meus pets no ArkPet?" (Section 8)
+    const lowerTranscript = transcript.toLowerCase();
+    const semanticMatchPass =
+      nonEmptyTranscriptPass &&
+      (lowerTranscript.includes("pet") || lowerTranscript.includes("arkpet")) &&
+      (lowerTranscript.includes("quais") ||
+        lowerTranscript.includes("meus") ||
+        lowerTranscript.includes("tenho") ||
+        lowerTranscript.includes("cadastrad") ||
+        lowerTranscript.includes("nome"));
 
     // ── Phase 2: Feed transcript into Assistant Pipeline (E2E roundtrip) ─────
     console.log("\n[E2E_PIPELINE] Passing transcript into Assistant LLM pipeline with list_my_pets tool...");
 
     const chatEndpoint = `${process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1"}/chat/completions`;
     const chatModel = process.env.AI_MODEL || "openai/gpt-oss-20b";
-    const userPrompt = transcript && transcript.length > 3 ? transcript : "Quais são meus pets?";
+    const userPrompt = transcript && transcript.length > 3 ? transcript : "Quais são meus pets no ArkPet?";
 
     const toolDefinitions = [
       {
@@ -203,7 +250,7 @@ async function runLiveGroqSttSmoke() {
         messages: [
           {
             role: "system",
-            content: "Você é o ArkPet Assistente, assistente virtual inteligente da plataforma ArkPet. Use a ferramenta list_my_pets quando o usuário perguntar sobre seus pets.",
+            content: "Você é o ArkPet Assistente, assistente virtual inteligente da plataforma ArkPet. Use SEMPRE a ferramenta list_my_pets quando o usuário perguntar sobre seus pets.",
           },
           { role: "user", content: userPrompt },
         ],
@@ -213,16 +260,20 @@ async function runLiveGroqSttSmoke() {
     });
 
     let liveVoiceToAssistant = false;
-    let liveVoiceModelToolModel = false;
+    let liveVoiceToolCallPass = false;
+    let liveVoiceToolName = "NONE";
+    let liveVoiceModelToolModelPass = false;
 
     if (chatRes1.ok) {
       const c1Data = await chatRes1.json();
       const c1Msg = c1Data.choices?.[0]?.message;
-      liveVoiceToAssistant = Boolean(c1Msg?.content || c1Msg?.tool_calls);
+      liveVoiceToAssistant = Boolean(c1Msg?.content || (c1Msg?.tool_calls && c1Msg.tool_calls.length > 0));
 
       if (c1Msg?.tool_calls && c1Msg.tool_calls.length > 0) {
         const toolCall = c1Msg.tool_calls[0];
-        if (toolCall.function.name === "list_my_pets") {
+        liveVoiceToolName = toolCall.function?.name || "UNKNOWN";
+        if (toolCall.function?.name === "list_my_pets") {
+          liveVoiceToolCallPass = true;
           const syntheticPets = [
             { id: 1, name: "Rex", breed: "Poodle", species: "dog" },
             { id: 2, name: "Thor", breed: "Pitbull", species: "dog" },
@@ -253,30 +304,53 @@ async function runLiveGroqSttSmoke() {
           if (chatRes2.ok) {
             const c2Data = await chatRes2.json();
             const c2Content = c2Data.choices?.[0]?.message?.content || "";
-            if (c2Content.includes("Rex") || c2Content.includes("Thor")) {
-              liveVoiceModelToolModel = true;
+            if (c2Content.toLowerCase().includes("rex") || c2Content.toLowerCase().includes("thor")) {
+              liveVoiceModelToolModelPass = true;
             }
           }
         }
-      } else if (c1Msg?.content) {
-        liveVoiceModelToolModel = true;
       }
     }
 
     console.log(`[ASSISTANT_PIPELINE] Voice-to-Assistant: ${liveVoiceToAssistant ? "PASS" : "FAIL"}`);
-    console.log(`[ASSISTANT_PIPELINE] Model-Tool-Model Roundtrip: ${liveVoiceModelToolModel ? "PASS" : "FAIL"}`);
+    console.log(`[ASSISTANT_PIPELINE] Tool Call: ${liveVoiceToolCallPass ? "PASS" : "FAIL"} (${liveVoiceToolName})`);
+    console.log(`[ASSISTANT_PIPELINE] Model-Tool-Model Roundtrip: ${liveVoiceModelToolModelPass ? "PASS" : "FAIL"}`);
 
-    // Print authoritative certification report
+    // Authoritative hard gates verification (Section 5 & 14)
+    const mandatoryLivePass =
+      (httpStatus === 200) &&
+      nonEmptyTranscriptPass &&
+      ptBrPass &&
+      semanticMatchPass &&
+      (liveTestAudioContainsRealSyntheticSpeech === "YES") &&
+      liveVoiceToAssistant &&
+      liveVoiceToolCallPass &&
+      liveVoiceModelToolModelPass;
+
     console.log("\n==================== CERTIFICATION REPORT ====================");
     console.log("TLS_CERTIFICATE_VALIDATION = ENABLED");
-    console.log("GROQ_LIVE_STT_AUTHENTICATED_REQUEST = PASS");
+    console.log(`LIVE_TEST_AUDIO_SOURCE = ${liveTestAudioSource}`);
+    console.log(`LIVE_TEST_AUDIO_CONTAINS_REAL_SYNTHETIC_SPEECH = ${liveTestAudioContainsRealSyntheticSpeech}`);
+    console.log(`GROQ_LIVE_STT_AUTHENTICATED_REQUEST = ${httpStatus === 200 ? "PASS" : "FAIL"}`);
     console.log(`GROQ_LIVE_STT_HTTP_STATUS = ${httpStatus}`);
-    console.log(`GROQ_LIVE_STT_PTBR = ${isPtBr ? "PASS" : "FAIL"}`);
+    console.log(`GROQ_LIVE_STT_NONEMPTY_TRANSCRIPT = ${nonEmptyTranscriptPass ? "PASS" : "FAIL"}`);
+    console.log(`GROQ_LIVE_STT_PTBR = ${ptBrPass ? "PASS" : "FAIL"}`);
+    console.log(`GROQ_LIVE_STT_SEMANTIC_MATCH = ${semanticMatchPass ? "PASS" : "FAIL"}`);
     console.log(`GROQ_LIVE_STT_LATENCY_MS = ${latencyMs}`);
     console.log(`LIVE_VOICE_TO_ASSISTANT = ${liveVoiceToAssistant ? "PASS" : "FAIL"}`);
-    console.log(`LIVE_VOICE_MODEL_TOOL_MODEL = ${liveVoiceModelToolModel ? "PASS" : "FAIL"}`);
+    console.log(`LIVE_VOICE_TOOL_CALL = ${liveVoiceToolCallPass ? "PASS" : "FAIL"}`);
+    console.log(`LIVE_VOICE_TOOL_NAME = ${liveVoiceToolName}`);
+    console.log(`LIVE_VOICE_MODEL_TOOL_MODEL = ${liveVoiceModelToolModelPass ? "PASS" : "FAIL"}`);
+
+    if (!mandatoryLivePass) {
+      console.log("R41_D_FINAL_CERTIFICATION = BLOCKED");
+      console.log("==============================================================");
+      process.exit(1);
+    }
+
     console.log("R41_D_FINAL_CERTIFICATION = PASS");
     console.log("==============================================================");
+    process.exit(0);
   } catch (err) {
     console.error("[FATAL_SMOKE_ERROR]", err?.message || err);
     console.log("GROQ_LIVE_STT_AUTHENTICATED_REQUEST = FAIL");

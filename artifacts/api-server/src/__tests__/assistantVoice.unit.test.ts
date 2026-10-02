@@ -11,6 +11,8 @@ import { AssistantToolsRegistry } from "../assistant/assistant-tools.registry.js
 import { AssistantService } from "../assistant/assistant.service.js";
 import type { AssistantSecurityContext } from "../assistant/assistant.types.js";
 import { logger } from "../lib/logger.js";
+import { resetVoiceRateLimits } from "../assistant/voice/voice.router.js";
+import { evaluateLiveGates } from "../assistant/voice/live-gate.evaluator.js";
 
 // Mock DB interactions for unit testing
 vi.mock("@workspace/db", () => {
@@ -94,11 +96,13 @@ describe("ArkPet R41.D — Voice Assistant Unit & Security Test Suite", () => {
     process.env.AI_ASSISTANT_KILL_SWITCH = "false";
     process.env.VOICE_STT_PROVIDER = "mock";
     SttProviderFactory.reset();
+    resetVoiceRateLimits();
   });
 
   afterEach(() => {
     process.env = { ...originalEnv };
     SttProviderFactory.reset();
+    resetVoiceRateLimits();
     vi.restoreAllMocks();
   });
 
@@ -157,14 +161,14 @@ describe("ArkPet R41.D — Voice Assistant Unit & Security Test Suite", () => {
   });
 
   // ── R41D-VOICE-006: MIME allowlist ────────────────────────────────────────
-  it("R41D-VOICE-006: rejects unsupported MIME types with 400 VOICE_INVALID_AUDIO (ARBITRARY_AUDIO_UPLOAD = 0)", async () => {
+  it("R41D-VOICE-006: rejects unsupported MIME types with 415 VOICE_INVALID_AUDIO (ARBITRARY_AUDIO_UPLOAD = 0)", async () => {
     const res = await request(app)
       .post("/api/assistant/voice/transcribe")
       .set("Authorization", "Bearer valid-token")
       .set("Content-Type", "application/x-executable")
       .send(Buffer.from("ELF..."));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(415);
     expect(res.body.code).toBe("VOICE_INVALID_AUDIO");
     expect(res.body.error).toContain("não suportado");
   });
@@ -521,5 +525,197 @@ describe("ArkPet R41.D — Voice Assistant Unit & Security Test Suite", () => {
     // Read-only behavior: assistant explains or guides, but cannot execute cancel mutation
     expect(response.message.content.toLowerCase()).toContain("reserva");
     expect(response.message.content).not.toContain("Reserva cancelada com sucesso no banco de dados");
+  });
+
+  // ── R41D-MIME-001: Explicit 415 status code verification ──────────────────
+  it("R41D-MIME-001: returns canonical HTTP 415 for unsupported media types (VOICE_UNSUPPORTED_MIME_HTTP_STATUS = 415)", async () => {
+    const res = await request(app)
+      .post("/api/assistant/voice/transcribe")
+      .set("Authorization", "Bearer valid-token")
+      .set("Content-Type", "application/x-executable")
+      .send(Buffer.from("dummy binary"));
+
+    expect(res.status).toBe(415);
+    expect(res.body.code).toBe("VOICE_INVALID_AUDIO");
+  });
+
+  // ── R41D-AUDIO-SIGNATURE-001: Rejection of ELF executable payload ─────────
+  it("R41D-AUDIO-SIGNATURE-001: rejects declared audio/webm with ELF binary signature with 415 (VOICE_BINARY_SIGNATURE_VALIDATION = PASS)", async () => {
+    // 0x7F 'E' 'L' 'F' header
+    const elfPayload = Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01, 0x01, 0x00]);
+
+    const res = await request(app)
+      .post("/api/assistant/voice/transcribe")
+      .set("Authorization", "Bearer valid-token")
+      .set("Content-Type", "audio/webm")
+      .send(elfPayload);
+
+    expect(res.status).toBe(415);
+    expect(res.body.code).toBe("VOICE_INVALID_AUDIO");
+    expect(res.body.error).toContain("ELF");
+  });
+
+  // ── R41D-AUDIO-SIGNATURE-002: Acceptance of valid WAV container ───────────
+  it("R41D-AUDIO-SIGNATURE-002: accepts audio/wav payload with valid RIFF...WAVE signature through validation layer", async () => {
+    // Build minimal RIFF...WAVE header
+    const wavBuffer = Buffer.alloc(44);
+    wavBuffer.write("RIFF", 0);
+    wavBuffer.writeUInt32LE(36, 4);
+    wavBuffer.write("WAVE", 8);
+    wavBuffer.write("fmt ", 12);
+    wavBuffer.writeUInt32LE(16, 16);
+    wavBuffer.writeUInt16LE(1, 20); // PCM
+    wavBuffer.writeUInt16LE(1, 22); // mono
+    wavBuffer.writeUInt32LE(16000, 24); // sample rate
+    wavBuffer.writeUInt32LE(32000, 28);
+    wavBuffer.writeUInt16LE(2, 32);
+    wavBuffer.writeUInt16LE(16, 34);
+    wavBuffer.write("data", 36);
+    wavBuffer.writeUInt32LE(0, 40);
+
+    const res = await request(app)
+      .post("/api/assistant/voice/transcribe")
+      .set("Authorization", "Bearer valid-token")
+      .set("Content-Type", "audio/wav")
+      .send(wavBuffer);
+
+    // Mock returns 200 or 400 for empty transcript, strictly NOT 415
+    expect([200, 400]).toContain(res.status);
+    if (res.status === 400) {
+      expect(res.body.code).toBe("VOICE_EMPTY_TRANSCRIPT");
+    }
+  });
+
+  // ── R41D-RATE-001: Process-local rate limiter enforcement ──────────────────
+  it("R41D-RATE-001: enforces 30 transcriptions/minute per user and rejects 31st with 429 (VOICE_RATE_LIMIT_PER_USER_PER_MINUTE = 30)", async () => {
+    resetVoiceRateLimits();
+    const validAudio = Buffer.from("MOCK_TEXT: Pergunta para teste de rate limit");
+
+    // Perform 30 successful requests for user 50
+    for (let i = 0; i < 30; i++) {
+      const okRes = await request(app)
+        .post("/api/assistant/voice/transcribe")
+        .set("Authorization", "Bearer valid-token")
+        .set("Content-Type", "audio/webm")
+        .send(validAudio);
+      expect(okRes.status).toBe(200);
+    }
+
+    // 31st request inside the same window must receive 429
+    const limitedRes = await request(app)
+      .post("/api/assistant/voice/transcribe")
+      .set("Authorization", "Bearer valid-token")
+      .set("Content-Type", "audio/webm")
+      .send(validAudio);
+
+    expect(limitedRes.status).toBe(429);
+    expect(limitedRes.body.code).toBe("VOICE_PROVIDER_RATE_LIMIT");
+    expect(limitedRes.body.error).toContain("Muitas requisições");
+  });
+
+  // ── R41D-LIVE-GATE-001..006: Hard-gate evaluator tests ─────────────────────
+  it("R41D-LIVE-GATE-001: blocks certification when ptBrPass is false", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "en",
+      transcript: "What are my pets?",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: null,
+        tool_calls: [{ id: "call_1", type: "function", function: { name: "list_my_pets", arguments: "{}" } }],
+      },
+      c2Content: "Seus pets são Rex e Thor",
+    });
+
+    expect(result.ptBrPass).toBe(false);
+    expect(result.overallCertificationPass).toBe(false);
+  });
+
+  it("R41D-LIVE-GATE-002: blocks certification when tool call is missing", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "pt",
+      transcript: "Quais são meus pets no ArkPet?",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: "Eu posso te ajudar com isso.",
+        tool_calls: null,
+      },
+      c2Content: null,
+    });
+
+    expect(result.liveVoiceToolCallPass).toBe(false);
+    expect(result.overallCertificationPass).toBe(false);
+  });
+
+  it("R41D-LIVE-GATE-003: blocks certification when model-tool-model response does not reference pets", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "pt",
+      transcript: "Quais são meus pets no ArkPet?",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: null,
+        tool_calls: [{ id: "call_1", type: "function", function: { name: "list_my_pets", arguments: "{}" } }],
+      },
+      c2Content: "Não encontrei nenhuma informação relevante no sistema.",
+    });
+
+    expect(result.liveVoiceToolCallPass).toBe(true);
+    expect(result.liveVoiceModelToolModelPass).toBe(false);
+    expect(result.overallCertificationPass).toBe(false);
+  });
+
+  it("R41D-LIVE-GATE-004: blocks certification when transcript is empty", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "pt",
+      transcript: "   ",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: "Resposta",
+        tool_calls: [{ id: "call_1", type: "function", function: { name: "list_my_pets", arguments: "{}" } }],
+      },
+      c2Content: "Seus pets são Rex e Thor",
+    });
+
+    expect(result.nonEmptyTranscriptPass).toBe(false);
+    expect(result.overallCertificationPass).toBe(false);
+  });
+
+  it("R41D-LIVE-GATE-005: model returning direct content without tool call fails tool call and model-tool-model gates", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "pt",
+      transcript: "Quais são meus pets no ArkPet?",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: "Seus pets cadastrados são Rex e Thor.",
+        tool_calls: null,
+      },
+      c2Content: null,
+    });
+
+    expect(result.liveVoiceToAssistant).toBe(true);
+    expect(result.liveVoiceToolCallPass).toBe(false);
+    expect(result.liveVoiceModelToolModelPass).toBe(false);
+    expect(result.overallCertificationPass).toBe(false);
+  });
+
+  it("R41D-LIVE-GATE-006: detected language 'en' with non-empty transcript strictly fails ptBrPass gate", () => {
+    const result = evaluateLiveGates({
+      httpStatus: 200,
+      detectedLanguage: "en",
+      transcript: "Quais são meus pets no ArkPet?",
+      audioContainsRealSpeech: true,
+      c1Message: {
+        content: null,
+        tool_calls: [{ id: "call_1", type: "function", function: { name: "list_my_pets", arguments: "{}" } }],
+      },
+      c2Content: "Seus pets são Rex e Thor",
+    });
+
+    expect(result.ptBrPass).toBe(false);
+    expect(result.nonEmptyTranscriptPass).toBe(true);
   });
 });

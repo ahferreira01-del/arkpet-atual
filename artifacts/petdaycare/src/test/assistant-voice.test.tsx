@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { VoiceInputButton } from "../features/assistant/VoiceInputButton";
-import { useSpeechSynthesis } from "../features/assistant/useSpeechSynthesis";
+import { useSpeechSynthesis, selectPortugueseVoice } from "../features/assistant/useSpeechSynthesis";
 import { AssistantPanel } from "../features/assistant/AssistantPanel";
 
 // Mock MediaStream and MediaRecorder
@@ -94,8 +94,8 @@ describe("ArkPet R41.D — Frontend Voice Assistant Suite (R41D-VOICE / TTS / MO
       speak: vi.fn(),
       cancel: vi.fn(),
       getVoices: vi.fn(() => [
-        { name: "Luciana", lang: "pt-BR" },
-        { name: "Google português", lang: "pt-PT" },
+        { name: "Luciana", lang: "pt-BR", localService: true },
+        { name: "Google português", lang: "pt-PT", localService: true },
       ]),
     };
 
@@ -328,5 +328,53 @@ describe("ArkPet R41.D — Frontend Voice Assistant Suite (R41D-VOICE / TTS / MO
 
     expect(window.speechSynthesis.cancel).toHaveBeenCalled();
     expect(handleClose).toHaveBeenCalled();
+  });
+
+  // ── R41D-TTS-LOCAL-001: Local voice preference ────────────────────────────
+  it("R41D-TTS-LOCAL-001: strictly selects local Portuguese voice over remote voice (REMOTE_BROWSER_TTS_VOICE_USED = NO)", () => {
+    const mockVoices: any = [
+      { name: "Remote Luciana", lang: "pt-BR", localService: false },
+      { name: "Local Luciana", lang: "pt-BR", localService: true },
+      { name: "English Voice", lang: "en-US", localService: true },
+    ];
+
+    const selected = selectPortugueseVoice(mockVoices, true);
+    expect(selected).toBeDefined();
+    expect(selected?.name).toBe("Local Luciana");
+    expect(selected?.localService).toBe(true);
+  });
+
+  // ── R41D-TTS-LOCAL-002: Fallback when only remote voices exist ─────────────
+  it("R41D-TTS-LOCAL-002: suppresses speech synthesis when only remote voices exist under local-only mode (NO_LOCAL_TTS_VOICE_BREAKS_ASSISTANT = NO)", () => {
+    const remoteOnlyVoices: any = [
+      { name: "Remote Luciana", lang: "pt-BR", localService: false },
+      { name: "Remote Lisbon", lang: "pt-PT", localService: false },
+    ];
+
+    const selected = selectPortugueseVoice(remoteOnlyVoices, true);
+    expect(selected).toBeNull();
+
+    // Verify useSpeechSynthesis with requireLocalVoice: true does not invoke speak
+    (window as any).speechSynthesis.getVoices = vi.fn(() => remoteOnlyVoices);
+
+    let hook: any;
+    function TestLocalTts() {
+      hook = useSpeechSynthesis({ requireLocalVoice: true });
+      return null;
+    }
+    render(<TestLocalTts />);
+
+    // Enable TTS
+    act(() => {
+      hook.toggleTts();
+    });
+
+    // Attempt speak
+    act(() => {
+      hook.speak("Mensagem que não deve ser falada remotamente");
+    });
+
+    // speechSynthesis.speak should NOT be called with remote voice
+    expect((window as any).speechSynthesis.speak).not.toHaveBeenCalled();
   });
 });

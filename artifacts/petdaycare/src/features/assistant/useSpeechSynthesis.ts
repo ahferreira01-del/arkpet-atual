@@ -23,7 +23,44 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-export function useSpeechSynthesis() {
+export function selectPortugueseVoice(
+  voices: SpeechSynthesisVoice[],
+  requireLocalOnly: boolean = true
+): SpeechSynthesisVoice | null {
+  if (!voices || voices.length === 0) return null;
+
+  const ptVoices = voices.filter((v) => {
+    const lang = (v.lang || "").toLowerCase();
+    return lang === "pt-br" || lang.startsWith("pt");
+  });
+
+  if (ptVoices.length === 0) return null;
+
+  // 1. Try local pt-BR voice first
+  const localPtBr = ptVoices.find(
+    (v) => (v.lang || "").toLowerCase() === "pt-br" && v.localService === true
+  );
+  if (localPtBr) return localPtBr;
+
+  // 2. Try any local Portuguese voice
+  const localPt = ptVoices.find((v) => v.localService === true);
+  if (localPt) return localPt;
+
+  // 3. Under local-only mode, if no local voice exists, return null (prevent remote cloud TTS)
+  if (requireLocalOnly) {
+    return null;
+  }
+
+  // Fallback to any pt-BR or pt voice if local-only is not enforced
+  return ptVoices.find((v) => (v.lang || "").toLowerCase() === "pt-br") || ptVoices[0] || null;
+}
+
+export interface UseSpeechSynthesisOptions {
+  requireLocalVoice?: boolean;
+}
+
+export function useSpeechSynthesis(options: UseSpeechSynthesisOptions = {}) {
+  const { requireLocalVoice = true } = options;
   const isSupported = typeof window !== "undefined" && "speechSynthesis" in window;
 
   const [ttsEnabled, setTtsEnabled] = useState<boolean>(() => {
@@ -79,18 +116,21 @@ export function useSpeechSynthesis() {
         const safeText = cleanText.slice(0, 400);
         if (!safeText.trim()) return;
 
+        const voices = window.speechSynthesis.getVoices();
+        const selectedVoice = selectPortugueseVoice(voices, requireLocalVoice);
+
+        // If local-only is required and no local Portuguese voice is installed, do not speak with remote voice
+        if (requireLocalVoice && !selectedVoice) {
+          return;
+        }
+
         const utterance = new SpeechSynthesisUtterance(safeText);
         utterance.lang = "pt-BR";
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
 
-        // Try to pick pt-BR or pt voice
-        const voices = window.speechSynthesis.getVoices();
-        const ptBrVoice = voices.find(
-          (v) => v.lang.toLowerCase() === "pt-br" || v.lang.toLowerCase().startsWith("pt")
-        );
-        if (ptBrVoice) {
-          utterance.voice = ptBrVoice;
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
         }
 
         utterance.onstart = () => setIsSpeaking(true);
@@ -104,7 +144,7 @@ export function useSpeechSynthesis() {
         setIsSpeaking(false);
       }
     },
-    [ttsEnabled, isSupported]
+    [ttsEnabled, isSupported, requireLocalVoice]
   );
 
   // Clean up ongoing speech on unmount
