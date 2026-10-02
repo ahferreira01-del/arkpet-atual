@@ -9,11 +9,22 @@ const ALLOWED_GUIDANCE_ROUTES = [
   "/",
   "/settings",
   "/staff/manage",
+  "/staff/board",
+  "/staff/qr-scanner",
   "/tutors",
   "/pets",
   "/bookings",
+  "/bookings/new",
   "/financial",
+  "/tutor/financial",
+  "/tutor/store",
   "/chat",
+  "/assinatura",
+  "/marketing/campaigns",
+  "/admin/creches",
+  "/admin/campaigns",
+  "/admin/proposals",
+  "/admin/users",
 ];
 
 const ALLOWED_GUIDANCE_TARGETS = [
@@ -22,6 +33,13 @@ const ALLOWED_GUIDANCE_TARGETS = [
   "tutor-create-button",
   "pet-create-button",
   "booking-create-button",
+  "pet-search-input",
+  "booking-filter-status",
+  "staff-board-checkin-tab",
+  "staff-board-feeding-tab",
+  "staff-board-meds-tab",
+  "staff-board-walks-tab",
+  "chat-input-textarea",
 ];
 
 interface AssistantPanelProps {
@@ -184,6 +202,7 @@ export function AssistantPanel({
           screen: {
             route: screenContext.route,
             feature: screenContext.feature,
+            entity: screenContext.entity,
           },
         }),
       });
@@ -276,9 +295,17 @@ export function AssistantPanel({
               ArkPet Assistente
             </h2>
             {!isMinimized && (
-              <span className="text-[11px] text-muted-foreground block -mt-0.5">
-                {screenContext.title}
-              </span>
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground -mt-0.5">
+                <span data-testid="assistant-context-title">{screenContext.title}</span>
+                {screenContext.entity && (
+                  <span
+                    data-testid="assistant-context-entity"
+                    className="inline-flex items-center px-1.5 py-0.2 rounded bg-primary/10 text-primary font-medium text-[10px]"
+                  >
+                    #{screenContext.entity.id}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

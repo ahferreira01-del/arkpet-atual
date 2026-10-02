@@ -11,10 +11,42 @@ export interface AssistantSecurityContext {
   requestId?: string;
 }
 
+export interface ScreenEntityContext {
+  type: "pet" | "booking" | "tutor" | "invoice";
+  id: number | string;
+  name?: string;
+  breed?: string;
+  species?: string;
+  status?: string;
+  allergies?: string;
+  summary?: string;
+}
+
 export interface ScreenContext {
   route: string;
+  routeId?: string;
   feature?: string;
+  title?: string;
+  description?: string;
   mode?: string;
+  allowedActions?: string[];
+  availableActionIds?: string[];
+  guidanceTargets?: string[];
+  knowledgeCategories?: string[];
+  entity?: ScreenEntityContext | null;
+}
+
+export interface ProductScreenDefinition {
+  routeId: string;
+  matcher: string | RegExp;
+  feature: string;
+  title: string;
+  description: string;
+  allowedRoles: AssistantRole[];
+  knowledgeCategories: string[];
+  availableActionIds: string[];
+  guidanceTargets: string[];
+  entityType?: "pet" | "booking" | "tutor" | "invoice";
 }
 
 export interface AssistantCitation {

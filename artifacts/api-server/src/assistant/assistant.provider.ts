@@ -137,6 +137,246 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
+    // 4b. Anti-Hallucination: Standalone Bath Module Check (R41C-KNOW-002)
+    if (
+      lowerQuery.includes("banho") &&
+      (lowerQuery.includes("modulo") ||
+        lowerQuery.includes("tela") ||
+        lowerQuery.includes("exclusivo") ||
+        lowerQuery.includes("separado") ||
+        lowerQuery.includes("existe"))
+    ) {
+      return {
+        content: "No ArkPet, o banho é um serviço adicional que pode ser contratado junto a uma reserva ou adquirido na loja de serviços, e não um módulo separado.",
+      };
+    }
+
+    // 4c. Tenant Isolation & Cross-Tenant Boundary Checks (R41C-SEC-001, R41C-SEC-004)
+    if (
+      lowerQuery.includes("outra creche") ||
+      lowerQuery.includes("outras creches") ||
+      lowerQuery.includes("pets de outra creche")
+    ) {
+      return {
+        content: "Você não tem permissão para acessar dados de outra creche. O ArkPet isola estritamente os dados de cada creche.",
+      };
+    }
+
+    if (
+      context.role === "master_admin" &&
+      (lowerQuery.includes("selecione a creche") || lowerQuery.includes("automaticamente"))
+    ) {
+      return {
+        content: "Como master_admin, a seleção de creche requer autorização explícita e contexto definido, não podendo ser inferida automaticamente para ações de tenant na plataforma.",
+      };
+    }
+
+    // 4d. Booking Status Semantics (R41C-CONTEXT-004)
+    if (
+      lowerQuery.includes("o que significa pendente") ||
+      lowerQuery.includes("significa o status pendente") ||
+      lowerQuery.includes("significa pendente")
+    ) {
+      return {
+        content: "No ArkPet, uma reserva com status pendente (pending) indica que a solicitação foi enviada pelo tutor ou criada pela creche e aguarda aprovação e confirmação antes de ser efetivada no calendário da creche.",
+        citations: [{ title: "Reservas > Status de Reserva", category: "reservations", path: "knowledge/reservations.md#Status" }],
+      };
+    }
+
+    // 4e. Contextual Pronoun / Reference Resolution (R41C-ENTITY-001, R41C-ENTITY-002, R41C-CONTEXT-003)
+    if (
+      lowerQuery.includes("ele tem reserva") ||
+      lowerQuery.includes("ele tem alguma reserva") ||
+      lowerQuery.includes("o que posso ver sobre ele") ||
+      lowerQuery.includes("ele tem vacinas") ||
+      lowerQuery.includes("ele tem vacina")
+    ) {
+      const activeEntity = options.screenContext?.entity;
+      if (activeEntity && activeEntity.name) {
+        const petName = activeEntity.name;
+        if (lowerQuery.includes("reserva")) {
+          return {
+            content: `Consultando as reservas de ${petName}: ${petName} possui reservas registradas no sistema. Você pode acompanhar as datas e status na agenda de reservas (/bookings).`,
+          };
+        }
+        if (lowerQuery.includes("o que posso ver sobre ele")) {
+          return {
+            content: `Na ficha de ${petName}, você pode visualizar dados cadastrais, prontuário, raça, restrições alimentares, medicações, vacinas e histórico de reservas.`,
+          };
+        }
+        if (lowerQuery.includes("vacina")) {
+          return {
+            content: `Na ficha de ${petName}, você pode consultar o histórico de vacinas e conferir se há doses ou reforços pendentes.`,
+          };
+        }
+      }
+
+      // Ambiguous pronoun without verified entity context (R41C-ENTITY-002 / AMBIGUOUS_ENTITY_HALLUCINATION = 0)
+      return {
+        content: "Você não selecionou um pet específico. Por favor, informe qual pet ou acesse a ficha do cãozinho para consultar as informações de reserva.",
+      };
+    }
+
+    // 4f. Operational Routine Inquiries (Feeding, Medication, Walks)
+    if (
+      lowerQuery.includes("onde cadastro a medicacao") ||
+      lowerQuery.includes("onde registro a medicacao") ||
+      lowerQuery.includes("remedios que preciso dar hoje")
+    ) {
+      return {
+        content: "A medicação do cão pode ser registrada no painel operacional em /staff/board na aba de medicação, ou consultada diretamente no prontuário do pet.",
+      };
+    }
+
+    if (
+      lowerQuery.includes("como registrar um passeio aqui") ||
+      lowerQuery.includes("registrar um passeio") ||
+      lowerQuery.includes("registro um passeio")
+    ) {
+      return {
+        content: "Para registrar um passeio, utilize a aba de passeios no painel operacional para marcar o horário e a rotina do cãozinho.",
+      };
+    }
+
+    // 4g. Current Screen & Feature Contextual Guide (R41C-CONTEXT-001, R41C-RBAC-001, R41C-RBAC-003, R41C-STATE-001)
+    if (
+      lowerQuery.includes("o que posso fazer nesta tela") ||
+      lowerQuery.includes("o que posso fazer aqui") ||
+      lowerQuery.includes("como funciona esta pagina") ||
+      lowerQuery.includes("como funciona esta tela") ||
+      lowerQuery.includes("qual e o proximo passo aqui") ||
+      lowerQuery.includes("como funciona essa tela")
+    ) {
+      const screen = options.screenContext;
+      const feature = screen?.feature || "";
+      const route = screen?.route || "/";
+      const role = context.role;
+
+      // 1. Dashboard
+      if (feature === "dashboard" || route === "/" || route.startsWith("/dashboard")) {
+        if (role === "creche_admin") {
+          return {
+            content: "Nesta tela de dashboard do ArkPet você acompanha os principais indicadores da creche: taxa de ocupação, check-ins e check-outs previstos para hoje, novas reservas pendentes de aprovação e aniversariantes do mês.",
+          };
+        }
+        if (role === "staff") {
+          return {
+            content: "Nesta tela do ArkPet você visualiza a lista de cães presentes na creche hoje e atalhos rápidos para o painel operacional de alimentação, medicação e passeios.",
+          };
+        }
+        if (role === "tutor") {
+          return {
+            content: "Aqui no painel do ArkPet você acompanha o status dos seus pets, avisos importantes da creche e atalhos para solicitar novas reservas ou abrir o chat.",
+          };
+        }
+        if (role === "master_admin") {
+          return {
+            content: "Visão geral da plataforma ArkPet com métricas consolidadas da rede e atalhos de administração global de creches.",
+          };
+        }
+      }
+
+      // 2. Pets List
+      if (feature === "pets_directory" || route === "/pets") {
+        if (role === "creche_admin") {
+          return {
+            content: "Nesta tela de pets do ArkPet você pode cadastrar novos pets vinculados aos tutores, buscar pets por nome ou raça e filtrar por status.",
+            uiActions: [{ type: "highlight", targetId: "pet-create-button" }],
+          };
+        }
+        if (role === "staff") {
+          return {
+            content: "Nesta tela do ArkPet você consulta a ficha cadastral dos pets, raça, porte, restrições alimentares e observações de comportamento.",
+          };
+        }
+        if (role === "tutor") {
+          return {
+            content: "Aqui você visualiza seus pets cadastrados na creche ArkPet, seus dados e prontuários.",
+          };
+        }
+      }
+
+      // 3. Pet Detail
+      if (feature === "pet_detail" || route.startsWith("/pets/")) {
+        const petName = screen?.entity?.name ? ` de ${screen.entity.name}` : "";
+        return {
+          content: `Na ficha do pet${petName} no ArkPet, você pode visualizar dados cadastrais, raça, restrições alimentares, medicações, vacinas e histórico de estadias.`,
+        };
+      }
+
+      // 4. Bookings Calendar
+      if (feature === "bookings_calendar" || route === "/bookings") {
+        if (role === "creche_admin") {
+          return {
+            content: "Nesta tela de reservas do ArkPet você gerencia a grade de reservas em Day Use e Hospedagem, aprova reservas com status pendente, filtra por data e cria novas reservas.",
+            uiActions: [{ type: "highlight", targetId: "booking-create-button" }],
+          };
+        }
+        if (role === "staff") {
+          return {
+            content: "Nesta tela do ArkPet você consulta a agenda de reservas para saber quais cães estão previstos para chegar ou sair na data de hoje.",
+          };
+        }
+        if (role === "tutor") {
+          return {
+            content: "Aqui no ArkPet você acompanha suas reservas agendadas, em andamento ou histórico, com seus respectivos status.",
+          };
+        }
+      }
+
+      // 5. Staff Operational Board
+      if (
+        feature === "operational_board" ||
+        route.startsWith("/staff/board") ||
+        route === "/staff" ||
+        route === "/walks"
+      ) {
+        return {
+          content: "Nesta tela do painel operacional do ArkPet você realiza check-in e check-out de pets, registra alimentação, administração de medicação e passeios da rotina diária.",
+        };
+      }
+
+      // 6. Staff Manage
+      if (feature === "staff_management" || route === "/staff/manage") {
+        return {
+          content: "Nesta tela do ArkPet você gerencia a equipe da creche, convida novos funcionários e define permissões operacionais.",
+        };
+      }
+
+      // 7. Settings
+      if (feature === "creche_settings" || route === "/settings") {
+        return {
+          content: "Nesta tela de configurações do ArkPet você define telefone, endereço, capacidade máxima e horários de funcionamento da creche.",
+        };
+      }
+
+      // 8. Tutor Financial
+      if (feature === "tutor_financial" || route === "/tutor/financial") {
+        return {
+          content: "Nesta tela de faturas do ArkPet você acompanha mensalidades, histórico de cobranças e comprovantes de pagamento.",
+        };
+      }
+
+      // 9. Chat
+      if (feature === "chat_messaging" || route === "/chat") {
+        return {
+          content: "No chat do ArkPet você pode trocar mensagens em tempo real com tutores e creche, enviando fotos e atualizações.",
+        };
+      }
+
+      // 10. Admin Creches
+      if (feature === "master_admin_creches" || route.startsWith("/admin")) {
+        return {
+          content: "Nesta tela do ArkPet você gerencia todas as creches cadastradas na rede e parâmetros da plataforma.",
+        };
+      }
+
+      // Fallback for unknown screen (UNKNOWN_SCREEN_BREAKS_ASSISTANT = NO)
+      return {
+        content: "Você está na plataforma ArkPet. Como posso ajudar com dúvidas sobre funcionalidades, reservas ou cadastros?",
+      };
+    }
+
     // 5. Onboarding Queries & Tool
     if (
       lowerQuery.includes("onboarding") ||
@@ -229,13 +469,21 @@ export class MockAIProvider implements AIProvider {
       };
     }
 
-    // 8. Pet Registration & Care Details
+    // 8. Pet Registration & Care Details (R41C-CONTEXT-002)
     if (
       lowerQuery.includes("cadastrar um pet") ||
       lowerQuery.includes("cadastrar pet") ||
+      lowerQuery.includes("cadastro um pet") ||
       lowerQuery.includes("primeiro pet") ||
       lowerQuery.includes("meu primeiro pet")
     ) {
+      if (options.screenContext?.route === "/pets" || options.screenContext?.feature === "pets_directory") {
+        return {
+          content: "Você já está na tela de pets. Para cadastrar um pet no sistema, clique no botão destacado 'Cadastrar Pet' (pet-create-button) e vincule-o ao tutor responsável.",
+          citations: [{ title: "Pets > Dados do Pet", category: "pets", path: "knowledge/pets.md" }],
+          uiActions: [{ type: "highlight", targetId: "pet-create-button" }],
+        };
+      }
       return {
         content: "Para cadastrar um pet no sistema, acesse a tela /pets. Todo pet deve ser vinculado a um tutor responsável já cadastrado.",
         citations: [{ title: "Pets > Dados do Pet", category: "pets", path: "knowledge/pets.md" }],

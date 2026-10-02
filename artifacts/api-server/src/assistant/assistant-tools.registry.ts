@@ -10,6 +10,8 @@ import { eq, and, sql, count, desc, like } from "drizzle-orm";
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { AssistantKnowledgeService } from "./assistant-knowledge.service.js";
 import { AssistantGuidanceService, CANONICAL_ONBOARDING_TARGETS } from "./assistant-guidance.service.js";
+import { AssistantContextService } from "./assistant-context.service.js";
+import { AssistantProductContextRegistry } from "./assistant-context-registry.service.js";
 import { getCanonicalOnboardingStatus } from "../services/onboarding.service.js";
 import { ASSISTANT_CONFIG } from "./assistant.config.js";
 import type {
@@ -65,16 +67,24 @@ export class AssistantToolsRegistry {
     // ── Tool 3: get_current_screen_context ─────────────────────────────────────
     this.register({
       name: "get_current_screen_context",
-      description: "Obtém a rota da tela e as ações disponíveis no contexto atual.",
+      description: "Obtém a rota da tela, metadados cadastrados e as ações disponíveis no contexto atual.",
       allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
       inputSchema: z.object({
         route: z.string().optional(),
       }),
       confirmationRequired: false,
       auditEvent: "assistant_tool_get_screen_context",
-      execute: async (input) => {
+      execute: async (input, context) => {
+        const resolved = await AssistantContextService.resolveContext(context, { route: input.route });
         return {
-          route: input.route || "/",
+          route: resolved.screen.route,
+          routeId: resolved.screen.routeId,
+          feature: resolved.screen.feature,
+          title: resolved.screen.title,
+          description: resolved.screen.description,
+          allowedActions: resolved.screen.allowedActions,
+          guidanceTargets: resolved.screen.guidanceTargets,
+          entity: resolved.screen.entity,
           systemStatus: "active",
         };
       },
@@ -256,6 +266,40 @@ export class AssistantToolsRegistry {
         return AssistantGuidanceService.generatePlan(status, input.currentRoute, context.role);
       },
     });
+
+    // ── Tool 8: get_contextual_product_guide ───────────────────────────────────
+    this.register({
+      name: "get_contextual_product_guide",
+      description: "Obtém o guia contextual completo da tela atual, incluindo explicações de negócio para o papel autenticado e ações disponíveis.",
+      allowedRoles: ["master_admin", "creche_admin", "staff", "tutor"],
+      inputSchema: z.object({
+        currentRoute: z.string().optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_contextual_product_guide",
+      execute: async (input, context) => {
+        const resolved = await AssistantContextService.resolveContext(context, { route: input.currentRoute });
+        const screen = resolved.screen;
+        const definition =
+          AssistantProductContextRegistry.getDefinition(screen.routeId || "") ||
+          AssistantProductContextRegistry.getFallbackScreen(screen.route);
+        const guidanceSummary = AssistantProductContextRegistry.getGuidanceSummaryForRole(
+          definition,
+          context.role
+        );
+
+        return {
+          route: screen.route,
+          routeId: screen.routeId,
+          title: screen.title,
+          feature: screen.feature,
+          roleGuidance: guidanceSummary,
+          availableActions: screen.allowedActions,
+          guidanceTargets: screen.guidanceTargets,
+          activeEntity: screen.entity,
+        };
+      },
+    });
   }
 
   public static async getOnboardingStatus(crecheId: number): Promise<GuidedOnboardingStatus> {
@@ -320,7 +364,8 @@ export class AssistantToolsRegistry {
 
     // 1. Invariant: GENERAL_DB_ACCESS_TOOL = 0
     const forbiddenPatterns = ["sql", "querydatabase", "executesql", "rundatabase", "genericmutation"];
-    if (forbiddenPatterns.some((pattern) => name.toLowerCase().includes(pattern))) {
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (forbiddenPatterns.some((pattern) => normalizedName.includes(pattern))) {
       AssistantAuditService.logSecurityDenial(context, {
         action: name,
         reason: "Generic database tools strictly forbidden by R41 security policy",

@@ -5,11 +5,11 @@ export const ASSISTANT_CONFIG = {
     return true;
   },
   get isVoiceEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED in R41.A & R41.B
+    // Strictly NOT_IMPLEMENTED in R41.C (Reserved for R41.D)
     return false;
   },
   get isActionsEnabled(): boolean {
-    // Strictly NOT_IMPLEMENTED for domain mutations in R41.B
+    // Strictly NOT_IMPLEMENTED for domain mutations in R41.C (Reserved for R41.E)
     return false;
   },
   get isKillSwitchActive(): boolean {
@@ -17,8 +17,8 @@ export const ASSISTANT_CONFIG = {
   },
 
   // Versioning
-  promptVersion: "r41-b-1",
-  knowledgeVersion: "arkpet-v32-r41",
+  promptVersion: "r41-c-1",
+  knowledgeVersion: "arkpet-v32-r41c",
 
   // Model & Provider defaults
   get defaultProvider(): string {
@@ -41,11 +41,22 @@ export const ASSISTANT_CONFIG = {
     "/",
     "/settings",
     "/staff/manage",
+    "/staff/board",
+    "/staff/qr-scanner",
     "/tutors",
     "/pets",
     "/bookings",
+    "/bookings/new",
     "/financial",
+    "/tutor/financial",
+    "/tutor/store",
     "/chat",
+    "/assinatura",
+    "/marketing/campaigns",
+    "/admin/creches",
+    "/admin/campaigns",
+    "/admin/proposals",
+    "/admin/users",
   ] as const,
 
   // Guidance Target Allowlist (ARBITRARY_CSS_SELECTOR_FROM_MODEL = 0, ASSISTANT_ARBITRARY_DOM_TARGETING = 0)
@@ -55,5 +66,12 @@ export const ASSISTANT_CONFIG = {
     "tutor-create-button",
     "pet-create-button",
     "booking-create-button",
+    "pet-search-input",
+    "booking-filter-status",
+    "staff-board-checkin-tab",
+    "staff-board-feeding-tab",
+    "staff-board-meds-tab",
+    "staff-board-walks-tab",
+    "chat-input-textarea",
   ] as const,
 };

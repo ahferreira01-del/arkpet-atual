@@ -70,6 +70,13 @@ const messageBodySchema = z.object({
     .object({
       route: z.string().default("/"),
       feature: z.string().optional(),
+      entity: z
+        .object({
+          type: z.enum(["pet", "booking", "tutor", "invoice"]),
+          id: z.union([z.number(), z.string()]),
+        })
+        .optional(),
+      availableActionIds: z.array(z.string()).optional(),
     })
     .optional(),
 });

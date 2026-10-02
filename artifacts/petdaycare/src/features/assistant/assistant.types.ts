@@ -46,8 +46,14 @@ export interface AssistantUIMessage {
   error?: string;
 }
 
+export interface ScreenEntityInfo {
+  type: "pet" | "booking" | "tutor" | "invoice";
+  id: number | string;
+}
+
 export interface ScreenContextInfo {
   route: string;
   feature: string;
   title: string;
+  entity?: ScreenEntityInfo;
 }
