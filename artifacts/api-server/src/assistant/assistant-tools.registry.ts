@@ -358,7 +358,19 @@ export class AssistantToolsRegistry {
         if (!context.crecheId) {
           throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
         }
-        return await OperationalSnapshotService.getSnapshot(context.crecheId, { forceRefresh: input.forceRefresh });
+        const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId, { forceRefresh: input.forceRefresh });
+        if (context.sessionId) {
+          OperationalSnapshotService.setSessionBaseline(
+            {
+              sessionId: context.sessionId,
+              userId: context.userId,
+              crecheId: context.crecheId,
+              role: context.role,
+            },
+            snapshot
+          );
+        }
+        return snapshot;
       },
     });
 
@@ -417,6 +429,23 @@ export class AssistantToolsRegistry {
           throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
         }
         const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId);
+        if (!snapshot.arrivals) {
+          return {
+            asOf: snapshot.asOf,
+            businessDate: snapshot.businessDate,
+            summary: {
+              totalExpected: null,
+              checkedIn: null,
+              pending: null,
+              completed: null,
+              cancelled: null,
+              onTheWay: null,
+            },
+            arrivals: [],
+            dataCompleteness: snapshot.dataCompleteness,
+            unavailableSources: snapshot.unavailableSources,
+          };
+        }
         let items = snapshot.arrivals.items;
         if (input.status && input.status !== "all") {
           items = items.filter((a) => a.status === input.status);
@@ -461,6 +490,19 @@ export class AssistantToolsRegistry {
           throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
         }
         const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId);
+        if (!snapshot.tasks) {
+          return {
+            asOf: snapshot.asOf,
+            businessDate: snapshot.businessDate,
+            counts: null,
+            totalPending: null,
+            totalOverdue: null,
+            totalUnassigned: null,
+            tasks: [],
+            dataCompleteness: snapshot.dataCompleteness,
+            unavailableSources: snapshot.unavailableSources,
+          };
+        }
         let items = snapshot.tasks.items;
         if (input.type && input.type !== "all") {
           items = items.filter((t) => t.type === input.type);
@@ -489,22 +531,25 @@ export class AssistantToolsRegistry {
     // ── Tool 13: get_recent_operational_changes (R41.F) ───────────────────────
     this.register({
       name: "get_recent_operational_changes",
-      description: "Compara o estado operacional atual com um momento anterior da sessão para identificar o que mudou na operação.",
+      description: "Compara o estado operacional atual com o resumo operacional anterior desta sessão para identificar o que mudou na operação.",
       allowedRoles: ["master_admin", "creche_admin", "staff"],
       mode: "read",
       riskLevel: "low",
       targetType: "general",
-      inputSchema: z.object({
-        sessionId: z.string().optional(),
-      }),
+      inputSchema: z.object({}),
       confirmationRequired: false,
       auditEvent: "assistant_tool_get_recent_operational_changes",
-      execute: async (input, context) => {
+      execute: async (_input, context) => {
         if (!context.crecheId) {
           throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
         }
-        const baseline = input.sessionId
-          ? OperationalSnapshotService.getSessionBaseline(input.sessionId)
+        const baseline = context.sessionId
+          ? OperationalSnapshotService.getSessionBaseline({
+              sessionId: context.sessionId,
+              userId: context.userId,
+              crecheId: context.crecheId,
+              role: context.role,
+            })
           : undefined;
         return await OperationalSnapshotService.compareWithBaseline(context.crecheId, baseline);
       },

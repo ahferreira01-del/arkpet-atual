@@ -9,6 +9,7 @@ export interface AssistantSecurityContext {
   name: string;
   email: string;
   requestId?: string;
+  sessionId?: string;
 }
 
 export interface ScreenEntityContext {
@@ -208,44 +209,51 @@ export interface OperationalTaskItem {
   delayMinutes?: number;
 }
 
+export interface OperationalSourceStatus {
+  occupancy: "available" | "unavailable";
+  bookings: "available" | "unavailable";
+  tasks: "available" | "unavailable";
+}
+
 export interface OperationalSnapshot {
   asOf: string;
   businessDate: string;
   crecheId: number;
   dataCompleteness: "complete" | "partial";
   unavailableSources?: string[];
+  sourceStatus: OperationalSourceStatus;
   occupancy: {
-    current: number;
-    capacity: number;
-  };
+    current: number | null;
+    capacity: number | null;
+  } | null;
   arrivals: {
-    totalExpected: number;
-    checkedIn: number;
-    pending: number;
-    completed: number;
-    cancelled: number;
-    onTheWay: number;
+    totalExpected: number | null;
+    checkedIn: number | null;
+    pending: number | null;
+    completed: number | null;
+    cancelled: number | null;
+    onTheWay: number | null;
     items: OperationalArrivalItem[];
-  };
+  } | null;
   departures: {
-    totalExpected: number;
-    checkedOut: number;
-    pending: number;
-  };
+    totalExpected: number | null;
+    checkedOut: number | null;
+    pending: number | null;
+  } | null;
   tasks: {
-    total: number;
-    pending: number;
-    completed: number;
-    overdue: number;
-    unassigned: number;
+    total: number | null;
+    pending: number | null;
+    completed: number | null;
+    overdue: number | null;
+    unassigned: number | null;
     byType: {
-      feeding: { total: number; pending: number; completed: number; overdue: number };
-      medication: { total: number; pending: number; completed: number; overdue: number };
-      walk: { total: number; pending: number; completed: number; overdue: number };
-      other: { total: number; pending: number; completed: number; overdue: number };
+      feeding: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      medication: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      walk: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      other: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
     };
     items: OperationalTaskItem[];
-  };
+  } | null;
   issues: OperationalIssue[];
 }
 
@@ -254,9 +262,23 @@ export interface OperationalCopilotResponse {
   businessDate: string;
   summary: string;
   priorities: OperationalIssue[];
-  counts?: Record<string, number>;
+  occupancy?: {
+    current: number | null;
+    capacity: number | null;
+  } | null;
+  arrivals?: {
+    totalExpected: number | null;
+    pending: number | null;
+    checkedIn: number | null;
+  } | null;
+  tasks?: {
+    pending: number | null;
+    overdue: number | null;
+  } | null;
+  counts?: Record<string, number | null>;
   dataCompleteness: "complete" | "partial";
   unavailableSources?: string[];
+  sourceStatus?: OperationalSourceStatus;
 }
 
 export interface AssistantSession {

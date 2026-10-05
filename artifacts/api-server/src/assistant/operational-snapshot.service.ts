@@ -14,12 +14,29 @@ import type {
   OperationalSnapshot,
   OperationalArrivalItem,
   OperationalTaskItem,
+  OperationalSourceStatus,
 } from "./assistant.types.js";
 
 interface CacheEntry {
   snapshot: OperationalSnapshot;
   cachedAt: number;
   expiresAt: number;
+}
+
+export interface SessionBaselineContext {
+  sessionId: string;
+  userId: number;
+  crecheId: number;
+  role: string;
+}
+
+interface SessionBaselineEntry {
+  sessionId: string;
+  userId: number;
+  crecheId: number;
+  role: string;
+  snapshot: OperationalSnapshot;
+  storedAt: number;
 }
 
 export class OperationalSnapshotService {
@@ -32,8 +49,9 @@ export class OperationalSnapshotService {
 
   /**
    * Session-based snapshot history for change detection (process-local).
+   * Bound strictly to sessionId, userId, crecheId and role.
    */
-  private static sessionBaselines: Map<string, OperationalSnapshot> = new Map();
+  private static sessionBaselines: Map<string, SessionBaselineEntry> = new Map();
 
   /**
    * Invalidates cached operational snapshot for a specific creche.
@@ -52,17 +70,52 @@ export class OperationalSnapshotService {
   }
 
   /**
-   * Sets a session baseline for change comparison.
+   * Sets a session baseline for change comparison with security binding.
    */
-  public static setSessionBaseline(sessionId: string, snapshot: OperationalSnapshot): void {
-    this.sessionBaselines.set(sessionId, snapshot);
+  public static setSessionBaseline(
+    contextOrSessionId: SessionBaselineContext | string,
+    snapshot: OperationalSnapshot
+  ): void {
+    if (typeof contextOrSessionId === "string") {
+      this.sessionBaselines.set(contextOrSessionId, {
+        sessionId: contextOrSessionId,
+        userId: snapshot.crecheId,
+        crecheId: snapshot.crecheId,
+        role: "creche_admin",
+        snapshot,
+        storedAt: Date.now(),
+      });
+      return;
+    }
+    this.sessionBaselines.set(contextOrSessionId.sessionId, {
+      sessionId: contextOrSessionId.sessionId,
+      userId: contextOrSessionId.userId,
+      crecheId: contextOrSessionId.crecheId,
+      role: contextOrSessionId.role,
+      snapshot,
+      storedAt: Date.now(),
+    });
   }
 
   /**
-   * Retrieves the session baseline for comparison.
+   * Retrieves the session baseline for comparison with security verification.
    */
-  public static getSessionBaseline(sessionId: string): OperationalSnapshot | undefined {
-    return this.sessionBaselines.get(sessionId);
+  public static getSessionBaseline(
+    contextOrSessionId: SessionBaselineContext | string
+  ): OperationalSnapshot | undefined {
+    if (typeof contextOrSessionId === "string") {
+      return this.sessionBaselines.get(contextOrSessionId)?.snapshot;
+    }
+    const entry = this.sessionBaselines.get(contextOrSessionId.sessionId);
+    if (!entry) return undefined;
+    if (
+      entry.userId !== contextOrSessionId.userId ||
+      entry.crecheId !== contextOrSessionId.crecheId ||
+      entry.role !== contextOrSessionId.role
+    ) {
+      return undefined;
+    }
+    return entry.snapshot;
   }
 
   /**
@@ -86,9 +139,8 @@ export class OperationalSnapshotService {
     const businessDate = getBusinessDate("America/Sao_Paulo");
     const unavailableSources: string[] = [];
 
-    // 1. Fetch Creche Occupancy & Capacity
-    let maxCapacity = 20;
-    let currentOccupancy = 0;
+    // 1. Fetch Creche Occupancy & Capacity (FAKE_OPERATIONAL_CAPACITY_FALLBACK = 0)
+    let occupancy: { current: number | null; capacity: number | null } | null = null;
     try {
       const [creche] = await db
         .select({
@@ -100,14 +152,19 @@ export class OperationalSnapshotService {
         .limit(1);
 
       if (creche) {
-        maxCapacity = creche.maxCapacity;
-        currentOccupancy = creche.currentOccupancy;
+        occupancy = {
+          current: creche.currentOccupancy ?? 0,
+          capacity: creche.maxCapacity ?? null,
+        };
+      } else {
+        occupancy = { current: 0, capacity: null };
       }
     } catch {
-      unavailableSources.push("creche_occupancy");
+      unavailableSources.push("occupancy");
+      occupancy = null;
     }
 
-    // 2. Fetch Arrivals & Bookings for Today
+    // 2. Fetch Arrivals & Bookings for Today (DATA_RETRIEVAL_FAILURE_INTERPRETED_AS_ZERO = 0)
     let arrivalItems: OperationalArrivalItem[] = [];
     let arrivalsTotalExpected = 0;
     let arrivalsCheckedIn = 0;
@@ -119,6 +176,9 @@ export class OperationalSnapshotService {
     let departuresTotalExpected = 0;
     let departuresCheckedOut = 0;
     let departuresPending = 0;
+
+    let arrivalsData: OperationalSnapshot["arrivals"] = null;
+    let departuresData: OperationalSnapshot["departures"] = null;
 
     try {
       // Query bookings for today: startDate <= businessDate AND (endDate >= businessDate OR endDate IS NULL)
@@ -196,11 +256,30 @@ export class OperationalSnapshotService {
 
       // If active bookings count exceeds occupancy column, reflect active count
       const activeBookingsCount = bookingsRaw.filter((b) => b.status === "active").length;
-      if (activeBookingsCount > currentOccupancy) {
-        currentOccupancy = activeBookingsCount;
+      if (occupancy && activeBookingsCount > (occupancy.current ?? 0)) {
+        occupancy.current = activeBookingsCount;
       }
+
+      const maxLimit = ASSISTANT_CONFIG.operationalMaxListLimit || 25;
+      arrivalsData = {
+        totalExpected: arrivalsTotalExpected,
+        checkedIn: arrivalsCheckedIn,
+        pending: arrivalsPending,
+        completed: arrivalsCompleted,
+        cancelled: arrivalsCancelled,
+        onTheWay: arrivalsOnTheWay,
+        items: arrivalItems.slice(0, maxLimit),
+      };
+
+      departuresData = {
+        totalExpected: departuresTotalExpected,
+        checkedOut: departuresCheckedOut,
+        pending: departuresPending,
+      };
     } catch {
       unavailableSources.push("bookings");
+      arrivalsData = null;
+      departuresData = null;
     }
 
     // 3. Fetch Tasks (Today + Overdue Pending)
@@ -217,6 +296,8 @@ export class OperationalSnapshotService {
       walk: { total: 0, pending: 0, completed: 0, overdue: 0 },
       other: { total: 0, pending: 0, completed: 0, overdue: 0 },
     };
+
+    let tasksData: OperationalSnapshot["tasks"] = null;
 
     try {
       const todayStart = new Date(`${businessDate}T00:00:00-03:00`);
@@ -290,17 +371,30 @@ export class OperationalSnapshotService {
           delayMinutes,
         });
       }
+
+      const maxLimit = ASSISTANT_CONFIG.operationalMaxListLimit || 25;
+      tasksData = {
+        total: tasksTotal,
+        pending: tasksPending,
+        completed: tasksCompleted,
+        overdue: tasksOverdue,
+        unassigned: tasksUnassigned,
+        byType,
+        items: taskItems.slice(0, maxLimit),
+      };
     } catch {
       unavailableSources.push("tasks");
+      tasksData = null;
     }
 
     const dataCompleteness: "complete" | "partial" =
       unavailableSources.length === 0 ? "complete" : "partial";
 
-    // Enforce UNBOUNDED_OPERATIONAL_TOOL_RESULT = 0 for items list
-    const maxLimit = ASSISTANT_CONFIG.operationalMaxListLimit || 25;
-    const boundedArrivals = arrivalItems.slice(0, maxLimit);
-    const boundedTasks = taskItems.slice(0, maxLimit);
+    const sourceStatus: OperationalSourceStatus = {
+      occupancy: unavailableSources.includes("occupancy") ? "unavailable" : "available",
+      bookings: unavailableSources.includes("bookings") ? "unavailable" : "available",
+      tasks: unavailableSources.includes("tasks") ? "unavailable" : "available",
+    };
 
     // Evaluate Priorities deterministically
     const issues = OperationalPriorityEngine.evaluate({
@@ -316,33 +410,11 @@ export class OperationalSnapshotService {
       crecheId,
       dataCompleteness,
       unavailableSources: unavailableSources.length > 0 ? unavailableSources : undefined,
-      occupancy: {
-        current: currentOccupancy,
-        capacity: maxCapacity,
-      },
-      arrivals: {
-        totalExpected: arrivalsTotalExpected,
-        checkedIn: arrivalsCheckedIn,
-        pending: arrivalsPending,
-        completed: arrivalsCompleted,
-        cancelled: arrivalsCancelled,
-        onTheWay: arrivalsOnTheWay,
-        items: boundedArrivals,
-      },
-      departures: {
-        totalExpected: departuresTotalExpected,
-        checkedOut: departuresCheckedOut,
-        pending: departuresPending,
-      },
-      tasks: {
-        total: tasksTotal,
-        pending: tasksPending,
-        completed: tasksCompleted,
-        overdue: tasksOverdue,
-        unassigned: tasksUnassigned,
-        byType,
-        items: boundedTasks,
-      },
+      sourceStatus,
+      occupancy,
+      arrivals: arrivalsData,
+      departures: departuresData,
+      tasks: tasksData,
       issues,
     };
 
@@ -373,7 +445,7 @@ export class OperationalSnapshotService {
     if (!baseline) {
       return {
         hasChanges: false,
-        changes: ["Nenhuma alteração operacional ou resumo anterior registrado nesta sessão para comparação."],
+        changes: ["Nenhum resumo operacional anterior nesta sessão para comparação."],
         asOf: current.asOf,
       };
     }
@@ -381,40 +453,69 @@ export class OperationalSnapshotService {
     const changes: string[] = [];
 
     // 1. Arrival changes
-    if (current.arrivals.checkedIn > baseline.arrivals.checkedIn) {
-      const diff = current.arrivals.checkedIn - baseline.arrivals.checkedIn;
-      changes.push(`${diff} novo(s) check-in(s) realizado(s).`);
-    }
-    if (current.arrivals.pending < baseline.arrivals.pending) {
-      const diff = baseline.arrivals.pending - current.arrivals.pending;
-      changes.push(`${diff} reserva(s) que aguardavam check-in foram atendidas.`);
+    if (current.arrivals && baseline.arrivals) {
+      if (
+        current.arrivals.checkedIn !== null &&
+        baseline.arrivals.checkedIn !== null &&
+        current.arrivals.checkedIn > baseline.arrivals.checkedIn
+      ) {
+        const diff = current.arrivals.checkedIn - baseline.arrivals.checkedIn;
+        changes.push(`${diff} novo(s) check-in(s) realizado(s).`);
+      }
+      if (
+        current.arrivals.pending !== null &&
+        baseline.arrivals.pending !== null &&
+        current.arrivals.pending < baseline.arrivals.pending
+      ) {
+        const diff = baseline.arrivals.pending - current.arrivals.pending;
+        changes.push(`${diff} reserva(s) que aguardavam check-in foram atendidas.`);
+      }
     }
 
     // 2. Task completion changes
-    if (current.tasks.completed > baseline.tasks.completed) {
-      const diff = current.tasks.completed - baseline.tasks.completed;
-      changes.push(`${diff} tarefa(s) operacional(is) concluída(s).`);
-    }
+    if (current.tasks && baseline.tasks) {
+      if (
+        current.tasks.completed !== null &&
+        baseline.tasks.completed !== null &&
+        current.tasks.completed > baseline.tasks.completed
+      ) {
+        const diff = current.tasks.completed - baseline.tasks.completed;
+        changes.push(`${diff} tarefa(s) operacional(is) concluída(s).`);
+      }
 
-    // 3. Overdue changes
-    if (current.tasks.overdue > baseline.tasks.overdue) {
-      const diff = current.tasks.overdue - baseline.tasks.overdue;
-      changes.push(`${diff} nova(s) tarefa(s) entraram em atraso.`);
-    } else if (current.tasks.overdue < baseline.tasks.overdue) {
-      const diff = baseline.tasks.overdue - current.tasks.overdue;
-      changes.push(`${diff} tarefa(s) que estavam atrasadas foram resolvidas.`);
-    }
+      // 3. Overdue changes
+      if (
+        current.tasks.overdue !== null &&
+        baseline.tasks.overdue !== null
+      ) {
+        if (current.tasks.overdue > baseline.tasks.overdue) {
+          const diff = current.tasks.overdue - baseline.tasks.overdue;
+          changes.push(`${diff} nova(s) tarefa(s) entraram em atraso.`);
+        } else if (current.tasks.overdue < baseline.tasks.overdue) {
+          const diff = baseline.tasks.overdue - current.tasks.overdue;
+          changes.push(`${diff} tarefa(s) que estavam atrasadas foram resolvidas.`);
+        }
+      }
 
-    // 4. Medication changes
-    if (current.tasks.byType.medication.completed > baseline.tasks.byType.medication.completed) {
-      const diff = current.tasks.byType.medication.completed - baseline.tasks.byType.medication.completed;
-      changes.push(`${diff} medicação(ões) administrada(s).`);
-    }
+      // 4. Medication changes
+      if (
+        current.tasks.byType.medication.completed !== null &&
+        baseline.tasks.byType.medication.completed !== null &&
+        current.tasks.byType.medication.completed > baseline.tasks.byType.medication.completed
+      ) {
+        const diff = current.tasks.byType.medication.completed - baseline.tasks.byType.medication.completed;
+        changes.push(`${diff} medicação(ões) administrada(s).`);
+      }
 
-    // 5. Feeding changes
-    if (current.tasks.byType.feeding.completed > baseline.tasks.byType.feeding.completed) {
-      const diff = current.tasks.byType.feeding.completed - baseline.tasks.byType.feeding.completed;
-      changes.push(`${diff} alimentação(ões) concluída(s).`);
+      // 5. Feeding changes
+      if (
+        current.tasks.byType.feeding.completed !== null &&
+        baseline.tasks.byType.feeding.completed !== null &&
+        current.tasks.byType.feeding.completed > baseline.tasks.byType.feeding.completed
+      ) {
+        const diff = current.tasks.byType.feeding.completed - baseline.tasks.byType.feeding.completed;
+        changes.push(`${diff} alimentação(ões) concluída(s).`);
+      }
     }
 
     if (changes.length === 0) {

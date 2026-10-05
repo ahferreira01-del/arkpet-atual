@@ -46,11 +46,41 @@
 | `artifacts/api-server/src/assistant/operational-snapshot.service.ts` | Canonical read service compiling coherent operational snapshots from database with error isolation, partial data tracking, 30s tenant-isolated cache, and baseline delta comparisons. |
 | `artifacts/api-server/src/assistant/operational-priority.engine.ts` | Pure deterministic priority evaluation engine scoring operational issues (`critical`, `high`, `medium`, `low`) with multi-tier tie-breakers and registered safe action linking. |
 | `artifacts/api-server/src/__tests__/assistantOperationalCopilot.unit.test.ts` | Comprehensive 30-test unit suite covering tool contracts, snapshot compilation, priority determinism, temporal integrity, data completeness, RBAC, cache isolation, and safety guards. |
-| `artifacts/petdaycare/src/test/assistant-operational-copilot.test.tsx` | Frontend unit suite testing suggestion pills, operational cards, priority badges, action button dispatching, and partial data warning rendering. |
+| `artifacts/petdaycare/src/test/assistant-operational-copilot.test.tsx` | Frontend unit suite testing suggestion pills, operational cards, priority badges, action button dispatching, partial data warning rendering, and Indisponível fallbacks. |
 | `R41_F_ARCHITECTURE.md` | Architectural specification of the Operational Copilot. |
-| `R41_F_OPERATIONAL_DATA_MODEL.md` | Operational snapshot schema and temporal semantics specification. |
-| `R41_F_PRIORITY_ENGINE.md` | Priority rules, scoring weights, tie-breakers, and action linking specification. |
-| `R41_F_SECURITY_MODEL.md` | Security and RBAC model across 4 canonical roles. |
-| `R41_F_TEST_REPORT.md` | Test execution results across all suites. |
-| `R41_F_CHANGE_MANIFEST.md` | Complete inventory of changes in R41.F. |
+| `R41_F_OPERATIONAL_DATA_MODEL.md` | Operational snapshot schema, nullable submodels, and temporal semantics specification. |
+| `R41_F_PRIORITY_ENGINE.md` | Truthful priority rules without invented SLA, scoring weights, tie-breakers, and action linking specification. |
+| `R41_F_SECURITY_MODEL.md` | Security, RBAC model, and session baseline boundaries across 4 canonical roles. |
+| `R41_F_TEST_REPORT.md` | Test execution results across all suites (1,545 automated tests passed). |
+| `R41_F_CHANGE_MANIFEST.md` | Complete inventory of changes in R41.F and R41.F-FINAL.1. |
 | `R41_F_CERTIFICATION_REPORT.md` | Formal certification report and verification checklist. |
+
+---
+
+## 4. R41.F-FINAL.1 Blocker Resolutions
+
+1. **Blocker 1 — Invented Priority SLA Thresholds Eliminated:**
+   - Removed hardcoded 60, 90, 120-minute escalation thresholds (`INVENTED_OPERATIONAL_SLA = 0`).
+   - Removed unsupported critical classifications (`UNSUPPORTED_CRITICAL_HEALTH_RISK_CLASSIFICATION = 0`).
+   - Cites true rule source: `OPERATIONAL_PRIORITY_RULE_SOURCE = CANONICAL_TASK_PRIORITY_AND_SCHEDULE`.
+   - Verified by `R41F-FINAL1-PRIORITY-001` through `005`.
+
+2. **Blocker 2 — Unknown vs True Zero Integrity:**
+   - Query failures yield `null` submodels rather than fake zero counters (`DATA_RETRIEVAL_FAILURE_INTERPRETED_AS_ZERO = 0`).
+   - Removed default capacity fallback 20 (`FAKE_OPERATIONAL_CAPACITY_FALLBACK = 0`).
+   - Model receives null indicators instead of synthetic zero counts (`UNAVAILABLE_OPERATIONAL_SOURCE_NUMERIC_FALLBACK = 0`).
+   - Distinguishes true zero (successful query with 0 rows) from unknown/failed queries.
+   - Frontend renders `Indisponível` for failed sources.
+   - Verified by `R41F-FINAL1-DATA-001` through `004` and `R41F-UI-006`.
+
+3. **Blocker 3 — Session-Bound Delta Security Boundary:**
+   - Removed `sessionId` from public schema of `get_recent_operational_changes` (`MODEL_SUPPLIED_OPERATIONAL_SESSION_ID = 0`).
+   - Process-local session baseline bound to `SessionBaselineContext` (`sessionId`, `userId`, `crecheId`, `role`).
+   - Cross-tenant and cross-user leaks blocked (`OPERATIONAL_BASELINE_TENANT_BOUND = YES`, `OPERATIONAL_BASELINE_USER_BOUND = YES`).
+   - Safe explanation when no baseline exists: `"Nenhum resumo operacional anterior nesta sessão para comparação."`.
+   - Verified by `R41F-FINAL1-SESSION-001` through `004`.
+
+4. **Blocker 4 — Full Test Evidence & Package Reconciliation:**
+   - Backend unit suite: 51 files, 980 tests passed, 0 failed.
+   - Frontend unit suite: 43 files, 565 tests passed, 0 failed.
+   - Reconciled `WORKSPACE_PACKAGE_COUNT = 8` vs `TYPECHECK_TSC_PROJECT_COUNT = 3` (projects declaring tsconfig build: `api-server`, `petdaycare`, `scripts`).

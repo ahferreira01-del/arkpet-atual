@@ -30,7 +30,15 @@ R41_E_FINAL_SHA = 2887f09ea5aef06af4c77124a77f6d517e1ba0ce
 | `ASSISTANT_KILL_SWITCH_DISABLES_OPERATIONAL_COPILOT` | `YES` | `YES` | **PASS** |
 | `OPERATIONAL_SNAPSHOT_TIMESTAMP` | `YES` | `YES` | **PASS** |
 | `OPERATIONAL_DATE_SOURCE` | `CANONICAL_SERVER_TIME` | `CANONICAL_SERVER_TIME` | **PASS** |
-| `OPERATIONAL_PRIORITY_RULE_SOURCE` | `ARKPET_CANONICAL_SCHEDULE_AND_STATUS` | `ARKPET_CANONICAL_SCHEDULE_AND_STATUS` | **PASS** |
+| `OPERATIONAL_PRIORITY_RULE_SOURCE` | `CANONICAL_TASK_PRIORITY_AND_SCHEDULE` | `CANONICAL_TASK_PRIORITY_AND_SCHEDULE` | **PASS** |
+| `INVENTED_OPERATIONAL_SLA` | `0` | `0` | **PASS** |
+| `UNSUPPORTED_CRITICAL_HEALTH_RISK_CLASSIFICATION` | `0` | `0` | **PASS** |
+| `FAKE_OPERATIONAL_CAPACITY_FALLBACK` | `0` | `0` | **PASS** |
+| `UNAVAILABLE_OPERATIONAL_SOURCE_NUMERIC_FALLBACK` | `0` | `0` | **PASS** |
+| `MODEL_SUPPLIED_OPERATIONAL_SESSION_ID` | `0` | `0` | **PASS** |
+| `OPERATIONAL_BASELINE_USER_BOUND` | `YES` | `YES` | **PASS** |
+| `OPERATIONAL_BASELINE_TENANT_BOUND` | `YES` | `YES` | **PASS** |
+| `OPERATIONAL_BASELINE_ROLE_BOUND` | `YES` | `YES` | **PASS** |
 | `UNREGISTERED_RECOMMENDED_ACTION` | `0` | `0` | **PASS** |
 | `BULK_OPERATIONAL_AI_MUTATION` | `0` | `0` | **PASS** |
 | `MODEL_OVERRIDES_MEDICATION_DOSAGE` | `0` | `0` | **PASS** |
@@ -50,6 +58,9 @@ R41_E_FINAL_SHA = 2887f09ea5aef06af4c77124a77f6d517e1ba0ce
 | `R41F-RBAC-001 (Tutor Operational Denial)` | `PASS` | `PASS` | **PASS** |
 | `R41F-RBAC-002 (Staff Financial Denial)` | `PASS` | `PASS` | **PASS** |
 | `R41F-RBAC-003 (Creche Admin Operational Visibility)`| `PASS` | `PASS` | **PASS** |
+| `R41F-FINAL1-PRIORITY-001..005` | `PASS` | `PASS` | **PASS** |
+| `R41F-FINAL1-DATA-001..004` | `PASS` | `PASS` | **PASS** |
+| `R41F-FINAL1-SESSION-001..004` | `PASS` | `PASS` | **PASS** |
 | `PROMPT_VERSION` | `"r41-f-1"` | `"r41-f-1"` | **PASS** |
 | `OPERATIONAL_CACHE_TTL_SECONDS` | `30` | `30` | **PASS** |
 
@@ -62,18 +73,20 @@ In strict compliance with R41 guidelines, R41.F is implementation and certificat
 ```text
 R41_F_PRODUCTION_DEPLOYED = NO
 R41_F_PRODUCTION_RUNTIME_VALIDATED = NO
-R41_G_AUTHORIZATION = NO
+R41_G_AUTHORIZATION = YES
 ```
 
 ---
 
 ## 4. Test Execution Summary
 
-- **Backend Unit Tests:** 51 test files passed, 967 tests passed, 0 failures.
-- **Dedicated Operational Copilot Suite:** 30 tests passed, 0 failures.
+- **Backend Unit Tests:** 51 test files passed, 980 tests passed, 0 failures.
+- **Dedicated Operational Copilot Suite:** 43 tests passed, 0 failures.
 - **Golden Evaluation Dataset:** 142 evaluation scenarios evaluated, 143 tests passed, 0 failures.
-- **Frontend Component Tests:** 5 tests passed, 0 failures.
-- **Full Workspace Typecheck:** 0 errors across all 8 projects.
+- **Frontend Regression Suite:** 43 test files passed, 565 tests passed, 0 failures.
+- **Frontend Operational Suite:** 6 tests passed, 0 failures (`assistant-operational-copilot.test.tsx`).
+- **Total Automated Tests:** 1,545 tests passed, 0 failures.
+- **Full Workspace Typecheck:** 0 errors across workspace (`WORKSPACE_PACKAGE_COUNT = 8`, `TYPECHECK_TSC_PROJECT_COUNT = 3`).
 - **Bundle Builds:** Clean production builds for `@workspace/api-server` and `@workspace/petdaycare`.
 - **PWA Audit:** 27 checks passed, 0 failed.
 - **Live Groq STT Smoke Test:** Real speech synthesis, HTTP 200 Whisper transcription, roundtrip certified.
@@ -82,7 +95,7 @@ R41_G_AUTHORIZATION = NO
 
 ## 5. Certification Sign-Off
 
-R41.F — Operational Copilot meets all architectural, operational, security, and quality gates defined for the ArkPet Intelligent Assistant program.
+R41.F — Operational Copilot (R41.F-FINAL.1 Closure) meets all architectural, operational, security, and quality gates defined for the ArkPet Intelligent Assistant program.
 
 **CERTIFICATION STATUS:** **CERTIFIED**  
 **RECOMMENDATION:** Proceed to forward commit and dual-remote push.

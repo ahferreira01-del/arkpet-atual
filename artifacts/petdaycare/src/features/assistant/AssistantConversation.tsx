@@ -246,30 +246,30 @@ export function AssistantConversation({
 
                     {/* Occupancy and Summary Chips */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
-                      {msg.operational.occupancy && (
-                        <div data-testid="operational-occupancy" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
-                          <span className="text-muted-foreground block text-[10px]">Ocupação</span>
-                          <span className="font-semibold text-foreground">
-                            {msg.operational.occupancy.current}/{msg.operational.occupancy.capacity} pets
-                          </span>
-                        </div>
-                      )}
-                      {msg.operational.arrivals && (
-                        <div data-testid="operational-arrivals" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
-                          <span className="text-muted-foreground block text-[10px]">Chegadas</span>
-                          <span className="font-semibold text-foreground">
-                            {msg.operational.arrivals.totalExpected} ({msg.operational.arrivals.pending} aguardando)
-                          </span>
-                        </div>
-                      )}
-                      {msg.operational.tasks && (
-                        <div data-testid="operational-tasks" className="p-1.5 rounded-lg bg-muted/50 border border-border/30 col-span-2 sm:col-span-1">
-                          <span className="text-muted-foreground block text-[10px]">Tarefas</span>
-                          <span className="font-semibold text-foreground">
-                            {msg.operational.tasks.pending} ({msg.operational.tasks.overdue} atrasadas)
-                          </span>
-                        </div>
-                      )}
+                      <div data-testid="operational-occupancy" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
+                        <span className="text-muted-foreground block text-[10px]">Ocupação</span>
+                        <span className="font-semibold text-foreground">
+                          {msg.operational.occupancy && msg.operational.occupancy.current !== null && msg.operational.occupancy.capacity !== null
+                            ? `${msg.operational.occupancy.current}/${msg.operational.occupancy.capacity} pets`
+                            : "Indisponível"}
+                        </span>
+                      </div>
+                      <div data-testid="operational-arrivals" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
+                        <span className="text-muted-foreground block text-[10px]">Chegadas</span>
+                        <span className="font-semibold text-foreground">
+                          {msg.operational.arrivals && msg.operational.arrivals.totalExpected !== null
+                            ? `${msg.operational.arrivals.totalExpected} (${msg.operational.arrivals.pending ?? "?"} aguardando)`
+                            : "Indisponível"}
+                        </span>
+                      </div>
+                      <div data-testid="operational-tasks" className="p-1.5 rounded-lg bg-muted/50 border border-border/30 col-span-2 sm:col-span-1">
+                        <span className="text-muted-foreground block text-[10px]">Tarefas</span>
+                        <span className="font-semibold text-foreground">
+                          {msg.operational.tasks && msg.operational.tasks.pending !== null
+                            ? `${msg.operational.tasks.pending} (${msg.operational.tasks.overdue ?? "?"} atrasadas)`
+                            : "Indisponível"}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Priorities & Action Suggestions */}

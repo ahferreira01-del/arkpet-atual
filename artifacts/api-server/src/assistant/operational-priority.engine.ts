@@ -22,11 +22,12 @@ export interface BuildIssuesInput {
 }
 
 export class OperationalPriorityEngine {
-  public static readonly RULE_SOURCE = "ARKPET_CANONICAL_SCHEDULE_AND_STATUS";
+  public static readonly RULE_SOURCE = "CANONICAL_TASK_PRIORITY_AND_SCHEDULE";
 
   /**
    * Deterministically evaluates operational facts and extracts prioritized issues.
    * Pure function: no database mutations, zero random generation, 100% deterministic output.
+   * Uses canonical task priorities, schedule, and category without invented time-based SLAs.
    */
   public static evaluate(input: BuildIssuesInput): OperationalIssue[] {
     const { serverNow, arrivals, tasks } = input;
@@ -53,18 +54,12 @@ export class OperationalPriorityEngine {
       });
 
       if (task.type === "medication") {
-        // Medication is operationally critical
-        // Rule: Overdue medication is high priority (or critical if > 60m late)
-        let priority: OperationalIssuePriority = "high";
-        if (delayMinutes >= 60) {
-          priority = "critical";
-        } else if (!isPast) {
-          priority = "medium";
-        }
+        // Overdue medication is high priority; future scheduled medication for today is medium priority
+        const priority: OperationalIssuePriority = isPast ? "high" : "medium";
 
         const reason = isPast
           ? `Medicação programada para ${task.petName || "pet"} às ${scheduledTimeStr} está atrasada há ${delayMinutes} minuto(s).`
-          : `Medicação programada para ${task.petName || "pet"} às ${scheduledTimeStr} está pendente para hoje.`;
+          : `Medicação programada para ${task.petName || "pet"} às ${scheduledTimeStr} está agendada para hoje.`;
 
         const issue: OperationalIssue = {
           id: `task_medication_${task.id}`,
@@ -92,13 +87,8 @@ export class OperationalPriorityEngine {
         this.validateAndAttachAction(issue, "record_medication_administration");
         issues.push(issue);
       } else if (task.type === "feeding") {
-        // Feeding tasks
-        let priority: OperationalIssuePriority = "high";
-        if (delayMinutes >= 90) {
-          priority = "critical";
-        } else if (!isPast) {
-          priority = "medium";
-        }
+        // Overdue feeding is high priority; future scheduled feeding is medium priority
+        const priority: OperationalIssuePriority = isPast ? "high" : "medium";
 
         const reason = isPast
           ? `Alimentação de ${task.petName || "pet"} programada para ${scheduledTimeStr} está atrasada há ${delayMinutes} minuto(s).`
@@ -130,12 +120,8 @@ export class OperationalPriorityEngine {
         this.validateAndAttachAction(issue, "complete_feeding_task");
         issues.push(issue);
       } else if (task.type === "walk") {
-        // Walk tasks
-        // Overdue walk is medium priority (ranks below overdue medication)
-        let priority: OperationalIssuePriority = isPast ? "medium" : "low";
-        if (delayMinutes >= 120) {
-          priority = "high";
-        }
+        // Overdue walk is medium priority; future scheduled walk is low priority
+        const priority: OperationalIssuePriority = isPast ? "medium" : "low";
 
         const reason = isPast
           ? `Passeio de ${task.petName || "pet"} agendado para ${scheduledTimeStr} está pendente há ${delayMinutes} minuto(s).`
@@ -167,8 +153,12 @@ export class OperationalPriorityEngine {
         this.validateAndAttachAction(issue, "complete_walk_task");
         issues.push(issue);
       } else {
-        // General or other tasks
-        const priority: OperationalIssuePriority = isPast ? "medium" : "low";
+        // General or other tasks: respect canonical task.priority if high
+        let priority: OperationalIssuePriority = isPast ? "medium" : "low";
+        if (task.priority === "high") {
+          priority = isPast ? "high" : "medium";
+        }
+
         const reason = isPast
           ? `Tarefa "${task.title}" programada para ${scheduledTimeStr} está atrasada há ${delayMinutes} minuto(s).`
           : `Tarefa "${task.title}" programada para ${scheduledTimeStr} está pendente.`;

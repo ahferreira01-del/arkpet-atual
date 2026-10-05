@@ -179,12 +179,24 @@ vi.mock("@workspace/db", async (importOriginal) => {
     },
   ];
 
+  let crecheQueryShouldFail = false;
+  let bookingsQueryShouldFail = false;
   let tasksQueryShouldFail = false;
+  let emptyTasksResult = false;
 
   const mockDb = {
     ...actual,
+    _setCrecheQueryShouldFail: (fail: boolean) => {
+      crecheQueryShouldFail = fail;
+    },
+    _setBookingsQueryShouldFail: (fail: boolean) => {
+      bookingsQueryShouldFail = fail;
+    },
     _setTasksQueryShouldFail: (fail: boolean) => {
       tasksQueryShouldFail = fail;
+    },
+    _setEmptyTasksResult: (empty: boolean) => {
+      emptyTasksResult = empty;
     },
     select: (fields?: any) => ({
       from: (table: any) => {
@@ -194,8 +206,14 @@ vi.mock("@workspace/db", async (importOriginal) => {
         const isTask = table === schema.tasksTable;
 
         if (isCreche) {
+          if (crecheQueryShouldFail) {
+            throw new Error("Database connection timeout during creche retrieval");
+          }
           result = [dummyCreche];
         } else if (isBooking) {
+          if (bookingsQueryShouldFail) {
+            throw new Error("Database connection timeout during bookings retrieval");
+          }
           result = dummyBookings.filter((b) => b.crecheId === 1).map((b) => ({
             ...b,
             petName: dummyPets.find((p) => p.id === b.petId)?.name || null,
@@ -204,17 +222,27 @@ vi.mock("@workspace/db", async (importOriginal) => {
           if (tasksQueryShouldFail) {
             throw new Error("Database connection timeout during tasks retrieval");
           }
-          result = dummyTasks.filter((t) => t.crecheId === 1).map((t) => ({
-            ...t,
-            petName: dummyPets.find((p) => p.id === t.petId)?.name || null,
-            assignedToName: t.assignedToId ? "Staff User" : null,
-          }));
+          if (emptyTasksResult) {
+            result = [];
+          } else {
+            result = dummyTasks.filter((t) => t.crecheId === 1).map((t) => ({
+              ...t,
+              petName: dummyPets.find((p) => p.id === t.petId)?.name || null,
+              assignedToName: t.assignedToId ? "Staff User" : null,
+            }));
+          }
         }
 
         const chain: any = {
           leftJoin: vi.fn(() => chain),
           innerJoin: vi.fn(() => chain),
           where: vi.fn((cond: any) => {
+            if (crecheQueryShouldFail && isCreche) {
+              throw new Error("Database connection timeout during creche retrieval");
+            }
+            if (bookingsQueryShouldFail && isBooking) {
+              throw new Error("Database connection timeout during bookings retrieval");
+            }
             if (tasksQueryShouldFail && isTask) {
               throw new Error("Database connection timeout during tasks retrieval");
             }
@@ -223,6 +251,12 @@ vi.mock("@workspace/db", async (importOriginal) => {
           orderBy: vi.fn(() => chain),
           limit: vi.fn((n: number) => chain),
           then: (resolve: any, reject?: any) => {
+            if (crecheQueryShouldFail && isCreche) {
+              return Promise.reject(new Error("Database connection timeout during creche retrieval")).then(resolve, reject);
+            }
+            if (bookingsQueryShouldFail && isBooking) {
+              return Promise.reject(new Error("Database connection timeout during bookings retrieval")).then(resolve, reject);
+            }
             if (tasksQueryShouldFail && isTask) {
               return Promise.reject(new Error("Database connection timeout during tasks retrieval")).then(resolve, reject);
             }
@@ -285,7 +319,10 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
 
   beforeEach(() => {
     OperationalSnapshotService.clearAllCache();
+    (db as any)._setCrecheQueryShouldFail(false);
+    (db as any)._setBookingsQueryShouldFail(false);
     (db as any)._setTasksQueryShouldFail(false);
+    (db as any)._setEmptyTasksResult(false);
     process.env.AI_OPERATIONAL_COPILOT_ENABLED = "true";
     process.env.AI_SAFE_ACTIONS_ENABLED = "true";
     delete process.env.AI_ASSISTANT_KILL_SWITCH;
@@ -342,13 +379,14 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
     it("R41F-OPS-001: compiles today's arrivals with status breakdown and on-the-way indicators", async () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
 
-      expect(snapshot.arrivals.totalExpected).toBe(3);
-      expect(snapshot.arrivals.checkedIn).toBe(1); // booking 42 is active
-      expect(snapshot.arrivals.pending).toBe(1);   // booking 41 is confirmed
-      expect(snapshot.arrivals.completed).toBe(1); // booking 43 is completed
-      expect(snapshot.arrivals.onTheWay).toBe(1);   // booking 41 has onTheWayAt
+      expect(snapshot.arrivals).not.toBeNull();
+      expect(snapshot.arrivals!.totalExpected).toBe(3);
+      expect(snapshot.arrivals!.checkedIn).toBe(1); // booking 42 is active
+      expect(snapshot.arrivals!.pending).toBe(1);   // booking 41 is confirmed
+      expect(snapshot.arrivals!.completed).toBe(1); // booking 43 is completed
+      expect(snapshot.arrivals!.onTheWay).toBe(1);   // booking 41 has onTheWayAt
 
-      const confirmedArrival = snapshot.arrivals.items.find((a) => a.bookingId === 41);
+      const confirmedArrival = snapshot.arrivals!.items.find((a) => a.bookingId === 41);
       expect(confirmedArrival).toBeDefined();
       expect(confirmedArrival?.petName).toBe("Thor");
       expect(confirmedArrival?.onTheWayType).toBe("tutor");
@@ -357,30 +395,33 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
 
     it("R41F-OPS-002: reflects creche capacity and current occupancy correctly", async () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
-      expect(snapshot.occupancy.capacity).toBe(25);
-      expect(snapshot.occupancy.current).toBe(8);
+      expect(snapshot.occupancy).not.toBeNull();
+      expect(snapshot.occupancy!.capacity).toBe(25);
+      expect(snapshot.occupancy!.current).toBe(8);
     });
 
     it("R41F-OPS-003: aggregates routine tasks breakdown by type and overdue status", async () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
 
-      expect(snapshot.tasks.pending).toBe(4);
-      expect(snapshot.tasks.completed).toBe(1); // task 14
-      expect(snapshot.tasks.overdue).toBe(3);   // task 11 (med), 12 (feeding), 15 (general)
-      expect(snapshot.tasks.unassigned).toBe(2); // task 11 and 15 have assignedToId: null
+      expect(snapshot.tasks).not.toBeNull();
+      expect(snapshot.tasks!.pending).toBe(4);
+      expect(snapshot.tasks!.completed).toBe(1); // task 14
+      expect(snapshot.tasks!.overdue).toBe(3);   // task 11 (med), 12 (feeding), 15 (general)
+      expect(snapshot.tasks!.unassigned).toBe(2); // task 11 and 15 have assignedToId: null
 
-      expect(snapshot.tasks.byType.medication.pending).toBe(1);
-      expect(snapshot.tasks.byType.medication.overdue).toBe(1);
-      expect(snapshot.tasks.byType.feeding.pending).toBe(1);
-      expect(snapshot.tasks.byType.feeding.completed).toBe(1);
-      expect(snapshot.tasks.byType.walk.pending).toBe(1);
-      expect(snapshot.tasks.byType.walk.overdue).toBe(0); // future walk is not overdue
+      expect(snapshot.tasks!.byType.medication.pending).toBe(1);
+      expect(snapshot.tasks!.byType.medication.overdue).toBe(1);
+      expect(snapshot.tasks!.byType.feeding.pending).toBe(1);
+      expect(snapshot.tasks!.byType.feeding.completed).toBe(1);
+      expect(snapshot.tasks!.byType.walk.pending).toBe(1);
+      expect(snapshot.tasks!.byType.walk.overdue).toBe(0); // future walk is not overdue
     });
 
     it("R41F-OPS-004: completed tasks are NEVER classified as overdue", async () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
 
-      const completedTask = snapshot.tasks.items.find((t) => t.id === 14);
+      expect(snapshot.tasks).not.toBeNull();
+      const completedTask = snapshot.tasks!.items.find((t) => t.id === 14);
       expect(completedTask).toBeDefined();
       expect(completedTask?.status).toBe("completed");
       expect(completedTask?.isOverdue).toBe(false);
@@ -425,7 +466,7 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
           title: "Insulina",
           status: "pending",
           scheduledFor: past90m.toISOString(),
-          priority: "critical",
+          priority: "high",
           isOverdue: true,
           delayMinutes: 90,
         },
@@ -439,12 +480,12 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
       });
 
       expect(issues.length).toBe(3);
-      // Medication overdue >= 60m is CRITICAL (rank 1)
+      // Overdue medication is rank 1 (priority: high)
       expect(issues[0].category).toBe("medication");
-      expect(issues[0].priority).toBe("critical");
+      expect(issues[0].priority).toBe("high");
       expect(issues[0].targetId).toBe(30);
 
-      // Feeding overdue is HIGH (rank 2)
+      // Overdue feeding is rank 2 (priority: high)
       expect(issues[1].category).toBe("feeding");
       expect(issues[1].priority).toBe("high");
       expect(issues[1].targetId).toBe(20);
@@ -453,6 +494,164 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
       expect(issues[2].category).toBe("walk");
       expect(issues[2].priority).toBe("low");
       expect(issues[2].targetId).toBe(10);
+    });
+
+    it("R41F-FINAL1-PRIORITY-001: overdue medication ranks above overdue routine walk", () => {
+      const now = new Date();
+      const past15m = new Date(now.getTime() - 15 * 60000);
+      const tasks: OperationalTaskItem[] = [
+        {
+          id: 101,
+          type: "walk",
+          title: "Passeio rotineiro",
+          status: "pending",
+          scheduledFor: past15m.toISOString(),
+          priority: "medium",
+          isOverdue: true,
+          delayMinutes: 15,
+        },
+        {
+          id: 102,
+          type: "medication",
+          title: "Medicação cardiológica",
+          status: "pending",
+          scheduledFor: past15m.toISOString(),
+          priority: "high",
+          isOverdue: true,
+          delayMinutes: 15,
+        },
+      ];
+
+      const issues = OperationalPriorityEngine.evaluate({
+        serverNow: now,
+        businessDate: "2026-10-05",
+        arrivals: [],
+        tasks,
+      });
+
+      expect(issues[0].targetId).toBe(102);
+      expect(issues[0].category).toBe("medication");
+      expect(issues[0].priority).toBe("high");
+      expect(issues[1].targetId).toBe(101);
+      expect(issues[1].category).toBe("walk");
+      expect(issues[1].priority).toBe("medium");
+    });
+
+    it("R41F-FINAL1-PRIORITY-002: future medication is not classified as overdue", () => {
+      const now = new Date();
+      const future30m = new Date(now.getTime() + 30 * 60000);
+      const tasks: OperationalTaskItem[] = [
+        {
+          id: 103,
+          type: "medication",
+          title: "Medicação futura",
+          status: "pending",
+          scheduledFor: future30m.toISOString(),
+          priority: "medium",
+          isOverdue: false,
+          delayMinutes: 0,
+        },
+      ];
+
+      const issues = OperationalPriorityEngine.evaluate({
+        serverNow: now,
+        businessDate: "2026-10-05",
+        arrivals: [],
+        tasks,
+      });
+
+      expect(issues[0].priority).toBe("medium");
+      expect(issues[0].reasonCode).toBe("medication_pending");
+      expect(issues[0].delayMinutes).toBe(0);
+      expect(issues[0].reason).toContain("está agendada");
+      expect(issues[0].reason.toLowerCase()).not.toContain("atrasada");
+    });
+
+    it("R41F-FINAL1-PRIORITY-003: same facts always generate same ranking", () => {
+      const now = new Date();
+      const past20m = new Date(now.getTime() - 20 * 60000);
+      const tasks: OperationalTaskItem[] = [
+        {
+          id: 201,
+          type: "feeding",
+          title: "Ração Thor",
+          status: "pending",
+          scheduledFor: past20m.toISOString(),
+          priority: "high",
+          isOverdue: true,
+          delayMinutes: 20,
+        },
+        {
+          id: 202,
+          type: "medication",
+          title: "Colírio Rex",
+          status: "pending",
+          scheduledFor: past20m.toISOString(),
+          priority: "high",
+          isOverdue: true,
+          delayMinutes: 20,
+        },
+      ];
+
+      const run1 = OperationalPriorityEngine.evaluate({
+        serverNow: now,
+        businessDate: "2026-10-05",
+        arrivals: [],
+        tasks,
+      });
+
+      const run2 = OperationalPriorityEngine.evaluate({
+        serverNow: now,
+        businessDate: "2026-10-05",
+        arrivals: [],
+        tasks,
+      });
+
+      expect(run1.map((i) => i.id)).toEqual(run2.map((i) => i.id));
+      expect(run1[0].id).toBe("task_feeding_201");
+      expect(run1[1].id).toBe("task_medication_202");
+    });
+
+    it("R41F-FINAL1-PRIORITY-004: no unsupported critical classification exists (UNSUPPORTED_CRITICAL_HEALTH_RISK_CLASSIFICATION = 0)", () => {
+      const now = new Date();
+      const past180m = new Date(now.getTime() - 180 * 60000); // 3 hours late
+      const tasks: OperationalTaskItem[] = [
+        {
+          id: 301,
+          type: "medication",
+          title: "Medicação muito atrasada",
+          status: "pending",
+          scheduledFor: past180m.toISOString(),
+          priority: "high",
+          isOverdue: true,
+          delayMinutes: 180,
+        },
+        {
+          id: 302,
+          type: "feeding",
+          title: "Alimentação muito atrasada",
+          status: "pending",
+          scheduledFor: past180m.toISOString(),
+          priority: "high",
+          isOverdue: true,
+          delayMinutes: 180,
+        },
+      ];
+
+      const issues = OperationalPriorityEngine.evaluate({
+        serverNow: now,
+        businessDate: "2026-10-05",
+        arrivals: [],
+        tasks,
+      });
+
+      const criticalIssues = issues.filter((i) => i.priority === "critical");
+      expect(criticalIssues).toHaveLength(0);
+      expect(issues.every((i) => i.priority !== "critical")).toBe(true);
+    });
+
+    it("R41F-FINAL1-PRIORITY-005: priority source metadata matches actual implementation", () => {
+      expect(OperationalPriorityEngine.RULE_SOURCE).toBe("CANONICAL_TASK_PRIORITY_AND_SCHEDULE");
     });
 
     it("R41F-PRIORITY-002: tie-breaker is deterministic (weight -> delay -> stable ID string)", () => {
@@ -574,6 +773,76 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
       expect(toolRes.arrivals.length).toBeLessThanOrEqual(2);
       expect(toolRes.summary.totalExpected).toBeGreaterThanOrEqual(toolRes.arrivals.length);
     });
+
+    it("R41F-FINAL1-DATA-001: tasks query failure yields partial completeness, unavailable source and null metrics", async () => {
+      (db as any)._setTasksQueryShouldFail(true);
+
+      const snapshot = await OperationalSnapshotService.getSnapshot(1, { forceRefresh: true });
+
+      expect(snapshot.dataCompleteness).toBe("partial");
+      expect(snapshot.unavailableSources).toContain("tasks");
+      expect(snapshot.sourceStatus.tasks).toBe("unavailable");
+      expect(snapshot.tasks).toBeNull();
+
+      const toolRes = await AssistantToolsRegistry.executeTool(
+        "get_pending_operational_tasks",
+        {},
+        adminContext
+      );
+
+      expect(toolRes.dataCompleteness).toBe("partial");
+      expect(toolRes.unavailableSources).toContain("tasks");
+      expect(toolRes.totalPending).toBeNull();
+      expect(toolRes.totalOverdue).toBeNull();
+      expect(toolRes.counts).toBeNull();
+    });
+
+    it("R41F-FINAL1-DATA-002: creche occupancy query failure yields null occupancy without fake 0/20 fallback", async () => {
+      (db as any)._setCrecheQueryShouldFail(true);
+
+      const snapshot = await OperationalSnapshotService.getSnapshot(1, { forceRefresh: true });
+
+      expect(snapshot.dataCompleteness).toBe("partial");
+      expect(snapshot.unavailableSources).toContain("occupancy");
+      expect(snapshot.sourceStatus.occupancy).toBe("unavailable");
+      expect(snapshot.occupancy).toBeNull();
+    });
+
+    it("R41F-FINAL1-DATA-003: bookings query failure yields null arrivals and departures without fake zeros", async () => {
+      (db as any)._setBookingsQueryShouldFail(true);
+
+      const snapshot = await OperationalSnapshotService.getSnapshot(1, { forceRefresh: true });
+
+      expect(snapshot.dataCompleteness).toBe("partial");
+      expect(snapshot.unavailableSources).toContain("bookings");
+      expect(snapshot.sourceStatus.bookings).toBe("unavailable");
+      expect(snapshot.arrivals).toBeNull();
+      expect(snapshot.departures).toBeNull();
+
+      const toolRes = await AssistantToolsRegistry.executeTool(
+        "get_today_arrivals",
+        {},
+        adminContext
+      );
+      expect(toolRes.dataCompleteness).toBe("partial");
+      expect(toolRes.unavailableSources).toContain("bookings");
+      expect(toolRes.summary.totalExpected).toBeNull();
+      expect(toolRes.summary.checkedIn).toBeNull();
+    });
+
+    it("R41F-FINAL1-DATA-004: successful task query with zero rows returns true zero", async () => {
+      (db as any)._setEmptyTasksResult(true);
+
+      const snapshot = await OperationalSnapshotService.getSnapshot(1, { forceRefresh: true });
+
+      expect(snapshot.dataCompleteness).toBe("complete");
+      expect(snapshot.sourceStatus.tasks).toBe("available");
+      expect(snapshot.tasks).not.toBeNull();
+      expect(snapshot.tasks!.pending).toBe(0);
+      expect(snapshot.tasks!.overdue).toBe(0);
+      expect(snapshot.tasks!.completed).toBe(0);
+      expect(snapshot.tasks!.byType.medication.pending).toBe(0);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -650,11 +919,11 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
 
       // Bookings from creche 2 must NEVER appear
-      const hasCreche2Booking = snapshot.arrivals.items.some((a) => a.bookingId === 901);
+      const hasCreche2Booking = snapshot.arrivals!.items.some((a) => a.bookingId === 901);
       expect(hasCreche2Booking).toBe(false);
 
       // Pets from creche 2 must NEVER appear
-      const hasCreche2Pet = snapshot.arrivals.items.some((a) => a.petName.includes("Luna"));
+      const hasCreche2Pet = snapshot.arrivals!.items.some((a) => a.petName.includes("Luna"));
       expect(hasCreche2Pet).toBe(false);
     });
 
@@ -700,11 +969,110 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
 
     it("R41F-CACHE-003: get_recent_operational_changes calculates coherent session delta", async () => {
       const snapshot = await OperationalSnapshotService.getSnapshot(1);
-      OperationalSnapshotService.setSessionBaseline("session-xyz", snapshot);
+      OperationalSnapshotService.setSessionBaseline(
+        {
+          sessionId: "session-xyz",
+          userId: adminContext.userId,
+          crecheId: 1,
+          role: adminContext.role,
+        },
+        snapshot
+      );
 
       const comparison = await OperationalSnapshotService.compareWithBaseline(1, snapshot);
       expect(comparison.hasChanges).toBe(false);
       expect(comparison.changes[0]).toContain("Nenhuma alteração operacional");
+    });
+
+    it("R41F-FINAL1-SESSION-001: cross-tenant session baseline comparison is blocked (OPERATIONAL_BASELINE_TENANT_BOUND = YES)", async () => {
+      const snapCreche1 = await OperationalSnapshotService.getSnapshot(1);
+      OperationalSnapshotService.setSessionBaseline(
+        {
+          sessionId: "sess-shared-1",
+          userId: 5,
+          crecheId: 1,
+          role: "creche_admin",
+        },
+        snapCreche1
+      );
+
+      // Attempt to retrieve baseline with creche 2
+      const baselineCreche2 = OperationalSnapshotService.getSessionBaseline({
+        sessionId: "sess-shared-1",
+        userId: 5,
+        crecheId: 2,
+        role: "creche_admin",
+      });
+      expect(baselineCreche2).toBeUndefined();
+    });
+
+    it("R41F-FINAL1-SESSION-002: cross-user session baseline comparison is blocked (OPERATIONAL_BASELINE_USER_BOUND = YES)", async () => {
+      const snapUserA = await OperationalSnapshotService.getSnapshot(1);
+      OperationalSnapshotService.setSessionBaseline(
+        {
+          sessionId: "sess-user-1",
+          userId: 10,
+          crecheId: 1,
+          role: "staff",
+        },
+        snapUserA
+      );
+
+      // User B (userId 99) attempts to read User A baseline
+      const baselineUserB = OperationalSnapshotService.getSessionBaseline({
+        sessionId: "sess-user-1",
+        userId: 99,
+        crecheId: 1,
+        role: "staff",
+      });
+      expect(baselineUserB).toBeUndefined();
+    });
+
+    it("R41F-FINAL1-SESSION-003: same assistant session finds baseline automatically without model-supplied sessionId", async () => {
+      const sessionContext: AssistantSecurityContext = {
+        ...adminContext,
+        sessionId: "sess-auto-1",
+      };
+
+      // 1. Operational overview sets baseline automatically
+      await AssistantToolsRegistry.executeTool("get_operational_overview", {}, sessionContext);
+
+      // Verify baseline was recorded for this session context
+      const baseline = OperationalSnapshotService.getSessionBaseline({
+        sessionId: "sess-auto-1",
+        userId: sessionContext.userId,
+        crecheId: sessionContext.crecheId!,
+        role: sessionContext.role,
+      });
+      expect(baseline).toBeDefined();
+
+      // 2. get_recent_operational_changes runs without any input params
+      const changesRes = await AssistantToolsRegistry.executeTool(
+        "get_recent_operational_changes",
+        {},
+        sessionContext
+      );
+      expect(changesRes).toBeDefined();
+      expect(changesRes.hasChanges).toBe(false);
+      expect(changesRes.changes[0]).toContain("Nenhuma alteração operacional");
+    });
+
+    it("R41F-FINAL1-SESSION-004: no previous operational overview returns safe explanation", async () => {
+      const sessionContext: AssistantSecurityContext = {
+        ...adminContext,
+        sessionId: "sess-empty-baseline-99",
+      };
+
+      const changesRes = await AssistantToolsRegistry.executeTool(
+        "get_recent_operational_changes",
+        {},
+        sessionContext
+      );
+
+      expect(changesRes.hasChanges).toBe(false);
+      expect(changesRes.changes).toEqual([
+        "Nenhum resumo operacional anterior nesta sessão para comparação.",
+      ]);
     });
   });
 

@@ -42,6 +42,8 @@ vi.mock("@workspace/db", async (importOriginal) => {
       status: "active",
       phone: "1199999999",
       address: "Rua Pet, 123",
+      maxCapacity: 25,
+      currentOccupancy: 8,
     },
   ];
 

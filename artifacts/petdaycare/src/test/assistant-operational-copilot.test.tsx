@@ -204,4 +204,51 @@ describe("ArkPet R41.F — Operational Copilot Frontend UI Test Suite", () => {
 
     expect(screen.getByText("Dados Parciais")).toBeInTheDocument();
   });
+
+  it("R41F-UI-006: renders Indisponível when metrics are null due to unavailable sources", () => {
+    const unavailableMessage: AssistantUIMessage = {
+      ...dummyMessageWithOperational,
+      operational: {
+        ...dummyOperationalData,
+        dataCompleteness: "partial",
+        unavailableSources: ["occupancy", "bookings", "tasks"],
+        occupancy: {
+          current: null,
+          capacity: null,
+        },
+        arrivals: {
+          totalExpected: null,
+          checkedIn: null,
+          pending: null,
+          completed: null,
+          cancelled: null,
+          onTheWay: null,
+        },
+        tasks: {
+          total: null,
+          pending: null,
+          completed: null,
+          overdue: null,
+          unassigned: null,
+        },
+      },
+    };
+
+    render(
+      <AssistantConversation
+        messages={[unavailableMessage]}
+        status="idle"
+        screenContext={dummyScreenContext}
+        userRole="staff"
+        onSendMessage={vi.fn()}
+        onClearSession={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTestId("operational-card")).toBeInTheDocument();
+    expect(screen.getByText("Dados Parciais")).toBeInTheDocument();
+    expect(screen.getByTestId("operational-occupancy")).toHaveTextContent("Indisponível");
+    expect(screen.getByTestId("operational-arrivals")).toHaveTextContent("Indisponível");
+    expect(screen.getByTestId("operational-tasks")).toHaveTextContent("Indisponível");
+  });
 });

@@ -7,55 +7,54 @@ The `OperationalPriorityEngine` is a **pure, deterministic, algorithmic scoring 
 The LLM is strictly prohibited from inventing priority levels or deciding criticality from random or subjective criteria. All urgency scores and ordering are derived from canonical business facts according to established operational rules.
 
 ```text
-OPERATIONAL_PRIORITY_RULE_SOURCE = "ARKPET_CANONICAL_SCHEDULE_AND_STATUS"
+OPERATIONAL_PRIORITY_RULE_SOURCE = "CANONICAL_TASK_PRIORITY_AND_SCHEDULE"
 ```
 
 ---
 
 ## 2. Priority Levels & Numerical Weights
 
-The engine defines four explicit, unambiguous priority tiers:
+The engine defines explicit, deterministic priority tiers based strictly on canonical task schedule and task priority attributes:
 
 | Priority Level | Weight | Semantics |
 | :--- | :---: | :--- |
-| `critical` | **4** | Immediate animal health/safety risk (severe medication delay $\ge$ 60 min, severe feeding delay $\ge$ 90 min). |
-| `high` | **3** | Urgent pending operation (overdue medication, overdue feeding, arrival on-the-way with active ETA). |
-| `medium` | **2** | Normal overdue task, pending check-in for confirmed reservation, overdue routine walk. |
-| `low` | **1** | Routine future scheduled task (walk or feeding scheduled for later in the shift). |
+| `critical` | **4** | Reserved strictly for conditions explicitly designated as critical by canonical domain sources. Ordinary delays are never fabricated as critical (`UNSUPPORTED_CRITICAL_HEALTH_RISK_CLASSIFICATION = 0`). Returns 0 items in absence of canonical critical flag. |
+| `high` | **3** | Urgent operational pendencies: overdue medication, overdue feeding, arrival on-the-way with active ETA, or task with canonical `priority === 'high'`. |
+| `medium` | **2** | Normal overdue task, overdue routine walk, confirmed pending arrival awaiting check-in, future medication/feeding scheduled for today. |
+| `low` | **1** | Routine future scheduled task (walk or general task scheduled for later in the shift). |
 
 ---
 
-## 3. Deterministic Domain Evaluation Rules
+## 3. Deterministic Domain Evaluation Rules (Zero Fabricated SLAs)
+
+No artificial time thresholds (`60m`, `90m`, `120m`) are invented (`INVENTED_OPERATIONAL_SLA = 0`). Priority derives strictly from task category, canonical `priority` field, and schedule state:
 
 ### 3.1. Medication Tasks (`type === "medication"`)
 - **Base Condition:** `status === "pending"`.
 - **Classification:**
-  - If `delayMinutes >= 60`: Priority = `critical`.
-  - If `delayMinutes > 0`: Priority = `high`.
-  - If scheduled for today but not yet past: Priority = `medium`.
+  - If overdue (`delayMinutes > 0`): Priority = `high`.
+  - If scheduled for today but not yet overdue: Priority = `medium`.
 - **Action Linkage:** `record_medication_administration` (Registered R41.E tool).
 
 ### 3.2. Feeding Tasks (`type === "feeding"`)
 - **Base Condition:** `status === "pending"`.
 - **Classification:**
-  - If `delayMinutes >= 90`: Priority = `critical`.
-  - If `delayMinutes > 0`: Priority = `high`.
-  - If scheduled for today: Priority = `medium`.
+  - If overdue (`delayMinutes > 0`): Priority = `high`.
+  - If scheduled for today but not yet overdue: Priority = `medium`.
 - **Action Linkage:** `complete_feeding_task` (Registered R41.E tool).
 
 ### 3.3. Walk Tasks (`type === "walk"`)
 - **Base Condition:** `status === "pending"`.
 - **Classification:**
-  - If `delayMinutes >= 120`: Priority = `high`.
-  - If `delayMinutes > 0`: Priority = `medium`.
+  - If overdue (`delayMinutes > 0`): Priority = `medium`.
   - If scheduled for today: Priority = `low`.
 - **Action Linkage:** `complete_walk_task` (Registered R41.E tool).
 
 ### 3.4. General Routine Tasks (`type === "operational" | "cleaning" | etc.`)
 - **Base Condition:** `status === "pending"`.
 - **Classification:**
-  - If `delayMinutes > 0`: Priority = `medium`.
-  - If scheduled for today: Priority = `low`.
+  - Respects canonical `task.priority`: if `task.priority === "high"`, overdue is `high`, future is `medium`.
+  - Standard general tasks: overdue is `medium`, future is `low`.
 - **Action Linkage:** `complete_operational_task` (Registered R41.E tool).
 
 ### 3.5. Arrivals / Check-ins (`category === "arrival"`)
@@ -73,7 +72,7 @@ When multiple operational issues are evaluated, ordering is guaranteed to be 100
 
 ```typescript
 return issues.sort((a, b) => {
-  // Tier 1: Priority numerical weight descending (critical > high > medium > low)
+  // Tier 1: Priority numerical weight descending (high > medium > low)
   const weightDiff = PRIORITY_WEIGHTS[b.priority] - PRIORITY_WEIGHTS[a.priority];
   if (weightDiff !== 0) return weightDiff;
 

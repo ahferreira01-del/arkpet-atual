@@ -662,12 +662,26 @@ export class MockAIProvider implements AIProvider {
           summaryText += `⚠️ Aviso: Os dados de ${result.unavailableSources?.join(", ")} estão temporariamente indisponíveis. A visão operacional pode estar incompleta.\n\n`;
         }
 
-        summaryText += `- Ocupação Atual: ${result.occupancy.current}/${result.occupancy.capacity} pets\n`;
-        summaryText += `- Chegadas Previstas: ${result.arrivals.totalExpected} (Check-ins realizados: ${result.arrivals.checkedIn}, Aguardando: ${result.arrivals.pending})\n`;
-        summaryText += `- Tarefas Pendentes: ${result.tasks.pending} (${result.tasks.overdue} atrasada(s))\n`;
-        summaryText += `  • Alimentação: ${result.tasks.byType.feeding.pending} pendente(s)\n`;
-        summaryText += `  • Medicação: ${result.tasks.byType.medication.pending} pendente(s)\n`;
-        summaryText += `  • Passeios: ${result.tasks.byType.walk.pending} pendente(s)\n\n`;
+        if (result.occupancy && result.occupancy.current !== null && result.occupancy.capacity !== null) {
+          summaryText += `- Ocupação Atual: ${result.occupancy.current}/${result.occupancy.capacity} pets\n`;
+        } else {
+          summaryText += `- Ocupação Atual: Indisponível\n`;
+        }
+
+        if (result.arrivals && result.arrivals.totalExpected !== null) {
+          summaryText += `- Chegadas Previstas: ${result.arrivals.totalExpected} (Check-ins realizados: ${result.arrivals.checkedIn}, Aguardando: ${result.arrivals.pending})\n`;
+        } else {
+          summaryText += `- Chegadas Previstas: Indisponível\n`;
+        }
+
+        if (result.tasks && result.tasks.pending !== null) {
+          summaryText += `- Tarefas Pendentes: ${result.tasks.pending} (${result.tasks.overdue} atrasada(s))\n`;
+          summaryText += `  • Alimentação: ${result.tasks.byType.feeding.pending} pendente(s)\n`;
+          summaryText += `  • Medicação: ${result.tasks.byType.medication.pending} pendente(s)\n`;
+          summaryText += `  • Passeios: ${result.tasks.byType.walk.pending} pendente(s)\n\n`;
+        } else {
+          summaryText += `- Tarefas Pendentes: Indisponível\n\n`;
+        }
 
         if (result.issues.length > 0) {
           summaryText += `Principais prioridades de atenção:\n`;
@@ -1854,9 +1868,7 @@ export class OpenAICompatibleProvider implements AIProvider {
       } else if (t.name === "get_recent_operational_changes") {
         parameters = {
           type: "object",
-          properties: {
-            sessionId: { type: "string", description: "ID da sessão para comparar com baseline" },
-          },
+          properties: {},
         };
       }
       return {

@@ -23,44 +23,51 @@ The assistant does **not** maintain a shadow database (`ASSISTANT_OPERATIONAL_SH
 ## 3. Operational Snapshot Schema (`OperationalSnapshot`)
 
 ```typescript
+export interface OperationalSourceStatus {
+  occupancy: "available" | "unavailable";
+  bookings: "available" | "unavailable";
+  tasks: "available" | "unavailable";
+}
+
 export interface OperationalSnapshot {
   asOf: string;                              // ISO-8601 UTC timestamp
   businessDate: string;                      // YYYY-MM-DD (America/Sao_Paulo)
   crecheId: number;                          // Tenant identifier
   dataCompleteness: "complete" | "partial";  // Integrity indicator
-  unavailableSources?: string[];             // List of failed sub-queries
+  unavailableSources?: string[];             // List of failed sub-queries ("occupancy", "bookings", "tasks")
+  sourceStatus: OperationalSourceStatus;     // Explicit availability indicator per source
   occupancy: {
-    current: number;                         // Current pets present in creche
-    capacity: number;                        // Maximum creche capacity
-  };
+    current: number | null;                  // Current pets present in creche (null if query failed)
+    capacity: number | null;                 // Maximum creche capacity (null if unconfigured or query failed)
+  } | null;
   arrivals: {
-    totalExpected: number;                   // Bookings starting today
-    checkedIn: number;                       // Status 'active'
-    pending: number;                         // Status 'confirmed'
-    completed: number;                       // Status 'completed'
-    cancelled: number;                       // Status 'cancelled'
-    onTheWay: number;                        // Has onTheWayAt or onTheWayType
+    totalExpected: number | null;            // Bookings starting today (null if query failed)
+    checkedIn: number | null;                // Status 'active'
+    pending: number | null;                  // Status 'confirmed'
+    completed: number | null;                // Status 'completed'
+    cancelled: number | null;                // Status 'cancelled'
+    onTheWay: number | null;                 // Has onTheWayAt or onTheWayType
     items: OperationalArrivalItem[];         // Bounded item list
-  };
+  } | null;
   departures: {
-    totalExpected: number;                   // Bookings ending today or active
-    checkedOut: number;                      // Status 'completed'
-    pending: number;                         // Status 'active'
-  };
+    totalExpected: number | null;            // Bookings ending today or active
+    checkedOut: number | null;               // Status 'completed'
+    pending: number | null;                  // Status 'active'
+  } | null;
   tasks: {
-    total: number;                           // All scheduled tasks for today
-    pending: number;                         // Tasks waiting execution
-    completed: number;                       // Executed tasks
-    overdue: number;                         // Past scheduled time & pending
-    unassigned: number;                      // AssignedToId == null
+    total: number | null;                    // All scheduled tasks for today (null if query failed)
+    pending: number | null;                  // Tasks waiting execution
+    completed: number | null;                // Executed tasks
+    overdue: number | null;                  // Past scheduled time & pending
+    unassigned: number | null;               // AssignedToId == null
     byType: {
-      feeding: { total: number; pending: number; completed: number; overdue: number };
-      medication: { total: number; pending: number; completed: number; overdue: number };
-      walk: { total: number; pending: number; completed: number; overdue: number };
-      other: { total: number; pending: number; completed: number; overdue: number };
+      feeding: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      medication: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      walk: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
+      other: { total: number | null; pending: number | null; completed: number | null; overdue: number | null };
     };
     items: OperationalTaskItem[];            // Bounded task item list
-  };
+  } | null;
   issues: OperationalIssue[];                // Deterministically prioritized issues
 }
 ```
@@ -134,10 +141,13 @@ export interface OperationalIssue {
 ## 5. Data Completeness & Degradation Protocol
 
 When any database query encounters an error (e.g., query timeout, network glitch):
-1. **Never Assume Zero:** The error is **not** swallowed or coerced to 0 (`DATA_RETRIEVAL_FAILURE_INTERPRETED_AS_ZERO = 0`).
-2. **Flag Completeness:** `snapshot.dataCompleteness` is set to `"partial"`.
-3. **Record Unavailable Source:** The failed subsystem is added to `snapshot.unavailableSources` (e.g., `["tasks"]`).
-4. **User Transparency:** Assistant output surfaces a prominent warning notice (`⚠️ Aviso: Os dados de tasks estão temporariamente indisponíveis`).
+1. **Never Assume Zero:** The error is **not** swallowed or coerced to 0 (`DATA_RETRIEVAL_FAILURE_INTERPRETED_AS_ZERO = 0`). Submodels become `null`.
+2. **No Fake Default Capacity:** Capacity is never defaulted to 20 (`FAKE_OPERATIONAL_CAPACITY_FALLBACK = 0`). Only genuine database values are accepted.
+3. **No Synthetic Model Counts:** Model payload receives null/unavailable status instead of synthetic zero counts (`UNAVAILABLE_OPERATIONAL_SOURCE_NUMERIC_FALLBACK = 0`).
+4. **Flag Completeness:** `snapshot.dataCompleteness` is set to `"partial"`.
+5. **Record Unavailable Source:** The failed subsystem is added to `snapshot.unavailableSources` (e.g., `["tasks"]`) and reflected in `sourceStatus`.
+6. **User Transparency:** Assistant output and frontend cards surface a prominent warning badge and render `Indisponível` for failed metrics.
+7. **True Zero vs Unknown Distinction:** A successful query with 0 rows returns genuine 0 counts (`dataCompleteness = "complete"`), definitively distinguished from an unavailable source.
 
 ---
 
@@ -147,3 +157,20 @@ To prevent unbounded payload generation and token overflow:
 - All returned arrays (`arrivals.items`, `tasks.items`, `priorities`) are capped by `ASSISTANT_CONFIG.operationalMaxListLimit` (default: 25 items).
 - Aggregated counts (`totalExpected`, `totalPending`, `totalIssues`) always reflect the true mathematical count across the entire dataset.
 - Invariant `UNBOUNDED_OPERATIONAL_TOOL_RESULT = 0` is strictly maintained.
+
+---
+
+## 7. Session Baseline Security Binding
+
+Session baselines for change detection (`get_recent_operational_changes`) are strictly process-local and securely bound:
+```typescript
+export interface SessionBaselineContext {
+  sessionId: string;
+  userId: number;
+  crecheId: number;
+  role: AssistantRole;
+}
+```
+- `MODEL_SUPPLIED_OPERATIONAL_SESSION_ID = 0`: The model cannot supply an arbitrary session ID. Session identity is injected from the server security context.
+- Cross-tenant and cross-user leaks are strictly blocked (`OPERATIONAL_BASELINE_USER_BOUND = YES`, `OPERATIONAL_BASELINE_TENANT_BOUND = YES`, `OPERATIONAL_BASELINE_ROLE_BOUND = YES`).
+- If no baseline exists in the active session, the system returns: `"Nenhum resumo operacional anterior nesta sessão para comparação."`.

@@ -48,24 +48,24 @@ export interface OperationalCopilotUI {
   dataCompleteness?: "complete" | "partial";
   unavailableSources?: string[];
   occupancy?: {
-    current: number;
-    capacity: number;
-  };
+    current: number | null;
+    capacity: number | null;
+  } | null;
   arrivals?: {
-    totalExpected: number;
-    checkedIn: number;
-    pending: number;
-    completed: number;
-    cancelled: number;
-    onTheWay: number;
-  };
+    totalExpected: number | null;
+    checkedIn?: number | null;
+    pending: number | null;
+    completed?: number | null;
+    cancelled?: number | null;
+    onTheWay?: number | null;
+  } | null;
   tasks?: {
-    total: number;
-    pending: number;
-    completed: number;
-    overdue: number;
-    unassigned: number;
-  };
+    total?: number | null;
+    pending: number | null;
+    completed?: number | null;
+    overdue: number | null;
+    unassigned?: number | null;
+  } | null;
   priorities?: Array<{
     id: string;
     priority: "critical" | "high" | "medium" | "low";

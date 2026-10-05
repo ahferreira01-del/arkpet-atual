@@ -304,10 +304,15 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
 
     // 6. Generate Response via Provider
     try {
+      const sessionSecurityContext: AssistantSecurityContext = {
+        ...context,
+        sessionId: session.id,
+      };
+
       const response = await this.provider.generateResponse({
         systemPrompt,
         messages: session.messages.map((m) => ({ role: m.role, content: m.content })),
-        securityContext: context,
+        securityContext: sessionSecurityContext,
         screenContext: resolvedContext.screen,
         knowledgeSnippets: snippets,
       });
@@ -335,21 +340,39 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
             };
           }
           if (tc.name === "get_operational_overview" && tc.result) {
-            OperationalSnapshotService.setSessionBaseline(session.id, tc.result);
+            if (context.crecheId) {
+              OperationalSnapshotService.setSessionBaseline(
+                {
+                  sessionId: session.id,
+                  userId: context.userId,
+                  crecheId: context.crecheId,
+                  role: context.role,
+                },
+                tc.result
+              );
+            }
             operationalPayload = {
               asOf: tc.result.asOf,
               businessDate: tc.result.businessDate,
               summary: response.content,
               priorities: tc.result.issues || [],
+              occupancy: tc.result.occupancy,
+              arrivals: tc.result.arrivals,
+              tasks: tc.result.tasks,
               counts: {
-                totalArrivals: tc.result.arrivals?.totalExpected || 0,
-                pendingArrivals: tc.result.arrivals?.pending || 0,
-                activePets: tc.result.arrivals?.checkedIn || 0,
-                pendingTasks: tc.result.tasks?.pending || 0,
-                overdueTasks: tc.result.tasks?.overdue || 0,
+                ...(tc.result.arrivals && tc.result.arrivals.totalExpected !== null ? {
+                  totalArrivals: tc.result.arrivals.totalExpected,
+                  pendingArrivals: tc.result.arrivals.pending,
+                  activePets: tc.result.arrivals.checkedIn,
+                } : {}),
+                ...(tc.result.tasks && tc.result.tasks.pending !== null ? {
+                  pendingTasks: tc.result.tasks.pending,
+                  overdueTasks: tc.result.tasks.overdue,
+                } : {}),
               },
               dataCompleteness: tc.result.dataCompleteness,
               unavailableSources: tc.result.unavailableSources,
+              sourceStatus: tc.result.sourceStatus,
             };
           }
           if (tc.name === "get_operational_priorities" && tc.result) {
