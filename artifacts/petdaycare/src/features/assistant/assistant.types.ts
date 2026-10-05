@@ -42,6 +42,43 @@ export interface AssistantSafeActionUI {
   error?: string;
 }
 
+export interface OperationalCopilotUI {
+  asOf: string;
+  businessDate: string;
+  dataCompleteness?: "complete" | "partial";
+  unavailableSources?: string[];
+  occupancy?: {
+    current: number;
+    capacity: number;
+  };
+  arrivals?: {
+    totalExpected: number;
+    checkedIn: number;
+    pending: number;
+    completed: number;
+    cancelled: number;
+    onTheWay: number;
+  };
+  tasks?: {
+    total: number;
+    pending: number;
+    completed: number;
+    overdue: number;
+    unassigned: number;
+  };
+  priorities?: Array<{
+    id: string;
+    priority: "critical" | "high" | "medium" | "low";
+    title: string;
+    reason: string;
+    suggestedAction?: {
+      tool: string;
+      label: string;
+      targetId?: number;
+    };
+  }>;
+}
+
 export interface AssistantUIMessage {
   id: string;
   role: "user" | "assistant";
@@ -50,6 +87,7 @@ export interface AssistantUIMessage {
   citations?: AssistantCitation[];
   uiActions?: AssistantUIAction[];
   action?: AssistantSafeActionUI;
+  operational?: OperationalCopilotUI;
   onboarding?: {
     isComplete: boolean;
     progressPercent: number;

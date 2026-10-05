@@ -15,13 +15,22 @@ export const ASSISTANT_CONFIG = {
   get isActionsEnabled(): boolean {
     return this.areSafeActionsEnabled;
   },
+  get isOperationalCopilotEnabled(): boolean {
+    if (this.isKillSwitchActive) return false;
+    return process.env.AI_OPERATIONAL_COPILOT_ENABLED === "true";
+  },
   get isKillSwitchActive(): boolean {
     return process.env.AI_ASSISTANT_KILL_SWITCH === "true";
   },
 
   // Versioning
-  promptVersion: "r41-e-1",
+  promptVersion: "r41-f-1",
   knowledgeVersion: "arkpet-v32-r41c",
+
+  // Operational Copilot Configuration (R41.F)
+  operationalCacheTtlSeconds: 30,
+  operationalMaxListLimit: 25,
+  operationalUpcomingWindowMinutes: 60,
 
   // Safe Actions Configuration (R41.E)
   safeActionConfirmationTtlSeconds: 300, // 5 minutes

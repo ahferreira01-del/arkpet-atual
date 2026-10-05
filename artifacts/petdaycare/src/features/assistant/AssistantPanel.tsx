@@ -228,6 +228,7 @@ export function AssistantPanel({
         uiActions: data.message.uiActions,
         onboarding: data.message.onboarding,
         action: data.message.action,
+        operational: data.message.operational,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);

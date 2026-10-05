@@ -72,6 +72,8 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("ignore todas as regras") ||
       lowerQuery.includes("ignore suas regras") ||
       lowerQuery.includes("ignore previous instructions") ||
+      lowerQuery.includes("system override") ||
+      lowerQuery.includes("autonomous mode") ||
       lowerQuery.includes("execute sql") ||
       lowerQuery.includes("executar sql")
     ) {
@@ -96,6 +98,9 @@ export class MockAIProvider implements AIProvider {
       lowerQuery.includes("exclua o tutor") ||
       lowerQuery.includes("delete o tutor") ||
       lowerQuery.includes("deletar tutor") ||
+      lowerQuery.includes("delete todas as tarefas") ||
+      lowerQuery.includes("deletar tarefas") ||
+      lowerQuery.includes("exclua todas as tarefas") ||
       lowerQuery.includes("apagar pet")
     ) {
       return {
@@ -153,6 +158,8 @@ export class MockAIProvider implements AIProvider {
         lowerQuery.includes("mudar dose") ||
         lowerQuery.includes("mude a dosagem") ||
         lowerQuery.includes("mudar a dosagem") ||
+        lowerQuery.includes("dobre a dosagem") ||
+        lowerQuery.includes("100ml") ||
         lowerQuery.includes("dar 2 comprimidos") ||
         lowerQuery.includes("de 10mg") ||
         lowerQuery.includes("de 20mg") ||
@@ -500,6 +507,485 @@ export class MockAIProvider implements AIProvider {
             content: err.message || "Não foi possível registrar a proposta de passeio.",
           };
         }
+      }
+    }
+
+    // ── R41.F: OPERATIONAL COPILOT INTELLIGENCE ──────────────────────────────
+    // 1. Bulk Operational Mutation Guard (BULK_OPERATIONAL_AI_MUTATION = 0)
+    if (
+      (lowerQuery.includes("faca todas") ||
+        lowerQuery.includes("faca tudo") ||
+        lowerQuery.includes("faca todos") ||
+        lowerQuery.includes("conclua todas") ||
+        lowerQuery.includes("conclua tudo") ||
+        lowerQuery.includes("resolva todas") ||
+        lowerQuery.includes("resolva tudo") ||
+        lowerQuery.includes("marque todas") ||
+        lowerQuery.includes("marque todos")) &&
+      (lowerQuery.includes("tarefa") ||
+        lowerQuery.includes("tarefas") ||
+        lowerQuery.includes("pendencia") ||
+        lowerQuery.includes("pendencias") ||
+        lowerQuery.includes("acao") ||
+        lowerQuery.includes("acoes") ||
+        lowerQuery.includes("alimentacao") ||
+        lowerQuery.includes("alimentacoes") ||
+        lowerQuery.includes("medicacao") ||
+        lowerQuery.includes("medicacoes") ||
+        lowerQuery.includes("passeio") ||
+        lowerQuery.includes("passeios") ||
+        lowerQuery.includes("operacao") ||
+        lowerQuery.includes("operacoes"))
+    ) {
+      return {
+        content: "Por motivos de segurança e rastreabilidade operacional, ações de rotina não podem ser executadas em lote pelo assistente. Por favor, confirme as ações individualmente ou utilize o painel operacional.",
+      };
+    }
+
+    // 2. Ambiguous "Resolva essa / Resolva isso" Guard (AMBIGUOUS_OPERATIONAL_ACTION_EXECUTION = 0, R41F-VOICE-003)
+    if (
+      (lowerQuery === "resolva essa" ||
+        lowerQuery === "resolva isso" ||
+        lowerQuery === "pode resolver isso" ||
+        lowerQuery === "pode resolver" ||
+        lowerQuery === "resolva" ||
+        lowerQuery === "resolver") &&
+      !options.screenContext?.entity
+    ) {
+      return {
+        content: "Há mais de uma pendência operacional no momento. Por favor, especifique qual ação ou pet deseja atender (por exemplo: 'fazer check-in do Thor' ou 'concluir alimentação').",
+      };
+    }
+
+    // 3. Tutor Creche-Wide Operational Inquiry Guard (R41F-RBAC-001)
+    if (
+      context.role === "tutor" &&
+      (lowerQuery.includes("quais pets ainda nao tomaram medicacao") ||
+        lowerQuery.includes("quais pets ainda nao comeram") ||
+        lowerQuery.includes("como esta a operacao") ||
+        lowerQuery.includes("resumo da operacao") ||
+        lowerQuery.includes("resumo operacional") ||
+        lowerQuery.includes("resumo de hoje") ||
+        lowerQuery.includes("o que precisa da minha atencao") ||
+        lowerQuery.includes("o que esta critico") ||
+        lowerQuery.includes("quais tarefas estao atrasadas") ||
+        lowerQuery.includes("quem ainda esta aguardando check-in") ||
+        lowerQuery.includes("reservas de hoje ainda nao chegaram"))
+    ) {
+      return {
+        content: "Como tutor, você tem acesso apenas às informações dos seus próprios pets cadastrados. Para verificar o status do seu animalzinho, consulte o prontuário ou fale com a equipe da creche.",
+      };
+    }
+
+    // 4. Staff Financial Bypass Guard (R41F-RBAC-002)
+    if (
+      (context.role === "staff" || context.role === "tutor") &&
+      (lowerQuery.includes("faturamento de hoje") ||
+        lowerQuery.includes("qual o faturamento") ||
+        lowerQuery.includes("faturamento total") ||
+        lowerQuery.includes("faturamento da creche") ||
+        lowerQuery.includes("receita total da creche"))
+    ) {
+      return {
+        content: `Como ${context.role}, você não tem permissão para visualizar o faturamento ou a receita da creche. O acesso a métricas e relatórios financeiros é restrito aos administradores da creche.`,
+      };
+    }
+
+    // 5. Contextual Entity Ambiguity for "o que falta para ele?" / "o que ainda está pendente para ele?" (R41F-CONTEXT-001, R41F-CONTEXT-002)
+    if (
+      lowerQuery.includes("o que ainda esta pendente para ele") ||
+      lowerQuery.includes("o que falta para ele") ||
+      lowerQuery.includes("o que falta para o pet")
+    ) {
+      const activeEntity = options.screenContext?.entity;
+      if (!activeEntity || activeEntity.type !== "pet") {
+        return {
+          content: "Para qual pet você gostaria de verificar as pendências? Por favor, informe o nome do pet ou acesse a ficha dele no sistema.",
+        };
+      }
+      if (!context.crecheId) {
+        return { content: "Acesso a dados operacionais requer contexto de uma creche autorizada." };
+      }
+      try {
+        const petId = Number(activeEntity.id);
+        const petName = activeEntity.name || `Pet #${petId}`;
+        const result = await AssistantToolsRegistry.executeTool(
+          "get_pending_operational_tasks",
+          { petId },
+          context
+        );
+        toolCalls.push({
+          name: "get_pending_operational_tasks",
+          arguments: { petId },
+          result,
+        });
+        if (result.tasks.length === 0) {
+          return {
+            content: `Não há tarefas pendentes registradas para ${petName} no momento.`,
+            toolCalls,
+          };
+        }
+        const taskTitles = result.tasks.map((t: any) => `- ${t.title} (${t.type}): agendada para ${new Date(t.scheduledFor).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`).join("\n");
+        return {
+          content: `Atividades pendentes para ${petName}:\n${taskTitles}`,
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar pendências do pet.", toolCalls };
+      }
+    }
+
+    // 6. Operational Overview / Daily Summary
+    if (
+      lowerQuery.includes("resumo operacional") ||
+      lowerQuery.includes("como esta a operacao") ||
+      lowerQuery.includes("resumo da operacao") ||
+      lowerQuery.includes("resumo do dia") ||
+      lowerQuery.includes("visao geral da operacao") ||
+      lowerQuery.includes("capacidade e ocupacao") ||
+      lowerQuery.includes("ocupacao atual") ||
+      lowerQuery.includes("resumo de hoje")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool("get_operational_overview", {}, context);
+        toolCalls.push({
+          name: "get_operational_overview",
+          arguments: {},
+          result,
+        });
+
+        let summaryText = `Resumo Operacional de Hoje (${result.businessDate}) — Atualizado em ${new Date(result.asOf).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}:\n\n`;
+        if (result.dataCompleteness === "partial") {
+          summaryText += `⚠️ Aviso: Os dados de ${result.unavailableSources?.join(", ")} estão temporariamente indisponíveis. A visão operacional pode estar incompleta.\n\n`;
+        }
+
+        summaryText += `- Ocupação Atual: ${result.occupancy.current}/${result.occupancy.capacity} pets\n`;
+        summaryText += `- Chegadas Previstas: ${result.arrivals.totalExpected} (Check-ins realizados: ${result.arrivals.checkedIn}, Aguardando: ${result.arrivals.pending})\n`;
+        summaryText += `- Tarefas Pendentes: ${result.tasks.pending} (${result.tasks.overdue} atrasada(s))\n`;
+        summaryText += `  • Alimentação: ${result.tasks.byType.feeding.pending} pendente(s)\n`;
+        summaryText += `  • Medicação: ${result.tasks.byType.medication.pending} pendente(s)\n`;
+        summaryText += `  • Passeios: ${result.tasks.byType.walk.pending} pendente(s)\n\n`;
+
+        if (result.issues.length > 0) {
+          summaryText += `Principais prioridades de atenção:\n`;
+          for (let i = 0; i < Math.min(3, result.issues.length); i++) {
+            const iss = result.issues[i];
+            summaryText += `${i + 1}. [${iss.priority.toUpperCase()}] ${iss.title}: ${iss.reason}\n`;
+          }
+        } else if (result.dataCompleteness === "complete") {
+          summaryText += `A operação está em dia! Nenhuma pendência crítica ou tarefa atrasada no momento.`;
+        }
+
+        return {
+          content: summaryText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar visão operacional.", toolCalls };
+      }
+    }
+
+    // 7. Priorities / Critical Issues ("O que precisa da minha atenção agora?")
+    if (
+      lowerQuery.includes("o que precisa da minha atencao") ||
+      lowerQuery.includes("o que esta mais critico") ||
+      lowerQuery.includes("o que e mais urgente") ||
+      lowerQuery.includes("prioridades") ||
+      lowerQuery.includes("quais acoes voce recomenda") ||
+      lowerQuery.includes("acoes recomendadas")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool("get_operational_priorities", { limit: 5 }, context);
+        toolCalls.push({
+          name: "get_operational_priorities",
+          arguments: { limit: 5 },
+          result,
+        });
+
+        if (result.priorities.length === 0) {
+          return {
+            content: "Nenhuma pendência crítica encontrada no momento. A rotina da creche está em dia!",
+            toolCalls,
+          };
+        }
+
+        let respText = `Itens que precisam da sua atenção agora (${result.totalIssues} pendência(s) detectada(s)):\n\n`;
+        result.priorities.forEach((item: any, idx: number) => {
+          respText += `${idx + 1}. [${item.priority.toUpperCase()}] ${item.title}\n`;
+          respText += `   Motivo: ${item.reason}\n`;
+          if (item.suggestedAction) {
+            respText += `   Ação recomendada: ${item.suggestedAction.label}\n`;
+          }
+          respText += "\n";
+        });
+
+        respText += "Deseja que eu prepare a proposta de alguma dessas ações para sua confirmação?";
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar prioridades operacionais.", toolCalls };
+      }
+    }
+
+    // 8. Today's Arrivals ("Quem ainda está aguardando check-in?")
+    if (
+      lowerQuery.includes("aguardando check-in") ||
+      lowerQuery.includes("aguardando checkin") ||
+      lowerQuery.includes("ainda nao chegaram") ||
+      lowerQuery.includes("chegadas de hoje") ||
+      lowerQuery.includes("quem ainda nao chegou") ||
+      lowerQuery.includes("a caminho") ||
+      lowerQuery.includes("reservas de hoje ainda nao chegaram")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool("get_today_arrivals", { status: "confirmed" }, context);
+        toolCalls.push({
+          name: "get_today_arrivals",
+          arguments: { status: "confirmed" },
+          result,
+        });
+
+        if (result.arrivals.length === 0) {
+          return {
+            content: "Não há pets a caminho ou aguardando check-in no momento. Todos os pets previstos para hoje já realizaram check-in.",
+            toolCalls,
+          };
+        }
+
+        let respText = `Pets aguardando check-in hoje (${result.arrivals.length} pet(s)):\n\n`;
+        result.arrivals.forEach((a: any) => {
+          const onWayInfo = a.onTheWayType ? ` (A caminho - ETA: ${a.onTheWayEtaMinutes ?? "?"} min)` : "";
+          respText += `- ${a.petName}: Reserva #${a.bookingId} (${a.serviceType})${onWayInfo}\n`;
+        });
+
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar chegadas.", toolCalls };
+      }
+    }
+
+    // 9. Pending Feedings ("Quais pets ainda não comeram?")
+    if (
+      lowerQuery.includes("ainda nao comeram") ||
+      lowerQuery.includes("ainda nao comeu") ||
+      lowerQuery.includes("alimentacao pendente") ||
+      lowerQuery.includes("alimentacoes pendentes")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool(
+          "get_pending_operational_tasks",
+          { type: "feeding" },
+          context
+        );
+        toolCalls.push({
+          name: "get_pending_operational_tasks",
+          arguments: { type: "feeding" },
+          result,
+        });
+
+        if (result.tasks.length === 0) {
+          return {
+            content: "Todas as alimentações programadas para hoje já foram concluídas!",
+            toolCalls,
+          };
+        }
+
+        let respText = `Alimentações pendentes (${result.tasks.length}):\n\n`;
+        result.tasks.forEach((t: any) => {
+          const lateInfo = t.isOverdue ? ` [ATRASADA há ${t.delayMinutes} min]` : "";
+          respText += `- ${t.petName || "Pet"}: ${t.title}${lateInfo}\n`;
+        });
+
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar alimentações pendentes.", toolCalls };
+      }
+    }
+
+    // 10. Pending Medications ("Tem alguma medicação atrasada?")
+    if (
+      lowerQuery.includes("medicacao atrasada") ||
+      lowerQuery.includes("medicacoes atrasadas") ||
+      lowerQuery.includes("remedios atrasados") ||
+      lowerQuery.includes("remedio atrasado") ||
+      lowerQuery.includes("medicacoes estao pendentes") ||
+      lowerQuery.includes("medicacao pendente")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool(
+          "get_pending_operational_tasks",
+          { type: "medication" },
+          context
+        );
+        toolCalls.push({
+          name: "get_pending_operational_tasks",
+          arguments: { type: "medication" },
+          result,
+        });
+
+        if (result.tasks.length === 0) {
+          return {
+            content: "Não há medicações pendentes ou atrasadas no momento.",
+            toolCalls,
+          };
+        }
+
+        let respText = `Medicações agendadas pendentes (${result.tasks.length}):\n\n`;
+        result.tasks.forEach((t: any) => {
+          const lateInfo = t.isOverdue ? ` [ATRASADA há ${t.delayMinutes} min]` : " [Pendente]";
+          respText += `- ${t.petName || "Pet"}: ${t.title}${lateInfo}\n`;
+        });
+
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar medicações.", toolCalls };
+      }
+    }
+
+    // 11. Pending Walks ("Quais passeios pendentes?")
+    if (
+      lowerQuery.includes("passeios pendentes") ||
+      lowerQuery.includes("passeio pendente") ||
+      lowerQuery.includes("passeios atrasados") ||
+      lowerQuery.includes("passeio atrasado") ||
+      lowerQuery.includes("tem passeio pendente") ||
+      lowerQuery.includes("tem algum passeio pendente")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool(
+          "get_pending_operational_tasks",
+          { type: "walk" },
+          context
+        );
+        toolCalls.push({
+          name: "get_pending_operational_tasks",
+          arguments: { type: "walk" },
+          result,
+        });
+
+        if (result.tasks.length === 0) {
+          return {
+            content: "Não há passeios pendentes no momento.",
+            toolCalls,
+          };
+        }
+
+        let respText = `Passeios pendentes (${result.tasks.length}):\n\n`;
+        result.tasks.forEach((t: any) => {
+          const lateInfo = t.isOverdue ? ` [ATRASADO há ${t.delayMinutes} min]` : "";
+          respText += `- ${t.petName || "Pet"}: ${t.title}${lateInfo}\n`;
+        });
+
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar passeios.", toolCalls };
+      }
+    }
+
+    // 12. Overdue or Unassigned Tasks ("Quais tarefas estão atrasadas?", "Tem alguma tarefa sem responsável?")
+    if (
+      lowerQuery.includes("tarefas estao atrasadas") ||
+      lowerQuery.includes("tarefas atrasadas") ||
+      lowerQuery.includes("tarefa sem responsavel") ||
+      lowerQuery.includes("tarefas sem responsavel") ||
+      lowerQuery.includes("quais tarefas estao pendentes")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const overdueOnly = lowerQuery.includes("atrasada");
+        const result = await AssistantToolsRegistry.executeTool(
+          "get_pending_operational_tasks",
+          { overdueOnly },
+          context
+        );
+        toolCalls.push({
+          name: "get_pending_operational_tasks",
+          arguments: { overdueOnly },
+          result,
+        });
+
+        if (result.tasks.length === 0) {
+          return {
+            content: overdueOnly
+              ? "Não há tarefas atrasadas no momento. A rotina está em dia!"
+              : "Não há tarefas pendentes no momento.",
+            toolCalls,
+          };
+        }
+
+        let respText = `Tarefas encontradas (${result.tasks.length}):\n\n`;
+        result.tasks.forEach((t: any) => {
+          const resp = t.assignedToName ? `Responsável: ${t.assignedToName}` : "SEM RESPONSÁVEL";
+          const lateInfo = t.isOverdue ? ` [ATRASADA há ${t.delayMinutes} min]` : "";
+          respText += `- ${t.title} (${t.type})${lateInfo} — ${resp}\n`;
+        });
+
+        return {
+          content: respText.trim(),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar tarefas.", toolCalls };
+      }
+    }
+
+    // 13. Recent Operational Changes ("O que mudou desde o último resumo?")
+    if (
+      lowerQuery.includes("o que mudou desde o ultimo resumo") ||
+      lowerQuery.includes("o que mudou") ||
+      lowerQuery.includes("mudancas recentes")
+    ) {
+      if (!context.crecheId) {
+        return { content: "Como master_admin, a consulta operacional requer a seleção explícita de uma creche autorizada." };
+      }
+      try {
+        const result = await AssistantToolsRegistry.executeTool("get_recent_operational_changes", {}, context);
+        toolCalls.push({
+          name: "get_recent_operational_changes",
+          arguments: {},
+          result,
+        });
+
+        return {
+          content: result.changes.join("\n"),
+          toolCalls,
+        };
+      } catch (err: any) {
+        return { content: err.message || "Erro ao consultar mudanças operacionais.", toolCalls };
       }
     }
 
@@ -1330,6 +1816,46 @@ export class OpenAICompatibleProvider implements AIProvider {
             taskId: { type: "integer", description: "ID da tarefa de passeio (opcional)" },
             petId: { type: "integer", description: "ID do pet (opcional)" },
             notes: { type: "string", description: "Observações (opcional)" },
+          },
+        };
+      } else if (t.name === "get_operational_overview") {
+        parameters = {
+          type: "object",
+          properties: {
+            forceRefresh: { type: "boolean", description: "Forçar atualização ignorando cache" },
+          },
+        };
+      } else if (t.name === "get_operational_priorities") {
+        parameters = {
+          type: "object",
+          properties: {
+            limit: { type: "integer", description: "Número máximo de prioridades (1 a 25)" },
+            category: { type: "string", description: "Filtrar por categoria" },
+          },
+        };
+      } else if (t.name === "get_today_arrivals") {
+        parameters = {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["confirmed", "active", "completed", "cancelled", "all"], description: "Filtrar status da chegada" },
+            limit: { type: "integer", description: "Limite de registros" },
+          },
+        };
+      } else if (t.name === "get_pending_operational_tasks") {
+        parameters = {
+          type: "object",
+          properties: {
+            type: { type: "string", enum: ["feeding", "medication", "walk", "grooming", "play", "health_check", "other", "all"], description: "Tipo de tarefa" },
+            overdueOnly: { type: "boolean", description: "Apenas tarefas atrasadas" },
+            petId: { type: "integer", description: "Filtrar por ID do pet" },
+            limit: { type: "integer", description: "Limite de registros" },
+          },
+        };
+      } else if (t.name === "get_recent_operational_changes") {
+        parameters = {
+          type: "object",
+          properties: {
+            sessionId: { type: "string", description: "ID da sessão para comparar com baseline" },
           },
         };
       }

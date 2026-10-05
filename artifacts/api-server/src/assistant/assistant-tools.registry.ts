@@ -25,6 +25,17 @@ import {
   SAFE_ACTION_REGISTRY,
   CANONICAL_MUTATION_TOOL_NAMES,
 } from "./assistant-safe-action.registry.js";
+import { OperationalSnapshotService } from "./operational-snapshot.service.js";
+
+export const CANONICAL_OPERATIONAL_READ_TOOL_NAMES = [
+  "get_operational_overview",
+  "get_operational_priorities",
+  "get_today_arrivals",
+  "get_pending_operational_tasks",
+  "get_recent_operational_changes",
+] as const;
+
+export type CanonicalOperationalReadToolName = (typeof CANONICAL_OPERATIONAL_READ_TOOL_NAMES)[number];
 
 export class AssistantToolsRegistry {
   private static tools: Map<string, AssistantToolDefinition> = new Map();
@@ -330,6 +341,175 @@ export class AssistantToolsRegistry {
       },
     });
 
+    // ── Tool 9: get_operational_overview (R41.F) ──────────────────────────────
+    this.register({
+      name: "get_operational_overview",
+      description: "Consulta o estado consolidado da operação da creche hoje (ocupação, chegadas, partidas e pendências operacionais).",
+      allowedRoles: ["master_admin", "creche_admin", "staff"],
+      mode: "read",
+      riskLevel: "low",
+      targetType: "general",
+      inputSchema: z.object({
+        forceRefresh: z.boolean().optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_operational_overview",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
+        }
+        return await OperationalSnapshotService.getSnapshot(context.crecheId, { forceRefresh: input.forceRefresh });
+      },
+    });
+
+    // ── Tool 10: get_operational_priorities (R41.F) ───────────────────────────
+    this.register({
+      name: "get_operational_priorities",
+      description: "Retorna a lista priorizada de alertas e pendências operacionais da creche ordenadas deterministicamente por urgência.",
+      allowedRoles: ["master_admin", "creche_admin", "staff"],
+      mode: "read",
+      riskLevel: "low",
+      targetType: "general",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(25).optional(),
+        category: z.string().optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_operational_priorities",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
+        }
+        const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId);
+        let issues = snapshot.issues;
+        if (input.category) {
+          issues = issues.filter((i) => i.category === input.category);
+        }
+        const limit = input.limit ?? 5;
+        const bounded = issues.slice(0, limit);
+        return {
+          asOf: snapshot.asOf,
+          businessDate: snapshot.businessDate,
+          totalIssues: issues.length,
+          priorities: bounded,
+          dataCompleteness: snapshot.dataCompleteness,
+          unavailableSources: snapshot.unavailableSources,
+        };
+      },
+    });
+
+    // ── Tool 11: get_today_arrivals (R41.F) ───────────────────────────────────
+    this.register({
+      name: "get_today_arrivals",
+      description: "Consulta chegadas e reservas previstas para hoje na creche, identificando pets que já chegaram, estão a caminho ou aguardam check-in.",
+      allowedRoles: ["master_admin", "creche_admin", "staff"],
+      mode: "read",
+      riskLevel: "low",
+      targetType: "booking",
+      inputSchema: z.object({
+        status: z.enum(["confirmed", "active", "completed", "cancelled", "all"]).optional(),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_today_arrivals",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
+        }
+        const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId);
+        let items = snapshot.arrivals.items;
+        if (input.status && input.status !== "all") {
+          items = items.filter((a) => a.status === input.status);
+        }
+        const limit = input.limit ?? 25;
+        return {
+          asOf: snapshot.asOf,
+          businessDate: snapshot.businessDate,
+          summary: {
+            totalExpected: snapshot.arrivals.totalExpected,
+            checkedIn: snapshot.arrivals.checkedIn,
+            pending: snapshot.arrivals.pending,
+            completed: snapshot.arrivals.completed,
+            cancelled: snapshot.arrivals.cancelled,
+            onTheWay: snapshot.arrivals.onTheWay,
+          },
+          arrivals: items.slice(0, limit),
+          dataCompleteness: snapshot.dataCompleteness,
+          unavailableSources: snapshot.unavailableSources,
+        };
+      },
+    });
+
+    // ── Tool 12: get_pending_operational_tasks (R41.F) ────────────────────────
+    this.register({
+      name: "get_pending_operational_tasks",
+      description: "Consulta tarefas da rotina operacional (alimentação, medicação, passeios) pendentes ou atrasadas na creche.",
+      allowedRoles: ["master_admin", "creche_admin", "staff"],
+      mode: "read",
+      riskLevel: "low",
+      targetType: "task",
+      inputSchema: z.object({
+        type: z.enum(["feeding", "medication", "walk", "grooming", "play", "health_check", "other", "all"]).optional(),
+        overdueOnly: z.boolean().optional(),
+        petId: z.number().int().positive().optional(),
+        limit: z.number().int().min(1).max(25).optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_pending_tasks",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
+        }
+        const snapshot = await OperationalSnapshotService.getSnapshot(context.crecheId);
+        let items = snapshot.tasks.items;
+        if (input.type && input.type !== "all") {
+          items = items.filter((t) => t.type === input.type);
+        }
+        if (input.overdueOnly) {
+          items = items.filter((t) => t.isOverdue);
+        }
+        if (input.petId) {
+          items = items.filter((t) => t.petId === input.petId);
+        }
+        const limit = input.limit ?? 25;
+        return {
+          asOf: snapshot.asOf,
+          businessDate: snapshot.businessDate,
+          counts: snapshot.tasks.byType,
+          totalPending: snapshot.tasks.pending,
+          totalOverdue: snapshot.tasks.overdue,
+          totalUnassigned: snapshot.tasks.unassigned,
+          tasks: items.slice(0, limit),
+          dataCompleteness: snapshot.dataCompleteness,
+          unavailableSources: snapshot.unavailableSources,
+        };
+      },
+    });
+
+    // ── Tool 13: get_recent_operational_changes (R41.F) ───────────────────────
+    this.register({
+      name: "get_recent_operational_changes",
+      description: "Compara o estado operacional atual com um momento anterior da sessão para identificar o que mudou na operação.",
+      allowedRoles: ["master_admin", "creche_admin", "staff"],
+      mode: "read",
+      riskLevel: "low",
+      targetType: "general",
+      inputSchema: z.object({
+        sessionId: z.string().optional(),
+      }),
+      confirmationRequired: false,
+      auditEvent: "assistant_tool_get_recent_operational_changes",
+      execute: async (input, context) => {
+        if (!context.crecheId) {
+          throw new Error("Acesso a dados operacionais requer contexto de uma creche autorizada");
+        }
+        const baseline = input.sessionId
+          ? OperationalSnapshotService.getSessionBaseline(input.sessionId)
+          : undefined;
+        return await OperationalSnapshotService.compareWithBaseline(context.crecheId, baseline);
+      },
+    });
+
     // ── Safe Mutation Tools (R41.E: Exactly 7 Canonical Actions) ──────────────
     for (const actionType of CANONICAL_MUTATION_TOOL_NAMES) {
       const def = SAFE_ACTION_REGISTRY[actionType];
@@ -399,11 +579,15 @@ export class AssistantToolsRegistry {
   }
 
   public static getAllTools(): AssistantToolDefinition[] {
-    return this.listTools();
+    const operationalActive = ASSISTANT_CONFIG.isOperationalCopilotEnabled;
+    return Array.from(this.tools.values()).filter((t) => {
+      if (CANONICAL_OPERATIONAL_READ_TOOL_NAMES.includes(t.name as any) && !operationalActive) return false;
+      return true;
+    });
   }
 
   public static getAllRegisteredToolNames(): string[] {
-    return Array.from(this.tools.keys());
+    return this.getAllTools().map((t) => t.name);
   }
 
   public static getMutationToolNames(): string[] {
@@ -413,18 +597,35 @@ export class AssistantToolsRegistry {
   }
 
   public static getReadOnlyToolNames(): string[] {
+    const operationalActive = ASSISTANT_CONFIG.isOperationalCopilotEnabled;
     return Array.from(this.tools.values())
-      .filter((t) => t.mode !== "mutation")
+      .filter((t) => {
+        if (t.mode === "mutation") return false;
+        if (CANONICAL_OPERATIONAL_READ_TOOL_NAMES.includes(t.name as any) && !operationalActive) return false;
+        return true;
+      })
+      .map((t) => t.name);
+  }
+
+  public static getBaselineReadOnlyToolNames(): string[] {
+    return Array.from(this.tools.values())
+      .filter((t) => t.mode !== "mutation" && !CANONICAL_OPERATIONAL_READ_TOOL_NAMES.includes(t.name as any))
       .map((t) => t.name);
   }
 
   public static getToolsForRole(role: string): AssistantToolDefinition[] {
     const safeActionsActive = ASSISTANT_CONFIG.areSafeActionsEnabled;
+    const operationalActive = ASSISTANT_CONFIG.isOperationalCopilotEnabled;
     return Array.from(this.tools.values()).filter((t) => {
       if (!t.allowedRoles.includes(role as any)) return false;
       if (t.mode === "mutation" && !safeActionsActive) return false;
+      if (CANONICAL_OPERATIONAL_READ_TOOL_NAMES.includes(t.name as any) && !operationalActive) return false;
       return true;
     });
+  }
+
+  public static getOperationalToolNames(): string[] {
+    return [...CANONICAL_OPERATIONAL_READ_TOOL_NAMES];
   }
 
   /**
@@ -474,6 +675,18 @@ export class AssistantToolsRegistry {
         reason: "Safe actions currently disabled by configuration or kill switch",
       });
       throw new Error("Ações seguras do assistente estão desativadas no momento");
+    }
+
+    // 4b. Operational copilot feature flag / kill switch check (R41.F)
+    if (
+      CANONICAL_OPERATIONAL_READ_TOOL_NAMES.includes(name as any) &&
+      !ASSISTANT_CONFIG.isOperationalCopilotEnabled
+    ) {
+      AssistantAuditService.logSecurityDenial(context, {
+        action: name,
+        reason: "Operational Copilot currently disabled by configuration or kill switch",
+      });
+      throw new Error("O Copiloto Operacional está desativado nesta instância");
     }
 
     // 5. Input Schema Validation via Zod (AI-SEC-008)

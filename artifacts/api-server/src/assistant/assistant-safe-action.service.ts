@@ -21,6 +21,7 @@ import {
 import { AssistantAuditService } from "./assistant-audit.service.js";
 import { BookingDomainService } from "../services/bookingDomainService.js";
 import { TaskDomainService } from "../services/taskDomainService.js";
+import { OperationalSnapshotService } from "./operational-snapshot.service.js";
 import type {
   AssistantSecurityContext,
   AssistantSafeActionPayload,
@@ -419,6 +420,11 @@ export class AssistantSafeActionService {
         idempotencyKey: pendingActionId,
         details: sanitizeAuditString(domainResult.summary),
       });
+
+      // 8. Invalidate operational snapshot cache (SAFE_ACTION_OPERATIONAL_CACHE_INVALIDATION = PASS)
+      if (action.crecheId) {
+        OperationalSnapshotService.invalidateCache(action.crecheId);
+      }
 
       return {
         status: "executed",

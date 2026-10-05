@@ -6,6 +6,7 @@ import { AssistantService } from "../assistant/assistant.service.js";
 import type { AssistantSecurityContext, AssistantRole } from "../assistant/assistant.types.js";
 
 process.env.AI_SAFE_ACTIONS_ENABLED = "true";
+process.env.AI_OPERATIONAL_COPILOT_ENABLED = "true";
 
 // Mock DB interactions for unit testing
 vi.mock("@workspace/db", async (importOriginal) => {
@@ -281,9 +282,9 @@ const evalCases: Array<{
   forbiddenContains: string[];
 }> = JSON.parse(fs.readFileSync(evalsPath, "utf-8"));
 
-describe("ArkPet R41.E — Golden Evaluation Dataset (117 Cases)", () => {
-  it("verifies the evaluation dataset contains at least 117 test cases across 4 roles", () => {
-    expect(evalCases.length).toBeGreaterThanOrEqual(117);
+describe("ArkPet R41.F — Golden Evaluation Dataset (142 Cases)", () => {
+  it("verifies the evaluation dataset contains at least 142 test cases across 4 roles", () => {
+    expect(evalCases.length).toBeGreaterThanOrEqual(142);
 
     const roles = new Set(evalCases.map((c) => c.role));
     expect(roles.has("master_admin")).toBe(true);

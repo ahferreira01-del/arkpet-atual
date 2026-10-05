@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, ShieldAlert, RotateCcw, ArrowRight } from "lucide-react";
+import { Send, Sparkles, ShieldAlert, RotateCcw, ArrowRight, Activity, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AssistantTypingState } from "./AssistantTypingState";
 import { AssistantFeedback } from "./AssistantFeedback";
@@ -82,15 +82,17 @@ export function AssistantConversation({
     }
     if (userRole === "staff") {
       return [
-        "Como faço check-in por QR Code?",
-        "Onde registro a alimentação?",
-        "Como registrar um passeio?",
+        "O que precisa da minha atenção agora?",
+        "Quais pets ainda não comeram?",
+        "Tem alguma medicação atrasada?",
+        "Quem ainda está aguardando check-in?",
       ];
     }
     return [
+      "Resumo operacional de hoje",
+      "O que precisa da minha atenção agora?",
+      "Quem ainda está aguardando check-in?",
       "Quais são os 5 passos do onboarding?",
-      "Qual a diferença entre hospedagem e day use?",
-      "Como cadastrar um pet?",
     ];
   };
 
@@ -223,6 +225,99 @@ export function AssistantConversation({
                     onConfirm={async (id) => onConfirmSafeAction?.(id)}
                     onCancel={async (id) => onCancelSafeAction?.(id)}
                   />
+                )}
+
+                {msg.role === "assistant" && msg.operational && (
+                  <div
+                    data-testid="operational-card"
+                    className="mt-3 p-3 rounded-xl bg-card border border-border/70 text-xs space-y-2.5 shadow-xs"
+                  >
+                    <div className="flex items-center justify-between font-medium text-foreground pb-1.5 border-b border-border/40">
+                      <div className="flex items-center gap-1.5">
+                        <Activity className="w-3.5 h-3.5 text-primary" />
+                        <span>Copiloto Operacional</span>
+                      </div>
+                      {msg.operational.dataCompleteness === "partial" && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-normal">
+                          Dados Parciais
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Occupancy and Summary Chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[11px]">
+                      {msg.operational.occupancy && (
+                        <div data-testid="operational-occupancy" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
+                          <span className="text-muted-foreground block text-[10px]">Ocupação</span>
+                          <span className="font-semibold text-foreground">
+                            {msg.operational.occupancy.current}/{msg.operational.occupancy.capacity} pets
+                          </span>
+                        </div>
+                      )}
+                      {msg.operational.arrivals && (
+                        <div data-testid="operational-arrivals" className="p-1.5 rounded-lg bg-muted/50 border border-border/30">
+                          <span className="text-muted-foreground block text-[10px]">Chegadas</span>
+                          <span className="font-semibold text-foreground">
+                            {msg.operational.arrivals.totalExpected} ({msg.operational.arrivals.pending} aguardando)
+                          </span>
+                        </div>
+                      )}
+                      {msg.operational.tasks && (
+                        <div data-testid="operational-tasks" className="p-1.5 rounded-lg bg-muted/50 border border-border/30 col-span-2 sm:col-span-1">
+                          <span className="text-muted-foreground block text-[10px]">Tarefas</span>
+                          <span className="font-semibold text-foreground">
+                            {msg.operational.tasks.pending} ({msg.operational.tasks.overdue} atrasadas)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Priorities & Action Suggestions */}
+                    {msg.operational.priorities && msg.operational.priorities.length > 0 && (
+                      <div data-testid="operational-priorities" className="pt-1.5 border-t border-border/40 space-y-1.5">
+                        <span className="text-[11px] font-medium text-foreground block">
+                          Prioridades de Atenção:
+                        </span>
+                        {msg.operational.priorities.map((item, idx) => {
+                          const priorityColors: Record<string, string> = {
+                            critical: "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30",
+                            high: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30",
+                            medium: "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30",
+                            low: "bg-slate-500/10 text-slate-700 dark:text-slate-400 border-slate-500/30",
+                          };
+                          const badgeColor = priorityColors[item.priority] || priorityColors.medium;
+
+                          return (
+                            <div
+                              key={item.id || idx}
+                              className="p-2 rounded-lg bg-muted/40 border border-border/40 text-[11px] space-y-1"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium text-foreground truncate">{item.title}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${badgeColor}`}>
+                                  {item.priority.toUpperCase()}
+                                </span>
+                              </div>
+                              <p className="text-muted-foreground text-[10px] leading-snug">{item.reason}</p>
+                              {item.suggestedAction && (
+                                <div className="pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => onSendMessage(item.suggestedAction!.label)}
+                                    className="h-6 text-[10px] px-2 rounded-md border-primary/30 text-primary hover:bg-primary/10 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <span>{item.suggestedAction.label}</span>
+                                    <ChevronRight className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
 

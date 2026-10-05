@@ -143,6 +143,120 @@ export interface AssistantMessage {
     completedSteps?: CanonicalOnboardingStepId[];
     pendingSteps?: CanonicalOnboardingStepId[];
   };
+  operational?: OperationalCopilotResponse;
+}
+
+export type OperationalIssuePriority = "critical" | "high" | "medium" | "low";
+export type OperationalIssueCategory =
+  | "medication"
+  | "feeding"
+  | "walk"
+  | "arrival"
+  | "checkout"
+  | "task"
+  | "capacity"
+  | "booking";
+
+export interface OperationalIssue {
+  id: string;
+  category: OperationalIssueCategory;
+  priority: OperationalIssuePriority;
+  title: string;
+  reason: string;
+  reasonCode: string;
+  targetType?: "booking" | "pet" | "task" | "medication";
+  targetId?: number;
+  petId?: number;
+  petName?: string;
+  scheduledFor?: string;
+  delayMinutes?: number;
+  detectedAt: string;
+  suggestedAction?: {
+    tool: string;
+    targetId?: number;
+    petId?: number;
+    bookingId?: number;
+    taskId?: number;
+    label: string;
+  };
+}
+
+export interface OperationalArrivalItem {
+  bookingId: number;
+  petId: number;
+  petName: string;
+  tutorId: number;
+  status: string;
+  serviceType: string;
+  onTheWayType?: string | null;
+  onTheWayEtaMinutes?: number | null;
+  onTheWayAt?: string | null;
+}
+
+export interface OperationalTaskItem {
+  id: number;
+  type: string;
+  title: string;
+  status: string;
+  scheduledFor: string;
+  petId?: number | null;
+  petName?: string | null;
+  assignedToId?: number | null;
+  assignedToName?: string | null;
+  priority: string;
+  isOverdue: boolean;
+  delayMinutes?: number;
+}
+
+export interface OperationalSnapshot {
+  asOf: string;
+  businessDate: string;
+  crecheId: number;
+  dataCompleteness: "complete" | "partial";
+  unavailableSources?: string[];
+  occupancy: {
+    current: number;
+    capacity: number;
+  };
+  arrivals: {
+    totalExpected: number;
+    checkedIn: number;
+    pending: number;
+    completed: number;
+    cancelled: number;
+    onTheWay: number;
+    items: OperationalArrivalItem[];
+  };
+  departures: {
+    totalExpected: number;
+    checkedOut: number;
+    pending: number;
+  };
+  tasks: {
+    total: number;
+    pending: number;
+    completed: number;
+    overdue: number;
+    unassigned: number;
+    byType: {
+      feeding: { total: number; pending: number; completed: number; overdue: number };
+      medication: { total: number; pending: number; completed: number; overdue: number };
+      walk: { total: number; pending: number; completed: number; overdue: number };
+      other: { total: number; pending: number; completed: number; overdue: number };
+    };
+    items: OperationalTaskItem[];
+  };
+  issues: OperationalIssue[];
+}
+
+export interface OperationalCopilotResponse {
+  asOf: string;
+  businessDate: string;
+  summary: string;
+  priorities: OperationalIssue[];
+  counts?: Record<string, number>;
+  dataCompleteness: "complete" | "partial";
+  unavailableSources?: string[];
 }
 
 export interface AssistantSession {

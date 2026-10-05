@@ -78,6 +78,6 @@ describe("ArkPet R41.A — Assistant Knowledge Test Suite (AI-KNOW-001..007)", (
 
   it("verifies knowledge and prompt version tagging", () => {
     expect(ASSISTANT_CONFIG.knowledgeVersion).toBe("arkpet-v32-r41c");
-    expect(ASSISTANT_CONFIG.promptVersion).toBe("r41-e-1");
+    expect(ASSISTANT_CONFIG.promptVersion).toBe("r41-f-1");
   });
 });

@@ -6,12 +6,14 @@ import { AssistantAuditService } from "./assistant-audit.service.js";
 import { AssistantGuidanceService } from "./assistant-guidance.service.js";
 import { getAIProvider, type AIProvider } from "./assistant.provider.js";
 import { AssistantSafeActionService } from "./assistant-safe-action.service.js";
+import { OperationalSnapshotService } from "./operational-snapshot.service.js";
 import type {
   AssistantSecurityContext,
   AssistantSession,
   AssistantMessage,
   ScreenContext,
   AssistantSafeActionPayload,
+  OperationalCopilotResponse,
 } from "./assistant.types.js";
 
 export class AssistantService {
@@ -248,6 +250,23 @@ Sua missão é ajudar os usuários a utilizarem o sistema com eficiência, segur
   - O banho NÃO é um módulo isolado e não possui ferramenta de mutação (STANDALONE_BATH_ACTION_TOOL = 0).
   - Para ações fora dessas 7, oriente o usuário a executá-las pela interface do sistema.
 
+=== COPILOTO OPERACIONAL (R41.F) ===
+- Você atua como o Copiloto Operacional inteligente do ArkPet para a creche atual.
+- Separe rigorosamente: FATO (dados canônicos do sistema), INSIGHT (interpretação determinística do estado), RECOMENDAÇÃO (sugestão do próximo passo) e AÇÃO (mutação controlada via Safe Action).
+- Obtenção de Fatos Operacionais:
+  - Fatos operacionais (ocupação, chegadas, alimentação, remédios, passeios) vêm EXCLUSIVAMENTE das ferramentas operacionais registradas (get_operational_overview, get_operational_priorities, get_today_arrivals, get_pending_operational_tasks, get_recent_operational_changes).
+  - NUNCA invente dados de agendamentos, tarefas ou pets.
+  - A prioridade e urgência de itens derivam estritamente dos metadados e regras determinísticas do sistema, NUNCA da imaginação do modelo.
+  - Se os dados de alguma fonte estiverem indisponíveis ou incompletos (dataCompleteness = "partial"), reporte claramente que a informação está indisponível. NUNCA interprete falha na recuperação como "0 pendências" ou afirme falsamente que a operação está 100% em dia.
+  - Se não houver problemas pendentes e todas as fontes carregarem com sucesso, relate que a operação está em dia.
+- Recomendações e Handoff Seguro para Ações:
+  - O copiloto pode identificar pendências e sugerir ações resolutivas (ex: check-in, concluir alimentação, registrar medicação).
+  - A recomendação NÃO é execução e NÃO é confirmação. Toda mutação deve ser proposta via ferramenta Safe Action e confirmada pelo usuário.
+  - Pedidos ambíguos (ex: "resolva essa" quando há mais de um item atrasado) exigem esclarecimento prévio antes de agir.
+  - Mutações em massa ("faça todas as tarefas pendentes", "conclua tudo") são PROIBIDAS. Explique que cada ação de rotina precisa ser conferida e confirmada individualmente por segurança.
+  - NUNCA recomende alterar ou ignore a dosagem/frequência de medicamentos (MODEL_MEDICATION_DOSAGE_RECOMMENDATION = 0).
+  - Tutores NÃO têm acesso ao painel operacional da creche. Dúvidas de tutores limitam-se aos seus próprios animais e reservas.
+
 === ORIENTAÇÃO DE ONBOARDING GUIADO (R41.B) ===
 - Para creche_admin, os 5 passos canônicos de configuração inicial são:
   1) Dados da creche (/settings, target: creche-profile-form)
@@ -296,6 +315,7 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
       let uiActions = AssistantGuidanceService.sanitizeUIActions(response.uiActions);
       let onboardingSummary = response.onboarding;
       let safeActionPayload: AssistantSafeActionPayload | undefined;
+      let operationalPayload: OperationalCopilotResponse | undefined;
 
       if (response.toolCalls && response.toolCalls.length > 0) {
         for (const tc of response.toolCalls) {
@@ -314,6 +334,34 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
               pendingSteps: tc.result.pendingSteps,
             };
           }
+          if (tc.name === "get_operational_overview" && tc.result) {
+            OperationalSnapshotService.setSessionBaseline(session.id, tc.result);
+            operationalPayload = {
+              asOf: tc.result.asOf,
+              businessDate: tc.result.businessDate,
+              summary: response.content,
+              priorities: tc.result.issues || [],
+              counts: {
+                totalArrivals: tc.result.arrivals?.totalExpected || 0,
+                pendingArrivals: tc.result.arrivals?.pending || 0,
+                activePets: tc.result.arrivals?.checkedIn || 0,
+                pendingTasks: tc.result.tasks?.pending || 0,
+                overdueTasks: tc.result.tasks?.overdue || 0,
+              },
+              dataCompleteness: tc.result.dataCompleteness,
+              unavailableSources: tc.result.unavailableSources,
+            };
+          }
+          if (tc.name === "get_operational_priorities" && tc.result) {
+            operationalPayload = {
+              asOf: tc.result.asOf,
+              businessDate: tc.result.businessDate,
+              summary: response.content,
+              priorities: tc.result.priorities || [],
+              dataCompleteness: tc.result.dataCompleteness,
+              unavailableSources: tc.result.unavailableSources,
+            };
+          }
           if (tc.result && tc.result.action) {
             safeActionPayload = tc.result.action;
           }
@@ -330,6 +378,7 @@ ${formattedSnippets || "Nenhum snippet específico recuperado."}`;
         uiActions: uiActions.length > 0 ? uiActions : undefined,
         onboarding: onboardingSummary,
         action: safeActionPayload,
+        operational: operationalPayload,
       };
 
       session.messages.push(assistantMsgRecord);
