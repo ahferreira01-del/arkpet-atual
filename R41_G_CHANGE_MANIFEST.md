@@ -1,0 +1,86 @@
+# ArkPet — R41.G Change Manifest
+## Inventory of Modifications, Hardening & Certification Assets
+
+---
+
+## 1. Summary of Changes
+
+Phase **R41.G** introduces no new user features, tools, roles, database migrations, or schemas. In accordance with certification mandates, modifications are strictly confined to security hardening of process-local operational session baselines, end-to-end integration tests, and release freeze verification.
+
+---
+
+## 2. Source Code Changes
+
+### `artifacts/api-server/src/assistant/operational-snapshot.service.ts`
+- **Component:** `OperationalSnapshotService`
+- **Modification Type:** Security Hardening (Removal of Deprecated Overloads)
+- **Rationale:** Eliminate unsafe string `sessionId` overloads that allowed setting or retrieving session baselines without binding to an authenticated `userId`, `crecheId`, and `role`.
+- **Detail:**
+  - Removed `setSessionBaseline(contextOrSessionId: SessionBaselineContext | string, ...)` overload.
+  - Enforced strict runtime and compile-time validation of `SessionBaselineContext` (`sessionId: string`, `userId: number`, `crecheId: number`, `role: string`).
+  - Runtime validation throws descriptive error if context is incomplete or malformed.
+  - Removed `getSessionBaseline(contextOrSessionId: SessionBaselineContext | string)` overload.
+  - Runtime verification returns `undefined` if context is incomplete or fails identity matching against stored baseline.
+- **Metric Impact:** `UNBOUND_OPERATIONAL_SESSION_API = 0`.
+
+---
+
+## 3. Test Suite Additions & Enhancements
+
+### `artifacts/api-server/src/__tests__/assistantOperationalCopilot.unit.test.ts`
+- **Added Tests:**
+  - `R41G-SEC-SESSION-001`: Verifies that calling `setSessionBaseline` with an unbound string or incomplete context is rejected by TypeScript compiler and throws an explicit `Error` at runtime.
+  - `R41G-SEC-SESSION-002`: Verifies that calling `getSessionBaseline` with an unbound string is rejected by TypeScript compiler and returns `undefined` at runtime for invalid/mismatched contexts.
+
+### `artifacts/api-server/src/__tests__/assistantR41GIntegrated.unit.test.ts` (New File)
+- **Component:** R41.G Composite Integration Test Suite
+- **Test Count:** 13 test cases
+- **Covered Scenarios:**
+  - `R41G-INT-001`: Text Input -> Operational Read Flow
+  - `R41G-INT-002`: Voice Input -> Operational Read Flow
+  - `R41G-INT-003`: Screen Context Pet -> Operational Query
+  - `R41G-INT-004`: Operational Issue -> Safe Action Preview
+  - `R41G-INT-005`: Preview -> Confirmation -> Execution Flow
+  - `R41G-INT-006`: Execution -> Cache Invalidation -> Fresh Snapshot
+  - `R41G-INT-007`: Tutor Cross-Scope Operational Tool Denial
+  - `R41G-INT-008`: Cross-Tenant Pet/Booking Access Denial
+  - `R41G-INT-009`: Master Admin Explicit vs Implicit Creche Scope
+  - `R41G-INT-010`: Provider Fail-Closed Protocol Simulation
+  - `R41G-INT-011`: Operational Cache Process-Local 30s TTL
+  - `R41G-INT-012`: Session Delta Drift Detection with Security Context
+  - `R41G-SEC-001`: Client-Supplied Fake Role Override Denial
+
+---
+
+## 4. Invariance Assertions
+
+| Invariance Category | Status | Notes |
+| :--- | :---: | :--- |
+| **New Roles Introduced** | `0` | Exactly 4 canonical roles maintained |
+| **New Tools Introduced** | `0` | Exactly 20 certified tools maintained |
+| **New Assistant Modes** | `0` | Standard assistant architecture unchanged |
+| **Autonomous Mutation Tools** | `0` | Strictly two-phase commit with human confirmation |
+| **Generic DB Query Tools** | `0` | No generic SQL or table query access |
+| **Database Migrations Added** | `0` | Database schema unchanged from R40/R41.F |
+| **External Dependencies Added** | `0` | Zero new npm packages added |
+
+---
+
+## 5. Artifact Manifest
+
+The following certification documentation files are generated and recorded:
+1. `R41_G_ARCHITECTURE_REVIEW.md`: Complete R41.A–F integrated architectural analysis.
+2. `R41_G_SECURITY_CERTIFICATION.md`: Cross-phase threat modeling and RBAC verification.
+3. `R41_G_INTEGRATED_TEST_REPORT.md`: Comprehensive test matrix and execution results.
+4. `R41_G_RELEASE_READINESS.md`: Lineage baseline, dual-remote parity, and freeze declaration.
+5. `R41_G_CHANGE_MANIFEST.md`: Detailed changelog of R41.G modifications (this document).
+6. `R41_G_CERTIFICATION_REPORT.md`: Formal R41.G certification scorecard and sign-off.
+7. `R41_PROGRAM_FINAL_REPORT.md`: ArkPet R41 Program closure and lifetime certification.
+
+---
+
+## 6. Manifest Sign-Off
+
+All changes are documented truthfully, without omissions.
+
+**CHANGE MANIFEST STATUS:** **VERIFIED & FROZEN**

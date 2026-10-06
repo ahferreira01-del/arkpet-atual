@@ -1074,6 +1074,31 @@ describe("ArkPet R41.F — Operational Copilot Test Suite", () => {
         "Nenhum resumo operacional anterior nesta sessão para comparação.",
       ]);
     });
+
+    it("R41G-SEC-SESSION-001: OperationalSnapshotService rejects unbound string sessionId at runtime and type level (UNBOUND_OPERATIONAL_SESSION_API = 0)", async () => {
+      const snapshot = await OperationalSnapshotService.getSnapshot(1);
+
+      // Verify that calling setSessionBaseline with an unbound string or incomplete context throws an Error
+      expect(() => {
+        // @ts-expect-error Unbound string sessionId must be rejected by TypeScript compiler and runtime
+        OperationalSnapshotService.setSessionBaseline("unbound-session-123", snapshot);
+      }).toThrow("Invalid SessionBaselineContext: sessionId, userId, crecheId, and role are strictly required");
+
+      expect(() => {
+        // @ts-expect-error Incomplete context missing crecheId must be rejected
+        OperationalSnapshotService.setSessionBaseline({ sessionId: "sess-1", userId: 1, role: "creche_admin" }, snapshot);
+      }).toThrow("Invalid SessionBaselineContext: sessionId, userId, crecheId, and role are strictly required");
+    });
+
+    it("R41G-SEC-SESSION-002: getSessionBaseline returns undefined and rejects unbound string at runtime (UNBOUND_OPERATIONAL_SESSION_API = 0)", () => {
+      // @ts-expect-error Unbound string sessionId must be rejected by TypeScript compiler and runtime
+      const baseline = OperationalSnapshotService.getSessionBaseline("unbound-session-123");
+      expect(baseline).toBeUndefined();
+
+      // Incomplete context missing role
+      const incomplete = OperationalSnapshotService.getSessionBaseline({ sessionId: "sess-1", userId: 1, crecheId: 1 } as any);
+      expect(incomplete).toBeUndefined();
+    });
   });
 
   // ══════════════════════════════════════════════════════════════════════════

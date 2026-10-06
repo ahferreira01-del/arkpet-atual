@@ -70,48 +70,58 @@ export class OperationalSnapshotService {
   }
 
   /**
-   * Sets a session baseline for change comparison with security binding.
+   * Sets a session baseline for change comparison with strict security binding.
+   * UNBOUND_OPERATIONAL_SESSION_API = 0: Only accepts SessionBaselineContext. Unbound strings are rejected.
    */
   public static setSessionBaseline(
-    contextOrSessionId: SessionBaselineContext | string,
+    context: SessionBaselineContext,
     snapshot: OperationalSnapshot
   ): void {
-    if (typeof contextOrSessionId === "string") {
-      this.sessionBaselines.set(contextOrSessionId, {
-        sessionId: contextOrSessionId,
-        userId: snapshot.crecheId,
-        crecheId: snapshot.crecheId,
-        role: "creche_admin",
-        snapshot,
-        storedAt: Date.now(),
-      });
-      return;
+    if (
+      !context ||
+      typeof context !== "object" ||
+      typeof context.sessionId !== "string" ||
+      typeof context.userId !== "number" ||
+      typeof context.crecheId !== "number" ||
+      typeof context.role !== "string"
+    ) {
+      throw new Error(
+        "Invalid SessionBaselineContext: sessionId, userId, crecheId, and role are strictly required"
+      );
     }
-    this.sessionBaselines.set(contextOrSessionId.sessionId, {
-      sessionId: contextOrSessionId.sessionId,
-      userId: contextOrSessionId.userId,
-      crecheId: contextOrSessionId.crecheId,
-      role: contextOrSessionId.role,
+    this.sessionBaselines.set(context.sessionId, {
+      sessionId: context.sessionId,
+      userId: context.userId,
+      crecheId: context.crecheId,
+      role: context.role,
       snapshot,
       storedAt: Date.now(),
     });
   }
 
   /**
-   * Retrieves the session baseline for comparison with security verification.
+   * Retrieves the session baseline for comparison with strict security verification.
+   * UNBOUND_OPERATIONAL_SESSION_API = 0: Only accepts SessionBaselineContext. Unbound strings are rejected.
    */
   public static getSessionBaseline(
-    contextOrSessionId: SessionBaselineContext | string
+    context: SessionBaselineContext
   ): OperationalSnapshot | undefined {
-    if (typeof contextOrSessionId === "string") {
-      return this.sessionBaselines.get(contextOrSessionId)?.snapshot;
+    if (
+      !context ||
+      typeof context !== "object" ||
+      typeof context.sessionId !== "string" ||
+      typeof context.userId !== "number" ||
+      typeof context.crecheId !== "number" ||
+      typeof context.role !== "string"
+    ) {
+      return undefined;
     }
-    const entry = this.sessionBaselines.get(contextOrSessionId.sessionId);
+    const entry = this.sessionBaselines.get(context.sessionId);
     if (!entry) return undefined;
     if (
-      entry.userId !== contextOrSessionId.userId ||
-      entry.crecheId !== contextOrSessionId.crecheId ||
-      entry.role !== contextOrSessionId.role
+      entry.userId !== context.userId ||
+      entry.crecheId !== context.crecheId ||
+      entry.role !== context.role
     ) {
       return undefined;
     }
