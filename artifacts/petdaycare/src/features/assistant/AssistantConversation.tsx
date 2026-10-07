@@ -6,6 +6,7 @@ import { AssistantFeedback } from "./AssistantFeedback";
 import { AssistantKnowledgeCitation } from "./AssistantKnowledgeCitation";
 import { VoiceInputButton } from "./VoiceInputButton";
 import { AssistantActionConfirmation } from "./AssistantActionConfirmation";
+import { AssistantMessageContent } from "./AssistantMessageContent";
 import type {
   AssistantUIMessage,
   AssistantVisualState,
@@ -152,13 +153,17 @@ export function AssistantConversation({
               className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed ${
+                className={`max-w-[90%] sm:max-w-[85%] min-w-0 rounded-2xl px-3.5 py-2.5 text-xs sm:text-sm leading-relaxed ${
                   msg.role === "user"
                     ? "bg-primary text-primary-foreground rounded-br-xs"
                     : "bg-muted/70 text-foreground border border-border/40 rounded-bl-xs shadow-xs"
                 }`}
               >
-                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                {msg.role === "assistant" ? (
+                  <AssistantMessageContent content={msg.content} />
+                ) : (
+                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                )}
 
                 {msg.role === "assistant" && msg.citations && (
                   <AssistantKnowledgeCitation citations={msg.citations} />
