@@ -2,9 +2,10 @@
 # R41_PRODUCTION_DEPLOYMENT_REPORT.md
 ## PRODUCTION DEPLOYMENT TARGET, PLATFORM DISCOVERY & DEPLOYMENT EXECUTION REPORT
 
-**Release SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
+**Production Application Release SHA:** `98c547ef6439d944827f8ea83123f2bfc2028596`  
+**Original R41 Freeze SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
-**Timestamp:** `2026-10-07T12:36:30Z`
+**Timestamp:** `2026-10-07T14:07:30Z`
 
 ---
 
@@ -13,18 +14,19 @@
 Inspection of repository deployment configuration, runtime descriptors, and ingress routes:
 
 ```text
-PRODUCTION_PLATFORM       = Replit Cloud Run / Autoscale
-PRODUCTION_SERVICE_NAME   = ark-pet-qas
-PRODUCTION_ROUTER         = application
-PRODUCTION_REGION         = us-central1 (Cloud Run compute) / sa-east-1 (Neon DB)
-PRODUCTION_PUBLIC_URL     = https://ark-pet-qas.replit.app
-PRODUCTION_DEPLOY_TRIGGER = Operator Action via Replit Deployments Pane (Publish / Deploy)
+PRODUCTION_PLATFORM                   = Replit Cloud Run / Autoscale
+PRODUCTION_SERVICE_NAME               = ark-pet-qas
+PRODUCTION_ROUTER                     = application
+PRODUCTION_REGION                     = us-central1 (Cloud Run compute) / sa-east-1 (Neon DB)
+PRODUCTION_PUBLIC_URL                 = https://ark-pet-qas.replit.app
+PRODUCTION_DEPLOY_TRIGGER             = Operator Action via Replit Deployments Pane (Publish / Deploy)
+REPLIT_MANUAL_DEPLOY_TRIGGER_REQUIRED = YES
 ```
 
 ### Architecture Pipeline
 ```text
-Canonical Git Repository (ahferreira01-del/arkpet)
-  └── Deploy Git Remote (ahferreira01-del/arkpet-atual)
+Canonical Git Repository (ahferreira01-del/arkpet @ 98c547e)
+  └── Deploy Git Remote (ahferreira01-del/arkpet-atual @ 98c547e)
         └── Replit Workspace & Git Integration
               └── Replit Cloud Run Container Build
                     └── Public Ingress: https://ark-pet-qas.replit.app
@@ -52,20 +54,20 @@ PRE_CUTOVER_READINESS            = NOT_EXPOSED (HTTP 404 on /api/ready, introduc
 ## 3. DEPLOYMENT EXECUTION EVIDENCE
 
 ```text
-BUILD_SOURCE_SHA           = 77a8a8d3f083a33ff1984968187884086ca2a257
-CANONICAL_REMOTE_SHA_MATCH = YES (77a8a8d3f083a33ff1984968187884086ca2a257)
-DEPLOY_REMOTE_SHA_MATCH    = YES (77a8a8d3f083a33ff1984968187884086ca2a257)
+BUILD_SOURCE_SHA           = 98c547ef6439d944827f8ea83123f2bfc2028596
+CANONICAL_REMOTE_SHA_MATCH = YES (98c547ef6439d944827f8ea83123f2bfc2028596)
+DEPLOY_REMOTE_SHA_MATCH    = YES (98c547ef6439d944827f8ea83123f2bfc2028596)
 
 DEPLOYMENT_TRIGGER_METHOD  = MANUAL_REPLIT_PUBLISH_ACTION_REQUIRED
 DEPLOYMENT_UI_SUCCESS_ONLY = INSUFFICIENT
 LIVE_RUNTIME_SHA_PROVEN    = NO (Currently serving historical arkpet-v19)
 ```
 
-### Hard Gate Evaluation (Section 9 & 10)
-Under Section 9 and 10 of the Production Release Contract:
-> "A deployment button, green UI, or provider status does NOT prove cutover. Certification requires live HTTP/runtime evidence. If production serves another SHA: PRODUCTION_CUTOVER_CERTIFICATION = FAIL / BLOCKED."
+### Hard Gate Evaluation (Section 6 & 10)
+Under Section 6 and 10 of the Production Release Contract:
+> "A deployment button, green UI, or provider status does NOT prove cutover. Certification requires live HTTP/runtime evidence. If production serves 77a8a8d3... or previous v19 SHA: STOP. Do not certify production."
 
-Because the external Cloud Run deployment requires triggering the Publish action within the Replit workspace interface to compile and serve commit `77a8a8d3f083a33ff1984968187884086ca2a257`, the live production endpoint currently continues serving revision `arkpet-v19`.
+Because the external Cloud Run deployment requires triggering the Publish action within the Replit workspace interface to compile and serve commit `98c547ef6439d944827f8ea83123f2bfc2028596`, the live production endpoint currently continues serving revision `arkpet-v19`.
 
 ```text
 DEPLOYMENT_EXECUTED        = PENDING_REPLIT_TRIGGER

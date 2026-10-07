@@ -2,18 +2,20 @@
 # R41_PRODUCTION_ROLLBACK_PLAN.md
 ## PRODUCTION ROLLBACK STRATEGY, PREVIOUS REVISION RESTORATION & FEATURE LEVEL ISOLATION
 
-**Certified Release SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
+**Production Application Release SHA:** `98c547ef6439d944827f8ea83123f2bfc2028596`  
 **Rollback Target Source:** `arkpet-v19` (`59d1ca722d5c8989ff1f814368134d46c79d6ff9`)  
-**Timestamp:** `2026-10-07T12:38:00Z`
+**Rollback Revision ID:** `4c7c2f86-0e97-404f-b3ef-8078a7205b30`  
+**Timestamp:** `2026-10-07T14:09:00Z`
 
 ---
 
 ## 1. ROLLBACK BASELINE & SOURCE PROVENANCE
 
 ```text
-ROLLBACK_SOURCE     = arkpet-v19 (commit 59d1ca722d5c8989ff1f814368134d46c79d6ff9)
-ROLLBACK_AVAILABLE  = YES
-PRE_CUTOVER_VERSION = arkpet-v19
+ROLLBACK_SOURCE        = arkpet-v19 (commit 59d1ca722d5c8989ff1f814368134d46c79d6ff9)
+ROLLBACK_REVISION_ID   = 4c7c2f86-0e97-404f-b3ef-8078a7205b30
+ROLLBACK_AVAILABLE     = YES
+PRE_CUTOVER_VERSION    = arkpet-v19
 ```
 
 ---
@@ -69,7 +71,7 @@ If a fresh deployment of the previous git state is required:
 ```bash
 git push arkpet-atual 59d1ca722d5c8989ff1f814368134d46c79d6ff9:main --force-with-lease
 ```
-*Note: Only perform git reset/force-push in an approved disaster recovery scenario.*
+*Note: Do NOT use git force-push as normal rollback. Use Replit deployment/revision rollback.*
 
 ---
 

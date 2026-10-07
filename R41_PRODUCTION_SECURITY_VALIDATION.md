@@ -2,8 +2,8 @@
 # R41_PRODUCTION_SECURITY_VALIDATION.md
 ## SECURITY ARCHITECTURE, ROLE AUTHORIZATION, SECRETS HYGIENE & AUDITABILITY
 
-**Release SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
-**Timestamp:** `2026-10-07T12:37:30Z`
+**Production Application Release SHA:** `98c547ef6439d944827f8ea83123f2bfc2028596`  
+**Timestamp:** `2026-10-07T14:08:30Z`
 
 ---
 
@@ -30,7 +30,20 @@ AI-SEC-013: Server-side text & session rate limits       = PASS
 
 ---
 
-## 2. CREDENTIAL HYGIENE & ZERO SECRET LEAKAGE
+## 2. MARKDOWN PRESENTATION SECURITY & XSS DEFENSE
+
+```text
+DANGEROUSLY_SET_INNER_HTML      = 0
+REHYPE_RAW                      = 0
+ASSISTANT_RAW_HTML_EXECUTION    = 0
+MARKDOWN_XSS_TEST               = PASS (Scripts & event handlers rendered as inert text)
+DANGEROUS_URL_SCHEME_EXECUTION  = 0 (javascript: and data: links strictly neutralized)
+LINK_TARGET_SANDBOX             = target="_blank" rel="noopener noreferrer"
+```
+
+---
+
+## 3. CREDENTIAL HYGIENE & ZERO SECRET LEAKAGE
 
 ```text
 GROQ_API_KEY_GIT        = 0 (Zero occurrences in git tracked files)
@@ -43,7 +56,7 @@ TLS_VALIDATION          = ENABLED (Zero NODE_TLS_REJECT_UNAUTHORIZED=0 bypasses)
 
 ---
 
-## 3. SAFE ACTIONS INTEGRITY & COMPARE-AND-SWAP (CAS)
+## 4. SAFE ACTIONS INTEGRITY & COMPARE-AND-SWAP (CAS)
 
 ```text
 SAFE_ACTION_SCHEMA_READY       = YES
@@ -57,7 +70,7 @@ AUTONOMOUS_MUTATION_COUNT      = 0
 
 ---
 
-## 4. VOICE PRIVACY & AUDIO SAFETY
+## 5. VOICE PRIVACY & AUDIO SAFETY
 
 ```text
 AUDIO_UPLOAD_CONTRACT          = multipart/form-data audio file only
@@ -70,7 +83,7 @@ TRANSCRIPTION_PIPELINE         = Server-side Groq Whisper with strict TLS
 
 ---
 
-## 5. OPERATIONAL KILL SWITCHES & EMERGENCY CONTROLS
+## 6. OPERATIONAL KILL SWITCHES & EMERGENCY CONTROLS
 
 Independent controllability verified:
 

@@ -2,11 +2,13 @@
 # R41_PRODUCTION_PREFLIGHT.md
 ## PRODUCTION ENVIRONMENT, DATABASE SAFETY, SECRETS, BUILD & TEST BASELINE PREFLIGHT
 
-**Target Release SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
+**Target Production Release SHA:** `98c547ef6439d944827f8ea83123f2bfc2028596`  
+**Original R41 Freeze SHA:** `77a8a8d3f083a33ff1984968187884086ca2a257`  
+**Production Preflight Doc SHA:** `e060465f0f6610587666fef41d6c82bfbf6cad61`  
 **Branch:** `development/arkpet-r41-intelligent-assistant`  
 **Canonical Repository:** `ahferreira01-del/arkpet`  
 **Deploy Repository:** `ahferreira01-del/arkpet-atual`  
-**Timestamp:** `2026-10-07T12:36:00Z`
+**Timestamp:** `2026-10-07T14:07:00Z`
 
 ---
 
@@ -18,10 +20,10 @@ Verification of remote repository state prior to deployment actions:
 CANONICAL_REMOTE_URL = https://github.com/ahferreira01-del/arkpet.git
 DEPLOY_REMOTE_URL    = https://github.com/ahferreira01-del/arkpet-atual.git
 
-CANONICAL_REMOTE_SHA = 77a8a8d3f083a33ff1984968187884086ca2a257
-DEPLOY_REMOTE_SHA    = 77a8a8d3f083a33ff1984968187884086ca2a257
+CANONICAL_REMOTE_SHA = 98c547ef6439d944827f8ea83123f2bfc2028596
+DEPLOY_REMOTE_SHA    = 98c547ef6439d944827f8ea83123f2bfc2028596
 
-LOCAL_HEAD_SHA       = 77a8a8d3f083a33ff1984968187884086ca2a257
+LOCAL_HEAD_SHA       = 98c547ef6439d944827f8ea83123f2bfc2028596
 
 RELEASE_SHA_REMOTE_PARITY = YES
 FORWARD_COMMIT_COUNT      = 0 (WORKING TREE CLEAN)
@@ -123,10 +125,12 @@ VOICE_STT_LANGUAGE             = pt
 ## 6. BUILD & TEST BASELINE PREFLIGHT
 
 ```text
-PREDEPLOY_TYPECHECK       = PASS (0 errors across api-server, web, lib/db)
-PREDEPLOY_BACKEND_BUILD   = PASS (dist/index.cjs 2.9 MB, embedded SHA 77a8a8d3...)
+PREDEPLOY_TYPECHECK       = PASS (0 errors across api-server, petdaycare, libs, scripts)
+PREDEPLOY_BACKEND_BUILD   = PASS (dist/index.cjs 2.9 MB, embedded commitSha=98c547ef6439d944827f8ea83123f2bfc2028596)
 PREDEPLOY_FRONTEND_BUILD  = PASS (dist/public cleanly bundled via Vite)
-PREDEPLOY_TESTS           = PASS (356/356 tests passed across 9 certified R41 suites)
+FRONTEND_ASSISTANT_TESTS  = PASS (59/59 tests passed across 7 test suites)
+FULL_FRONTEND_TESTS       = PASS (574/574 tests passed across 44 test suites)
+PWA_AUDIT                 = PASS (27/27 checks passed)
 
 R41_PREFLIGHT_STATUS      = PASS
 ```
