@@ -5,7 +5,7 @@
 
 ## 1. Summary of Changes
 
-Phase **R41.G** introduces no new user features, tools, roles, database migrations, or schemas. In accordance with certification mandates, modifications are strictly confined to security hardening of process-local operational session baselines, end-to-end integration tests, and release freeze verification.
+Phase **R41.G** introduces no new user features, tools, roles, database migrations, or schemas. In accordance with certification mandates, modifications are strictly confined to security hardening of process-local operational session baselines, end-to-end integration tests, provenance truth reconciliation, and release freeze verification.
 
 ---
 
@@ -32,23 +32,25 @@ Phase **R41.G** introduces no new user features, tools, roles, database migratio
   - `R41G-SEC-SESSION-001`: Verifies that calling `setSessionBaseline` with an unbound string or incomplete context is rejected by TypeScript compiler and throws an explicit `Error` at runtime.
   - `R41G-SEC-SESSION-002`: Verifies that calling `getSessionBaseline` with an unbound string is rejected by TypeScript compiler and returns `undefined` at runtime for invalid/mismatched contexts.
 
-### `artifacts/api-server/src/__tests__/assistantR41GIntegrated.unit.test.ts` (New File)
+### `artifacts/api-server/src/__tests__/assistantR41GIntegrated.unit.test.ts`
 - **Component:** R41.G Composite Integration Test Suite
-- **Test Count:** 13 test cases
+- **Test Count:** 15 test cases
 - **Covered Scenarios:**
-  - `R41G-INT-001`: Text Input -> Operational Read Flow
-  - `R41G-INT-002`: Voice Input -> Operational Read Flow
-  - `R41G-INT-003`: Screen Context Pet -> Operational Query
-  - `R41G-INT-004`: Operational Issue -> Safe Action Preview
-  - `R41G-INT-005`: Preview -> Confirmation -> Execution Flow
-  - `R41G-INT-006`: Execution -> Cache Invalidation -> Fresh Snapshot
-  - `R41G-INT-007`: Tutor Cross-Scope Operational Tool Denial
-  - `R41G-INT-008`: Cross-Tenant Pet/Booking Access Denial
-  - `R41G-INT-009`: Master Admin Explicit vs Implicit Creche Scope
-  - `R41G-INT-010`: Provider Fail-Closed Protocol Simulation
-  - `R41G-INT-011`: Operational Cache Process-Local 30s TTL
-  - `R41G-INT-012`: Session Delta Drift Detection with Security Context
-  - `R41G-SEC-001`: Client-Supplied Fake Role Override Denial
+  - `R41G-INT-001`: Text Input -> AssistantService -> Operational Read Tool Execution
+  - `R41G-INT-002`: Deterministic Priority Ordering (High Urgency First)
+  - `R41G-INT-003`: Screen Context Active Pet Entity Grounds Operational Task Inquiry
+  - `R41G-INT-004`: Operational Issue Generates Safe Action Preview with Zero Direct Write
+  - `R41G-INT-005`: Preview -> Authenticated User Confirmation -> CAS Atomic Execution
+  - `R41G-INT-006`: Safe Action Execution Automatically Invalidates Operational Cache
+  - `R41G-INT-007`: Tutor Attempting Operational Tool or Staff Action Denied (RBAC)
+  - `R41G-INT-008`: Master Admin without Tenant Context Blocked (`MASTER_ADMIN_IMPLICIT_TENANT_CONTEXT = 0`)
+  - `R41G-INT-009`: Provider Failure Fails Closed Without Domain Mutations (`PROVIDER_FAILURE_DOMAIN_MUTATION = 0`)
+  - `R41G-INT-010`: Partial Operational Data Marks Submodel Null, Never Fake Zero
+  - `R41G-INT-011`: Prompt Injection Attempting Role Escalation Fails Closed
+  - `R41G-INT-012`: Session Delta Baseline Isolated Per User (Cross-User Read Denied)
+  - `R41G-SEC-001`: Client-Supplied Role Never Overrides Authenticated Server Role
+  - `R41G-SEC-CROSS-001`: Cross-Tenant Read Rejection (`CROSS_TENANT_READ = 0`)
+  - `R41G-SEC-CROSS-002`: Cross-Tenant Safe Action Confirmation Rejection (`CROSS_TENANT_MUTATION = 0`)
 
 ---
 
@@ -68,7 +70,7 @@ Phase **R41.G** introduces no new user features, tools, roles, database migratio
 
 ## 5. Artifact Manifest
 
-The following certification documentation files are generated and recorded:
+The following certification documentation files are maintained and synchronized:
 1. `R41_G_ARCHITECTURE_REVIEW.md`: Complete R41.A–F integrated architectural analysis.
 2. `R41_G_SECURITY_CERTIFICATION.md`: Cross-phase threat modeling and RBAC verification.
 3. `R41_G_INTEGRATED_TEST_REPORT.md`: Comprehensive test matrix and execution results.
