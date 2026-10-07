@@ -96,28 +96,28 @@ flowchart TD
 - **Role Scope Truth:** Canonical guided-onboarding tools (`get_onboarding_status` and `get_guided_onboarding_plan`) are strictly authorized for `creche_admin` in source code. They guide facility setup (profile, capacity, pricing, schedules). Other roles do not invoke these administrative onboarding checklist tools (`DOCUMENTED_GUIDED_ONBOARDING_ROLE_SCOPE_MATCHES_SOURCE = YES`).
 
 ### 3.3 R41.C — Contextual Product Guide
-- **Screen Registry Truth:** Certified against `AssistantProductContextRegistry` (`assistant-context-registry.service.ts`) containing exactly 20 screen context definitions:
-  1. `dashboard`: Matches path `/` (and alias `/dashboard`).
-  2. `pets.list`: Matches `/pets`.
-  3. `pets.detail`: Matches `/pets/:id`.
-  4. `bookings.list`: Matches `/bookings`.
-  5. `bookings.new`: Matches `/bookings/new`.
-  6. `staff.board`: Matches `/staff`.
-  7. `staff.manage`: Matches `/staff/manage`.
-  8. `staff.qr_scanner`: Matches `/staff/qr-scanner`.
-  9. `tutors.list`: Matches `/tutors`.
-  10. `chat`: Matches `/chat`.
-  11. `settings`: Matches `/settings`.
-  12. `financial`: Matches `/financial`.
-  13. `tutor.financial`: Matches `/tutor/financial`.
-  14. `tutor.store`: Matches `/tutor/store`.
-  15. `billing`: Matches `/billing`.
-  16. `marketing.campaigns`: Matches `/marketing/campaigns`.
-  17. `admin.creches`: Matches `/admin/creches`.
-  18. `admin.campaigns`: Matches `/admin/campaigns`.
-  19. `admin.proposals`: Matches `/admin/proposals`.
-  20. `admin.users`: Matches `/admin/users`.
-- **Zero Fictitious Application Routes:** Certified against `App.tsx`. The application does NOT register fictitious routes (such as unmapped calendar or creche settings paths), nor an explicit React route `/dashboard` (`DOCUMENTED_FICTITIOUS_APP_ROUTE_COUNT = 0`, `CONTEXT_REGISTRY_DOC_MATCHES_SOURCE = YES`).
+- **Screen Registry Truth:** Certified against `AssistantProductContextRegistry` (`assistant-context-registry.service.ts`) containing exactly 20 screen context definitions with complete matcher regular expressions and route aliases:
+  1. `dashboard`: Matcher `/^\/(dashboard)?$/` — Matches path `/` and presentation alias `/dashboard`.
+  2. `pets.list`: Matcher `/^\/pets$/` — Matches `/pets`.
+  3. `pets.detail`: Matcher `/^\/pets\/(\d+)$/` — Matches `/pets/:id`.
+  4. `bookings.list`: Matcher `/^\/bookings$/` — Matches `/bookings`.
+  5. `bookings.new`: Matcher `/^\/bookings\/new$/` — Matches `/bookings/new`.
+  6. `staff.board`: Matcher `/^\/(staff\/board|staff|walks)$/` — Matches `/staff`, `/staff/board`, and alias `/walks`.
+  7. `staff.manage`: Matcher `/^\/staff\/manage$/` — Matches `/staff/manage`.
+  8. `staff.qr_scanner`: Matcher `/^\/staff\/qr-scanner$/` — Matches `/staff/qr-scanner`.
+  9. `tutors.list`: Matcher `/^\/tutors$/` — Matches `/tutors`.
+  10. `chat`: Matcher `/^\/chat$/` — Matches `/chat`.
+  11. `settings`: Matcher `/^\/settings$/` — Matches `/settings`.
+  12. `financial`: Matcher `/^\/financial$/` — Matches `/financial`.
+  13. `tutor.financial`: Matcher `/^\/tutor\/financial$/` — Matches `/tutor/financial`.
+  14. `tutor.store`: Matcher `/^\/tutor\/store$/` — Matches `/tutor/store`.
+  15. `billing`: Matcher `/^\/assinatura(\/sucesso)?$/` — Matches `/assinatura` and `/assinatura/sucesso`.
+  16. `marketing.campaigns`: Matcher `/^\/marketing\/campaigns$/` — Matches `/marketing/campaigns`.
+  17. `admin.creches`: Matcher `/^\/admin(\/creches)?$/` — Matches `/admin` and `/admin/creches`.
+  18. `admin.campaigns`: Matcher `/^\/admin\/campaigns$/` — Matches `/admin/campaigns`.
+  19. `admin.proposals`: Matcher `/^\/admin\/proposals$/` — Matches `/admin/proposals`.
+  20. `admin.users`: Matcher `/^\/admin\/users$/` — Matches `/admin/users`.
+- **Zero Fictitious Application Routes:** Certified against `App.tsx`. The application does NOT register fictitious routes (such as unmapped calendar or creche settings paths), nor an explicit React route `/dashboard` (`DOCUMENTED_FICTITIOUS_APP_ROUTE_COUNT = 0`, `CONTEXT_REGISTRY_DOC_MATCHES_SOURCE = YES`, `CONTEXT_REGISTRY_ALIAS_OMISSION_COUNT = 0`).
 - **Entity Safety:** Active pet context is authenticated against tenant ownership. A tutor cannot pass another tutor's pet ID to acquire unauthorized context (`R41_G_CROSS_TENANT_READ = 0`).
 
 ### 3.4 R41.D — Voice Assistant

@@ -37,7 +37,7 @@ Phase **R41.G** introduces no new user features, tools, roles, database migratio
 - **Test Count:** 15 test cases
 - **Covered Scenarios:**
   - `R41G-INT-001`: Text Input -> AssistantService -> Operational Read Tool Execution
-  - `R41G-INT-002`: Deterministic Priority Ordering (High Urgency First)
+  - `R41G-INT-002`: Transcribed Voice-Text -> AssistantService -> Operational Response Integration
   - `R41G-INT-003`: Screen Context Active Pet Entity Grounds Operational Task Inquiry
   - `R41G-INT-004`: Operational Issue Generates Safe Action Preview with Zero Direct Write
   - `R41G-INT-005`: Preview -> Authenticated User Confirmation -> CAS Atomic Execution

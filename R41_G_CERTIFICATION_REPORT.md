@@ -14,7 +14,8 @@ R41_D_FINAL_SHA                 = ab539ae4504d8c18d192e0bd2416805789200f1f
 R41_E_FINAL_SHA                 = 2887f09ea5aef06af4c77124a77f6d517e1ba0ce
 R41_F_FINAL_SHA                 = 46caa37f38d23f49270976a5c947512e73c54646
 R41_G_IMPLEMENTATION_FREEZE_SHA = 1942475bae4d5108deeabaf2c8350f48f7b6446c
-R41_G_FINAL1_CLOSURE_SHA        = <reported after commit>
+R41_G_FINAL1_CLOSURE_SHA        = 8efa9a8a30fc9f49fd37c778bc904cb3b91179d7
+R41_G_FINAL2_CLOSURE_SHA        = <reported after commit>
 ```
 
 - **Branch:** `development/arkpet-r41-intelligent-assistant`
@@ -61,6 +62,11 @@ R41_G_FINAL1_CLOSURE_SHA        = <reported after commit>
 | `CONTEXT_REGISTRY_DEFINITION_COUNT` | `20` | `20` | **PASS** |
 | `DOCUMENTED_FICTITIOUS_APP_ROUTE_COUNT` | `0` | `0` | **PASS** |
 | `CONTEXT_REGISTRY_DOC_MATCHES_SOURCE` | `YES` | `YES` | **PASS** |
+| `CONTEXT_REGISTRY_ALIAS_OMISSION_COUNT` | `0` | `0` | **PASS** |
+| `R41_G_TEST_ID_DOC_MISMATCH_COUNT` | `0` | `0` | **PASS** |
+| `R41G_INT_002_DOC_MATCHES_SOURCE` | `YES` | `YES` | **PASS** |
+| `R41_G_FINAL2_SOURCE_CODE_CHANGED` | `NO` | `NO` | **PASS** |
+| `R41_G_FINAL2_TEST_CODE_CHANGED` | `NO` | `NO` | **PASS** |
 | `BACKGROUND_LISTENING` | `0` | `0` | **PASS** |
 | `VOICE_PERMISSION_EXPLICIT` | `YES` | `YES` | **PASS** |
 | `VOICE_MAX_UPLOAD_MB` | `10` | `10` | **PASS** |

@@ -33,7 +33,7 @@ flowchart LR
 
 ### 2.3 R41.C — Contextual Product Guide
 - **Objective:** Dynamic assistance reflecting active UI routes and inspected entity context.
-- **Key Achievements:** Screen registry mapping to exact 20 source screen definitions (`AssistantProductContextRegistry`); zero fictitious routes in `App.tsx`; active pet context resolution with multi-tenant ownership verification.
+- **Key Achievements:** Screen registry mapping to exact 20 source screen definitions (`AssistantProductContextRegistry`) with complete route matchers and aliases (including `/assinatura` and `/assinatura/sucesso` for `billing`, `/staff`, `/staff/board` and `/walks` for `staff.board`, `/admin` and `/admin/creches` for `admin.creches`, `/` and presentation alias `/dashboard` for `dashboard`); zero fictitious routes in `App.tsx`; active pet context resolution with multi-tenant ownership verification.
 
 ### 2.4 R41.D — Voice Assistant
 - **Objective:** Hands-free interaction adhering to privacy standards.
@@ -64,7 +64,8 @@ R41_D_FINAL_SHA                 = ab539ae4504d8c18d192e0bd2416805789200f1f
 R41_E_FINAL_SHA                 = 2887f09ea5aef06af4c77124a77f6d517e1ba0ce
 R41_F_FINAL_SHA                 = 46caa37f38d23f49270976a5c947512e73c54646
 R41_G_IMPLEMENTATION_FREEZE_SHA = 1942475bae4d5108deeabaf2c8350f48f7b6446c
-R41_G_FINAL1_CLOSURE_SHA        = <reported after commit>
+R41_G_FINAL1_CLOSURE_SHA        = 8efa9a8a30fc9f49fd37c778bc904cb3b91179d7
+R41_G_FINAL2_CLOSURE_SHA        = <reported after commit>
 ```
 
 - **Branch:** `development/arkpet-r41-intelligent-assistant`
@@ -125,7 +126,7 @@ Production deployment is strictly deferred to a separate cutover event. External
 ## 6. Official Program Closure Declaration
 
 ```text
-R41 PROGRAM FINAL CERTIFICATION COMPLETE — INTELLIGENT ASSISTANT FOUNDATION + GUIDED ONBOARDING + CONTEXTUAL PRODUCT GUIDE + PUSH-TO-TALK VOICE + SAFE ACTIONS + OPERATIONAL COPILOT INTEGRATED AND CERTIFIED / FOUR CANONICAL ROLES / TWENTY SOURCE-VERIFIED TOOLS / ZERO GENERIC DATABASE ACCESS / ZERO AUTONOMOUS MUTATION / EXPLICIT CONFIRMATION FOR ALL DOMAIN WRITES / IDENTITY-BOUND CAS + IDEMPOTENCY + AUDIT / ZERO CROSS-TENANT READ, MUTATION OR SESSION LEAK / ZERO INVENTED OPERATIONAL SLA / UNKNOWN OPERATIONAL DATA NEVER REPORTED AS ZERO / SERVER-BOUND SESSION DELTA / PROVIDER + VOICE + PWA + FULL BACKEND + FULL FRONTEND + GOLDEN + INTEGRATION SUITES GREEN / R41.A+B+C+D+E+F REGRESSIONS ZERO / EXACT DUAL-REMOTE SHA PARITY / IMPLEMENTATION CERTIFIED AND FROZEN / PRODUCTION NOT DEPLOYED / READY FOR SEPARATE RELEASE AND PRODUCTION CUTOVER CERTIFICATION
+R41 PROGRAM FINAL CERTIFICATION COMPLETE — SOURCE-VERIFIED GIT ANCESTRY / TWENTY CONTEXT AND TOOL CONTRACTS RECONCILED WITH REAL SOURCE / ZERO FICTITIOUS APP ROUTES / ALL CONTEXT REGISTRY ALIASES DOCUMENTED ACCURATELY / R41.G INTEGRATION TEST IDS MATCH IMPLEMENTED TESTS 1:1 / FOUR CANONICAL ROLES / TWENTY ASSISTANT TOOLS / SAFE ACTION + VOICE + OPERATIONAL COPILOT SECURITY PRESERVED / ZERO CROSS-TENANT READ OR MUTATION / ZERO AUTONOMOUS MUTATION / FULL CERTIFICATION EVIDENCE PRESERVED / EXACT DUAL-REMOTE PARITY / IMPLEMENTATION CERTIFIED AND FROZEN / PRODUCTION NOT DEPLOYED / READY FOR SEPARATE PRODUCTION CUTOVER
 ```
 
 ---

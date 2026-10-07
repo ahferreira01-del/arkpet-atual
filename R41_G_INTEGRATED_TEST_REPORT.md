@@ -52,7 +52,7 @@ The dedicated integration suite (`artifacts/api-server/src/__tests__/assistantR4
 | Test ID | Test Scenario Description | Key Assertions | Result |
 | :--- | :--- | :--- | :---: |
 | `R41G-INT-001` | Operational overview retrieval via AssistantService | AssistantService processes query -> tool call dispatch -> `get_operational_overview` -> operational payload | **PASS** |
-| `R41G-INT-002` | Operational priority sorting | `get_operational_priorities` deterministically ranks highest urgency items first | **PASS** |
+| `R41G-INT-002` | Transcribed voice-text integration | Transcribed voice-text -> AssistantService -> operational response (Note: validates pipeline with transcribed text; live microphone/STT is verified separately via `scripts/live-groq-stt-smoke.mjs`) | **PASS** |
 | `R41G-INT-003` | Screen context active pet grounds inquiry | Screen context with active pet entity (Pet 101, Thor) grounds operational query -> `get_pending_operational_tasks` with pet 101 | **PASS** |
 | `R41G-INT-004` | Operational issue generates Safe Action preview | Overdue arrival/task generates Safe Action preview with `confirmation_required` state; zero direct mutation before confirmation | **PASS** |
 | `R41G-INT-005` | User confirmation executes action | Authenticated user confirmation transitions action to `executed` with CAS atomicity | **PASS** |
